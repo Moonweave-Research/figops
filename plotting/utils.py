@@ -12,6 +12,7 @@
 - get_standard_legend_props: 소형 피규어(89mm)에 최적화된 범례 속성 반환
 """
 
+import matplotlib.pyplot as plt
 from .smart_layout import find_empty_quadrant
 
 def add_smart_inset(ax, position='upper_right', size=0.3, padding=0.05, label_scale=0.8):
