@@ -266,6 +266,11 @@ def save_journal_fig(fig, filename, **kwargs):
     file_path = Path(filename)
     suffix = file_path.suffix.lower()
 
+    # 도구 버전 정보 차단 — 환경별 바이너리 해시 불일치 방지
+    metadata.setdefault('Creator', None)
+    metadata.setdefault('Producer', None)
+    metadata.setdefault('Software', None)
+
     if suffix == ".svg":
         metadata.pop('CreationDate', None)
         metadata.pop('ModDate', None)
