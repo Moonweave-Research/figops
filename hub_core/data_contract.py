@@ -220,6 +220,9 @@ def _validate_semantic_constraints(df, semantic_checks, stripped_to_actual):
         val_range = constraints.get('range')
         if val_range and len(val_range) == 2:
             min_val, max_val = val_range
+            if not (isinstance(min_val, (int, float)) and isinstance(max_val, (int, float))):
+                errors.append(f"Column '{col}': range bounds must be numeric, got {val_range}")
+                continue
             mask = (series < min_val) | (series > max_val)
             if mask.any():
                 violation_count = int(mask.sum())

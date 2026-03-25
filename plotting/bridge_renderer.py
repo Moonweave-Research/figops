@@ -125,6 +125,7 @@ class BridgeFigureSpec:
 
 
 def render_bridge_figure(spec: BridgeFigureSpec) -> str:
+    _saved_rc = plt.rcParams.copy()
     apply_journal_theme(
         target_format=spec.target_format,
         font_scale=spec.font_scale,
@@ -145,6 +146,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         save_journal_fig(fig, output_path)  # dpi comes from apply_journal_theme rcParams
     finally:
         plt.close(fig)
+        plt.rcParams.update(_saved_rc)
     if _embed_fingerprint is not None:
         _embed_fingerprint(
             str(output_path),
