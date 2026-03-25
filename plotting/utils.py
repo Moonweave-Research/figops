@@ -127,19 +127,19 @@ def add_peak_annotation(
     """
     if fontsize is None:
         fontsize = plt.rcParams.get('axes.labelsize', 7.0)
-    # level에 따른 세로 위치 조정 (0.88, 0.74, 0.60...) -> 상단 테두리 여백 확보
-    y_pos = y_limit * (0.88 - (level - 1) * 0.14)
+    # level에 따른 세로 위치 조정 — 축 상단 안쪽에 배치
+    y_pos = y_limit * max(0.15, 0.88 - (level - 1) * 0.14)
 
     # 수직 가이드라인
     ax.axvline(x, color=color, ls=ls, alpha=alpha, lw=0.8, zorder=1)
 
     ha = kwargs.get("ha", "center")
-    # 텍스트 라벨 (배경 박스 투명도 1.0으로 완전 차폐, 패딩 축소)
+    # 텍스트 라벨 (반투명 배경 박스)
     ax.text(x + x_offset, y_pos, label,
             fontsize=fontsize, ha=ha, va="center",
             color=color, fontweight="bold",
             zorder=10,
-            bbox=dict(facecolor='white', alpha=1.0, edgecolor='none', pad=0.8))
+            bbox=dict(facecolor='white', alpha=0.85, edgecolor='none', pad=0.8))
 
 def apply_auto_units(ax, x_col, y_col, project_config):
     """

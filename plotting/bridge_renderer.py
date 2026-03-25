@@ -235,6 +235,8 @@ def _annotate_points(
                 textcoords="offset points",
                 xytext=(0, 4),
                 ha="center",
+                va="bottom",
+                zorder=5,
             )
 
 
@@ -503,7 +505,7 @@ def _legend_kwargs(ax, spec: BridgeFigureSpec, *, n_series: int) -> dict:
         return kwargs
 
     kwargs = dict(get_standard_legend_props())
-    kwargs["ncol"] = min(max(n_series, 1), 2)
+    kwargs["ncol"] = min(max(n_series, 1), 4)
     return kwargs
 
 
