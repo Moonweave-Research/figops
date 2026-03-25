@@ -13,11 +13,13 @@
 """
 
 import matplotlib.pyplot as plt
+
 from .smart_layout import find_empty_quadrant
+
 
 def add_smart_inset(ax, position='upper_right', size=0.3, padding=0.05, label_scale=0.8):
     """
-    선언적으로 인셋(Inset)을 추가합니다. 
+    선언적으로 인셋(Inset)을 추가합니다.
     메인 축의 폰트 크기보다 작게(기본 0.8배) 자동 조정됩니다.
     """
     # [0, 0, 1, 1] 비율 좌표계에서의 위치 계산
@@ -27,24 +29,25 @@ def add_smart_inset(ax, position='upper_right', size=0.3, padding=0.05, label_sc
         'lower_right': [1 - size - padding, padding, size, size],
         'lower_left': [padding, padding, size, size]
     }
-    
+
     rect = presets.get(position, presets['upper_right'])
     inset_ax = ax.inset_axes(rect)
-    
+
     # 폰트 스케일링 설정 (Matplotlib은 수동 폰트 조정이 필요하므로, 이후 테마 적용 시 활용 가능)
     # 여기서는 간단히 축 라벨 크기 조정을 시연
     inset_ax.tick_params(labelsize=plt.rcParams['font.size'] * label_scale)
-    
+
     return inset_ax
 
-def auto_panel_tag(ax, label='a', x_offset=-0.12, y_offset=1.05):
+def auto_panel_tag(ax, label='a', x_offset=-0.08, y_offset=1.12):
     """
     패널 식별자(a, b, c)를 표준화된 위치(Top-left)에 배치합니다.
+    여백을 조금 더 주어(y_offset=1.12) 타이틀과 겹침을 방지합니다.
     """
-    ax.text(x_offset, y_offset, f"{label})", 
-            transform=ax.transAxes, 
-            fontsize=plt.rcParams['axes.titlesize'] + 1,
-            fontweight='bold', 
+    ax.text(x_offset, y_offset, f"{label})",
+            transform=ax.transAxes,
+            fontsize=plt.rcParams['axes.titlesize'],
+            fontweight='bold',
             va='bottom', ha='right')
 
 def apply_density_alpha(dataset_size, base_alpha=0.6, base_size=10):
@@ -60,7 +63,7 @@ def apply_density_alpha(dataset_size, base_alpha=0.6, base_size=10):
     else:
         alpha = base_alpha
         size = base_size
-        
+
     return alpha, size
 
 def compress_sample_label(label: str) -> str:
@@ -70,7 +73,7 @@ def compress_sample_label(label: str) -> str:
     """
     if not isinstance(label, str):
         return str(label)
-    
+
     replacements = {
         'Coated Sample_': 'Coated, ',
         ' Removed': ' Rem.',
@@ -81,11 +84,11 @@ def compress_sample_label(label: str) -> str:
         'None': 'None',
         'None, None': 'None'
     }
-    
+
     compressed = label
     for old, new in replacements.items():
         compressed = compressed.replace(old, new)
-    
+
     # 중복 쉼표 및 공백 정리
     compressed = compressed.replace(', ,', ',').strip(', ')
     return compressed
@@ -96,35 +99,70 @@ def get_standard_legend_props(style='top_floating'):
     """
     if style == 'top_floating':
         return {
-            'fontsize': 4.5,
+            'fontsize': 7.0,
             'loc': 'lower center',
             'bbox_to_anchor': (0.5, 1.02),
-            'ncol': 2,
+            'ncol': 3,
             'frameon': False
         }
-    return {'fontsize': 5, 'frameon': True}
+    return {'fontsize': 7.0, 'frameon': False}
 
-def apply_scientific_padding(ax, data_max, padding_ratio=1.45):
+def apply_scientific_padding(ax, data_max, padding_ratio=1.6, data_min=None):
     """
     데이터 상단에 어노테이션(라벨 등)을 위한 여유 공간(Headroom)을 확보합니다.
+    1.6배 패딩은 다중 피크 라벨 배치를 위한 충분한 공간을 제공합니다.
+    data_min이 None이면 현재 축 하한을 유지합니다 (음수 데이터 대응).
     """
-    ax.set_ylim(0, data_max * padding_ratio)
+    y_bottom = 0 if (data_min is None or data_min >= 0) else data_min * padding_ratio
+    ax.set_ylim(y_bottom, data_max * padding_ratio)
     return data_max * padding_ratio
 
-def add_peak_annotation(ax, x, y_limit, label, color='black', ls='--', alpha=0.4, fontsize=7, level=1):
+def add_peak_annotation(
+    ax, x, y_limit, label, color='black', ls='--', alpha=0.4,
+    fontsize=None, level=1, x_offset=0, **kwargs,
+):
     """
-    과학 논문용 피크(Peak) 라벨을 추가합니다. 
-    level 인자를 통해 라벨 간 수직 겹침을 방지할 수 있습니다.
+    과학 논문용 피크(Peak) 라벨을 추가합니다.
+    fontsize가 None인 경우 rcParams['axes.labelsize']를 따릅니다.
     """
-    # level에 따른 세로 위치 조정 (더 큰 간격 확보: 0.94, 0.80, 0.66...)
-    y_pos = y_limit * (0.94 - (level - 1) * 0.14)
-    
+    if fontsize is None:
+        fontsize = plt.rcParams.get('axes.labelsize', 7.0)
+    # level에 따른 세로 위치 조정 (0.88, 0.74, 0.60...) -> 상단 테두리 여백 확보
+    y_pos = y_limit * (0.88 - (level - 1) * 0.14)
+
     # 수직 가이드라인
     ax.axvline(x, color=color, ls=ls, alpha=alpha, lw=0.8, zorder=1)
-    
-    # 텍스트 라벨 (가독성을 위해 배경을 더 불투명하게 조정)
-    ax.text(x, y_pos, label, 
-            fontsize=fontsize, ha="center", va="center",
+
+    ha = kwargs.get("ha", "center")
+    # 텍스트 라벨 (배경 박스 투명도 1.0으로 완전 차폐, 패딩 축소)
+    ax.text(x + x_offset, y_pos, label,
+            fontsize=fontsize, ha=ha, va="center",
             color=color, fontweight="bold",
-            zorder=10, # 텍스트를 최상단으로
-            bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', pad=0.8))
+            zorder=10,
+            bbox=dict(facecolor='white', alpha=1.0, edgecolor='none', pad=0.8))
+
+def apply_auto_units(ax, x_col, y_col, project_config):
+    """
+    Automatically attaches units to axes labels based on project_config.yaml data_contract.
+    Does not overwrite existing labels if manually set.
+    """
+    data_contract = project_config.get('data_contract', {})
+    csv_checks = data_contract.get('csv_checks', [])
+
+    # Flatten units from all csv_checks
+    units = {}
+    for check in csv_checks:
+        semantic_checks = check.get('semantic_checks', {})
+        for col, rules in semantic_checks.items():
+            if isinstance(rules, dict) and 'unit' in rules:
+                units[col] = rules['unit']
+            elif isinstance(rules, dict) and 'unit' in rules.get('range', {}): # fallback if nested
+                units[col] = rules['range']['unit']
+
+    # Update X axis if not manually set
+    if x_col in units and not ax.get_xlabel():
+        ax.set_xlabel(f"{x_col} [{units[x_col]}]")
+
+    # Update Y axis if not manually set
+    if y_col in units and not ax.get_ylabel():
+        ax.set_ylabel(f"{y_col} [{units[y_col]}]")
