@@ -377,6 +377,11 @@ def _render_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     if spec.plot_type == "scatter":
         _render_xy_plot(ax, points, spec, line=False)
         return
+    if spec.plot_type not in ("line", "xy"):
+        warnings.warn(
+            f"bridge_renderer: unknown plot_type {spec.plot_type!r}, falling back to line plot",
+            stacklevel=2,
+        )
     _render_xy_plot(ax, points, spec, line=True)
 
 
@@ -522,19 +527,11 @@ def _apply_layout(fig, ax, spec: BridgeFigureSpec) -> None:
         return
 
     layout = _resolved_legend_layout(spec)
-    if layout == "right_outside":
-        apply_publication_layout("right_outside")
+    if layout in ("right_outside", "top_outside", "standard"):
+        # subplots_adjust 사용 — tight_layout과 충돌하므로 호출하지 않음
+        apply_publication_layout(layout)
         return
-    if layout == "top_outside":
-        apply_publication_layout("top_outside")
-        return
-    if layout == "standard":
-        apply_publication_layout("standard")
-        return
-    if layout == "smart":
-        # Smart layout은 tight_layout 후 범례 위치가 유지되도록 함
-        fig.tight_layout()
-        return
+    # smart 및 기타: tight_layout만 사용
     fig.tight_layout()
 
 

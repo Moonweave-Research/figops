@@ -197,6 +197,8 @@ def apply_journal_theme(target_format='nature', font_scale=1.0, profile_name=Non
     theme_rc = copy.deepcopy(STYLE_PRESETS[target_format])
 
     # 2. font_scale 적용 (크기와 관련된 값들에 배율 곱하기)
+    if not isinstance(font_scale, (int, float)) or font_scale <= 0:
+        raise ValueError(f"font_scale must be a positive number, got {font_scale!r}")
     if font_scale != 1.0:
         keys_to_scale_font = [
             'axes.labelsize', 'axes.titlesize', 'legend.fontsize',
@@ -217,13 +219,14 @@ def apply_journal_theme(target_format='nature', font_scale=1.0, profile_name=Non
             if k in theme_rc:
                 theme_rc[k] = theme_rc[k] * line_scale
 
-    # 2.5. profile별 rc override 적용
+    # 2.5. 런타임 폰트 해상도 (프로필보다 먼저 적용하여 프로필이 우선)
+    _apply_runtime_font_resolution(theme_rc)
+
+    # 2.6. profile별 rc override 적용 (최종 우선)
     resolved_profile = resolve_profile_name(profile_name)
     profile_rc, _ = get_profile_rc_overrides(resolved_profile)
     if profile_rc:
         theme_rc.update(profile_rc)
-
-    _apply_runtime_font_resolution(theme_rc)
 
     # 2.7. SVG Baseline Alignment Correction (Zenith Audit Fix)
     # Matplotlib's default SVG path rendering can sometimes shift baselines.
