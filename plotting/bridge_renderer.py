@@ -137,12 +137,14 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
 
     points = _load_points(csv_path, spec)
     fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
-    _render_plot(ax, points, spec)
-    _apply_axes_metadata(ax, spec)
-    ax.set_title(spec.title)
-    _apply_layout(fig, ax, spec)
-    save_journal_fig(fig, output_path)  # dpi comes from apply_journal_theme rcParams
-    plt.close(fig)
+    try:
+        _render_plot(ax, points, spec)
+        _apply_axes_metadata(ax, spec)
+        ax.set_title(spec.title)
+        _apply_layout(fig, ax, spec)
+        save_journal_fig(fig, output_path)  # dpi comes from apply_journal_theme rcParams
+    finally:
+        plt.close(fig)
     if _embed_fingerprint is not None:
         _embed_fingerprint(
             str(output_path),
@@ -173,8 +175,12 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
                 f"Available: {', '.join(headers)}"
             )
         for row_num, row in enumerate(reader, start=2):
-            y_val = float(row[spec.y_column])
-            yerr_val = float(row[spec.yerr_column]) if spec.yerr_column else None
+            try:
+                y_val = float(row[spec.y_column])
+                yerr_val = float(row[spec.yerr_column]) if spec.yerr_column else None
+            except (ValueError, TypeError):
+                skipped += 1
+                continue
             if not math.isfinite(y_val) or (yerr_val is not None and not math.isfinite(yerr_val)):
                 skipped += 1
                 continue
