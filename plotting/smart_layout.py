@@ -8,8 +8,9 @@
 - Matplotlib 객체 간의 충돌을 방지하고 지능적인 배치 수행
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
 
 def find_empty_quadrant(x, y, x_lim=None, y_lim=None):
     """
@@ -18,21 +19,21 @@ def find_empty_quadrant(x, y, x_lim=None, y_lim=None):
     """
     if len(x) == 0:
         return 0
-    
+
     x = np.array(x)
     y = np.array(y)
-    
+
     x_mid = (np.min(x) + np.max(x)) / 2 if x_lim is None else (x_lim[0] + x_lim[1]) / 2
     y_mid = (np.min(y) + np.max(y)) / 2 if y_lim is None else (y_lim[0] + y_lim[1]) / 2
-    
+
     quadrants = [0, 0, 0, 0]
-    
+
     for xi, yi in zip(x, y):
         if xi >= x_mid and yi >= y_mid: quadrants[0] += 1
         elif xi < x_mid and yi >= y_mid: quadrants[1] += 1
         elif xi < x_mid and yi < y_mid: quadrants[2] += 1
         else: quadrants[3] += 1
-        
+
     return np.argmin(quadrants)
 
 def stagger_labels_2d(y_positions, min_gap=0.05):
@@ -47,15 +48,23 @@ def stagger_labels_2d(y_positions, min_gap=0.05):
     pairs = sorted(enumerate(y_positions), key=lambda p: p[1])
     ys = [y for _, y in pairs]
 
-    # 순방향 스윕: 겹침 방지
+    # 순방향 스윕: 겹침 방지 (위쪽으로 밀기)
     for k in range(1, n):
         if ys[k] - ys[k - 1] < min_gap:
             ys[k] = ys[k - 1] + min_gap
 
-    # 결과 복원
+    # 역방향 스윕: 상단 초과분 보정 (1.0 넘어간 경우 아래로 당기기)
+    if ys[-1] > 1.0:
+        overflow = ys[-1] - 1.0
+        for k in range(n - 1, -1, -1):
+            ys[k] = ys[k] - overflow
+            if k > 0 and ys[k] < ys[k - 1] + min_gap:
+                ys[k] = ys[k - 1] + min_gap
+
+    # 결과 복원 (축 범위 [0, 1]로 클램프)
     result = [0.0] * n
     for (orig_idx, _), new_y in zip(pairs, ys):
-        result[orig_idx] = new_y
+        result[orig_idx] = max(0.0, min(1.0, new_y))
     return result
 
 def add_leader_line(ax, start_pos, end_pos, style='elbow', **kwargs):
@@ -64,7 +73,7 @@ def add_leader_line(ax, start_pos, end_pos, style='elbow', **kwargs):
     """
     sx, sy = start_pos
     ex, ey = end_pos
-    
+
     if style == 'elbow':
         # 꺾임선 (L-path)
         mid_x = (sx + ex) / 2
@@ -74,6 +83,6 @@ def add_leader_line(ax, start_pos, end_pos, style='elbow', **kwargs):
         # 직선
         xs = [sx, ex]
         ys = [sy, ey]
-        
+
     line = ax.plot(xs, ys, **kwargs)
     return line

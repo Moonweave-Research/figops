@@ -114,8 +114,9 @@ def apply_scientific_padding(ax, data_max, padding_ratio=1.6, data_min=None):
     data_min이 None이면 현재 축 하한을 유지합니다 (음수 데이터 대응).
     """
     y_bottom = 0 if (data_min is None or data_min >= 0) else data_min * padding_ratio
-    ax.set_ylim(y_bottom, data_max * padding_ratio)
-    return data_max * padding_ratio
+    y_top = data_max * padding_ratio if data_max >= 0 else data_max / padding_ratio
+    ax.set_ylim(y_bottom, y_top)
+    return y_top
 
 def add_peak_annotation(
     ax, x, y_limit, label, color='black', ls='--', alpha=0.4,
@@ -139,7 +140,7 @@ def add_peak_annotation(
             fontsize=fontsize, ha=ha, va="center",
             color=color, fontweight="bold",
             zorder=10,
-            bbox=dict(facecolor='white', alpha=0.85, edgecolor='none', pad=0.8))
+            bbox=dict(facecolor='white', alpha=0.9, edgecolor='none', pad=2.0))
 
 def apply_auto_units(ax, x_col, y_col, project_config):
     """

@@ -95,9 +95,9 @@ def draw_zenith_plot(
         plot_kwargs.setdefault("linestyle", sty["linestyle"])
         ax.plot(x, y, **plot_kwargs)
 
-    # 지능형 범례 배치 (라벨이 있는 경우)
+    # 지능형 범례 배치 (축 범위 기준으로 사분면 계산)
     if label:
-        quad = find_empty_quadrant(x, y)
+        quad = find_empty_quadrant(x, y, x_lim=ax.get_xlim(), y_lim=ax.get_ylim())
         loc_map = {0: "upper right", 1: "upper left", 2: "lower left", 3: "lower right"}
         ax.legend(loc=loc_map[quad], frameon=False, fontsize="small")
 
@@ -126,26 +126,28 @@ class BridgeFigureSpec:
 
 def render_bridge_figure(spec: BridgeFigureSpec) -> str:
     _saved_rc = plt.rcParams.copy()
-    apply_journal_theme(
-        target_format=spec.target_format,
-        font_scale=spec.font_scale,
-        profile_name=spec.profile_name,
-    )
-
-    csv_path = Path(spec.csv_path)
-    output_path = Path(spec.output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    points = _load_points(csv_path, spec)
-    fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
     try:
-        _render_plot(ax, points, spec)
-        _apply_axes_metadata(ax, spec)
-        ax.set_title(spec.title)
-        _apply_layout(fig, ax, spec)
-        save_journal_fig(fig, output_path)  # dpi comes from apply_journal_theme rcParams
+        apply_journal_theme(
+            target_format=spec.target_format,
+            font_scale=spec.font_scale,
+            profile_name=spec.profile_name,
+        )
+
+        csv_path = Path(spec.csv_path)
+        output_path = Path(spec.output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        points = _load_points(csv_path, spec)
+        fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
+        try:
+            _render_plot(ax, points, spec)
+            _apply_axes_metadata(ax, spec)
+            ax.set_title(spec.title)
+            _apply_layout(fig, ax, spec)
+            save_journal_fig(fig, output_path)  # dpi comes from apply_journal_theme rcParams
+        finally:
+            plt.close(fig)
     finally:
-        plt.close(fig)
         plt.rcParams.update(_saved_rc)
     if _embed_fingerprint is not None:
         _embed_fingerprint(
@@ -333,10 +335,11 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
                 label=_display_label(series_name, compress_labels=spec.compress_labels),
             )
             if spec.label_column:
+                y_offset = max(abs(v) for v in ys) * 0.03 if ys else 0
                 _annotate_points(
                     ax,
                     [bar.get_x() + bar.get_width() / 2 for bar in bars],
-                    ys,
+                    [y + y_offset for y in ys],
                     [str(point["label"]) for point in series_points],
                     compress_labels=spec.compress_labels,
                 )
