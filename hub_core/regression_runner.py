@@ -613,7 +613,10 @@ def _build_visual_diff_metrics(baseline_path, current_path):
             metrics["artifact_type"] = "image"
         return metrics
     if ext in SUPPORTED_PDF_EXTENSIONS:
-        return _build_pdf_diff_metrics(baseline_path, current_path)
+        metrics = _build_pdf_diff_metrics(baseline_path, current_path)
+        if metrics is not None:
+            metrics.setdefault("artifact_type", "pdf")
+        return metrics
     return None
 
 
@@ -631,7 +634,13 @@ def _build_image_diff_metrics(baseline_path, current_path):
             }
             if baseline_rgba.size != current_rgba.size:
                 metrics["size_mismatch"] = True
-                return metrics
+                # 공통 영역으로 크롭 후 diff 계산 (크기 불일치에도 정량 지표 제공)
+                common_w = min(baseline_rgba.width, current_rgba.width)
+                common_h = min(baseline_rgba.height, current_rgba.height)
+                baseline_rgba = baseline_rgba.crop((0, 0, common_w, common_h))
+                current_rgba = current_rgba.crop((0, 0, common_w, common_h))
+            else:
+                metrics["size_mismatch"] = False
 
             diff = ImageChops.difference(baseline_rgba, current_rgba)
             diff_gray = diff.convert("L")
@@ -639,7 +648,6 @@ def _build_image_diff_metrics(baseline_path, current_path):
             total_pixels = sum(histogram) or 1
             zero_pixels = histogram[0] if histogram else 0
             stat = ImageStat.Stat(diff)
-            metrics["size_mismatch"] = False
             metrics["pixel_diff_ratio"] = round(1 - (zero_pixels / total_pixels), 6)
             metrics["pixel_rms"] = round(sum(stat.rms) / len(stat.rms), 4)
             return metrics

@@ -473,8 +473,6 @@ def _embed_pdf_fingerprint(path: str, payload_str: str) -> bool:
             "/Research-Config-Hash": parsed.get("config", ""),
             "/Research-Env-Hash": parsed.get("env", ""),
         })
-        import tempfile
-        tmp = path + ".tmp_fingerprint"
         with open(tmp, "wb") as f:
             writer.write(f)
         os.replace(tmp, path)
