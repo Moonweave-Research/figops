@@ -9,7 +9,7 @@ CACHE_STRATEGY_MTIME = "mtime"
 CACHE_STRATEGY_CONTENT_HASH = "content_hash"
 
 BUILD_STATE_FILENAME = ".build_state.json"
-BUILD_STATE_SCHEMA_VERSION = 2
+BUILD_STATE_SCHEMA_VERSION = 3
 
 def _normalize_record_path(abs_path, project_dir):
     abs_norm = os.path.abspath(abs_path)
@@ -21,8 +21,8 @@ def _normalize_record_path(abs_path, project_dir):
         return abs_norm
     return rel
 
-def _md5_of_file(abs_path: str) -> str:
-    h = hashlib.md5()
+def _sha256_of_file(abs_path: str) -> str:
+    h = hashlib.sha256()
     with open(abs_path, "rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
@@ -47,7 +47,7 @@ def _file_signature(abs_path, project_dir, cache_strategy=CACHE_STRATEGY_MTIME):
     signature["size"] = stat.st_size
     if cache_strategy == CACHE_STRATEGY_CONTENT_HASH:
         try:
-            signature["content_hash"] = _md5_of_file(abs_norm)
+            signature["content_hash"] = _sha256_of_file(abs_norm)
         except OSError:
             signature["mtime_ns"] = stat.st_mtime_ns
     else:

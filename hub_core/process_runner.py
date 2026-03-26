@@ -37,6 +37,12 @@ def _resolve_runner(lang, step_cfg, config):
         return step_cfg.get('python_exec') or execution.get('python') or sys.executable
     return None
 
+def _prefix_uv_if_needed(cmd, config):
+    environment = config.get('environment', {})
+    if environment.get('uv_run') is True:
+        return ['uv', 'run'] + cmd
+    return cmd
+
 def run_command(cmd_list, cwd, additional_env=None):
     # This assumes orchestrator.py is one level up from hub_core
     hub_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -146,7 +152,7 @@ def run_analysis(project_dir, config, build_state, build_state_path, config_hash
             continue
 
         print(f"   [RUN] analysis {i}: {script} ({stale_reason})")
-        cmd = [runner, script]
+        cmd = _prefix_uv_if_needed([runner, script], config)
         if not run_command(cmd, project_dir):
             print(f"      ❌ Step {i} failed. Stopping pipeline.")
             return False
@@ -295,7 +301,7 @@ def _run_visual_artifacts(
 
         # ── 2. Standard Script Execution ────────────────────────────────────
         else:
-            cmd = [runner, script]
+            cmd = _prefix_uv_if_needed([runner, script], config)
             try:
                 if not run_command(cmd, project_dir, additional_env=env_vars):
                     print(f"      ❌ Failed to generate {artifact_id}. Stopping pipeline.")

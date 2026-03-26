@@ -13,6 +13,7 @@ import copy
 import os
 from pathlib import Path
 
+from cycler import cycler
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
@@ -238,6 +239,10 @@ def apply_journal_theme(target_format='nature', font_scale=1.0, profile_name=Non
         # but the request asks to maintain 'path' while fixing the jump.
         # We ensure mathtext.fallback is set to None to avoid mixing font types.
         theme_rc["mathtext.fallback"] = None
+
+    # 2.8. CVD-safe Palette (Okabe-Ito) Injection
+    # Zenith Masterpiece: All journal plots must be CVD-safe by default.
+    theme_rc["axes.prop_cycle"] = cycler(color=get_palette('Okabe-Ito'))
 
     # 3. 전역 적용
     plt.rcParams.update(theme_rc)
