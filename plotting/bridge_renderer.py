@@ -414,15 +414,17 @@ def _find_best_legend_location(ax) -> dict:
     x_lim = ax.get_xlim()
     y_lim = ax.get_ylim()
 
-    for artist in ax.get_children():
-        if hasattr(artist, "get_offsets"):  # scatter points
-            offsets = artist.get_offsets()
+    # ax.lines: plot()으로 추가된 데이터 라인만 (spine/grid/tick 제외)
+    for line in ax.lines:
+        x_data.extend(line.get_xdata())
+        y_data.extend(line.get_ydata())
+    # ax.collections: scatter/errorbar 등으로 추가된 컬렉션만
+    for coll in ax.collections:
+        if hasattr(coll, "get_offsets"):
+            offsets = coll.get_offsets()
             if len(offsets) > 0:
                 x_data.extend(offsets[:, 0])
                 y_data.extend(offsets[:, 1])
-        elif hasattr(artist, "get_xdata"):  # lines
-            x_data.extend(artist.get_xdata())
-            y_data.extend(artist.get_ydata())
 
     if not x_data:
         return {"loc": "best", "frameon": False}
@@ -533,8 +535,11 @@ def _apply_layout(fig, ax, spec: BridgeFigureSpec) -> None:
         # subplots_adjust 사용 — tight_layout과 충돌하므로 호출하지 않음
         apply_publication_layout(layout)
         return
-    # smart 및 기타: tight_layout만 사용
-    fig.tight_layout()
+    # smart 및 기타: tight_layout (pad=0.5로 여백 확보)
+    try:
+        fig.tight_layout(pad=0.5)
+    except Exception:
+        pass
 
 
 def _resolved_legend_layout(spec: BridgeFigureSpec) -> str:
