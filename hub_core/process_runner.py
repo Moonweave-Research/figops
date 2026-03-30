@@ -34,31 +34,39 @@ except Exception:
         key = str(profile_name).strip().lower()
         return key if key else "baseline"
 
+_solve_context_env_cache: dict[str, str] | None = None
+_solve_data_context_cache: dict | None = None
+
+
 def _load_solve_context_env() -> dict[str, str]:
-    """Load Athena solve context as environment variables. Returns empty dict if unavailable."""
+    global _solve_context_env_cache
+    if _solve_context_env_cache is not None:
+        return _solve_context_env_cache
     try:
-        import sys
-        athena_root = os.path.join(get_hub_path(), '..', '[Athena]')
-        athena_root = os.path.abspath(athena_root)
+        athena_root = os.path.abspath(os.path.join(get_hub_path(), '..', '[Athena]'))
         if athena_root not in sys.path:
             sys.path.insert(0, athena_root)
         from integrations.solve_live_context import load_as_env_vars
-        return load_as_env_vars()
+        _solve_context_env_cache = load_as_env_vars()
+        return _solve_context_env_cache
     except Exception:
+        _solve_context_env_cache = {}
         return {}
 
 
 def _load_solve_data_context() -> dict:
-    """Load Athena solve context as template dict. Returns empty dict if unavailable."""
+    global _solve_data_context_cache
+    if _solve_data_context_cache is not None:
+        return _solve_data_context_cache
     try:
-        import sys
-        athena_root = os.path.join(get_hub_path(), '..', '[Athena]')
-        athena_root = os.path.abspath(athena_root)
+        athena_root = os.path.abspath(os.path.join(get_hub_path(), '..', '[Athena]'))
         if athena_root not in sys.path:
             sys.path.insert(0, athena_root)
         from integrations.solve_live_context import load_as_data_context
-        return load_as_data_context()
+        _solve_data_context_cache = load_as_data_context()
+        return _solve_data_context_cache
     except Exception:
+        _solve_data_context_cache = {}
         return {}
 
 
@@ -328,6 +336,9 @@ def _run_visual_artifacts(
             )
 
         has_glob_patterns = any(glob_module.has_magic(p) for p in raw_inputs) if raw_inputs else False
+
+        if expand_mode == "each" and not has_glob_patterns and raw_inputs:
+            print("      [WARN] expand='each' has no effect without glob patterns in inputs")
 
         if expand_mode == "each" and has_glob_patterns:
             all_matched = flatten_glob_results(glob_results)

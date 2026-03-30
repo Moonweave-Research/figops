@@ -489,6 +489,19 @@ def _validate_visual_outputs(
         inputs = item.get('inputs', None)
         if inputs is not None and not isinstance(inputs, list):
             errors.append(f"{section_name}[{i}].inputs must be a list.")
+        elif isinstance(inputs, list):
+            for inp in inputs:
+                if isinstance(inp, str):
+                    if os.path.isabs(inp):
+                        errors.append(
+                            f"{section_name}[{i}].inputs: absolute path "
+                            f"'{inp}' is not allowed."
+                        )
+                    elif ".." in inp.split("/"):
+                        errors.append(
+                            f"{section_name}[{i}].inputs: path traversal '..' "
+                            f"in '{inp}' is not allowed."
+                        )
         if 'cache' in item and not isinstance(item.get('cache'), bool):
             errors.append(f"{section_name}[{i}].cache must be a boolean.")
         if 'theme' in item:
