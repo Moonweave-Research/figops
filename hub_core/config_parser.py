@@ -325,7 +325,7 @@ def validate_config(config):
                                     f"pipeline.analysis[{i}].inputs: absolute path glob "
                                     f"'{inp}' is not allowed."
                                 )
-                            elif ".." in inp.split("/"):
+                            elif ".." in inp.replace("\\", "/").split("/"):
                                 errors.append(
                                     f"pipeline.analysis[{i}].inputs: path traversal '..' "
                                     f"in '{inp}' is not allowed."
@@ -497,7 +497,7 @@ def _validate_visual_outputs(
                             f"{section_name}[{i}].inputs: absolute path "
                             f"'{inp}' is not allowed."
                         )
-                    elif ".." in inp.split("/"):
+                    elif ".." in inp.replace("\\", "/").split("/"):
                         errors.append(
                             f"{section_name}[{i}].inputs: path traversal '..' "
                             f"in '{inp}' is not allowed."
