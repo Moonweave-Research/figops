@@ -26,3 +26,10 @@ select = ["E", "F", "I", "W"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--import-mode=importlib"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

@@ -1,15 +1,16 @@
 import hashlib
 import json
 import os
+import tempfile
 from datetime import datetime
 
-from .utils import normalize_string_list, resolve_path
+from .utils import expand_declared_paths
 
 CACHE_STRATEGY_MTIME = "mtime"
 CACHE_STRATEGY_CONTENT_HASH = "content_hash"
 
 BUILD_STATE_FILENAME = ".build_state.json"
-BUILD_STATE_SCHEMA_VERSION = 3
+BUILD_STATE_SCHEMA_VERSION = 4
 
 def _normalize_record_path(abs_path, project_dir):
     abs_norm = os.path.abspath(abs_path)
@@ -56,8 +57,7 @@ def _file_signature(abs_path, project_dir, cache_strategy=CACHE_STRATEGY_MTIME):
 
 def collect_signatures(project_dir, rel_paths, cache_strategy=CACHE_STRATEGY_MTIME):
     signatures = []
-    for rel_path in normalize_string_list(rel_paths):
-        abs_path = resolve_path(project_dir, rel_path)
+    for abs_path in expand_declared_paths(project_dir, rel_paths):
         signatures.append(_file_signature(abs_path, project_dir, cache_strategy=cache_strategy))
     signatures.sort(key=lambda item: item["path"])
     return signatures
@@ -102,13 +102,24 @@ def load_build_state(project_dir):
     return normalized, state_path
 
 def save_build_state(state_path, build_state):
-    tmp_path = f"{state_path}.tmp"
+    """
+    tempfile을 사용해 원자적으로 캐시 파일을 업데이트합니다.
+    """
+    dir_name = os.path.dirname(state_path)
     try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(build_state, f, ensure_ascii=False, indent=2, sort_keys=True)
-        os.replace(tmp_path, state_path)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=dir_name, delete=False, suffix=".tmp"
+        ) as tf:
+            json.dump(build_state, tf, ensure_ascii=False, indent=2, sort_keys=True)
+            temp_name = tf.name
+        os.replace(temp_name, state_path)
         return True
     except OSError as e:
+        if 'temp_name' in locals() and os.path.exists(temp_name):
+            try:
+                os.remove(temp_name)
+            except OSError:
+                pass
         print(f"⚠️  Warning: failed to save build state: {state_path}\n   └─ {e}")
         return False
 

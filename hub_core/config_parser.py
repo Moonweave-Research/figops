@@ -1,10 +1,14 @@
 import hashlib
 import os
+import unicodedata
 
 import yaml
 
 ALLOWED_TARGET_FORMATS = {"nature", "science", "ppt", "default"}
 CURRENT_CONFIG_SCHEMA_VERSION = "1.0"
+ALLOWED_PRESET_KEYS = {
+    "target_format", "font_scale", "profile", "output_format", "colormap",
+}
 ALLOWED_ANALYSIS_POLICY_LANGS = {"r"}
 ALLOWED_PLOT_POLICY_LANGS = {"python"}
 ALLOWED_OUTPUT_FORMATS = {"png", "pdf", "svg"}
@@ -54,6 +58,72 @@ def get_language_policy(config):
         "plot_lang": plot_lang,
         "allow_nonstandard": allow_nonstandard,
     }
+
+def resolve_presets(config: dict) -> dict:
+    raw = config.get("presets", {})
+    if raw is None:
+        raw = {}
+
+    default_name: str | None = raw.get("_default", None)
+
+    visual_style = config.get("visual_style", {}) or {}
+    base = {
+        "target_format": visual_style.get("target_format"),
+        "font_scale": visual_style.get("font_scale"),
+        "profile": visual_style.get("profile"),
+    }
+
+    result: dict = {"__default_name__": default_name}
+    for preset_name, preset_vals in raw.items():
+        if preset_name == "_default":
+            continue
+        merged = {k: v for k, v in base.items() if v is not None}
+        if isinstance(preset_vals, dict):
+            merged.update(preset_vals)
+        result[preset_name] = merged
+
+    return result
+
+def resolve_step_style(
+    step_cfg: dict,
+    config: dict,
+    resolved_presets: dict | None = None,
+) -> dict:
+    visual_style = config.get("visual_style", {}) or {}
+    result = {
+        "target_format": visual_style.get("target_format"),
+        "font_scale": visual_style.get("font_scale"),
+        "profile": visual_style.get("profile"),
+        "output_format": None,
+        "colormap": None,
+    }
+
+    if resolved_presets is not None:
+        preset_key = step_cfg.get("preset")
+        if preset_key is not None:
+            preset_vals = resolved_presets.get(preset_key, {})
+            result.update({k: v for k, v in preset_vals.items() if not k.startswith("__")})
+        elif resolved_presets.get("__default_name__"):
+            default_key = resolved_presets["__default_name__"]
+            preset_vals = resolved_presets.get(default_key, {})
+            result.update({k: v for k, v in preset_vals.items() if not k.startswith("__")})
+
+    if "theme" in step_cfg:
+        result["target_format"] = step_cfg["theme"]
+    if "target_format" in step_cfg:
+        result["target_format"] = step_cfg["target_format"]
+    if "font_scale" in step_cfg:
+        result["font_scale"] = step_cfg["font_scale"]
+    if "profile" in step_cfg:
+        result["profile"] = step_cfg["profile"]
+    if "format" in step_cfg:
+        result["output_format"] = step_cfg["format"]
+    if "output_format" in step_cfg:
+        result["output_format"] = step_cfg["output_format"]
+    if "colormap" in step_cfg:
+        result["colormap"] = step_cfg["colormap"]
+
+    return result
 
 def find_config_path(project_dir):
     for rel_path in CONFIG_FILE_CANDIDATES:
@@ -171,6 +241,60 @@ def validate_config(config):
                 "(or set language_policy.allow_nonstandard=true)."
             )
 
+    presets_raw = config.get('presets', {})
+    if presets_raw is None:
+        presets_raw = {}
+    if not isinstance(presets_raw, dict):
+        errors.append("Invalid 'presets' section (must be a mapping).")
+    else:
+        defined_preset_names = {k for k in presets_raw if k != "_default"}
+        default_preset = presets_raw.get("_default")
+        if default_preset is not None and default_preset not in defined_preset_names:
+            errors.append(
+                f"presets._default '{default_preset}' references an undefined preset."
+            )
+        for preset_name, preset_vals in presets_raw.items():
+            if preset_name == "_default":
+                continue
+            if not isinstance(preset_vals, dict):
+                errors.append(f"presets.{preset_name} must be a mapping.")
+                continue
+            bad_keys = set(preset_vals.keys()) - ALLOWED_PRESET_KEYS
+            if bad_keys:
+                allowed = ", ".join(sorted(ALLOWED_PRESET_KEYS))
+                errors.append(
+                    f"presets.{preset_name} contains unknown keys: "
+                    f"{', '.join(sorted(bad_keys))}. Allowed: {allowed}."
+                )
+            if "target_format" in preset_vals:
+                tf = preset_vals["target_format"]
+                if not isinstance(tf, str) or tf.lower() not in ALLOWED_TARGET_FORMATS:
+                    allowed = ", ".join(sorted(ALLOWED_TARGET_FORMATS))
+                    errors.append(
+                        f"presets.{preset_name}.target_format '{tf}' is invalid. "
+                        f"Allowed: {allowed}."
+                    )
+            if "font_scale" in preset_vals:
+                fs = preset_vals["font_scale"]
+                if isinstance(fs, bool) or not isinstance(fs, (int, float)) or not (0.5 <= fs <= 3.0):
+                    errors.append(
+                        f"presets.{preset_name}.font_scale must be a number in [0.5, 3.0]."
+                    )
+            if "profile" in preset_vals:
+                prof = preset_vals["profile"]
+                if not isinstance(prof, str) or not prof.strip():
+                    errors.append(f"presets.{preset_name}.profile must be a non-empty string.")
+            if "output_format" in preset_vals:
+                of = preset_vals["output_format"]
+                if not isinstance(of, str) or of.strip().lower() not in ALLOWED_OUTPUT_FORMATS:
+                    allowed = ", ".join(sorted(ALLOWED_OUTPUT_FORMATS))
+                    errors.append(
+                        f"presets.{preset_name}.output_format '{of}' is invalid. "
+                        f"Allowed: {allowed}."
+                    )
+
+    preset_names: set = {k for k in presets_raw if k != "_default"} if isinstance(presets_raw, dict) else set()
+
     pipeline = config.get('pipeline', {})
     if pipeline is None:
         pipeline = {}
@@ -193,11 +317,34 @@ def validate_config(config):
                 inputs = step.get('inputs', None)
                 if inputs is not None and not isinstance(inputs, list):
                     errors.append(f"pipeline.analysis[{i}].inputs must be a list.")
+                elif isinstance(inputs, list):
+                    for inp in inputs:
+                        if isinstance(inp, str):
+                            if os.path.isabs(inp):
+                                errors.append(
+                                    f"pipeline.analysis[{i}].inputs: absolute path glob "
+                                    f"'{inp}' is not allowed."
+                                )
+                            elif ".." in inp.split("/"):
+                                errors.append(
+                                    f"pipeline.analysis[{i}].inputs: path traversal '..' "
+                                    f"in '{inp}' is not allowed."
+                                )
                 outputs = step.get('outputs', None)
                 if outputs is not None and not isinstance(outputs, list):
                     errors.append(f"pipeline.analysis[{i}].outputs must be a list.")
                 if 'cache' in step and not isinstance(step.get('cache'), bool):
                     errors.append(f"pipeline.analysis[{i}].cache must be a boolean.")
+                expand = step.get('expand')
+                if expand is not None and expand not in ('batch', 'each'):
+                    errors.append(
+                        f"pipeline.analysis[{i}].expand must be 'batch' or 'each'."
+                    )
+                if expand == 'each':
+                    errors.append(
+                        f"pipeline.analysis[{i}].expand='each' is not supported for analysis steps. "
+                        f"Use 'each' only in figures/diagrams sections."
+                    )
                 if not norm_policy['allow_nonstandard']:
                     step_lang = normalize_lang(step.get('lang', 'r')) or "r"
                     if step_lang != norm_policy['analysis_lang']:
@@ -211,12 +358,14 @@ def validate_config(config):
         config.get('figures', []),
         section_name='figures',
         norm_policy=norm_policy,
+        preset_names=preset_names,
     )
     _validate_visual_outputs(
         errors,
         config.get('diagrams', []),
         section_name='diagrams',
         norm_policy=norm_policy,
+        preset_names=preset_names,
     )
 
     execution = config.get('execution', {})
@@ -309,7 +458,14 @@ def validate_config(config):
     return errors
 
 
-def _validate_visual_outputs(errors, items, *, section_name, norm_policy):
+def _validate_visual_outputs(
+    errors,
+    items,
+    *,
+    section_name,
+    norm_policy,
+    preset_names: set | None = None,
+):
     if items is None:
         items = []
     if not isinstance(items, list):
@@ -345,6 +501,19 @@ def _validate_visual_outputs(errors, items, *, section_name, norm_policy):
             if not isinstance(output_format, str) or output_format.strip().lower() not in ALLOWED_OUTPUT_FORMATS:
                 allowed = ", ".join(sorted(ALLOWED_OUTPUT_FORMATS))
                 errors.append(f"{section_name}[{i}].format must be one of: {allowed}.")
+        if preset_names is not None and 'preset' in item:
+            item_preset = item.get('preset')
+            if item_preset not in preset_names:
+                errors.append(
+                    f"{section_name}[{i}].preset '{item_preset}' references an undefined preset."
+                )
+        expand = item.get('expand')
+        if expand is not None and expand not in ('batch', 'each'):
+            errors.append(f"{section_name}[{i}].expand must be 'batch' or 'each'.")
+        if expand == 'each' and isinstance(output, str) and '{stem}' not in output:
+            errors.append(
+                f"{section_name}[{i}].output must contain '{{stem}}' placeholder when expand='each'."
+            )
         if not norm_policy['allow_nonstandard'] and isinstance(script, str) and script.strip():
             item_lang = normalize_lang(item.get('lang'))
             if not item_lang:
@@ -390,38 +559,85 @@ def load_config(project_dir):
     config_hash = hashlib.sha256(raw_text.replace('\r\n', '\n').encode('utf-8')).hexdigest()
     return config, config_path, config_hash
 
+
+def check_project_status(project_path, config, config_hash):
+    """프로젝트의 상태를 진단합니다 (Up-to-date, Stale, Missing Figures)."""
+    from .cache_manager import load_build_state
+
+    build_state, _ = load_build_state(project_path)
+
+    # 1. Missing Figures 체크
+    all_outputs = []
+    for section in ['figures', 'diagrams']:
+        for item in config.get(section, []):
+            if 'output' in item:
+                all_outputs.append(os.path.join(project_path, item['output']))
+
+    missing_count = sum(1 for p in all_outputs if not os.path.exists(p))
+    if missing_count == len(all_outputs) and all_outputs:
+        return "🔴 Missing Figures"
+    elif missing_count > 0:
+        return f"🟡 Partial ({len(all_outputs)-missing_count}/{len(all_outputs)})"
+
+    # 2. Stale 체크 (config hash 비교)
+    if build_state.get("config_hash") != config_hash:
+        return "🟡 Stale (Config Changed)"
+
+    return "🟢 Up-to-date"
+
+
 def list_projects(root_dir, recursive=True, max_depth=4):
-    if not recursive:
-        print("\n📂 Available Projects (root only):")
-        for item in sorted(os.listdir(root_dir)):
-            full = os.path.join(root_dir, item)
-            if os.path.isdir(full) and not item.startswith(('.', '_', '[')):
-                c_ok = find_config_path(full) is not None
-                config_exist = "[Config OK]" if c_ok else "[No Config]"
-                print(f"   - {item:40s} {config_exist}")
-        return
+    from .ui_utils import ui_print, ui_table
 
     if max_depth < 1:
         max_depth = 1
 
-    print(f"\n📂 Available Projects (recursive, depth <= {max_depth}):")
-    root_depth = root_dir.rstrip(os.sep).count(os.sep)
     discovered = discover_projects_with_status(root_dir, max_depth=max_depth)
+    operational_states = _load_registry_operational_states(root_dir)
 
     if not discovered:
-        print("   (No configured projects found)")
+        ui_print("   [yellow](No configured projects found)[/yellow]")
         return
 
-    valid_count = sum(1 for project in discovered if project["valid"])
-    invalid_count = len(discovered) - valid_count
+    rows = []
+    valid_count = 0
     for project in discovered:
-        status = "Config OK" if project["valid"] else "Invalid Config"
-        print(f"   - {project['path']:60s} [{status}: {project['config']}]")
-        if not project["valid"] and project["errors"]:
-            print(f"     └─ {project['errors'][0]}")
-    print(f"\n   ✅ Found {len(discovered)} configured project(s).")
-    print(f"      - valid: {valid_count}")
-    print(f"      - invalid: {invalid_count}")
+        status_text = "N/A"
+        if project["valid"]:
+            valid_count += 1
+            # 간이 config 로드하여 상태 확인
+            try:
+                with open(project["config_path"], 'r', encoding='utf-8') as f:
+                    raw_text = f.read()
+                    config = yaml.safe_load(raw_text)
+                config_hash = hashlib.sha256(raw_text.replace('\r\n', '\n').encode('utf-8')).hexdigest()
+                status_text = check_project_status(os.path.join(root_dir, project["path"]), config, config_hash)
+            except Exception:
+                status_text = "⚠️ Status Error"
+        else:
+            status_text = "❌ Invalid Config"
+
+        rows.append([
+            project['name'],
+            project['path'],
+            _resolve_operational_state(operational_states, project['path']),
+            status_text
+        ])
+
+    ui_table(
+        title=f"🏛️ Research Projects (depth <= {max_depth})",
+        columns=["Project Name", "Path", "Op State", "Status"],
+        rows=rows
+    )
+
+    valid_str = f"[green]{valid_count}[/green]"
+    invalid_count = len(discovered) - valid_count
+    invalid_str = f"[red]{invalid_count}[/red]"
+    ui_print(
+        f"\n   ✅ Found [bold]{len(discovered)}[/bold] project(s) "
+        f"({valid_str} valid, {invalid_str} invalid)."
+    )
+
 
 def discover_projects_with_status(root_dir, max_depth=4):
     discovered = []
@@ -458,6 +674,51 @@ def discover_projects_with_status(root_dir, max_depth=4):
             item['path'],
         ),
     )
+
+
+def _load_registry_operational_states(root_dir):
+    registry_path = os.path.join(root_dir, "ACTIVE_PROJECTS.yaml")
+    if not os.path.exists(registry_path):
+        return {}
+
+    try:
+        with open(registry_path, "r", encoding="utf-8") as f:
+            registry = yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+    states = {}
+    for section_name in ("active_projects", "published_project_archives", "incubation_candidates"):
+        for item in registry.get(section_name, []) or []:
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path")
+            op_state = item.get("operational_state")
+            if isinstance(path, str) and path.strip() and isinstance(op_state, str) and op_state.strip():
+                normalized_path = _normalize_registry_path(path.strip())
+                states.setdefault(normalized_path, op_state.strip())
+    return states
+
+
+def _normalize_registry_path(path):
+    return unicodedata.normalize("NFC", str(path).strip())
+
+
+def _resolve_operational_state(operational_states, project_path):
+    normalized = _normalize_registry_path(project_path)
+    if normalized in operational_states:
+        return operational_states[normalized]
+
+    best_match = None
+    for registered_path, op_state in operational_states.items():
+        prefix = registered_path + os.sep
+        if normalized.startswith(prefix):
+            if best_match is None or len(registered_path) > len(best_match[0]):
+                best_match = (registered_path, op_state)
+
+    if best_match is not None:
+        return best_match[1]
+    return "-"
 
 def get_discoverable_projects(root_dir, max_depth=4):
     """

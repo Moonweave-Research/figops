@@ -64,6 +64,10 @@ def _resolve_dvc_command():
     if env_cmd and _is_working_cli([env_cmd], "--version"):
         return [env_cmd]
 
+    sibling_dvc = _sibling_dvc_executable(sys.executable)
+    if sibling_dvc and _is_working_cli([sibling_dvc], "--version"):
+        return [sibling_dvc]
+
     candidates = [
         "dvc",
         [sys.executable, "-m", "dvc"],
@@ -71,6 +75,18 @@ def _resolve_dvc_command():
     for cmd in candidates:
         if _is_working_cli(cmd if isinstance(cmd, list) else [cmd], "--version"):
             return cmd if isinstance(cmd, list) else [cmd]
+    return None
+
+
+def _sibling_dvc_executable(python_executable):
+    if not python_executable:
+        return None
+    python_path = os.path.abspath(str(python_executable))
+    bindir = os.path.dirname(python_path)
+    name = "dvc.exe" if os.name == "nt" else "dvc"
+    candidate = os.path.join(bindir, name)
+    if os.path.exists(candidate):
+        return candidate
     return None
 
 def _is_working_cli(cmd, version_arg):
@@ -358,6 +374,7 @@ def build_fingerprint_payload(
     dvc_info: dict | None = None,
     data_hashes: dict | None = None,
     script: str | None = None,
+    input_patterns: list[str] | None = None,
 ) -> dict:
     """프로방스 정보를 이미지에 임베딩할 컴팩트한 딕셔너리로 조립합니다.
 
@@ -378,6 +395,8 @@ def build_fingerprint_payload(
         payload["script"] = script
     if data_hashes:
         payload["data"] = data_hashes
+    if input_patterns:
+        payload["input_patterns"] = input_patterns
     return payload
 
 
