@@ -345,10 +345,11 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
                 )
         ax.legend(**_legend_kwargs(ax, spec, n_series=len(series_names)))
     else:
+        row_positions = [category_to_position[point["x"]] for point in points]
         ys = [point["y"] for point in points]
         yerr = _yerr_values(points, spec)
         bars = ax.bar(
-            base_positions, ys, yerr=yerr, capsize=3,
+            row_positions, ys, yerr=yerr, capsize=3,
             edgecolor="black", linewidth=0.5,
         )
         if spec.label_column:
