@@ -1,0 +1,118 @@
+# ==========================================
+# Research-OS Project Configuration Schema (v4.0)
+# ==========================================
+# 역할: 연구 프로젝트 메타데이터 및 중앙 인프라 (hub_core) 연동 명세서
+# 위치: 통합 실행기(orchestrator)가 실행되는 프로젝트 루트
+
+# Environment variables injected into scripts:
+#   THEME_FORMAT, THEME_SCALE, THEME_PROFILE, THEME_COLORMAP
+#   THEME_OUTPUT_FORMAT (from preset or step)
+#   GRAPH_HUB_INPUTS (colon-separated list of resolved input file paths)
+#   SOLVE_* (live context from Athena /solve results, if available)
+
+# 1. 프로젝트 기본 정보
+project:
+  name: "Ionoelastomer Displacement Analysis"
+  version: "1.0.0"
+  target_journal: "Nature Communications"
+
+# 2. 통합 시각화 스타일 설정 (Theme Vending Machine)
+visual_style:
+  target_format: "nature"      # nature | science | ppt | default
+  font_scale: 1.0              # 폰트 크기 배율
+  profile: "baseline"          # baseline | resistance_premium 등
+
+# ── Presets (optional) ──────────────────────────────────────────────
+# Define named style bundles to avoid repeating visual settings per figure.
+# Merge order: visual_style < preset < per-step inline override.
+#
+# presets:
+#   journal_svg:
+#     target_format: nature
+#     font_scale: 1.0
+#     profile: baseline
+#     output_format: svg
+#     colormap: viridis
+#   ppt_png:
+#     target_format: ppt
+#     font_scale: 1.3
+#     output_format: png
+#   _default: journal_svg          # applied when step has no preset: key
+
+# 2.1 언어 정책 (기본 원칙: 분석=R, 플롯=Python)
+language_policy:
+  analysis_lang: "r"
+  plot_lang: "python"
+  allow_nonstandard: false     # 예외 허용 시 true
+
+# 2.2 실행 환경 및 보안 게이트
+environment:
+  python_lock: "uv.lock"       # Changed from requirements-lock.txt
+  r_lock: "renv.lock"
+  strict: false                # true 설정 시 lockfile 누락 시 실행 차단
+  uv_run: true                 # New flag to signal orchestrator to use 'uv run'
+
+# 2.3 실험 메타데이터
+experimental_conditions:
+  common:
+    temperature_C: 25
+    humidity_pct: 40
+    atmosphere: "ambient"
+  conditions: []
+  equipment: []
+  sample_prep: []
+  logged_runs: []
+
+# 3. 데이터 계약 (Data Contract & Semantic Integrity)
+# 파이프라인 가동 전 데이터의 '자격'을 검증합니다.
+data_contract:
+  cv_threshold: 0.10  # 변동계수(CV = std/mean) 경고 임계값 (기본 10%). 초과 시 주황색 경고 + 리포트 생성.
+  csv_checks:
+    - path: "results/data/summary.csv"
+      required_columns: ["time", "value", "molarity"]
+      dtypes: { time: float, value: float, molarity: number }
+      # 논리적 무결성 검증 (Semantic Checks)
+      semantic_checks:
+        time: { range: [0, 10000], allow_null: false }
+        molarity: { range: [0, 50], unique: false }
+        value: { range: [-2000, 2000] }
+        # Unit-aware validation (requires pint): specify expected + actual units
+        # current: { unit: "A", actual_unit: "mA" }  # auto-converts mA → A
+        # mobility: { unit: "cm^2/V/s", actual_unit: "cm^2/V/s" }
+
+# 3.1 황금 데이터 회귀 테스트 대상 (선택)
+golden_metrics:
+  - path: "results/data/summary.csv"
+    atol: 1.0e-6
+
+# 4. 데이터 파이프라인 (Execution Flow)
+pipeline:
+  analysis:
+    - script: "hub_scripts/analyze.R"
+      lang: "R"
+      inputs: ["data/raw/"]      # 변경 감지 대상 (GDrive Prefetch 대상)
+      outputs: ["results/data/summary.csv"]
+      cache: true                # Smart Build 캐싱 사용 여부
+      # inputs supports glob patterns: ["data/raw/*.csv"]
+      # expand: batch (default) — all matched files in one script call
+      # expand: each  — one script call per file (analysis does not support 'each')
+
+# 5. 시각화 피겨 정의
+figures:
+  - id: "Fig1"
+    script: "hub_scripts/plot.py"
+    inputs: ["results/data/summary.csv"]
+    output: "results/figures/Fig1.png" # 검증 및 미리보기 대상
+    cache: true
+    # inputs supports glob patterns: ["results/data/*.csv"]
+    # expand: batch (default) | each (one plot per file)
+    # When expand: each, output must contain {stem}: "results/figures/{stem}_plot.png"
+    # preset: journal_svg           # reference a named preset
+
+diagrams:
+  - id: "DeviceCrossSection"
+    script: "hub_scripts/diagrams/device_cross_section.py"
+    output: "results/figures/device_cross_section.svg"
+    theme: "nature"
+    format: "svg"
+    cache: true
