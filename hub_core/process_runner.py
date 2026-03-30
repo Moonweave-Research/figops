@@ -34,39 +34,34 @@ except Exception:
         key = str(profile_name).strip().lower()
         return key if key else "baseline"
 
-_solve_context_env_cache: dict[str, str] | None = None
-_solve_data_context_cache: dict | None = None
+_athena_path_registered = False
+
+
+def _ensure_athena_on_path() -> None:
+    global _athena_path_registered
+    if _athena_path_registered:
+        return
+    athena_root = os.path.abspath(os.path.join(get_hub_path(), '..', '[Athena]'))
+    if athena_root not in sys.path:
+        sys.path.insert(0, athena_root)
+    _athena_path_registered = True
 
 
 def _load_solve_context_env() -> dict[str, str]:
-    global _solve_context_env_cache
-    if _solve_context_env_cache is not None:
-        return _solve_context_env_cache
     try:
-        athena_root = os.path.abspath(os.path.join(get_hub_path(), '..', '[Athena]'))
-        if athena_root not in sys.path:
-            sys.path.insert(0, athena_root)
+        _ensure_athena_on_path()
         from integrations.solve_live_context import load_as_env_vars
-        _solve_context_env_cache = load_as_env_vars()
-        return _solve_context_env_cache
+        return load_as_env_vars()
     except Exception:
-        _solve_context_env_cache = {}
         return {}
 
 
 def _load_solve_data_context() -> dict:
-    global _solve_data_context_cache
-    if _solve_data_context_cache is not None:
-        return _solve_data_context_cache
     try:
-        athena_root = os.path.abspath(os.path.join(get_hub_path(), '..', '[Athena]'))
-        if athena_root not in sys.path:
-            sys.path.insert(0, athena_root)
+        _ensure_athena_on_path()
         from integrations.solve_live_context import load_as_data_context
-        _solve_data_context_cache = load_as_data_context()
-        return _solve_data_context_cache
+        return load_as_data_context()
     except Exception:
-        _solve_data_context_cache = {}
         return {}
 
 
