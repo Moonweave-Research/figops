@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hub_core.config_parser import resolve_presets, resolve_step_style, validate_config
+from themes.journal_theme import STYLE_PRESETS
 
 
 # ---------------------------------------------------------------------------
@@ -158,3 +159,36 @@ def test_validate_config_presets_backward_compat():
     errors = validate_config(config)
     preset_errors = [e for e in errors if "preset" in e.lower()]
     assert preset_errors == []
+
+
+# ---------------------------------------------------------------------------
+# Journal STYLE_PRESETS differentiation (Unit 3)
+# ---------------------------------------------------------------------------
+
+
+def test_acs_tick_direction():
+    assert STYLE_PRESETS['acs']['xtick.direction'] == 'out'
+    assert STYLE_PRESETS['acs']['ytick.direction'] == 'out'
+
+
+def test_elsevier_serif_font():
+    assert STYLE_PRESETS['elsevier']['font.family'] == 'serif'
+    assert STYLE_PRESETS['elsevier']['mathtext.fontset'] == 'dejavuserif'
+
+
+def test_science_no_box():
+    assert STYLE_PRESETS['science']['xtick.top'] is False
+    assert STYLE_PRESETS['science']['ytick.right'] is False
+
+
+def test_rsc_line_weights():
+    assert STYLE_PRESETS['rsc']['axes.linewidth'] == 0.6
+    assert STYLE_PRESETS['rsc']['lines.linewidth'] == 1.2
+
+
+def test_journal_presets_differ_from_nature():
+    nature = STYLE_PRESETS['nature']
+    for journal in ('science', 'acs', 'rsc', 'elsevier'):
+        preset = STYLE_PRESETS[journal]
+        diffs = {k for k in preset if preset[k] != nature.get(k)}
+        assert len(diffs) >= 1, f"{journal} preset has no differences from nature"

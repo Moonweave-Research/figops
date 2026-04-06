@@ -40,6 +40,34 @@ except ImportError:
 # ── Nature/Science Standard Widths (mm) ─────────────────────────
 SINGLE_COLUMN = 89    # mm
 DOUBLE_COLUMN = 183   # mm
+_LAYOUT_LOCK_ATTR = "_graph_hub_layout_lock"
+
+_PUBLICATION_LAYOUT_SPECS_MM = {
+    "standard": {
+        "box_width_mm": 70.0,
+        "box_height_mm": 55.0,
+        "margins_mm": {"left": 14.0, "right": 5.0, "bottom": 12.0, "top": 8.0},
+    },
+    "top_outside": {
+        "box_width_mm": 70.0,
+        "box_height_mm": 55.0,
+        "margins_mm": {"left": 14.0, "right": 5.0, "bottom": 12.0, "top": 20.0},
+    },
+    # PPT/default right-side legend keeps the older ratio workflow unless an
+    # explicit absolute-mm box is requested by the caller.
+    "right_outside": {
+        "box_width_mm": 70.0,
+        "box_height_mm": 55.0,
+        "margins_mm": {"left": 14.0, "right": 18.0, "bottom": 12.0, "top": 8.0},
+    },
+}
+PUBLICATION_LAYOUT_SPECS_MM = copy.deepcopy(_PUBLICATION_LAYOUT_SPECS_MM)
+
+_LEGACY_LAYOUT_RATIOS = {
+    "top_outside": {"left": 0.18, "right": 0.95, "bottom": 0.22, "top": 0.76},
+    "right_outside": {"left": 0.15, "right": 0.75, "bottom": 0.18, "top": 0.92},
+    "standard": {"left": 0.15, "right": 0.95, "bottom": 0.15, "top": 0.90},
+}
 
 def mm_to_inch(mm):
     return mm / 25.4
@@ -97,7 +125,7 @@ STYLE_PRESETS = {
         "savefig.dpi":         600,
         "savefig.format":      "pdf",
         "savefig.bbox":        "tight",
-        "svg.fonttype":        "path",
+        "svg.fonttype":        "none",
         "pdf.fonttype":        42,
         "ps.fonttype":         42
     },
@@ -135,13 +163,42 @@ STYLE_PRESETS = {
         "savefig.dpi":         300,
         "savefig.format":      "png",
         "savefig.bbox":        "tight",
-        "svg.fonttype":        "path",
+        "svg.fonttype":        "none",
         "pdf.fonttype":        42,
         "ps.fonttype":         42
     }
 }
-# science 테마는 nature와 호환, default도 nature로 처리
+# Per-journal style differentiation based on actual submission guidelines
 STYLE_PRESETS['science'] = copy.deepcopy(STYLE_PRESETS['nature'])
+STYLE_PRESETS['science'].update({
+    "xtick.top": False,       # Science: no box, only left+bottom axes
+    "ytick.right": False,
+})
+
+STYLE_PRESETS['acs'] = copy.deepcopy(STYLE_PRESETS['nature'])
+STYLE_PRESETS['acs'].update({
+    "xtick.direction": "out",     # ACS: tick outside
+    "ytick.direction": "out",
+    "axes.labelsize": 7.5,        # ACS: 7-8pt range
+})
+
+STYLE_PRESETS['rsc'] = copy.deepcopy(STYLE_PRESETS['nature'])
+STYLE_PRESETS['rsc'].update({
+    "axes.linewidth": 0.6,
+    "lines.linewidth": 1.2,
+})
+
+STYLE_PRESETS['elsevier'] = copy.deepcopy(STYLE_PRESETS['nature'])
+STYLE_PRESETS['elsevier'].update({
+    "font.family": "serif",
+    "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+    "mathtext.fontset": "dejavuserif",
+    "axes.labelsize": 8.0,
+    "axes.titlesize": 8.5,
+    "xtick.labelsize": 7.0,
+    "ytick.labelsize": 7.0,
+})
+
 STYLE_PRESETS['default'] = copy.deepcopy(STYLE_PRESETS['nature'])
 
 _FALLBACK_SANS_FONTS = ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"]
@@ -186,7 +243,7 @@ def apply_journal_theme(target_format='nature', font_scale=1.0, profile_name=Non
     (순수 함수 지향: 환경 변수를 내부에서 읽지 않고 인자로만 작동)
 
     Args:
-        target_format (str): 적용할 테마 프리셋 이름 ('nature', 'science', 'ppt', 'default')
+        target_format (str): 적용할 테마 프리셋 이름 ('nature', 'science', 'ppt', 'default', 'acs', 'rsc', 'elsevier')
         font_scale (float): 기준 테마 폰트 사이즈 대비 보정 배율
         profile_name (str): 세부 스타일 프로파일 이름 (예: baseline, resistance_premium)
     """
@@ -232,12 +289,9 @@ def apply_journal_theme(target_format='nature', font_scale=1.0, profile_name=Non
     # 2.7. SVG Baseline Alignment Correction (Zenith Audit Fix)
     # Matplotlib's default SVG path rendering can sometimes shift baselines.
     # We force mathtext depth to be accounted for more strictly in SVG export.
-    theme_rc["svg.fonttype"] = "path"
+    theme_rc["svg.fonttype"] = "none"
     if os.environ.get("PUB_QUALITY", "false").lower() == "true":
         theme_rc["savefig.dpi"] = 1200  # Extreme resolution for submission
-        # When in high quality mode, we can use 'none' for svg to keep text editable,
-        # but the request asks to maintain 'path' while fixing the jump.
-        # We ensure mathtext.fallback is set to None to avoid mixing font types.
         theme_rc["mathtext.fallback"] = None
 
     # 2.8. CVD-safe Palette (Okabe-Ito) Injection
@@ -260,21 +314,33 @@ def set_figure_size(width_mm, height_mm=None, ratio=0.8):
 get_figsize = set_figure_size
 
 
-def save_journal_fig(fig, filename, **kwargs):
+def save_journal_fig(fig, filename, *, companion_formats: tuple[str, ...] = ("png",), **kwargs):
     """
     Format-aware deterministic save wrapper.
     PDF uses CreationDate/ModDate, while SVG suppresses Date metadata for stable output.
-    If filename is .pdf, it also saves a .png version for Word compatibility.
+    If filename is .pdf, companion files are generated per companion_formats (png, tiff).
+
+    Layout-locked figures use rc_context to suppress savefig.bbox='tight' from rcParams,
+    because passing bbox_inches=None in kwargs still falls back to rcParams in matplotlib.
     """
-    kwargs.setdefault('bbox_inches', 'tight')
+    import contextlib
+
+    layout_lock = getattr(fig, _LAYOUT_LOCK_ATTR, None)
+    if layout_lock:
+        kwargs.pop('bbox_inches', None)
+        save_ctx = plt.rc_context({'savefig.bbox': None, 'savefig.pad_inches': 0})
+    else:
+        kwargs.setdefault('bbox_inches', 'tight')
+        save_ctx = contextlib.nullcontext()
+
     metadata = kwargs.pop('metadata', {}) or {}
     file_path = Path(filename)
     suffix = file_path.suffix.lower()
 
     # 도구 버전 정보 차단 — 환경별 바이너리 해시 불일치 방지
     metadata.setdefault('Creator', None)
-    metadata.setdefault('Producer', None)
-    metadata.setdefault('Software', None)
+    metadata.pop('Producer', None)
+    metadata.pop('Software', None)
 
     if suffix == ".svg":
         metadata.pop('CreationDate', None)
@@ -284,33 +350,117 @@ def save_journal_fig(fig, filename, **kwargs):
         metadata.setdefault('CreationDate', None)
         metadata.setdefault('ModDate', None)
 
-    # Save original
-    fig.savefig(filename, metadata=metadata, **kwargs)
+    with save_ctx:
+        fig.savefig(filename, metadata=metadata, **kwargs)
 
-    # Word compatibility: Save high-res PNG if original is PDF
-    if suffix == ".pdf":
-        png_filename = file_path.with_suffix(".png")
-        # Ensure high resolution for Word (600 DPI for line art/plots)
-        png_kwargs = copy.deepcopy(kwargs)
-        png_kwargs['dpi'] = 600
-        fig.savefig(png_filename, **png_kwargs)
+        # Companion file generation for PDF outputs
+        if suffix == ".pdf":
+            if "png" in companion_formats:
+                png_kwargs = copy.deepcopy(kwargs)
+                png_kwargs['dpi'] = 600
+                fig.savefig(file_path.with_suffix(".png"), **png_kwargs)
+
+            if "tiff" in companion_formats:
+                tiff_kwargs = copy.deepcopy(kwargs)
+                tiff_kwargs['dpi'] = 600
+                tiff_kwargs['pil_kwargs'] = {"compression": "tiff_lzw"}
+                fig.savefig(file_path.with_suffix(".tiff"), **tiff_kwargs)
 
 
-def apply_publication_layout(layout_type='top_outside'):
+def _figure_size_mm(fig):
+    width_in, height_in = fig.get_size_inches()
+    return width_in * 25.4, height_in * 25.4
+
+
+def _lock_publication_layout(fig, *, layout_type, target_format, box_width_mm, box_height_mm, margins_mm):
+    setattr(
+        fig,
+        _LAYOUT_LOCK_ATTR,
+        {
+            "layout_type": layout_type,
+            "target_format": target_format,
+            "box_width_mm": float(box_width_mm),
+            "box_height_mm": float(box_height_mm),
+            "margins_mm": {k: float(v) for k, v in margins_mm.items()},
+        },
+    )
+
+
+def _apply_legacy_publication_layout(fig, layout_type):
+    ratios = _LEGACY_LAYOUT_RATIOS.get(layout_type, _LEGACY_LAYOUT_RATIOS["standard"])
+    fig.subplots_adjust(**ratios)
+    if hasattr(fig, _LAYOUT_LOCK_ATTR):
+        delattr(fig, _LAYOUT_LOCK_ATTR)
+    return ratios
+
+
+def apply_publication_layout(
+    layout_type='top_outside',
+    *,
+    fig=None,
+    target_format='nature',
+    box_width_mm=None,
+    box_height_mm=None,
+    margins_mm=None,
+    resize_figure=True,
+):
     """
     [Promoted from Pusan DEA Project]
-    모든 그래프의 Axes(데이터 박스) 크기를 강제로 일치시키는 전역 레이아웃 설정 프리셋.
-    개별 스크립트에서 plt.subplots_adjust()를 직접 호출하는 대신 사용합니다.
+    Publication figure layout with deterministic axes-box sizing.
+    For non-PPT publication formats, the data box is fixed in absolute mm and
+    the figure canvas is derived from margins + box size.
     """
-    if layout_type == 'top_outside':
-        # 상단 범례(TOP LEGEND)를 낼 때 가장 예쁜 데이터 박스 크기 고정값
-        plt.subplots_adjust(left=0.18, right=0.95, bottom=0.22, top=0.76)
-    elif layout_type == 'right_outside':
-        # 우측 범례용 고정값
-        plt.subplots_adjust(left=0.15, right=0.75, bottom=0.18, top=0.92)
-    elif layout_type == 'standard':
-        # 일반적인 정방형/직사각형 배치
-        plt.subplots_adjust(left=0.15, right=0.95, bottom=0.15, top=0.90)
+    fig = fig or plt.gcf()
+    normalized_format = str(target_format or 'nature').lower()
+
+    if (
+        normalized_format == 'ppt'
+        and box_width_mm is None
+        and box_height_mm is None
+        and margins_mm is None
+    ):
+        return _apply_legacy_publication_layout(fig, layout_type)
+
+    layout_spec = PUBLICATION_LAYOUT_SPECS_MM.get(layout_type, PUBLICATION_LAYOUT_SPECS_MM['standard'])
+    resolved_box_width = float(box_width_mm or layout_spec["box_width_mm"])
+    resolved_box_height = float(box_height_mm or layout_spec["box_height_mm"])
+    resolved_margins = dict(layout_spec["margins_mm"])
+    if margins_mm:
+        resolved_margins.update({k: float(v) for k, v in margins_mm.items()})
+
+    figure_width_mm = resolved_margins["left"] + resolved_box_width + resolved_margins["right"]
+    figure_height_mm = resolved_margins["bottom"] + resolved_box_height + resolved_margins["top"]
+
+    if resize_figure:
+        fig.set_size_inches(mm_to_inch(figure_width_mm), mm_to_inch(figure_height_mm), forward=True)
+    else:
+        current_w_mm, current_h_mm = _figure_size_mm(fig)
+        figure_width_mm = current_w_mm
+        figure_height_mm = current_h_mm
+
+    left = resolved_margins["left"] / figure_width_mm
+    right = 1.0 - (resolved_margins["right"] / figure_width_mm)
+    bottom = resolved_margins["bottom"] / figure_height_mm
+    top = 1.0 - (resolved_margins["top"] / figure_height_mm)
+    fig.subplots_adjust(left=left, right=right, bottom=bottom, top=top)
+    _lock_publication_layout(
+        fig,
+        layout_type=layout_type,
+        target_format=normalized_format,
+        box_width_mm=resolved_box_width,
+        box_height_mm=resolved_box_height,
+        margins_mm=resolved_margins,
+    )
+    return {
+        "left": left,
+        "right": right,
+        "bottom": bottom,
+        "top": top,
+        "figure_width_mm": figure_width_mm,
+        "figure_height_mm": figure_height_mm,
+        "box_width_mm": resolved_box_width,
+        "box_height_mm": resolved_box_height,
+    }
 
 
 def get_legend_args(layout_type='top_outside', ncol=2):
