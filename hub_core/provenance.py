@@ -4,12 +4,20 @@ import os
 import subprocess
 import sys
 from datetime import datetime
+from pathlib import Path
 
 from .runtime_paths import ensure_runtime_dirs, fallback_temp_dvc_home, resolve_dvc_home
 from .utils import hash_file, is_executable_available, short_hash
 
 DEFAULT_PYTHON_LOCK_CANDIDATES = ("uv.lock", "requirements-lock.txt")
 DEFAULT_R_LOCK_CANDIDATE = "renv.lock"
+
+def hash_csv_file(csv_path: str | Path) -> str:
+    path = Path(csv_path)
+    if not path.exists():
+        return ""
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+
 
 def _resolve_lock_path(project_dir, hub_path, raw_path):
     lock_value = str(raw_path).strip()

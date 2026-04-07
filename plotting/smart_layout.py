@@ -8,7 +8,6 @@
 - Matplotlib 객체 간의 충돌을 방지하고 지능적인 배치 수행
 """
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -29,10 +28,14 @@ def find_empty_quadrant(x, y, x_lim=None, y_lim=None):
     quadrants = [0, 0, 0, 0]
 
     for xi, yi in zip(x, y):
-        if xi >= x_mid and yi >= y_mid: quadrants[0] += 1
-        elif xi < x_mid and yi >= y_mid: quadrants[1] += 1
-        elif xi < x_mid and yi < y_mid: quadrants[2] += 1
-        else: quadrants[3] += 1
+        if xi >= x_mid and yi >= y_mid:
+            quadrants[0] += 1
+        elif xi < x_mid and yi >= y_mid:
+            quadrants[1] += 1
+        elif xi < x_mid and yi < y_mid:
+            quadrants[2] += 1
+        else:
+            quadrants[3] += 1
 
     return np.argmin(quadrants)
 
@@ -66,6 +69,74 @@ def stagger_labels_2d(y_positions, min_gap=0.05):
     for (orig_idx, _), new_y in zip(pairs, ys):
         result[orig_idx] = max(0.0, min(1.0, new_y))
     return result
+
+def find_optimal_legend_position(ax, grid_resolution: int = 10) -> tuple[str, tuple[float, float]] | tuple[str, None]:
+    """
+    데이터 점유 그리드를 분석하여 범례를 배치할 최적 위치를 반환합니다.
+
+    Returns (loc_string, bbox_to_anchor) or ("best", None) when no data.
+    """
+    x_data = []
+    y_data = []
+
+    x_lim = ax.get_xlim()
+    y_lim = ax.get_ylim()
+
+    for line in ax.lines:
+        x_data.extend(line.get_xdata())
+        y_data.extend(line.get_ydata())
+    for coll in ax.collections:
+        if hasattr(coll, "get_offsets"):
+            offsets = coll.get_offsets()
+            if len(offsets) > 0:
+                x_data.extend(offsets[:, 0])
+                y_data.extend(offsets[:, 1])
+
+    if not x_data:
+        return ("best", None)
+
+    x_range = x_lim[1] - x_lim[0]
+    y_range = y_lim[1] - y_lim[0]
+    if x_range == 0 or y_range == 0:
+        return ("best", None)
+
+    grid = np.zeros((grid_resolution, grid_resolution))
+
+    try:
+        x_norm = (np.array(x_data) - x_lim[0]) / x_range
+        y_norm = (np.array(y_data) - y_lim[0]) / y_range
+
+        mask = (x_norm >= 0) & (x_norm <= 1) & (y_norm >= 0) & (y_norm <= 1)
+        x_norm, y_norm = x_norm[mask], y_norm[mask]
+
+        for xi, yi in zip(x_norm, y_norm):
+            gx = min(int(xi * grid_resolution), grid_resolution - 1)
+            gy = min(int(yi * grid_resolution), grid_resolution - 1)
+            grid[gy, gx] += 1
+    except (ValueError, ZeroDivisionError):
+        return ("best", None)
+
+    best_score = float("inf")
+    best_pos = (grid_resolution - 1, grid_resolution - 1)
+
+    for r in range(1, grid_resolution - 1):
+        for c in range(1, grid_resolution - 1):
+            r_start, r_end = max(0, r - 1), min(grid_resolution, r + 2)
+            c_start, c_end = max(0, c - 1), min(grid_resolution, c + 2)
+            score = np.sum(grid[r_start:r_end, c_start:c_end])
+
+            dist_to_edge = min(r, grid_resolution - 1 - r, c, grid_resolution - 1 - c)
+            score += dist_to_edge * 0.1
+
+            if score < best_score:
+                best_score = score
+                best_pos = (r, c)
+
+    target_x = max(0.05, min(0.95, best_pos[1] / grid_resolution))
+    target_y = max(0.05, min(0.95, best_pos[0] / grid_resolution))
+
+    return ("center", (target_x, target_y))
+
 
 def add_leader_line(ax, start_pos, end_pos, style='elbow', **kwargs):
     """

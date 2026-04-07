@@ -13,33 +13,43 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from themes.journal_theme import (
-    apply_journal_theme,
-    apply_publication_layout,
-    get_legend_args,
-    save_journal_fig,
-    set_figure_size,
-)
-from themes.style_profiles import get_series_style
+import numpy as np
 
+from plotting.axis_break import render_broken_y_axis
 from plotting.utils import (
-    add_smart_inset,
     apply_density_alpha,
     auto_panel_tag,
     compress_sample_label,
     get_standard_legend_props,
 )
+from themes.journal_theme import (
+    DOUBLE_COLUMN,
+    PUBLICATION_LAYOUT_SPECS_MM,
+    SINGLE_COLUMN,
+    apply_journal_theme,
+    apply_publication_layout,
+    get_legend_args,
+    mm_to_inch,
+    save_journal_fig,
+    set_figure_size,
+)
+from themes.style_profiles import get_series_style
 
-from .smart_layout import add_leader_line, find_empty_quadrant, stagger_labels_2d
+from .smart_layout import find_empty_quadrant
 
 try:
     from hub_core.provenance import embed_provenance_fingerprint as _embed_fingerprint
+    from hub_core.provenance import hash_csv_file as _hash_csv_file
 except Exception:
     _embed_fingerprint = None  # type: ignore[assignment]
+    _hash_csv_file = None  # type: ignore[assignment]
     warnings.warn(
         "hub_core.provenance not available; reproducibility fingerprinting disabled",
         stacklevel=1,
     )
+
+_PANEL_LABELS = tuple("abcdefghijklmnopqrstuvwxyz")
+
 
 def _deterministic_timestamp() -> str:
     """Return SOURCE_DATE_EPOCH if set, else current UTC time."""
@@ -117,11 +127,16 @@ class BridgeFigureSpec:
     label_column: str = ""
     series_column: str = ""
     yerr_column: str = ""
+    yerr_cap_width: float = 3.0
+    yerr_minus_column: str = ""
     compress_labels: bool = True
     legend_layout: str = "auto"
     target_format: str = "nature"
     font_scale: float = 1.0
     profile_name: str = "baseline"
+    physics_type: str = ""
+    overlay_baselines: tuple[dict, ...] = ()
+    y_break_range: tuple[float, float] | None = None
 
 
 def render_bridge_figure(spec: BridgeFigureSpec) -> str:
@@ -140,25 +155,327 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         points = _load_points(csv_path, spec)
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
         try:
-            _render_plot(ax, points, spec)
-            _apply_axes_metadata(ax, spec)
-            ax.set_title(spec.title)
-            _apply_layout(fig, ax, spec)
-            save_journal_fig(fig, output_path)  # dpi comes from apply_journal_theme rcParams
+            if spec.y_break_range is not None:
+                xs = np.array([pt["x"] for pt in points], dtype=float)
+                ys = np.array([pt["y"] for pt in points], dtype=float)
+                plot_func = "scatter" if spec.plot_type == "scatter" else "line"
+                ax.set_visible(False)
+                ax_top, ax_bot = render_broken_y_axis(
+                    fig,
+                    [0.125, 0.11, 0.775, 0.77],
+                    xs,
+                    ys,
+                    spec.y_break_range,
+                    plot_func=plot_func,
+                )
+                ax_bot.set_xlabel(spec.x_axis_label or spec.x_column)
+                ax_top.set_ylabel(spec.y_axis_label or spec.y_column)
+                ax_top.set_title(spec.title)
+            else:
+                _render_plot(ax, points, spec)
+                _draw_overlay_baselines(ax, spec.overlay_baselines)
+                _apply_axes_metadata(ax, spec)
+                ax.set_title(spec.title)
+                _apply_layout(fig, ax, spec)
+            save_journal_fig(fig, output_path)
         finally:
             plt.close(fig)
     finally:
         plt.rcParams.update(_saved_rc)
     if _embed_fingerprint is not None:
+        csv_hash = _hash_csv_file(spec.csv_path) if _hash_csv_file is not None else ""
         _embed_fingerprint(
             str(output_path),
             {
                 "generator": "Graph-Hub/bridge_renderer.py",
                 "target_format": spec.target_format,
                 "ts": _deterministic_timestamp(),
+                "csv_hash": csv_hash,
+                "spec": {
+                    "plot_type": spec.plot_type,
+                    "x_column": spec.x_column,
+                    "y_column": spec.y_column,
+                    "target_format": spec.target_format,
+                    "font_scale": spec.font_scale,
+                    "profile_name": spec.profile_name,
+                },
             },
         )
     return str(output_path)
+
+
+@dataclass(frozen=True)
+class PanelImageSpec:
+    """Existing rendered figure file to embed as a panel."""
+
+    image_path: str
+    title: str = ""
+
+
+@dataclass(frozen=True)
+class MultiPanelSpec:
+    """Specification for a multi-panel composite figure.
+
+    Each element of ``panels`` is either a ``BridgeFigureSpec`` (rendered
+    fresh from CSV) or a ``PanelImageSpec`` (existing image file).
+    Grid is filled left-to-right, top-to-bottom; excess cells are hidden.
+
+    Parameters
+    ----------
+    panels:
+        Ordered tuple of panel specs.
+    output_path:
+        Destination file (PNG / TIFF / PDF).
+    rows, cols:
+        Grid dimensions.
+    column_width:
+        ``"single"`` (89 mm) or ``"double"`` (183 mm).
+    panel_height_mm:
+        Height of each row in mm.
+    panel_labels:
+        If True, add bold **(a)**, **(b)**, … tags to each panel.
+    compose_mode:
+        ``"draft"`` keeps subplot auto-fitting, while ``"manuscript"``
+        preserves a fixed plot box inside each panel slot.
+    gutter_h_mm, gutter_v_mm:
+        Absolute gutters used by manuscript compose mode.
+    wspace, hspace:
+        Fractional subplot spacing used by draft compose mode.
+    """
+
+    panels: tuple[BridgeFigureSpec | PanelImageSpec, ...]
+    output_path: str
+    rows: int
+    cols: int
+    target_format: str = "nature"
+    column_width: str = "double"
+    panel_height_mm: float = 65.0
+    panel_labels: bool = True
+    font_scale: float = 1.0
+    profile_name: str = "baseline"
+    compose_mode: str = "draft"
+    gutter_h_mm: float = 5.0
+    gutter_v_mm: float = 5.0
+    wspace: float = 0.35
+    hspace: float = 0.45
+
+
+def render_multipanel_figure(spec: MultiPanelSpec) -> str:
+    """Compose multiple panels into a single publication figure."""
+    _saved_rc = plt.rcParams.copy()
+    try:
+        compose_mode = _validated_compose_mode(spec)
+        apply_journal_theme(
+            target_format=spec.target_format,
+            font_scale=spec.font_scale,
+            profile_name=spec.profile_name,
+        )
+        if compose_mode == "manuscript":
+            fig = _render_multipanel_manuscript(spec)
+        else:
+            fig = _render_multipanel_draft(spec)
+        output_path = Path(spec.output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            save_journal_fig(fig, output_path)
+        finally:
+            plt.close(fig)
+    finally:
+        plt.rcParams.update(_saved_rc)
+
+    if _embed_fingerprint is not None:
+        _embed_fingerprint(
+            str(output_path),
+            {
+                "generator": "Graph-Hub/bridge_renderer.py::render_multipanel_figure",
+                "rows": spec.rows,
+                "cols": spec.cols,
+                "n_panels": len(spec.panels),
+                "ts": _deterministic_timestamp(),
+            },
+        )
+    return str(output_path)
+
+
+def _render_multipanel_draft(spec: MultiPanelSpec):
+    col_mm = DOUBLE_COLUMN if spec.column_width == "double" else SINGLE_COLUMN
+    fig_w_in = mm_to_inch(col_mm)
+    fig_h_in = mm_to_inch(spec.panel_height_mm * spec.rows)
+
+    fig, axes = plt.subplots(spec.rows, spec.cols, figsize=(fig_w_in, fig_h_in))
+    axes_flat = np.asarray(axes).ravel().tolist()
+    fig.subplots_adjust(wspace=spec.wspace, hspace=spec.hspace)
+
+    for idx, ax in enumerate(axes_flat):
+        if idx >= len(spec.panels):
+            ax.set_visible(False)
+            continue
+        panel = spec.panels[idx]
+        if isinstance(panel, PanelImageSpec):
+            _render_image_panel(ax, panel)
+        else:
+            _render_csv_panel(fig, ax, panel)
+        if spec.panel_labels and idx < len(_PANEL_LABELS):
+            auto_panel_tag(ax, label=_PANEL_LABELS[idx])
+
+    if hasattr(fig, "_graph_hub_layout_lock"):
+        delattr(fig, "_graph_hub_layout_lock")
+    return fig
+
+
+def _validated_compose_mode(spec: MultiPanelSpec) -> str:
+    compose_mode = str(spec.compose_mode or "draft").strip().lower()
+    if compose_mode not in {"draft", "manuscript"}:
+        raise ValueError(
+            f"unsupported compose_mode {spec.compose_mode!r}; expected 'draft' or 'manuscript'"
+        )
+    if spec.rows <= 0 or spec.cols <= 0:
+        raise ValueError("rows and cols must be positive integers")
+    if spec.panel_height_mm <= 0:
+        raise ValueError("panel_height_mm must be positive")
+    if spec.gutter_h_mm < 0 or spec.gutter_v_mm < 0:
+        raise ValueError("gutter_h_mm and gutter_v_mm must be non-negative")
+    if compose_mode == "manuscript" and str(spec.target_format or "").lower() == "ppt":
+        raise ValueError("manuscript compose is not supported for target_format='ppt'")
+    return compose_mode
+
+
+def _render_multipanel_manuscript(spec: MultiPanelSpec):
+    fig_w_mm = DOUBLE_COLUMN if spec.column_width == "double" else SINGLE_COLUMN
+    fig_h_mm = (spec.panel_height_mm * spec.rows) + (spec.gutter_v_mm * max(spec.rows - 1, 0))
+    fig = plt.figure(figsize=(mm_to_inch(fig_w_mm), mm_to_inch(fig_h_mm)))
+    setattr(
+        fig,
+        "_graph_hub_layout_lock",
+        {
+            "compose_mode": "manuscript",
+            "figure_width_mm": float(fig_w_mm),
+            "figure_height_mm": float(fig_h_mm),
+        },
+    )
+
+    cell_w_mm = (fig_w_mm - (spec.gutter_h_mm * max(spec.cols - 1, 0))) / spec.cols
+    cell_h_mm = spec.panel_height_mm
+
+    for idx, panel in enumerate(spec.panels):
+        if idx >= spec.rows * spec.cols:
+            break
+        row_idx = idx // spec.cols
+        col_idx = idx % spec.cols
+        axis_rect = _manuscript_axis_rect(
+            panel,
+            row_idx=row_idx,
+            col_idx=col_idx,
+            fig_w_mm=fig_w_mm,
+            fig_h_mm=fig_h_mm,
+            cell_w_mm=cell_w_mm,
+            cell_h_mm=cell_h_mm,
+            gutter_h_mm=spec.gutter_h_mm,
+            gutter_v_mm=spec.gutter_v_mm,
+        )
+        ax = fig.add_axes(axis_rect)
+        if isinstance(panel, PanelImageSpec):
+            _render_image_panel(ax, panel)
+        else:
+            _render_csv_panel(fig, ax, panel)
+        if spec.panel_labels and idx < len(_PANEL_LABELS):
+            auto_panel_tag(ax, label=_PANEL_LABELS[idx])
+
+    return fig
+
+
+def _manuscript_axis_rect(
+    panel: BridgeFigureSpec | PanelImageSpec,
+    *,
+    row_idx: int,
+    col_idx: int,
+    fig_w_mm: float,
+    fig_h_mm: float,
+    cell_w_mm: float,
+    cell_h_mm: float,
+    gutter_h_mm: float,
+    gutter_v_mm: float,
+) -> list[float]:
+    box_width_mm, box_height_mm, margins_mm = _panel_geometry_mm(panel)
+    if box_width_mm > cell_w_mm or box_height_mm > cell_h_mm:
+        raise ValueError(
+            "manuscript compose requires panel box to fit within its slot: "
+            f"box=({box_width_mm:.1f}mm,{box_height_mm:.1f}mm), "
+            f"slot=({cell_w_mm:.1f}mm,{cell_h_mm:.1f}mm)"
+        )
+
+    extra_w_mm = cell_w_mm - box_width_mm
+    extra_h_mm = cell_h_mm - box_height_mm
+    left_extra_mm, _ = _split_bias(extra_w_mm, margins_mm["left"], margins_mm["right"])
+    bottom_extra_mm, _ = _split_bias(extra_h_mm, margins_mm["bottom"], margins_mm["top"])
+
+    cell_left_mm = col_idx * (cell_w_mm + gutter_h_mm)
+    cell_bottom_mm = fig_h_mm - ((row_idx + 1) * cell_h_mm) - (row_idx * gutter_v_mm)
+
+    ax_left_mm = cell_left_mm + left_extra_mm
+    ax_bottom_mm = cell_bottom_mm + bottom_extra_mm
+    ax_width = box_width_mm / fig_w_mm
+    ax_height = box_height_mm / fig_h_mm
+    ax_left = ax_left_mm / fig_w_mm
+    ax_bottom = ax_bottom_mm / fig_h_mm
+
+    return [ax_left, ax_bottom, ax_width, ax_height]
+
+
+def _panel_geometry_mm(panel: BridgeFigureSpec | PanelImageSpec) -> tuple[float, float, dict[str, float]]:
+    if isinstance(panel, PanelImageSpec):
+        layout_key = "standard"
+    else:
+        if str(panel.target_format or "").lower() == "ppt":
+            raise ValueError("manuscript compose does not support PPT panel geometry")
+        layout_key = _resolved_legend_layout(panel)
+        if layout_key not in PUBLICATION_LAYOUT_SPECS_MM:
+            raise ValueError(
+                "manuscript compose requires fixed-layout panels; "
+                f"got legend_layout={layout_key!r}. Use standard, top_outside, or right_outside."
+            )
+
+    spec = PUBLICATION_LAYOUT_SPECS_MM[layout_key]
+    margins = {key: float(value) for key, value in spec["margins_mm"].items()}
+    return float(spec["box_width_mm"]), float(spec["box_height_mm"]), margins
+
+
+def _split_bias(total_mm: float, primary_mm: float, secondary_mm: float) -> tuple[float, float]:
+    if total_mm <= 0:
+        return 0.0, 0.0
+    weight_sum = float(primary_mm + secondary_mm)
+    if weight_sum <= 0:
+        half = total_mm / 2.0
+        return half, half
+    primary = total_mm * (float(primary_mm) / weight_sum)
+    return primary, total_mm - primary
+
+
+def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
+    """Render a single CSV-based panel into *ax* (multipanel helper)."""
+    points = _load_points(Path(panel.csv_path), panel)
+    _render_plot(ax, points, panel)
+    _draw_overlay_baselines(ax, panel.overlay_baselines)
+    _apply_axes_metadata(ax, panel)
+    if panel.title:
+        ax.set_title(panel.title)
+    _apply_layout(fig, ax, panel, allow_figure_layout=False)
+
+
+def _render_image_panel(ax, panel: PanelImageSpec) -> None:
+    """Load an existing image file and display it inside *ax*."""
+    try:
+        import numpy as np
+        from PIL import Image
+
+        with Image.open(panel.image_path) as img:
+            img_arr = np.asarray(img)
+    except ImportError:
+        img_arr = plt.imread(panel.image_path)
+    ax.imshow(img_arr)
+    ax.set_axis_off()
+    if panel.title:
+        ax.set_title(panel.title)
 
 
 def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
@@ -168,7 +485,7 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
         reader = csv.DictReader(handle)
         headers = reader.fieldnames or []
         required = [spec.x_column, spec.y_column]
-        for col_attr in ("label_column", "series_column", "yerr_column"):
+        for col_attr in ("label_column", "series_column", "yerr_column", "yerr_minus_column"):
             col = getattr(spec, col_attr)
             if col:
                 required.append(col)
@@ -182,10 +499,14 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
             try:
                 y_val = float(row[spec.y_column])
                 yerr_val = float(row[spec.yerr_column]) if spec.yerr_column else None
+                yerr_minus_val = float(row[spec.yerr_minus_column]) if spec.yerr_minus_column else None
             except (ValueError, TypeError):
                 skipped += 1
                 continue
             if not math.isfinite(y_val) or (yerr_val is not None and not math.isfinite(yerr_val)):
+                skipped += 1
+                continue
+            if yerr_minus_val is not None and not math.isfinite(yerr_minus_val):
                 skipped += 1
                 continue
             points.append(
@@ -195,6 +516,7 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
                     "label": row[spec.label_column] if spec.label_column else "",
                     "series": row[spec.series_column] if spec.series_column else "",
                     "yerr": yerr_val,
+                    "yerr_minus": yerr_minus_val,
                 }
             )
     if skipped:
@@ -223,9 +545,14 @@ def _group_points(points: list[dict], spec: BridgeFigureSpec) -> dict[str, list[
     return grouped
 
 
-def _yerr_values(points: list[dict], spec: BridgeFigureSpec) -> list[float] | None:
+def _yerr_values(points: list[dict], spec: BridgeFigureSpec):
     if not spec.yerr_column:
         return None
+    if spec.yerr_minus_column:
+        import numpy as np
+        minus = [float(point["yerr_minus"]) for point in points]
+        plus = [float(point["yerr"]) for point in points]
+        return np.array([minus, plus])
     return [float(point["yerr"]) for point in points]
 
 
@@ -263,12 +590,14 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
         )
         sty = get_series_style(idx)
 
+        cap_size = spec.yerr_cap_width
+        cap_thick = max(0.5, spec.yerr_cap_width * 0.4)
         if line:
             if yerr is not None:
                 ax.errorbar(
                     xs, ys, yerr=yerr,
                     fmt=sty["marker"], linestyle=sty["linestyle"],
-                    linewidth=1.2, capsize=3, label=legend_label,
+                    linewidth=1.2, capsize=cap_size, capthick=cap_thick, label=legend_label,
                 )
             else:
                 ax.plot(
@@ -281,7 +610,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
                 ax.errorbar(
                     xs, ys, yerr=yerr,
                     fmt=sty["marker"], linestyle="none",
-                    capsize=3, label=legend_label,
+                    capsize=cap_size, capthick=cap_thick, label=legend_label,
                 )
             else:
                 ax.scatter(xs, ys, s=24, marker=sty["marker"], label=legend_label)
@@ -328,7 +657,7 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
                 ys,
                 width=width,
                 yerr=yerr,
-                capsize=3,
+                capsize=spec.yerr_cap_width,
                 hatch=sty["hatch"],
                 edgecolor="black",
                 linewidth=0.5,
@@ -349,7 +678,7 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         ys = [point["y"] for point in points]
         yerr = _yerr_values(points, spec)
         bars = ax.bar(
-            row_positions, ys, yerr=yerr, capsize=3,
+            row_positions, ys, yerr=yerr, capsize=spec.yerr_cap_width,
             edgecolor="black", linewidth=0.5,
         )
         if spec.label_column:
@@ -391,6 +720,26 @@ def _render_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     _render_xy_plot(ax, points, spec, line=True)
 
 
+def _draw_overlay_baselines(ax, baselines: tuple[dict, ...]) -> None:
+    """Draw literature reference baselines as dashed horizontal lines."""
+    for bl in baselines:
+        value = bl.get("value")
+        if value is None:
+            continue
+        label = bl.get("label", "")
+        ax.axhline(y=value, linestyle="--", color="gray", alpha=0.5, linewidth=0.8)
+        if label:
+            ax.annotate(
+                label,
+                xy=(0.02, value),
+                xycoords=("axes fraction", "data"),
+                fontsize=5,
+                color="gray",
+                alpha=0.7,
+                verticalalignment="bottom",
+            )
+
+
 def _display_label(value: object, *, compress_labels: bool = True) -> str:
     text = str(value)
     if not compress_labels:
@@ -407,8 +756,6 @@ def _find_best_legend_location(ax) -> dict:
     """
     데이터 포인트의 밀도를 분석하여 가장 비어있는 공간에 범례를 배치합니다. (Smart Legend Avoidance)
     """
-    import numpy as np
-
     # 1. 데이터 포인트 추출 (Axes 좌표계 0~1)
     # 현재 그려진 모든 Line2D, PathCollection(scatter)에서 데이터를 가져옴
     x_data = []
@@ -528,16 +875,20 @@ def _legend_kwargs(ax, spec: BridgeFigureSpec, *, n_series: int) -> dict:
     return kwargs
 
 
-def _apply_layout(fig, ax, spec: BridgeFigureSpec) -> None:
+def _apply_layout(fig, ax, spec: BridgeFigureSpec, *, allow_figure_layout: bool = True) -> None:
+    layout = _resolved_legend_layout(spec)
+    if layout in ("right_outside", "top_outside", "standard"):
+        if not allow_figure_layout:
+            return
+        # subplots_adjust 사용 — tight_layout과 충돌하므로 호출하지 않음
+        apply_publication_layout(layout, fig=fig, target_format=spec.target_format)
+        return
+
+    if not allow_figure_layout:
+        return
     legend = ax.get_legend()
     if legend is None:
         fig.tight_layout()
-        return
-
-    layout = _resolved_legend_layout(spec)
-    if layout in ("right_outside", "top_outside", "standard"):
-        # subplots_adjust 사용 — tight_layout과 충돌하므로 호출하지 않음
-        apply_publication_layout(layout)
         return
     # smart 및 기타: tight_layout (pad=0.5로 여백 확보)
     try:

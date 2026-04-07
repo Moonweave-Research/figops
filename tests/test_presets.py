@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hub_core.config_parser import resolve_presets, resolve_step_style, validate_config
-from themes.journal_theme import STYLE_PRESETS
+from themes.journal_theme import STYLE_PRESETS, apply_journal_theme
 
 
 # ---------------------------------------------------------------------------
@@ -192,3 +192,48 @@ def test_journal_presets_differ_from_nature():
         preset = STYLE_PRESETS[journal]
         diffs = {k for k in preset if preset[k] != nature.get(k)}
         assert len(diffs) >= 1, f"{journal} preset has no differences from nature"
+
+
+# ---------------------------------------------------------------------------
+# Wiley and Cell Press presets (Phase 2)
+# ---------------------------------------------------------------------------
+
+def test_wiley_preset_loads():
+    apply_journal_theme("wiley")
+    assert "wiley" in STYLE_PRESETS
+    preset = STYLE_PRESETS["wiley"]
+    assert preset["axes.labelsize"] == 7.0
+    assert preset["axes.titlesize"] == 8.0
+    assert preset["savefig.dpi"] == 600
+
+
+def test_cell_preset_loads():
+    apply_journal_theme("cell")
+    assert "cell" in STYLE_PRESETS
+    preset = STYLE_PRESETS["cell"]
+    assert preset["axes.labelsize"] == 7.0
+    assert preset["savefig.dpi"] == 600
+
+
+def test_wiley_tick_direction():
+    assert STYLE_PRESETS["wiley"]["xtick.direction"] == "in"
+    assert STYLE_PRESETS["wiley"]["ytick.direction"] == "in"
+    assert STYLE_PRESETS["wiley"]["xtick.top"] is True
+    assert STYLE_PRESETS["wiley"]["ytick.right"] is True
+
+
+def test_cell_tick_direction():
+    assert STYLE_PRESETS["cell"]["xtick.direction"] == "out"
+    assert STYLE_PRESETS["cell"]["ytick.direction"] == "out"
+    assert STYLE_PRESETS["cell"]["xtick.top"] is False
+    assert STYLE_PRESETS["cell"]["ytick.right"] is False
+
+
+def test_wiley_line_width():
+    assert STYLE_PRESETS["wiley"]["lines.linewidth"] == 1.0
+    assert STYLE_PRESETS["wiley"]["axes.linewidth"] == 1.0
+
+
+def test_cell_line_width():
+    assert STYLE_PRESETS["cell"]["lines.linewidth"] == 0.75
+    assert STYLE_PRESETS["cell"]["axes.linewidth"] == 0.75

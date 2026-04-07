@@ -69,6 +69,8 @@ _LEGACY_LAYOUT_RATIOS = {
     "standard": {"left": 0.15, "right": 0.95, "bottom": 0.15, "top": 0.90},
 }
 
+TIFF_AUTO_PRESETS: set[str] = {"nature", "science", "acs", "rsc", "elsevier", "wiley", "cell"}
+
 def mm_to_inch(mm):
     return mm / 25.4
 
@@ -199,6 +201,40 @@ STYLE_PRESETS['elsevier'].update({
     "ytick.labelsize": 7.0,
 })
 
+STYLE_PRESETS['wiley'] = copy.deepcopy(STYLE_PRESETS['nature'])
+STYLE_PRESETS['wiley'].update({
+    "font.family":         "sans-serif",
+    "font.sans-serif":     ["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"],
+    "axes.titlesize":      8.0,
+    "axes.labelsize":      7.0,
+    "lines.linewidth":     1.0,
+    "axes.linewidth":      1.0,
+    "xtick.major.width":   1.0,
+    "ytick.major.width":   1.0,
+    "xtick.direction":     "in",
+    "ytick.direction":     "in",
+    "xtick.top":           True,
+    "ytick.right":         True,
+    "savefig.dpi":         600,
+})
+
+STYLE_PRESETS['cell'] = copy.deepcopy(STYLE_PRESETS['nature'])
+STYLE_PRESETS['cell'].update({
+    "font.family":         "sans-serif",
+    "font.sans-serif":     ["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"],
+    "axes.titlesize":      7.0,
+    "axes.labelsize":      7.0,
+    "lines.linewidth":     0.75,
+    "axes.linewidth":      0.75,
+    "xtick.major.width":   0.75,
+    "ytick.major.width":   0.75,
+    "xtick.direction":     "out",
+    "ytick.direction":     "out",
+    "xtick.top":           False,
+    "ytick.right":         False,
+    "savefig.dpi":         600,
+})
+
 STYLE_PRESETS['default'] = copy.deepcopy(STYLE_PRESETS['nature'])
 
 _FALLBACK_SANS_FONTS = ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"]
@@ -314,7 +350,15 @@ def set_figure_size(width_mm, height_mm=None, ratio=0.8):
 get_figsize = set_figure_size
 
 
-def save_journal_fig(fig, filename, *, companion_formats: tuple[str, ...] = ("png",), **kwargs):
+def save_journal_fig(
+    fig,
+    filename,
+    *,
+    companion_formats: tuple[str, ...] = ("png",),
+    preset: str | None = None,
+    tiff_companion: bool = True,
+    **kwargs,
+):
     """
     Format-aware deterministic save wrapper.
     PDF uses CreationDate/ModDate, while SVG suppresses Date metadata for stable output.
@@ -322,6 +366,9 @@ def save_journal_fig(fig, filename, *, companion_formats: tuple[str, ...] = ("pn
 
     Layout-locked figures use rc_context to suppress savefig.bbox='tight' from rcParams,
     because passing bbox_inches=None in kwargs still falls back to rcParams in matplotlib.
+
+    If preset is in TIFF_AUTO_PRESETS and tiff_companion is True, a 300 DPI LZW-compressed
+    TIFF companion is saved alongside any primary format (unless primary is already TIFF).
     """
     import contextlib
 
@@ -365,6 +412,23 @@ def save_journal_fig(fig, filename, *, companion_formats: tuple[str, ...] = ("pn
                 tiff_kwargs['dpi'] = 600
                 tiff_kwargs['pil_kwargs'] = {"compression": "tiff_lzw"}
                 fig.savefig(file_path.with_suffix(".tiff"), **tiff_kwargs)
+
+        # Auto TIFF companion for journal presets
+        _preset = (preset or "").lower()
+        if (
+            tiff_companion
+            and _preset in TIFF_AUTO_PRESETS
+            and suffix != ".tiff"
+            and "tiff" not in companion_formats
+        ):
+            tiff_path = file_path.with_suffix(".tiff")
+            fig.savefig(
+                str(tiff_path),
+                dpi=300,
+                format="tiff",
+                bbox_inches="tight",
+                pil_kwargs={"compression": "tiff_lzw"},
+            )
 
 
 def _figure_size_mm(fig):
