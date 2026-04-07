@@ -36,8 +36,9 @@ def render_broken_y_axis(
     y_max = float(y_arr.max()) if len(y_arr) else break_end
     y_min = float(y_arr.min()) if len(y_arr) else break_start
 
-    margin_top = (y_max - break_end) * 0.05 if y_max > break_end else 1.0
-    margin_bot = (break_start - y_min) * 0.05 if y_min < break_start else 1.0
+    full_range = max(y_max - y_min, abs(break_end - break_start), 1e-6)
+    margin_top = full_range * 0.05
+    margin_bot = full_range * 0.05
 
     ax_top.set_ylim(break_end - margin_top, y_max + margin_top)
     ax_bot.set_ylim(y_min - margin_bot, break_start + margin_bot)
