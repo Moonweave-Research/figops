@@ -1,3 +1,4 @@
+import importlib.util
 import os
 
 from .utils import ensure_local_files, resolve_path
@@ -15,9 +16,28 @@ except ImportError:
 
 _CSV_CHUNK_THRESHOLD_BYTES = 256 * 1024 * 1024  # 256 MB
 _CSV_CHUNK_SIZE = 50_000  # rows per chunk
+_SUPPORTED_DATA_CONTRACT_SUFFIXES = {
+    ".csv",
+    ".tsv",
+    ".txt",
+    ".parquet",
+    ".h5",
+    ".hdf5",
+    ".feather",
+}
+_OPTIONAL_IO_DEPENDENCIES = {
+    ".parquet": ("pyarrow", "pyarrow"),
+    ".feather": ("pyarrow", "pyarrow"),
+    ".h5": ("tables", "PyTables (tables)"),
+    ".hdf5": ("tables", "PyTables (tables)"),
+}
 
 
-def _read_csv_safe(csv_path, pd):
+def _module_available(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
+def _read_csv_safe(csv_path, pd, **read_kwargs):
     """
     CSV를 안전하게 읽습니다.
     256 MB 미만: 전체 로드 (빠름).
@@ -25,15 +45,87 @@ def _read_csv_safe(csv_path, pd):
     """
     file_size = os.path.getsize(csv_path)
     if file_size < _CSV_CHUNK_THRESHOLD_BYTES:
-        return pd.read_csv(csv_path, encoding="utf-8-sig")
+        return pd.read_csv(csv_path, encoding="utf-8-sig", **read_kwargs)
 
     print(f"      ℹ️  Large file ({file_size // 1024 // 1024} MB) — using chunked read")
     chunks = pd.read_csv(
         csv_path,
         encoding="utf-8-sig",
         chunksize=_CSV_CHUNK_SIZE,
+        **read_kwargs,
     )
     return pd.concat(chunks, ignore_index=True)
+
+
+def _read_data_safe(data_path, pd, hdf_key: str = "/data"):
+    """
+    포맷을 자동 감지하여 데이터를 읽습니다.
+    - .csv / .tsv / .txt  → _read_csv_safe() (청크 지원)
+    - .parquet            → pd.read_parquet() (pyarrow 필요)
+    - .h5 / .hdf5         → pd.read_hdf()    (tables 필요, key=hdf_key)
+    - .feather            → pd.read_feather() (pyarrow 필요)
+    그 외 확장자는 CSV로 fallback합니다.
+    """
+    suffix = os.path.splitext(data_path)[1].lower()
+
+    if suffix in {".csv", ".tsv", ".txt"}:
+        read_kwargs = {}
+        if suffix == ".tsv":
+            read_kwargs["sep"] = "\t"
+        elif suffix == ".txt":
+            read_kwargs["sep"] = None
+            read_kwargs["engine"] = "python"
+        return _read_csv_safe(data_path, pd, **read_kwargs)
+
+    if suffix == ".parquet":
+        try:
+            import pyarrow  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "pyarrow is required to read Parquet files. "
+                "Install with: uv pip install 'graph-making-hub[io]'"
+            ) from exc
+        return pd.read_parquet(data_path)
+
+    if suffix in {".h5", ".hdf5"}:
+        try:
+            import tables  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "PyTables (tables) is required to read HDF5 files. "
+                "Install with: uv pip install 'graph-making-hub[io]'"
+            ) from exc
+        try:
+            return pd.read_hdf(data_path, key=hdf_key)
+        except KeyError:
+            # hdf_key 미존재 시 첫 번째 키로 재시도
+            import h5py
+            with h5py.File(data_path, "r") as hf:
+                first_key = next(iter(hf.keys()), None)
+            if first_key is None:
+                raise KeyError(f"HDF5 file has no datasets: {data_path}")
+            from pathlib import Path
+            print(
+                f"      ⚠️  HDF5 key '{hdf_key}' not found in {Path(data_path).name}"
+                f" — using first available key '/{first_key}'."
+                " Verify this is the correct dataset."
+            )
+            return pd.read_hdf(data_path, key=first_key)
+
+    if suffix == ".feather":
+        try:
+            import pyarrow  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "pyarrow is required to read Feather files. "
+                "Install with: uv pip install 'graph-making-hub[io]'"
+            ) from exc
+        return pd.read_feather(data_path)
+
+    raise ValueError(
+        f"Unsupported file format '{suffix}' for: {data_path}. "
+        "Supported: .csv, .tsv, .txt, .parquet, .h5, .hdf5, .feather"
+    )
 
 
 def _dtype_matches(series, expected, pd):
@@ -73,6 +165,55 @@ def get_data_contract_paths(config):
             seen.add(p)
     return deduped
 
+
+def validate_data_contract_preflight(project_dir, config, require_existing: bool = False):
+    contract = config.get("data_contract", {})
+    checks = contract.get("csv_checks", []) if isinstance(contract, dict) else []
+
+    if not checks:
+        return True
+
+    print("\n🧪 [Data Contract Preflight]")
+    for i, check in enumerate(checks, 1):
+        rel_path = check.get("path")
+        if not isinstance(rel_path, str) or not rel_path.strip():
+            print(f"   ❌ Check {i}: data_contract.csv_checks[{i - 1}].path is missing.")
+            return False
+
+        rel_path = rel_path.strip()
+        resolved_path = resolve_path(project_dir, rel_path)
+        suffix = os.path.splitext(resolved_path)[1].lower()
+        print(f"   ➤ Check {i}: {rel_path}")
+
+        if suffix not in _SUPPORTED_DATA_CONTRACT_SUFFIXES:
+            supported = ", ".join(sorted(_SUPPORTED_DATA_CONTRACT_SUFFIXES))
+            print(
+                f"      ❌ Unsupported data_contract format '{suffix or '<none>'}'. "
+                f"Supported: {supported}"
+            )
+            return False
+
+        dependency = _OPTIONAL_IO_DEPENDENCIES.get(suffix)
+        if dependency is not None:
+            module_name, display_name = dependency
+            if not _module_available(module_name):
+                print(
+                    f"      ❌ {display_name} is required for '{suffix}' files. "
+                    "Install with: uv sync --extra io"
+                )
+                return False
+
+        if require_existing:
+            if not os.path.exists(resolved_path):
+                print(f"      ❌ Required data_contract file not found: {resolved_path}")
+                return False
+            ensure_local_files([resolved_path])
+
+        print("      ✅ Preflight passed")
+
+    print("   ✅ Data contract preflight completed.")
+    return True
+
 def validate_data_contract(project_dir, config):
     contract = config.get('data_contract', {})
     checks = contract.get('csv_checks', []) if isinstance(contract, dict) else []
@@ -101,7 +242,7 @@ def validate_data_contract(project_dir, config):
         ensure_local_files([csv_path])
 
         try:
-            df = _read_csv_safe(csv_path, pd)
+            df = _read_data_safe(csv_path, pd)
         except FileNotFoundError:
             print(f"      ❌ CSV file not found: {csv_path}")
             return False
@@ -171,6 +312,8 @@ def validate_data_contract(project_dir, config):
         # --- Statistical Quality Score ---
         cv_threshold = contract.get('cv_threshold', 0.10)
         quality_result = _check_statistical_quality(df, check['path'], cv_threshold, project_dir)
+        if not quality_result["quality_passed"]:
+            print(f"      🟠 quality_passed=False for '{check['path']}' (CV threshold: {cv_threshold:.0%})")
 
         print(f"      ✅ Passed ({len(df)} rows)")
 

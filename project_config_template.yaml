@@ -51,6 +51,7 @@ environment:
   r_lock: "renv.lock"
   strict: false                # true 설정 시 lockfile 누락 시 실행 차단
   uv_run: true                 # New flag to signal orchestrator to use 'uv run'
+  r_strict: false              # renv 환경 강제 활성화 여부 (true 시 renv::activate() 후 실행)
 
 # 2.3 실험 메타데이터
 experimental_conditions:

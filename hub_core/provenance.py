@@ -12,6 +12,10 @@ from .utils import hash_file, is_executable_available, short_hash
 DEFAULT_PYTHON_LOCK_CANDIDATES = ("uv.lock", "requirements-lock.txt")
 DEFAULT_R_LOCK_CANDIDATE = "renv.lock"
 
+_DVC_CMD_UNRESOLVED = object()
+_dvc_cmd_cache: object = _DVC_CMD_UNRESOLVED
+
+
 def hash_csv_file(csv_path: str | Path) -> str:
     path = Path(csv_path)
     if not path.exists():
@@ -31,16 +35,19 @@ def _resolve_lock_path(project_dir, hub_path, raw_path):
         return from_project
     return os.path.join(hub_path, lock_value)
 
+
 def _first_existing(paths):
     for path in paths:
         if path and os.path.exists(path):
             return path
     return None
 
+
 def _inspect_lock(path):
     exists = bool(path and os.path.exists(path))
     lock_hash = hash_file(path) if exists else None
     return {"path": path, "exists": exists, "hash": lock_hash}
+
 
 def _build_environment_hash(lock_info, python_version, r_version, config):
     lock_info = lock_info if isinstance(lock_info, dict) else {}
@@ -67,14 +74,21 @@ def _build_environment_hash(lock_info, python_version, r_version, config):
     normalized = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
+
 def _resolve_dvc_command():
+    global _dvc_cmd_cache
+    if _dvc_cmd_cache is not _DVC_CMD_UNRESOLVED:
+        return _dvc_cmd_cache
+
     env_cmd = os.environ.get("DVC_BIN")
     if env_cmd and _is_working_cli([env_cmd], "--version"):
-        return [env_cmd]
+        _dvc_cmd_cache = [env_cmd]
+        return _dvc_cmd_cache
 
     sibling_dvc = _sibling_dvc_executable(sys.executable)
     if sibling_dvc and _is_working_cli([sibling_dvc], "--version"):
-        return [sibling_dvc]
+        _dvc_cmd_cache = [sibling_dvc]
+        return _dvc_cmd_cache
 
     candidates = [
         "dvc",
@@ -82,8 +96,10 @@ def _resolve_dvc_command():
     ]
     for cmd in candidates:
         if _is_working_cli(cmd if isinstance(cmd, list) else [cmd], "--version"):
-            return cmd if isinstance(cmd, list) else [cmd]
-    return None
+            _dvc_cmd_cache = cmd if isinstance(cmd, list) else [cmd]
+            return _dvc_cmd_cache
+
+    return None  # not cached: absence of DVC may be transient
 
 
 def _sibling_dvc_executable(python_executable):
@@ -96,6 +112,7 @@ def _sibling_dvc_executable(python_executable):
     if os.path.exists(candidate):
         return candidate
     return None
+
 
 def _is_working_cli(cmd, version_arg):
     if not cmd:
@@ -117,6 +134,7 @@ def _is_working_cli(cmd, version_arg):
         return False
     return proc.returncode == 0
 
+
 def _prepare_dvc_env(hub_path):
     base = resolve_dvc_home()
     cache_dir = os.path.join(base, "xdg_cache")
@@ -137,6 +155,7 @@ def _prepare_dvc_env(hub_path):
     env["XDG_CONFIG_HOME"] = config_dir
     env["XDG_STATE_HOME"] = state_dir
     return env
+
 
 def validate_environment_locks(project_dir, hub_path, config, strict_cli=False):
     raw_environment = config.get("environment", {})
@@ -198,10 +217,7 @@ def validate_environment_locks(project_dir, hub_path, config, strict_cli=False):
 
     if missing:
         print(f"   ⚠️  Lockfile missing: {', '.join(missing)} (continuing, non-strict mode)")
-        print(
-            "   └─ This run is allowed, but provenance and reproducibility "
-            "are weaker until lockfiles are added."
-        )
+        print("   └─ This run is allowed, but provenance and reproducibility are weaker until lockfiles are added.")
     else:
         print("   ✅ Lockfile gate passed.")
 
@@ -211,6 +227,7 @@ def validate_environment_locks(project_dir, hub_path, config, strict_cli=False):
         "python_lock": python_info,
         "r_lock": r_info,
     }
+
 
 def collect_dvc_provenance(project_dir, hub_path):
     workspace_candidates = [project_dir, hub_path]
@@ -292,6 +309,7 @@ def collect_dvc_provenance(project_dir, hub_path):
         "status_hash": hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
     }
 
+
 def _readable_tool_version(cmd):
     if not is_executable_available(cmd):
         return "N/A"
@@ -303,26 +321,23 @@ def _readable_tool_version(cmd):
     )
     for sub_cmd in candidates:
         try:
-            out = subprocess.check_output(
-                sub_cmd, stderr=subprocess.STDOUT, text=True, timeout=4
-            ).strip()
+            out = subprocess.check_output(sub_cmd, stderr=subprocess.STDOUT, text=True, timeout=4).strip()
             if out:
                 return out.splitlines()[0]
         except Exception:
             continue
     return "N/A"
 
+
 def _readable_git_commit(hub_path):
     try:
         out = subprocess.check_output(
-            ["git", "-C", hub_path, "rev-parse", "--short", "HEAD"],
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=3
+            ["git", "-C", hub_path, "rev-parse", "--short", "HEAD"], stderr=subprocess.STDOUT, text=True, timeout=3
         ).strip()
         return out if out else "N/A"
     except Exception:
         return "N/A"
+
 
 def print_provenance(
     project_dir,
@@ -334,7 +349,7 @@ def print_provenance(
     build_state_path=None,
 ):
     # This assumes orchestrator.py is one level up from hub_core
-    hub_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    hub_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     execution = config.get("execution", {}) if isinstance(config.get("execution", {}), dict) else {}
     r_exec = execution.get("rscript") or "Rscript"
     timestamp = datetime.now().isoformat(timespec="seconds")
@@ -372,6 +387,7 @@ def print_provenance(
 # ---------------------------------------------------------------------------
 # Digital Fingerprint: 이미지 메타데이터 임베딩
 # ---------------------------------------------------------------------------
+
 
 def build_fingerprint_payload(
     project_name: str,
@@ -420,13 +436,8 @@ def _hash_input_files(project_dir: str, inputs: list) -> dict:
             result[os.path.basename(inp)] = short_hash(h) if h else "N/A"
         elif os.path.isdir(abs_path):
             # 디렉터리인 경우: 내부 파일 목록 해시
-            dir_files = sorted(
-                f for f in os.listdir(abs_path)
-                if os.path.isfile(os.path.join(abs_path, f))
-            )
-            dir_hash = hashlib.sha256(
-                "\n".join(dir_files).encode("utf-8")
-            ).hexdigest()
+            dir_files = sorted(f for f in os.listdir(abs_path) if os.path.isfile(os.path.join(abs_path, f)))
+            dir_hash = hashlib.sha256("\n".join(dir_files).encode("utf-8")).hexdigest()
             result[os.path.basename(inp) + "/"] = short_hash(dir_hash)
     return result
 
@@ -495,11 +506,13 @@ def _embed_pdf_fingerprint(path: str, payload_str: str) -> bool:
         reader = PdfReader(path)
         writer = PdfWriter()
         writer.append(reader)
-        writer.add_metadata({
-            "/Research-Fingerprint": payload_str,
-            "/Research-Config-Hash": parsed.get("config", ""),
-            "/Research-Env-Hash": parsed.get("env", ""),
-        })
+        writer.add_metadata(
+            {
+                "/Research-Fingerprint": payload_str,
+                "/Research-Config-Hash": parsed.get("config", ""),
+                "/Research-Env-Hash": parsed.get("env", ""),
+            }
+        )
         with open(tmp, "wb") as f:
             writer.write(f)
         os.replace(tmp, path)
@@ -582,10 +595,7 @@ def embed_figures_fingerprint(
     all_paths = set(config_meta.keys()) | discovered_paths
     unregistered = discovered_paths - set(config_meta.keys())
     if unregistered:
-        print(
-            f"   ℹ️  {len(unregistered)} unregistered figure(s) found in "
-            f"results/figures/ — tagging all."
-        )
+        print(f"   ℹ️  {len(unregistered)} unregistered figure(s) found in results/figures/ — tagging all.")
 
     embedded = 0
     skipped = []
@@ -595,11 +605,7 @@ def embed_figures_fingerprint(
 
         # config 등록 파일은 inputs/script 해시 포함, 미등록 파일은 기본 지문만
         meta = config_meta.get(path, {})
-        data_hashes = (
-            _hash_input_files(project_dir, meta["inputs"])
-            if meta.get("inputs")
-            else None
-        )
+        data_hashes = _hash_input_files(project_dir, meta["inputs"]) if meta.get("inputs") else None
         fingerprint = build_fingerprint_payload(
             **base_fingerprint_kwargs,
             data_hashes=data_hashes,
@@ -638,6 +644,7 @@ def read_provenance_fingerprint(path: str) -> dict | None:
 def _read_png_fingerprint(path: str) -> dict | None:
     try:
         from PIL import Image
+
         with Image.open(path) as img:
             raw = img.info.get("Research-Fingerprint")
             if raw:
@@ -650,6 +657,7 @@ def _read_png_fingerprint(path: str) -> dict | None:
 def _read_pdf_fingerprint(path: str) -> dict | None:
     try:
         from pypdf import PdfReader
+
         reader = PdfReader(path)
         meta = reader.metadata
         if meta and "/Research-Fingerprint" in meta:
@@ -662,6 +670,7 @@ def _read_pdf_fingerprint(path: str) -> dict | None:
 def _read_svg_fingerprint(path: str) -> dict | None:
     try:
         import re
+
         with open(path, encoding="utf-8") as f:
             # 주석 형태 탐색: <!-- Research-Fingerprint: {...} -->
             content = f.read(4096)  # 성능을 위해 선두 4KB만 읽음
