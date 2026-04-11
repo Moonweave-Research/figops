@@ -997,6 +997,7 @@ def run_comparison(
             print("   (overlay assembly is delegated to the project's plot script via COMPARISON_LABEL env vars)")
     else:
         print("❌ Comparison finished with failures. Check output above.")
+    return all_success
 
 
 def run_assemblies(project_dir: str, config: dict, force: bool = False) -> bool:
