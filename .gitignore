@@ -1,0 +1,51 @@
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+.uv_cache/
+venv/
+env/
+.r_libs/
+.dvc_home/
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# Logs / temp
+*.log
+*.tmp
+*.bak
+hub_logs/
+**/hub_logs/
+
+# Secrets / local env
+.env
+.env.*
+
+# Generated outputs (research pipeline artifacts)
+results/
+**/results/
+outputs/
+**/outputs/
+.build_state.json
+**/.build_state.json
+
+# DVC local cache
+.dvc/cache/
+**/.dvc/cache/
