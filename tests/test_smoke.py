@@ -1,15 +1,39 @@
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
+
 HUB_ROOT = Path(__file__).resolve().parent.parent
 ORCHESTRATOR = HUB_ROOT / "orchestrator.py"
 
 
+def _r_packages_available() -> bool:
+    """Check whether R + readr + required deps are installed (scaffold analysis needs them)."""
+    rscript = shutil.which("Rscript")
+    if rscript is None:
+        return False
+    try:
+        result = subprocess.run(
+            [rscript, "-e", "suppressPackageStartupMessages(library(readr))"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return result.returncode == 0
+
+
 class HubSmokeTest(unittest.TestCase):
+    @pytest.mark.skipif(
+        not _r_packages_available(),
+        reason="R runtime + readr package required for full scaffold analysis step",
+    )
     def test_scaffold_all_and_cache(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_smoke_") as tmpdir:
             tmp_path = Path(tmpdir)
