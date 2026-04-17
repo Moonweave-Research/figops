@@ -1,0 +1,150 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from PIL import Image
+
+from themes.journal_theme import TIFF_AUTO_PRESETS, apply_publication_layout, mm_to_inch, save_journal_fig
+
+
+def _axes_box_mm(fig, ax):
+    fig_w_mm, fig_h_mm = (value * 25.4 for value in fig.get_size_inches())
+    pos = ax.get_position()
+    return fig_w_mm * pos.width, fig_h_mm * pos.height
+
+
+class JournalThemeLayoutTest(unittest.TestCase):
+    def test_standard_layout_preserves_absolute_box_size_across_initial_canvas_sizes(self):
+        initial_heights_mm = (70.0, 85.0)
+
+        for initial_height_mm in initial_heights_mm:
+            fig, ax = plt.subplots(figsize=(mm_to_inch(89.0), mm_to_inch(initial_height_mm)))
+            try:
+                apply_publication_layout("standard", fig=fig, target_format="nature")
+                box_w_mm, box_h_mm = _axes_box_mm(fig, ax)
+                fig_w_mm, fig_h_mm = (value * 25.4 for value in fig.get_size_inches())
+
+                self.assertAlmostEqual(fig_w_mm, 89.0, places=1)
+                self.assertAlmostEqual(fig_h_mm, 75.0, places=1)
+                self.assertAlmostEqual(box_w_mm, 70.0, places=1)
+                self.assertAlmostEqual(box_h_mm, 55.0, places=1)
+            finally:
+                plt.close(fig)
+
+    def test_top_outside_layout_preserves_absolute_box_size_across_initial_canvas_sizes(self):
+        initial_heights_mm = (70.0, 95.0)
+
+        for initial_height_mm in initial_heights_mm:
+            fig, ax = plt.subplots(figsize=(mm_to_inch(89.0), mm_to_inch(initial_height_mm)))
+            try:
+                apply_publication_layout("top_outside", fig=fig, target_format="nature")
+                box_w_mm, box_h_mm = _axes_box_mm(fig, ax)
+                fig_w_mm, fig_h_mm = (value * 25.4 for value in fig.get_size_inches())
+
+                self.assertAlmostEqual(fig_w_mm, 89.0, places=1)
+                self.assertAlmostEqual(fig_h_mm, 87.0, places=1)
+                self.assertAlmostEqual(box_w_mm, 70.0, places=1)
+                self.assertAlmostEqual(box_h_mm, 55.0, places=1)
+            finally:
+                plt.close(fig)
+
+    def test_ppt_layout_keeps_legacy_relative_behavior(self):
+        fig, ax = plt.subplots(figsize=(6, 4))
+        try:
+            apply_publication_layout("right_outside", fig=fig, target_format="ppt")
+            self.assertAlmostEqual(fig.subplotpars.right, 0.75, places=2)
+            self.assertFalse(hasattr(fig, "_graph_hub_layout_lock"))
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_disables_tight_bbox_for_locked_layout(self):
+        fig, ax = plt.subplots(figsize=(mm_to_inch(89.0), mm_to_inch(75.0)))
+        try:
+            apply_publication_layout("standard", fig=fig, target_format="nature")
+            with tempfile.TemporaryDirectory(prefix="journal_save_") as tmpdir:
+                out_path = Path(tmpdir) / "layout_locked.png"
+                save_journal_fig(fig, out_path, dpi=600)
+                with Image.open(out_path) as saved:
+                    self.assertEqual(saved.size, (2102, 1771))
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_tiff_companion(self):
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1])
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_tiff_") as tmpdir:
+                pdf_path = Path(tmpdir) / "figure.pdf"
+                save_journal_fig(fig, pdf_path, companion_formats=("png", "tiff"))
+
+                tiff_path = pdf_path.with_suffix(".tiff")
+                png_path = pdf_path.with_suffix(".png")
+                self.assertTrue(tiff_path.exists(), "TIFF companion not created")
+                self.assertTrue(png_path.exists(), "PNG companion not created")
+                self.assertGreater(tiff_path.stat().st_size, 1024, "TIFF file too small")
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_no_tiff_by_default(self):
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1])
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_notiff_") as tmpdir:
+                pdf_path = Path(tmpdir) / "figure.pdf"
+                save_journal_fig(fig, pdf_path)
+
+                tiff_path = pdf_path.with_suffix(".tiff")
+                png_path = pdf_path.with_suffix(".png")
+                self.assertFalse(tiff_path.exists(), "TIFF should not be created by default")
+                self.assertTrue(png_path.exists(), "PNG companion should exist by default")
+        finally:
+            plt.close(fig)
+
+    def test_tiff_companion_generated_with_png(self):
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1])
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_tiff_auto_") as tmpdir:
+                png_path = Path(tmpdir) / "figure.png"
+                save_journal_fig(fig, png_path, preset="nature", dpi=150)
+
+                tiff_path = png_path.with_suffix(".tiff")
+                self.assertTrue(tiff_path.exists(), "TIFF companion not created for nature preset")
+                self.assertGreater(tiff_path.stat().st_size, 1024, "TIFF file too small")
+        finally:
+            plt.close(fig)
+
+    def test_tiff_companion_skipped_for_ppt(self):
+        self.assertNotIn("ppt", TIFF_AUTO_PRESETS)
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1])
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_tiff_ppt_") as tmpdir:
+                png_path = Path(tmpdir) / "figure.png"
+                save_journal_fig(fig, png_path, preset="ppt", dpi=150)
+
+                tiff_path = png_path.with_suffix(".tiff")
+                self.assertFalse(tiff_path.exists(), "TIFF should not be created for ppt preset")
+        finally:
+            plt.close(fig)
+
+    def test_tiff_companion_opt_out(self):
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1])
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_tiff_optout_") as tmpdir:
+                png_path = Path(tmpdir) / "figure.png"
+                save_journal_fig(fig, png_path, preset="nature", tiff_companion=False, dpi=150)
+
+                tiff_path = png_path.with_suffix(".tiff")
+                self.assertFalse(tiff_path.exists(), "TIFF should not be created when tiff_companion=False")
+        finally:
+            plt.close(fig)
+
+
+if __name__ == "__main__":
+    unittest.main()
