@@ -5,17 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import pytest
-
 HUB_ROOT = Path(__file__).resolve().parent.parent
 ORCHESTRATOR = HUB_ROOT / "orchestrator.py"
 
 
 class HubSmokeTest(unittest.TestCase):
-    @pytest.mark.xfail(
-        reason="scaffold template emits python: null but validator rejects null — pre-existing bug unrelated to restore",
-        strict=False,
-    )
     def test_scaffold_all_and_cache(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_smoke_") as tmpdir:
             tmp_path = Path(tmpdir)
