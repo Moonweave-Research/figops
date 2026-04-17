@@ -1,0 +1,78 @@
+# ── 프로젝트 고유 팔레트 (Project-Specific) ───────────────────────
+WT_COLORS:
+  60: "#34495e"
+  70: "#2980b9"
+  75: "#e74c3c"
+  80: "#f39c12"
+  85: "#8e44ad"
+
+# ── palettes.py에서 이전된 데이터 ──────────────────────────────────────────────
+RESEARCH_COLOR_PALETTES:
+  Pastel Neutral: ["#C7D3DD", "#E1CFC2", "#D5E4C3", "#DCCEEA", "#F3DFC1", "#BFD8D2", "#E7C9D6", "#D9D9D9"]
+  Pastel Soft: ["#A8DADC", "#BDE0FE", "#FFC8DD", "#CDEAC0", "#F6D6AD", "#D9C2F0", "#F9E79F", "#C9E4CA"]
+  Pastel Cool: ["#B8E0D2", "#A9DEF9", "#C3BEF0", "#E4C1F9", "#FAD2E1", "#FFF1B6", "#CDE7BE", "#D0F4DE"]
+  Pastel Warm: ["#FFD6A5", "#FDFFB6", "#CAFFBF", "#FFADAD", "#FFC6FF", "#FEC5BB", "#FFE5D9", "#D8E2DC"]
+  Nature Pastel: ["#B7D3A8", "#A9C9D6", "#D7C0A7", "#E6B8B8", "#C9C4E3", "#E7D7A8", "#A8D5C2", "#D8BFD8"]
+  Pastel Contrast: ["#8EC5C1", "#6FA3D6", "#A07CC5", "#E28CA6", "#F2B880", "#B6D97A", "#7BC4A5", "#BFBFBF"]
+
+  Set2 (Seaborn): ["#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3"]
+  Set3 (Seaborn): ["#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462", "#B3DE69", "#FCCDE5"]
+  Deep (Seaborn): ["#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B3", "#937860", "#DA8BC3", "#8C8C8C"]
+  Muted (Seaborn): ["#4878D0", "#EE854A", "#6ACC64", "#D65F5F", "#956CB4", "#8C613C", "#DC7EC0", "#797979"]
+
+  Muted Professional: ["#4E79A7", "#F28E2B", "#76B7B2", "#59A14F", "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F"]
+  Tableau 10: ["#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F", "#EDC948", "#B07AA1", "#FF9DA7"]
+  Tol Bright: ["#4477AA", "#EE6677", "#228833", "#CCBB44", "#66CCEE", "#AA3377", "#BBBBBB", "#000000"]
+  Nature Earth: ["#6B705C", "#A5A58D", "#B7B7A4", "#CB997E", "#DDBEA9", "#A98467", "#7F5539", "#ADC178"]
+  Nature Journal: ["#355070", "#6D597A", "#B56576", "#E56B6F", "#EAAC8B", "#4D908E", "#577590", "#90BE6D"]
+  Nature Energy: ["#3B4992", "#EE0000", "#008B45", "#631879", "#008280", "#BB0021", "#5F559B", "#A20056"]
+  Science Advances: ["#00468B", "#ED0000", "#42B540", "#0099B4", "#925E9F", "#FDAF91", "#AD002A", "#ADB6B6"]
+  Cell Press: ["#BC3C29", "#0072B5", "#E18727", "#20854E", "#7876B1", "#6F99AD", "#FFDC91", "#EE4C97"]
+
+  Ocean: ["#003F5C", "#2F4B7C", "#665191", "#A05195", "#D45087", "#F95D6A", "#FF7C43", "#FFA600"]
+  Forest: ["#1B4332", "#2D6A4F", "#40916C", "#52B788", "#74C69D", "#95D5B2", "#B7E4C7", "#D8F3DC"]
+  Sunset: ["#355070", "#6D597A", "#B56576", "#E56B6F", "#EAAC8B", "#F4A261", "#E76F51", "#D1495B"]
+  Viridis 8: ["#440154", "#46327E", "#365C8D", "#277F8E", "#1FA187", "#4AC16D", "#A0DA39", "#FDE725"]
+  Cividis 8: ["#00204C", "#2E3F6D", "#4D5F7A", "#6D7F75", "#8F9F6E", "#B5BF63", "#DDDF52", "#FFE945"]
+  Magma 8: ["#000004", "#221150", "#5F187F", "#982D80", "#CC4778", "#F1605D", "#FD9668", "#FECF92"]
+
+  Colorblind Safe: ["#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9", "#F0E442", "#999999"]
+  Okabe-Ito: ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D5E400", "#CC79A7", "#999999"]
+  Okabe-Ito (Safe): ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D5E400", "#CC79A7", "#999999"]
+
+
+  RESEARCH_PALETTE_GROUPS:
+  - ["Pastel", ["Pastel Neutral", "Pastel Soft", "Pastel Cool", "Pastel Warm", "Nature Pastel", "Pastel Contrast"]]
+  - ["Publication", ["Muted Professional", "Tableau 10", "Nature Journal", "Nature Energy", "Science Advances", "Cell Press", "Nature Earth", "Deep (Seaborn)", "Muted (Seaborn)", "Tol Bright"]]
+  - ["Sequential", ["Viridis 8", "Cividis 8", "Magma 8", "Ocean", "Forest", "Sunset"]]
+  - ["Accessibility", ["Colorblind Safe", "Okabe-Ito", "Okabe-Ito (Safe)", "Set2 (Seaborn)", "Set3 (Seaborn)"]]
+
+
+# [width_inch, height_inch, title_size, label_size, legend_size, line_width, dpi]
+JOURNAL_PRESET_SPECS:
+  "Nature (89mm)": [3.50, 2.80, 8, 7, 6, 0.75, 600]
+  "Nature (183mm)": [7.20, 4.50, 10, 8, 7, 1.0, 600]
+  "Science (85mm)": [3.35, 2.68, 8, 7, 6, 0.75, 600]
+  "Science (170mm)": [6.69, 4.50, 10, 8, 7, 1.0, 600]
+  "ACS (8.3cm)": [3.27, 2.62, 8, 7, 6, 0.75, 600]
+  "ACS (17.1cm)": [6.73, 4.50, 10, 8, 7, 1.0, 600]
+  "RSC (8.4cm)": [3.31, 2.65, 8, 7, 6, 0.75, 600]
+  "RSC (17.6cm)": [6.93, 4.50, 10, 8, 7, 1.0, 600]
+  "Elsevier (9cm)": [3.54, 2.83, 8, 7, 6, 0.75, 600]
+  "Elsevier (19cm)": [7.48, 5.00, 10, 8, 7, 1.0, 600]
+  "PPT": [10.0, 7.50, 18, 14, 12, 2.0, 150]
+  "Poster": [15.0, 12.0, 24, 20, 16, 2.5, 300]
+
+JOURNAL_PRESET_ORDER:
+  - "Nature (89mm)"
+  - "Nature (183mm)"
+  - "Science (85mm)"
+  - "Science (170mm)"
+  - "ACS (8.3cm)"
+  - "ACS (17.1cm)"
+  - "RSC (8.4cm)"
+  - "RSC (17.6cm)"
+  - "Elsevier (9cm)"
+  - "Elsevier (19cm)"
+  - "PPT"
+  - "Poster"

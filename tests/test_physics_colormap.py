@@ -2,20 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.xfail(
-    reason="themes.physics_colormap missing locally — Phase 1 fix-up required (copy from Drive)",
-    strict=False,
-)
-
-try:
-    from themes.physics_colormap import PHYSICS_COLORMAP_MAP, resolve_colormap
-except ModuleNotFoundError:
-    PHYSICS_COLORMAP_MAP = {}
-
-    def resolve_colormap(physics_type, fallback="viridis"):
-        return fallback
+from themes.physics_colormap import PHYSICS_COLORMAP_MAP, resolve_colormap
 
 
 class TestResolveColormap:
