@@ -46,10 +46,15 @@ class OrchestratorFailureStageTest(unittest.TestCase):
             with (
                 patch.object(sys, "argv", argv),
                 patch("orchestrator.run_preflight_check"),
-                patch("orchestrator.load_config", return_value=(config, str(project_dir / "project_config.yaml"), "cfg-hash")),
-                patch("orchestrator.validate_environment_locks", return_value={"ok": True, "strict": False, "python_lock": {}, "r_lock": {}}),
+                patch(
+                    "orchestrator.load_config",
+                    return_value=(config, str(project_dir / "project_config.yaml"), "cfg-hash"),
+                ),
+                patch(
+                    "orchestrator.validate_environment_locks",
+                    return_value={"ok": True, "strict": False, "python_lock": {}, "r_lock": {}},
+                ),
                 patch("orchestrator.load_build_state", return_value=({}, str(project_dir / ".build_state.json"))),
-                patch("orchestrator.collect_dvc_provenance", return_value={"enabled": False}),
                 patch("orchestrator.print_provenance"),
                 patch("orchestrator.parse_sweep_config", return_value={"runs": [{"lr": "0.01"}]}),
                 patch("orchestrator.run_sweep", side_effect=fake_run_sweep),

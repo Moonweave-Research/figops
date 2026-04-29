@@ -93,9 +93,7 @@ class HubSmokeTest(unittest.TestCase):
     def _run(self, cmd, tmp_path):
         env = os.environ.copy()
         runtime_home = tmp_path / "runtime_home"
-        dvc_home = tmp_path / "dvc_home"
         env["RESEARCH_HUB_RUNTIME_HOME"] = str(runtime_home)
-        env["RESEARCH_HUB_DVC_HOME"] = str(dvc_home)
         env["PYTHONUNBUFFERED"] = "1"
         return subprocess.run(
             cmd,

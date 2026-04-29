@@ -1,4 +1,3 @@
-
 import json
 import os
 import unittest
@@ -24,7 +23,6 @@ class TestProvenanceFingerprint(unittest.TestCase):
             "config": "c0ffee",
             "env": "b007",
             "git": "git-sha",
-            "dvc": "up_to_date",
             "ts": "2026-03-09T00:00:00",
             "generator": "TestGenerator",
         }

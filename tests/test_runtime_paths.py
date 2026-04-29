@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,9 +7,7 @@ from unittest.mock import patch
 
 from hub_core.error_dumper import dump_pipeline_failure
 from hub_core.execution_log import write_execution_log
-from hub_core.provenance import _prepare_dvc_env, _resolve_dvc_command
 from hub_core.visual_regression import write_check_all_report
-
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
 
@@ -24,7 +21,6 @@ class RuntimePathTest(unittest.TestCase):
 
             env = {
                 "RESEARCH_HUB_RUNTIME_ROOT": str(runtime_root),
-                "RESEARCH_HUB_DVC_HOME": str(runtime_root / "dvc_home_override"),
             }
 
             config = {
@@ -41,7 +37,6 @@ class RuntimePathTest(unittest.TestCase):
                     "config-hash",
                     args={"step": "all"},
                     lock_info={"strict": False, "python_lock": {}, "r_lock": {}},
-                    dvc_info={"enabled": True, "status": "ok", "status_hash": "abc"},
                     build_state_path=str(project_dir / ".build_state.json"),
                     start_time=None,
                     end_time=None,
@@ -51,16 +46,11 @@ class RuntimePathTest(unittest.TestCase):
                     str(HUB_ROOT),
                     {"schema_version": 3, "success": True, "results": []},
                 )
-                dvc_env = _prepare_dvc_env(str(HUB_ROOT))
 
             self.assertTrue(Path(log_path).is_file())
             self.assertTrue(Path(report_path).is_file())
             self.assertTrue(str(Path(log_path)).startswith(str(runtime_root)))
             self.assertTrue(str(Path(report_path)).startswith(str(runtime_root)))
-            self.assertEqual(dvc_env["DVC_HOME"], str(runtime_root / "dvc_home_override"))
-            self.assertEqual(dvc_env["XDG_CACHE_HOME"], str(runtime_root / "dvc_home_override" / "xdg_cache"))
-            self.assertEqual(dvc_env["XDG_CONFIG_HOME"], str(runtime_root / "dvc_home_override" / "xdg_config"))
-            self.assertEqual(dvc_env["XDG_STATE_HOME"], str(runtime_root / "dvc_home_override" / "xdg_state"))
             self.assertEqual(record["status"], "success")
             self.assertEqual(record["project_name"], "Runtime Test Project")
             self.assertEqual(record["job_id"], "project")
@@ -116,53 +106,6 @@ class RuntimePathTest(unittest.TestCase):
                 "python orchestrator.py --project demo --step plot",
             )
             self.assertTrue(latest_failure.is_file())
-
-    def test_resolve_dvc_command_falls_back_when_no_candidate_works(self):
-        attempted = []
-
-        def fake_is_executable_available(cmd):
-            attempted.append(cmd)
-            return cmd in {"dvc", sys.executable}
-
-        class Result:
-            def __init__(self, returncode):
-                self.returncode = returncode
-                self.stdout = ""
-
-        def fake_run(cmd, **kwargs):
-            return Result(1)
-
-        with patch("hub_core.provenance.is_executable_available", side_effect=fake_is_executable_available):
-            with patch("hub_core.provenance.subprocess.run", side_effect=fake_run):
-                command = _resolve_dvc_command()
-
-        self.assertIsNone(command)
-        self.assertIn("dvc", attempted)
-        self.assertIn(sys.executable, attempted)
-        
-        expected_venv_dvc = str(HUB_ROOT / ".venv" / "bin" / "dvc")
-        self.assertIn(expected_venv_dvc, attempted)
-
-    def test_resolve_dvc_command_prefers_sibling_dvc_of_python(self):
-        sibling_dvc = str(HUB_ROOT / ".venv" / "bin" / "dvc")
-
-        def fake_is_executable_available(cmd):
-            return cmd in {sibling_dvc, "dvc", sys.executable}
-
-        class Result:
-            def __init__(self, returncode):
-                self.returncode = returncode
-                self.stdout = ""
-
-        def fake_run(cmd, **kwargs):
-            return Result(0 if cmd and cmd[0] == sibling_dvc else 1)
-
-        with patch("hub_core.provenance.os.path.exists", side_effect=lambda p: p == sibling_dvc):
-            with patch("hub_core.provenance.is_executable_available", side_effect=fake_is_executable_available):
-                with patch("hub_core.provenance.subprocess.run", side_effect=fake_run):
-                    command = _resolve_dvc_command()
-
-        self.assertEqual(command, [sibling_dvc])
 
 
 if __name__ == "__main__":
