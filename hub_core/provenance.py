@@ -6,14 +6,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from .runtime_paths import ensure_runtime_dirs, fallback_temp_dvc_home, resolve_dvc_home
 from .utils import hash_file, is_executable_available, short_hash
 
 DEFAULT_PYTHON_LOCK_CANDIDATES = ("uv.lock", "requirements-lock.txt")
 DEFAULT_R_LOCK_CANDIDATE = "renv.lock"
-
-_DVC_CMD_UNRESOLVED = object()
-_dvc_cmd_cache: object = _DVC_CMD_UNRESOLVED
 
 
 def hash_csv_file(csv_path: str | Path) -> str:
@@ -73,88 +69,6 @@ def _build_environment_hash(lock_info, python_version, r_version, config):
     }
     normalized = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
-
-def _resolve_dvc_command():
-    global _dvc_cmd_cache
-    if _dvc_cmd_cache is not _DVC_CMD_UNRESOLVED:
-        return _dvc_cmd_cache
-
-    env_cmd = os.environ.get("DVC_BIN")
-    if env_cmd and _is_working_cli([env_cmd], "--version"):
-        _dvc_cmd_cache = [env_cmd]
-        return _dvc_cmd_cache
-
-    sibling_dvc = _sibling_dvc_executable(sys.executable)
-    if sibling_dvc and _is_working_cli([sibling_dvc], "--version"):
-        _dvc_cmd_cache = [sibling_dvc]
-        return _dvc_cmd_cache
-
-    candidates = [
-        "dvc",
-        [sys.executable, "-m", "dvc"],
-    ]
-    for cmd in candidates:
-        if _is_working_cli(cmd if isinstance(cmd, list) else [cmd], "--version"):
-            _dvc_cmd_cache = cmd if isinstance(cmd, list) else [cmd]
-            return _dvc_cmd_cache
-
-    return None  # not cached: absence of DVC may be transient
-
-
-def _sibling_dvc_executable(python_executable):
-    if not python_executable:
-        return None
-    python_path = os.path.abspath(str(python_executable))
-    bindir = os.path.dirname(python_path)
-    name = "dvc.exe" if os.name == "nt" else "dvc"
-    candidate = os.path.join(bindir, name)
-    if os.path.exists(candidate):
-        return candidate
-    return None
-
-
-def _is_working_cli(cmd, version_arg):
-    if not cmd:
-        return False
-    probe = list(cmd) if isinstance(cmd, (list, tuple)) else [cmd]
-    if probe and probe[0] and not probe[0].startswith("-") and not is_executable_available(probe[0]):
-        return False
-    try:
-        proc = subprocess.run(
-            probe + [version_arg],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=4,
-            check=False,
-        )
-    except OSError:
-        return False
-    except Exception:
-        return False
-    return proc.returncode == 0
-
-
-def _prepare_dvc_env(hub_path):
-    base = resolve_dvc_home()
-    cache_dir = os.path.join(base, "xdg_cache")
-    config_dir = os.path.join(base, "xdg_config")
-    state_dir = os.path.join(base, "xdg_state")
-    try:
-        ensure_runtime_dirs(base, cache_dir, config_dir, state_dir)
-    except OSError:
-        base = fallback_temp_dvc_home()
-        cache_dir = os.path.join(base, "xdg_cache")
-        config_dir = os.path.join(base, "xdg_config")
-        state_dir = os.path.join(base, "xdg_state")
-        ensure_runtime_dirs(base, cache_dir, config_dir, state_dir)
-
-    env = os.environ.copy()
-    env["DVC_HOME"] = base
-    env["XDG_CACHE_HOME"] = cache_dir
-    env["XDG_CONFIG_HOME"] = config_dir
-    env["XDG_STATE_HOME"] = state_dir
-    return env
 
 
 def validate_environment_locks(project_dir, hub_path, config, strict_cli=False):
@@ -229,87 +143,6 @@ def validate_environment_locks(project_dir, hub_path, config, strict_cli=False):
     }
 
 
-def collect_dvc_provenance(project_dir, hub_path):
-    workspace_candidates = [project_dir, hub_path]
-    workspace = None
-    for candidate in workspace_candidates:
-        if os.path.isdir(os.path.join(candidate, ".dvc")):
-            workspace = candidate
-            break
-
-    if workspace is None:
-        return {
-            "enabled": False,
-            "workspace": None,
-            "status": "dvc_not_initialized",
-            "status_hash": None,
-        }
-
-    dvc_cmd = _resolve_dvc_command()
-    if not dvc_cmd:
-        return {
-            "enabled": True,
-            "workspace": workspace,
-            "status": "dvc_binary_not_found",
-            "status_hash": None,
-        }
-
-    try:
-        dvc_env = _prepare_dvc_env(hub_path)
-        proc = subprocess.run(
-            list(dvc_cmd) + ["status", "--json"],
-            cwd=workspace,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=8,
-            check=False,
-            env=dvc_env,
-        )
-    except Exception as e:
-        return {
-            "enabled": True,
-            "workspace": workspace,
-            "status": f"dvc_status_error: {e}",
-            "status_hash": None,
-        }
-
-    output = (proc.stdout or "").strip()
-    if proc.returncode != 0:
-        summary = output.splitlines()[0] if output else f"dvc_status_failed(rc={proc.returncode})"
-        return {
-            "enabled": True,
-            "workspace": workspace,
-            "status": summary,
-            "status_hash": None,
-        }
-
-    if not output:
-        normalized = "{}"
-        return {
-            "enabled": True,
-            "workspace": workspace,
-            "status": "up_to_date",
-            "status_hash": hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
-        }
-
-    try:
-        parsed = json.loads(output)
-        normalized = json.dumps(parsed, sort_keys=True, ensure_ascii=False)
-        changed = len(parsed) if isinstance(parsed, dict) else 1
-        status = "up_to_date" if changed == 0 else f"changed_items={changed}"
-    except json.JSONDecodeError:
-        normalized = output
-        status = "raw_status"
-
-    return {
-        "enabled": True,
-        "workspace": workspace,
-        "status": status,
-        "status_hash": hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
-    }
-
-
 def _readable_tool_version(cmd):
     if not is_executable_available(cmd):
         return "N/A"
@@ -345,7 +178,6 @@ def print_provenance(
     config_hash,
     config,
     lock_info=None,
-    dvc_info=None,
     build_state_path=None,
 ):
     # This assumes orchestrator.py is one level up from hub_core
@@ -379,10 +211,6 @@ def print_provenance(
         print(f"   - r_lock_hash: {short_hash(r_lock.get('hash'))}")
     print(f"   - environment_hash: {short_hash(environment_hash)}")
 
-    if isinstance(dvc_info, dict):
-        print(f"   - dvc_status: {dvc_info.get('status', 'N/A')}")
-        print(f"   - dvc_status_hash: {short_hash(dvc_info.get('status_hash'))}")
-
 
 # ---------------------------------------------------------------------------
 # Digital Fingerprint: 이미지 메타데이터 임베딩
@@ -395,7 +223,6 @@ def build_fingerprint_payload(
     environment_hash: str,
     git_commit: str,
     timestamp: str,
-    dvc_info: dict | None = None,
     data_hashes: dict | None = None,
     script: str | None = None,
     input_patterns: list[str] | None = None,
@@ -411,7 +238,6 @@ def build_fingerprint_payload(
         "config": short_hash(config_hash) if config_hash else "N/A",
         "env": short_hash(environment_hash) if environment_hash else "N/A",
         "git": git_commit or "N/A",
-        "dvc": (dvc_info or {}).get("status", "N/A"),
         "ts": timestamp,
         "generator": "Graph-Hub/provenance.py",
     }
@@ -552,7 +378,6 @@ def embed_figures_fingerprint(
     environment_hash: str,
     git_commit: str,
     timestamp: str,
-    dvc_info: dict | None = None,
 ) -> int:
     """
     project_config.yaml의 figures/diagrams 섹션에 정의된 모든 출력 파일에
@@ -568,7 +393,6 @@ def embed_figures_fingerprint(
         environment_hash=environment_hash,
         git_commit=git_commit,
         timestamp=timestamp,
-        dvc_info=dvc_info,
     )
 
     # 1) config 등록 파일 수집 — inputs/script 메타 포함

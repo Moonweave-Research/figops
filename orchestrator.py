@@ -24,7 +24,6 @@ from datetime import datetime, timezone
 from hub_core import (
     BUILD_STATE_SCHEMA_VERSION,
     check_golden_regression,
-    collect_dvc_provenance,
     dump_exception_failure,
     dump_pipeline_failure,
     embed_figures_fingerprint,
@@ -249,7 +248,6 @@ def main():
     config_path = None
     config_hash = None
     lock_info = None
-    dvc_info = None
     build_state_path = None
     failure_dump_path = None
 
@@ -307,7 +305,6 @@ def main():
         r_version = _readable_tool_version(r_exec)
         env_hash = _build_environment_hash(None, python_version, r_version, config)
         git_commit = _readable_git_commit(hub_path)
-        dvc_info = collect_dvc_provenance(project_path, hub_path)
         ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
         n = embed_figures_fingerprint(
@@ -317,7 +314,6 @@ def main():
             environment_hash=env_hash,
             git_commit=git_commit,
             timestamp=ts,
-            dvc_info=dvc_info,
         )
         return 0 if n >= 0 else 1
 
@@ -445,7 +441,6 @@ def main():
                     config_hash,
                     args=args,
                     lock_info=lock_info,
-                    dvc_info=dvc_info,
                     build_state_path=build_state_path,
                     start_time=start_time,
                     end_time=end_time,
@@ -460,14 +455,12 @@ def main():
             return 1
 
         build_state, build_state_path = load_build_state(project_path)
-        dvc_info = collect_dvc_provenance(project_path, hub_path)
         print_provenance(
             project_path,
             config_path,
             config_hash,
             config,
             lock_info=lock_info,
-            dvc_info=dvc_info,
             build_state_path=build_state_path,
         )
 
@@ -691,7 +684,6 @@ def main():
                     environment_hash=env_hash,
                     git_commit=git_commit,
                     timestamp=fingerprint_time.isoformat(timespec="seconds"),
-                    dvc_info=dvc_info,
                 )
                 _refresh_visual_output_signatures(project_path, config, build_state)
                 save_build_state(build_state_path, build_state)
@@ -734,7 +726,6 @@ def main():
             config_hash,
             args=args,
             lock_info=lock_info,
-            dvc_info=dvc_info,
             build_state_path=build_state_path,
             start_time=start_time,
             end_time=end_time,

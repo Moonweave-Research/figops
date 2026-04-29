@@ -73,13 +73,6 @@ def resolve_execution_artifacts_dir(project_dir: str, engine_target: str = "hub_
     return os.path.join(_abspath(project_dir), "results", "_execution", normalized_target)
 
 
-def resolve_dvc_home():
-    override = os.environ.get("RESEARCH_HUB_DVC_HOME")
-    if override:
-        return _abspath(override)
-    return os.path.join(resolve_runtime_root(), "dvc_home")
-
-
 def ensure_runtime_dirs(*paths):
     created = []
     for path in paths:
@@ -88,8 +81,3 @@ def ensure_runtime_dirs(*paths):
         os.makedirs(path, exist_ok=True)
         created.append(path)
     return created
-
-
-def fallback_temp_dvc_home():
-    base = os.path.join(tempfile.gettempdir(), "graph_making_hub_dvc_home")
-    return os.path.abspath(base)

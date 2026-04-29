@@ -59,7 +59,6 @@ def build_execution_log_record(
     *,
     args=None,
     lock_info=None,
-    dvc_info=None,
     build_state_path=None,
     start_time=None,
     end_time=None,
@@ -97,7 +96,6 @@ def build_execution_log_record(
             project_name = raw_name.strip()
 
     lock_info = lock_info if isinstance(lock_info, dict) else {}
-    dvc_info = dvc_info if isinstance(dvc_info, dict) else {}
 
     record = {
         "artifacts_dir": artifacts_dir,
@@ -105,9 +103,6 @@ def build_execution_log_record(
         "config_hash": config_hash,
         "config_path": config_path,
         "detail": detail,
-        "dvc_enabled": bool(dvc_info.get("enabled", False)),
-        "dvc_status": dvc_info.get("status"),
-        "dvc_status_hash": dvc_info.get("status_hash"),
         "duration_seconds": duration_seconds,
         "engine_target": normalized_engine_target,
         "end_time": finished_at.isoformat(timespec="seconds") if finished_at else None,
@@ -174,7 +169,6 @@ def write_execution_log(
     *,
     args=None,
     lock_info=None,
-    dvc_info=None,
     build_state_path=None,
     start_time=None,
     end_time=None,
@@ -195,7 +189,6 @@ def write_execution_log(
         config_hash,
         args=args,
         lock_info=lock_info,
-        dvc_info=dvc_info,
         build_state_path=build_state_path,
         start_time=start_time,
         end_time=end_time,

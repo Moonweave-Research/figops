@@ -1,7 +1,6 @@
 import os
 import shutil
 import subprocess
-import sys
 
 DEFAULT_DOCKER_IMAGE = "graph-making-hub:latest"
 
@@ -17,10 +16,7 @@ def rerun_in_docker(hub_path, root_dir, argv, *, image=DEFAULT_DOCKER_IMAGE, bui
     if build:
         _build_docker_image(docker_bin, hub_path, image)
 
-    filtered_args = [
-        arg for arg in argv
-        if arg not in {"--docker", "--docker-build"}
-    ]
+    filtered_args = [arg for arg in argv if arg not in {"--docker", "--docker-build"}]
 
     command = [
         docker_bin,
@@ -30,8 +26,6 @@ def rerun_in_docker(hub_path, root_dir, argv, *, image=DEFAULT_DOCKER_IMAGE, bui
         "RESEARCH_HUB_IN_DOCKER=1",
         "-e",
         "PYTHONUNBUFFERED=1",
-        "-e",
-        "DVC_BIN=/usr/local/bin/dvc",
         "-v",
         f"{root_dir}:{root_dir}",
         "-w",

@@ -21,7 +21,6 @@ from .figure_preflight import validate_figure_preflight
 from .health_check import run_preflight_check
 from .process_runner import run_analysis, run_comparison, run_diagrams, run_plots, run_sweep
 from .provenance import (
-    collect_dvc_provenance,
     embed_figures_fingerprint,
     print_provenance,
     validate_environment_locks,
