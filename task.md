@@ -24,14 +24,14 @@
 
 ## 🆕 CTO Review Remediation (2026-03-05)
 
-- [x] **Phase 1 기반 반영**: orchestrator provenance에 DVC 상태/해시(`dvc status --json` 기반) 출력 추가
+- [retired 2026-04-29] ~~**Phase 1 기반 반영**: orchestrator provenance에 DVC 상태/해시 출력~~ — DVC 통합 폐기 (셋업 후 12일간 0건 사용, 워크플로 부적합)
 - [x] **Phase 2 기반 반영**: `environment.python_lock`/`environment.r_lock` 스키마 + lockfile 사전 게이트 + strict 모드(`--strict-lock`) 도입
 - [x] **Phase 3 기반 반영**: `.build_state.json` 기반 Smart Build (mtime+size 시그니처), `[RUN]/[SKIP]` 로그, `--force` 전체 재실행 도입
 - [x] **템플릿/문서 동기화**: `project_config_template.yaml`, `Research_Central_Architecture.md`, `.gitignore` 업데이트
-- [x] **운영 검증(실행)**: DVC local remote(`localtmp`)에서 `add/push/pull/status` 왕복 검증 완료
+- [retired 2026-04-29] ~~**운영 검증(실행)**: DVC local remote(`localtmp`)에서 `add/push/pull/status` 왕복 검증~~
 - [x] **운영 검증(실행)**: 실제 프로젝트(`10mm_20min_통합_260303`)에 `renv.lock` 생성 + `renv::restore()` 동기화 확인
 - [x] **운영 검증(실행)**: 실제 프로젝트 `--step plot --strict-lock` 2회차에서 Smart Build `[SKIP]` 확인 + `--force` 재실행 확인
-- [x] **운영 후속 작업**: DVC remote를 `gdrive://<folder_id>`로 전환하고 OAuth(Desktop app) 방식으로 `dvc push/pull` 재검증 완료
+- [retired 2026-04-29] ~~**운영 후속 작업**: DVC remote를 `gdrive://<folder_id>`로 전환하고 OAuth(Desktop app) 방식으로 `dvc push/pull` 재검증~~
 - [x] **운영 검증(실행)**: 실제 프로젝트 `--step all --strict-lock --force` 완주 + 2회차 incremental에서 analysis/plot 전체 `[SKIP]` 확인
 
 ## 🆕 실제 프로젝트 회귀 검증 (2026-03-06)
@@ -67,7 +67,7 @@
 - [x] **README 역할 분리**
   - DoD: README가 `처음 쓰는 사람`, `매일 쓰는 사람`, `운영자` 기준으로 다시 정리되고, 운영 검증 명령은 별도 섹션으로 분리
 - [x] **다중 컴퓨터 운영 규칙 문서화**
-  - DoD: README에 Google Drive Desktop 앱 문제와 DVC 인증 문제를 구분하고, 여러 컴퓨터 사용 규칙을 짧게 명시
+  - DoD: README에 Google Drive Desktop 앱 문제 (DVC 항목은 retired 2026-04-29) 구분하고, 여러 컴퓨터 사용 규칙을 짧게 명시
 - [x] **사용자용 다음 행동 안내 강화**
   - DoD: `orchestrator.py`, `config_parser.py`, `provenance.py`가 자주 발생하는 실패 지점에서 바로 다음 행동을 출력
 - [x] **QA 문서 역할 명확화**
