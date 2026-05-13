@@ -41,4 +41,61 @@ Orchestrator injects the following vars:
 
 ---
 
-**Last Update**: 2026-03-05 (Modularized Architecture, Semantic Contracts, GDrive Integration)
+## 5) Local Operational Ownership
+
+Graph Hub locally owns per-project analysis and plotting orchestration via `orchestrator.py` and `project_config.yaml` contracts. Workspace-level figure or schematic integrations may reference this repo, but current operational ownership for analysis, plotting, cache behavior, and project scaffolding stays here.
+
+Programmatic schematic Hub integration may be described in workspace-level specs, but it is not wired into the current Hub orchestrator CLI unless this repository documents that change.
+
+## 6) Common Commands
+
+Run from `[Graph_making_hub]/`:
+
+```bash
+# Interactive project selection
+python orchestrator.py
+
+# Run full pipeline
+python orchestrator.py --project "01_Ionoelastomer" --step all
+
+# Replot only
+python orchestrator.py --project "01_Ionoelastomer" --step plot
+
+# Force rerun
+python orchestrator.py --project "프로젝트명" --step all --force
+
+# Scaffold a new project
+python orchestrator.py --init --project "새_프로젝트_폴더"
+
+# List configured projects
+python orchestrator.py --list-projects
+
+# Smoke tests
+python -m unittest tests.test_smoke
+
+# Full regression check across all projects
+python orchestrator.py --check-all --step all --force --strict-lock
+```
+
+## 7) Key Architecture
+
+- `orchestrator.py`: CLI entry point and top-level pipeline coordinator.
+- `hub_core/`: Config loading, validation, cache logic, provenance, process execution, scaffolding, and runtime helpers.
+- `analysis_helpers/`: Shared R-side analysis utilities.
+- `plotting/`: Shared Python plotting helpers and reusable style logic.
+- `themes/`: Journal and presentation style presets.
+- `project_config_template.yaml`: Canonical template for new `project_config.yaml` files.
+
+## 8) Dependencies
+
+- Python dependency state from `pyproject.toml` and `uv.lock` for orchestration and plotting.
+- R runtime from `renv.lock` for project analysis scripts.
+- Keep runtime environments outside tracked source unless a repo-level exception is documented.
+
+## 9) Standardized Plotting Policy
+
+Before adding plot-specific utility code, check `[Graph_making_hub]/plotting/utils.py` for an existing shared helper. Reuse and extend shared helpers such as `compress_sample_label` instead of re-implementing ad-hoc formatting logic inside project plots.
+
+---
+
+**Last Update**: 2026-05-13 (AgentOps ownership seed; Modularized Architecture, Semantic Contracts, GDrive Integration)
