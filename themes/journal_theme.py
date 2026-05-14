@@ -79,7 +79,7 @@ _LEGACY_LAYOUT_RATIOS = {
     "standard": {"left": 0.15, "right": 0.95, "bottom": 0.15, "top": 0.90},
 }
 
-TIFF_AUTO_PRESETS: set[str] = {"nature", "science", "acs", "rsc", "elsevier", "wiley", "cell"}
+TIFF_AUTO_PRESETS: set[str] = {"nature", "nature_surfur", "science", "acs", "rsc", "elsevier", "wiley", "cell"}
 
 
 def mm_to_inch(mm):
@@ -313,7 +313,7 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
     (순수 함수 지향: 환경 변수를 내부에서 읽지 않고 인자로만 작동)
 
     Args:
-        target_format (str): 적용할 테마 프리셋 이름 ('nature', 'science', 'ppt', 'default', 'acs', 'rsc', 'elsevier')
+        target_format (str): 적용할 테마 프리셋 이름 ('nature', 'nature_surfur', 'science', 'ppt', 'default', 'acs', 'rsc', 'elsevier')
         font_scale (float): 기준 테마 폰트 사이즈 대비 보정 배율
         profile_name (str): 세부 스타일 프로파일 이름 (예: baseline, resistance_premium)
     """

@@ -4,7 +4,18 @@ import unicodedata
 
 import yaml
 
-ALLOWED_TARGET_FORMATS = {"nature", "science", "ppt", "default", "acs", "rsc", "elsevier", "wiley", "cell"}
+ALLOWED_TARGET_FORMATS = {
+    "nature",
+    "nature_surfur",
+    "science",
+    "ppt",
+    "default",
+    "acs",
+    "rsc",
+    "elsevier",
+    "wiley",
+    "cell",
+}
 ALLOWED_FONT_STRATEGIES = {"compensate", "as_is"}
 CURRENT_CONFIG_SCHEMA_VERSION = "1.0"
 ALLOWED_PRESET_KEYS = {

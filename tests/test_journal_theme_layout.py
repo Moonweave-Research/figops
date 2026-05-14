@@ -118,6 +118,21 @@ class JournalThemeLayoutTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    def test_tiff_companion_generated_for_nature_surfur(self):
+        self.assertIn("nature_surfur", TIFF_AUTO_PRESETS)
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1])
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_tiff_surfur_") as tmpdir:
+                png_path = Path(tmpdir) / "figure.png"
+                save_journal_fig(fig, png_path, preset="nature_surfur", dpi=150)
+
+                tiff_path = png_path.with_suffix(".tiff")
+                self.assertTrue(tiff_path.exists(), "TIFF companion not created for nature_surfur preset")
+                self.assertGreater(tiff_path.stat().st_size, 1024, "TIFF file too small")
+        finally:
+            plt.close(fig)
+
     def test_tiff_companion_skipped_for_ppt(self):
         self.assertNotIn("ppt", TIFF_AUTO_PRESETS)
         fig, ax = plt.subplots()
