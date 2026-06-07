@@ -30,6 +30,16 @@ Artifact results must distinguish:
 
 No MCP write or execute tool may return bare success for a visually unverified graph.
 
+Phase 4 v1 represents this status as `artifact_status` on render and artifact collection results:
+
+- `validated`: request/config/data checks passed in dry-run mode,
+- `preflight_passed`: output passed visual preflight with no warnings,
+- `baseline_matched`: output hash matched an explicit baseline file,
+- `manual_review_needed`: output exists but preflight warnings, failed checks, or baseline mismatch require review,
+- `failed`: execution or artifact lookup failed before quality could be established.
+
+The v1 baseline comparison is a non-mutating sha256 comparison between an explicit `baseline_path` and the produced artifact. It is a regression guard, not a perceptual image similarity claim.
+
 ## Batch Operation Rules
 
 Batch operations must be:
@@ -48,9 +58,33 @@ Default exclusions:
 - invalid configs for execution
 - legacy folders unless explicitly selected
 
+Phase 4 v1 exposes `graphhub.batch_check` as the bounded batch surface. It discovers projects, applies the default exclusions, validates selected projects through existing Graph Hub validation, and writes a runtime manifest only when `dry_run=false`.
+
+Inputs:
+
+- `root`
+- `max_depth`: default `4`
+- `max_projects`: capped by the server
+- `include_invalid`: default `false`
+- `include_legacy`: default `false`
+- `include_worktrees`: default `false`
+- `include_ephemeral`: default `false`
+- `dry_run`: default `true`
+- `batch_id`
+- `resume_manifest_path`
+
+Outputs:
+
+- `checked_projects`
+- `skipped_projects` with reason codes
+- `manifest_path`
+- `log_paths`
+- `resumed_from`
+
 ## Non-Goals
 
 - No unrestricted workspace-wide batch execution.
+- No batch rendering in Phase 4 v1.
 - No silent overwrite of existing figures.
 - No automatic publication-readiness claim.
 - No batch execution before visual preflight is wired.
@@ -79,4 +113,3 @@ Batch tests:
 - resume uses a prior manifest,
 - log paths are returned,
 - skipped projects include reasons.
-

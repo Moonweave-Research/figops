@@ -7,6 +7,7 @@ import os
 import queue
 import shutil
 import sys
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,12 +39,20 @@ TOOL_NAMES = (
     "graphhub.collect_artifacts",
     "graphhub.scaffold_project",
     "graphhub.normalize_project_structure",
+    "graphhub.batch_check",
 )
-WRITE_TOOL_NAMES = ("graphhub.render_csv_graph", "graphhub.scaffold_project", "graphhub.normalize_project_structure")
+WRITE_TOOL_NAMES = (
+    "graphhub.render_csv_graph",
+    "graphhub.scaffold_project",
+    "graphhub.normalize_project_structure",
+    "graphhub.batch_check",
+)
 SUPPORTED_RENDER_PLOT_TYPES = {"bar", "line", "scatter", "xy"}
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0
 MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS = 5.0
+MCP_BATCH_MAX_PROJECTS = 50
+MCP_BATCH_TIMEOUT_SECONDS = 30.0
 
 JSONRPC_INVALID_PARAMS = -32602
 JSONRPC_INTERNAL_ERROR = -32603
@@ -57,6 +66,14 @@ def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_queue: mul
 
         output_path = render_bridge_figure(BridgeFigureSpec(**spec_payload))
         result_queue.put({"status": "ok", "output_path": output_path})
+    except Exception as exc:
+        result_queue.put({"status": "error", "error": str(exc)})
+
+
+def _batch_discovery_worker(root: str, max_depth: int, result_queue: multiprocessing.Queue) -> None:
+    try:
+        projects = ProjectDiscoveryService(root, include_worktrees=True, include_ephemeral=True).discover(max_depth=max_depth)
+        result_queue.put({"status": "ok", "projects": projects})
     except Exception as exc:
         result_queue.put({"status": "error", "error": str(exc)})
 
@@ -218,6 +235,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "title": {"type": "string"},
                     "x_axis_label": {"type": "string"},
                     "y_axis_label": {"type": "string"},
+                    "baseline_path": {"type": "string"},
                 },
                 required=["data_path", "x_column", "y_column"],
             ),
@@ -230,13 +248,15 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "manifest_path": {"type": "string"},
                     "style_summary": {"type": "object"},
                     "visual_preflight_status": {"type": "object"},
+                    "artifact_status": {"type": "string"},
+                    "baseline_comparison": {"type": "object"},
                 }
             ),
         ),
         ToolDefinition(
             "graphhub.collect_artifacts",
             "Return artifact metadata for a completed MCP render job.",
-            _object_schema({"job_id": {"type": "string"}}, required=["job_id"]),
+            _object_schema({"job_id": {"type": "string"}, "baseline_path": {"type": "string"}}, required=["job_id"]),
             _standard_output_schema(
                 {
                     "figures": {"type": "array", "items": {"type": "object"}},
@@ -245,6 +265,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "logs": {"type": "array", "items": {"type": "object"}},
                     "provenance": {"type": "object"},
                     "visual_preflight_status": {"type": "object"},
+                    "artifact_status": {"type": "string"},
+                    "baseline_comparison": {"type": "object"},
                 }
             ),
         ),
@@ -300,6 +322,35 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                 }
             ),
         ),
+        ToolDefinition(
+            "graphhub.batch_check",
+            "Run a bounded project discovery and validation batch check with optional runtime manifest logging.",
+            _object_schema(
+                {
+                    "root": root_arg,
+                    "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
+                    "max_projects": {"type": "integer", "minimum": 1, "maximum": MCP_BATCH_MAX_PROJECTS, "default": 20},
+                    "include_invalid": {"type": "boolean", "default": False},
+                    "include_legacy": {"type": "boolean", "default": False},
+                    "include_worktrees": {"type": "boolean", "default": False},
+                    "include_ephemeral": {"type": "boolean", "default": False},
+                    "dry_run": {"type": "boolean", "default": True},
+                    "batch_id": {"type": "string"},
+                    "resume_manifest_path": {"type": "string"},
+                }
+            ),
+            _standard_output_schema(
+                {
+                    "batch_id": {"type": "string"},
+                    "batch_root": {"type": "string"},
+                    "manifest_path": {"type": "string"},
+                    "checked_projects": {"type": "array", "items": {"type": "object"}},
+                    "skipped_projects": {"type": "array", "items": {"type": "object"}},
+                    "resumed_from": {"type": "string"},
+                    "log_paths": {"type": "array", "items": {"type": "string"}},
+                }
+            ),
+        ),
     ]
     return [definition.to_dict() for definition in definitions]
 
@@ -328,6 +379,7 @@ class GraphHubMCPServer:
             "graphhub.collect_artifacts": self.collect_artifacts,
             "graphhub.scaffold_project": self.scaffold_project,
             "graphhub.normalize_project_structure": self.normalize_project_structure,
+            "graphhub.batch_check": self.batch_check,
         }
 
     @staticmethod
@@ -549,6 +601,8 @@ class GraphHubMCPServer:
                 errors=[f"Invalid plot_type '{plot_type}'. Supported: {', '.join(sorted(SUPPORTED_RENDER_PLOT_TYPES))}."],
                 manual_review_needed=True,
                 is_dry_run=dry_run,
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         style_errors = self._render_style_errors(target_format, output_format, profile)
         if style_errors:
@@ -560,6 +614,8 @@ class GraphHubMCPServer:
                 errors=style_errors,
                 manual_review_needed=True,
                 is_dry_run=dry_run,
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         if not isinstance(semantic_checks, dict):
             return self._envelope(
@@ -570,6 +626,8 @@ class GraphHubMCPServer:
                 errors=["semantic_checks must be an object."],
                 manual_review_needed=True,
                 is_dry_run=dry_run,
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         config = self._render_project_config(
             target_format=target_format,
@@ -589,6 +647,8 @@ class GraphHubMCPServer:
                 errors=config_errors,
                 manual_review_needed=True,
                 is_dry_run=dry_run,
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         ensure_local_files([str(data_path)])
         contract_errors = self._validate_render_data_contract(
@@ -605,6 +665,8 @@ class GraphHubMCPServer:
                 errors=contract_errors,
                 manual_review_needed=True,
                 is_dry_run=dry_run,
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         if dry_run:
             return self._envelope(
@@ -619,6 +681,8 @@ class GraphHubMCPServer:
                 manifest_path=str(job_root / "manifest.json"),
                 style_summary={"target_format": target_format, "profile": profile, "output_format": output_format},
                 visual_preflight_status={"passed": None, "checks": [], "warnings": ["dry_run"]},
+                artifact_status="validated",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         self._activate_runtime_root_for_runtime_access()
         job_root = self._mcp_jobs_root() / job_id
@@ -633,6 +697,8 @@ class GraphHubMCPServer:
                 is_dry_run=False,
                 job_id=job_id,
                 job_root=str(job_root),
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         if job_root.exists() and overwrite:
             shutil.rmtree(job_root)
@@ -669,8 +735,15 @@ class GraphHubMCPServer:
             created_paths.extend(str(figure["path"]) for figure in figures)
             preflight = self._safe_preflight(output_path, target_format)
             preflight_warnings = self._preflight_warnings(preflight)
-            manual_review_needed = not bool(preflight.get("passed")) or bool(preflight_warnings)
+            baseline_comparison = self._baseline_comparison(output_path, arguments.get("baseline_path"))
+            baseline_warnings = self._baseline_warnings(baseline_comparison)
+            manual_review_needed = (
+                not bool(preflight.get("passed"))
+                or bool(preflight_warnings)
+                or (baseline_comparison["checked"] and not baseline_comparison["matched"])
+            )
             status = "warning" if manual_review_needed else "ok"
+            artifact_status = self._artifact_status(preflight, baseline_comparison)
             manifest = {
                 "job_id": job_id,
                 "job_root": str(job_root),
@@ -690,6 +763,8 @@ class GraphHubMCPServer:
                     "output_format": output_format,
                 },
                 "visual_preflight_status": preflight,
+                "artifact_status": artifact_status,
+                "baseline_comparison": baseline_comparison,
                 "manual_review_needed": manual_review_needed,
             }
             manifest_path.write_text(
@@ -709,6 +784,8 @@ class GraphHubMCPServer:
                 is_dry_run=False,
                 job_id=job_id,
                 job_root=str(job_root),
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
 
         return self._envelope(
@@ -718,7 +795,7 @@ class GraphHubMCPServer:
             summary="Rendered CSV graph." if status == "ok" else "Rendered CSV graph with preflight warnings.",
             created_paths=created_paths,
             artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
-            warnings=preflight_warnings,
+            warnings=preflight_warnings + baseline_warnings,
             manual_review_needed=manual_review_needed,
             is_dry_run=False,
             job_id=job_id,
@@ -728,6 +805,8 @@ class GraphHubMCPServer:
             manifest_path=str(manifest_path),
             style_summary=manifest["style_summary"],
             visual_preflight_status=preflight,
+            artifact_status=artifact_status,
+            baseline_comparison=baseline_comparison,
         )
 
     def _activate_runtime_root_for_runtime_access(self) -> None:
@@ -771,6 +850,8 @@ class GraphHubMCPServer:
                 summary="Render job manifest was not found.",
                 errors=[f"Manifest not found: {self._runtime_uri(manifest_path)}"],
                 manual_review_needed=True,
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -782,20 +863,34 @@ class GraphHubMCPServer:
                 summary="Render job manifest could not be read.",
                 errors=[str(exc)],
                 manual_review_needed=True,
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
 
         preflight = manifest.get("visual_preflight_status") or {}
         figures = manifest.get("figures") if isinstance(manifest.get("figures"), list) else []
         preflight_warnings = self._preflight_warnings(preflight)
-        manual_review_needed = bool(manifest.get("manual_review_needed")) or bool(preflight_warnings)
+        artifact_path = Path(str(figures[0]["path"])) if figures and isinstance(figures[0], dict) and figures[0].get("path") else None
+        baseline_comparison = (
+            self._baseline_comparison(artifact_path, arguments.get("baseline_path"))
+            if arguments.get("baseline_path")
+            else manifest.get("baseline_comparison") or self._baseline_comparison(None, None)
+        )
+        baseline_warnings = self._baseline_warnings(baseline_comparison)
+        manual_review_needed = (
+            bool(manifest.get("manual_review_needed"))
+            or bool(preflight_warnings)
+            or (baseline_comparison["checked"] and not baseline_comparison["matched"])
+        )
         status = "warning" if manual_review_needed or preflight.get("passed") is False else "ok"
+        artifact_status = self._artifact_status(preflight, baseline_comparison)
         return self._envelope(
             "graphhub.collect_artifacts",
             arguments,
             status=status,
             summary=f"Collected artifacts for render job {job_id}.",
             artifact_resources=[f"file://{figure['path']}" for figure in figures if isinstance(figure, dict)],
-            warnings=preflight_warnings,
+            warnings=preflight_warnings + baseline_warnings,
             created_paths=self._manifest_path_list(manifest, "created_paths"),
             modified_paths=self._manifest_path_list(manifest, "modified_paths"),
             skipped_paths=self._manifest_path_list(manifest, "skipped_paths"),
@@ -806,6 +901,8 @@ class GraphHubMCPServer:
             logs=manifest.get("logs") or [],
             provenance={"manifest_path": str(manifest_path), "job_root": manifest.get("job_root", "")},
             visual_preflight_status=preflight,
+            artifact_status=artifact_status,
+            baseline_comparison=baseline_comparison,
         )
 
     def scaffold_project(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -952,6 +1049,150 @@ class GraphHubMCPServer:
             validation=validation,
         )
 
+    def batch_check(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        root = self._scan_root(arguments)
+        max_depth = self._max_depth(arguments.get("max_depth", 4))
+        max_projects = self._batch_max_projects(arguments.get("max_projects", 20))
+        include_invalid = bool(arguments.get("include_invalid", False))
+        include_legacy = bool(arguments.get("include_legacy", False))
+        include_worktrees = bool(arguments.get("include_worktrees", False))
+        include_ephemeral = bool(arguments.get("include_ephemeral", False))
+        dry_run = bool(arguments.get("dry_run", True))
+        batch_id = self._render_job_id(arguments.get("batch_id") or f"batch-{uuid.uuid4().hex[:12]}")
+        batch_root = self._mcp_jobs_root() / batch_id
+        manifest_path = batch_root / "batch_manifest.json"
+        resumed_from = ""
+        previously_checked = set()
+
+        if arguments.get("resume_manifest_path"):
+            resume_path = Path(self._required_string(arguments, "resume_manifest_path")).expanduser().resolve()
+            resumed_from = str(resume_path)
+            try:
+                resume_manifest = json.loads(resume_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                return self._envelope(
+                    "graphhub.batch_check",
+                    arguments,
+                    status="error",
+                    summary="Batch resume manifest could not be read.",
+                    errors=[str(exc)],
+                    manual_review_needed=True,
+                    is_dry_run=dry_run,
+                    batch_id=batch_id,
+                    batch_root=str(batch_root),
+                    manifest_path=str(manifest_path),
+                    checked_projects=[],
+                    skipped_projects=[],
+                    resumed_from=resumed_from,
+                    log_paths=[],
+                )
+            resume_root = Path(str(resume_manifest.get("root") or "")).expanduser().resolve()
+            if resume_root != root:
+                return self._envelope(
+                    "graphhub.batch_check",
+                    arguments,
+                    status="error",
+                    summary="Batch resume manifest does not match the requested root.",
+                    errors=["Resume manifest was created for a different root."],
+                    manual_review_needed=True,
+                    is_dry_run=dry_run,
+                    batch_id=batch_id,
+                    batch_root=str(batch_root),
+                    manifest_path=str(manifest_path),
+                    checked_projects=[],
+                    skipped_projects=[],
+                    resumed_from=resumed_from,
+                    log_paths=[],
+                )
+            previously_checked = {
+                str(project.get("project_id"))
+                for project in resume_manifest.get("checked_projects", [])
+                if isinstance(project, dict) and project.get("project_id")
+            }
+
+        started_at = time.monotonic()
+        discovered, discovery_timed_out, discovery_warnings = self._discover_batch_projects(
+            root,
+            max_depth=max_depth,
+            timeout_seconds=MCP_BATCH_TIMEOUT_SECONDS,
+        )
+        checked_projects: list[dict[str, Any]] = []
+        skipped_projects: list[dict[str, Any]] = []
+        warnings: list[str] = list(discovery_warnings)
+        timed_out = discovery_timed_out
+
+        for project in discovered:
+            if time.monotonic() - started_at >= MCP_BATCH_TIMEOUT_SECONDS:
+                timed_out = True
+                warnings.append(f"Batch check timed out after {MCP_BATCH_TIMEOUT_SECONDS:.1f} seconds.")
+                break
+
+            skip_reason = self._batch_skip_reason(
+                project,
+                include_invalid=include_invalid,
+                include_legacy=include_legacy,
+                include_worktrees=include_worktrees,
+                include_ephemeral=include_ephemeral,
+                previously_checked=previously_checked,
+            )
+            if skip_reason:
+                skipped_projects.append(self._batch_skipped_project(project, skip_reason))
+                continue
+
+            if len(checked_projects) >= max_projects:
+                skipped_projects.append(self._batch_skipped_project(project, "max_projects_exceeded"))
+                continue
+
+            checked_projects.append(self._batch_checked_project(root, project))
+
+        manifest = {
+            "batch_id": batch_id,
+            "batch_root": str(batch_root),
+            "root": str(root),
+            "max_depth": max_depth,
+            "max_projects": max_projects,
+            "checked_projects": checked_projects,
+            "skipped_projects": skipped_projects,
+            "resumed_from": resumed_from,
+            "timed_out": timed_out,
+            "warnings": warnings,
+        }
+
+        created_paths: list[str] = []
+        log_paths: list[str] = []
+        if not dry_run:
+            self._activate_runtime_root_for_runtime_access()
+            batch_root = self._mcp_jobs_root() / batch_id
+            manifest_path = batch_root / "batch_manifest.json"
+            manifest["batch_root"] = str(batch_root)
+            batch_root.mkdir(parents=True, exist_ok=True)
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+            created_paths.append(str(manifest_path))
+            log_paths.append(str(manifest_path))
+
+        status = "warning" if timed_out else "ok"
+        return self._envelope(
+            "graphhub.batch_check",
+            arguments,
+            status=status,
+            summary=(
+                f"Batch checked {len(checked_projects)} project(s) with timeout."
+                if timed_out
+                else f"Batch checked {len(checked_projects)} project(s)."
+            ),
+            created_paths=created_paths,
+            warnings=warnings,
+            manual_review_needed=timed_out,
+            is_dry_run=dry_run,
+            batch_id=batch_id,
+            batch_root=str(batch_root),
+            manifest_path=str(manifest_path),
+            checked_projects=checked_projects,
+            skipped_projects=skipped_projects,
+            resumed_from=resumed_from,
+            log_paths=log_paths,
+        )
+
     def _find_job_manifest_path(self, job_id: str) -> Path:
         candidate_roots = [self.runtime_root]
         if not self._runtime_root_explicit:
@@ -1042,6 +1283,90 @@ class GraphHubMCPServer:
                         warnings.append(str(detail))
         return warnings
 
+    @staticmethod
+    def _artifact_status(preflight: dict[str, Any], baseline_comparison: dict[str, Any]) -> str:
+        if baseline_comparison.get("checked") and baseline_comparison.get("matched") is True:
+            return "baseline_matched"
+        if baseline_comparison.get("checked") and baseline_comparison.get("matched") is False:
+            return "manual_review_needed"
+        if preflight.get("passed") is True and not GraphHubMCPServer._preflight_warnings(preflight):
+            return "preflight_passed"
+        if preflight.get("passed") is None:
+            return "validated"
+        if preflight.get("passed") is False or GraphHubMCPServer._preflight_warnings(preflight):
+            return "manual_review_needed"
+        return "created"
+
+    @staticmethod
+    def _baseline_comparison(artifact_path: Path | None, raw_baseline_path: Any) -> dict[str, Any]:
+        if not isinstance(raw_baseline_path, str) or not raw_baseline_path.strip():
+            return {"checked": False, "matched": None, "status": "not_checked", "warnings": []}
+
+        baseline_path = Path(raw_baseline_path).expanduser().resolve()
+        warnings: list[str] = []
+        if artifact_path is None:
+            warnings.append("Baseline comparison requested but no artifact path was available.")
+            return {
+                "checked": True,
+                "matched": False,
+                "status": "manual_review_needed",
+                "baseline_path": str(baseline_path),
+                "artifact_path": "",
+                "algorithm": "sha256",
+                "warnings": warnings,
+            }
+        artifact_path = Path(artifact_path).expanduser().resolve()
+        if not baseline_path.is_file():
+            warnings.append("Baseline comparison requested but baseline_path is not a file.")
+            return {
+                "checked": True,
+                "matched": False,
+                "status": "manual_review_needed",
+                "baseline_path": str(baseline_path),
+                "artifact_path": str(artifact_path),
+                "algorithm": "sha256",
+                "warnings": warnings,
+            }
+        if not artifact_path.is_file():
+            warnings.append("Baseline comparison requested but artifact file is missing.")
+            return {
+                "checked": True,
+                "matched": False,
+                "status": "manual_review_needed",
+                "baseline_path": str(baseline_path),
+                "artifact_path": str(artifact_path),
+                "algorithm": "sha256",
+                "warnings": warnings,
+            }
+
+        artifact_sha = GraphHubMCPServer._file_sha256(artifact_path)
+        baseline_sha = GraphHubMCPServer._file_sha256(baseline_path)
+        matched = artifact_sha == baseline_sha
+        return {
+            "checked": True,
+            "matched": matched,
+            "status": "baseline_matched" if matched else "manual_review_needed",
+            "baseline_path": str(baseline_path),
+            "artifact_path": str(artifact_path),
+            "algorithm": "sha256",
+            "artifact_sha256": artifact_sha,
+            "baseline_sha256": baseline_sha,
+            "warnings": [] if matched else ["Artifact does not match baseline."],
+        }
+
+    @staticmethod
+    def _baseline_warnings(baseline_comparison: dict[str, Any]) -> list[str]:
+        raw_warnings = baseline_comparison.get("warnings")
+        return [str(warning) for warning in raw_warnings] if isinstance(raw_warnings, list) else []
+
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
     def _envelope(
         self,
         tool_name: str,
@@ -1099,6 +1424,42 @@ class GraphHubMCPServer:
             depth = 4
         return min(12, max(1, depth))
 
+    @staticmethod
+    def _batch_max_projects(value: Any) -> int:
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            count = 20
+        return min(MCP_BATCH_MAX_PROJECTS, max(1, count))
+
+    @staticmethod
+    def _discover_batch_projects(root: Path, *, max_depth: int, timeout_seconds: float) -> tuple[list[Any], bool, list[str]]:
+        result_queue: multiprocessing.Queue = multiprocessing.Queue(maxsize=1)
+        process = multiprocessing.Process(
+            target=_batch_discovery_worker,
+            args=(str(root), max_depth, result_queue),
+            name="graphhub-mcp-batch-discovery",
+        )
+        process.start()
+        process.join(max(0.0, timeout_seconds))
+        if process.is_alive():
+            process.terminate()
+            process.join(5)
+            if process.is_alive():
+                process.kill()
+                process.join(5)
+            return [], True, [f"Batch discovery timed out after {timeout_seconds:.1f} seconds."]
+        if process.exitcode not in (0, None):
+            return [], True, [f"Batch discovery worker exited with code {process.exitcode}."]
+        try:
+            result = result_queue.get(timeout=MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS)
+        except queue.Empty:
+            return [], True, ["Batch discovery worker exited without returning a result."]
+        if result.get("status") != "ok":
+            return [], True, [str(result.get("error") or "Batch discovery failed.")]
+        projects = result.get("projects")
+        return (projects if isinstance(projects, list) else []), False, []
+
     def _read_version(self) -> str:
         pyproject = self.hub_path / "pyproject.toml"
         try:
@@ -1127,6 +1488,58 @@ class GraphHubMCPServer:
             "declared_figures": len(figures),
             "declared_diagrams": len(diagrams),
             "target_format": project.target_format,
+        }
+
+    @staticmethod
+    def _batch_skip_reason(
+        project: Any,
+        *,
+        include_invalid: bool,
+        include_legacy: bool,
+        include_worktrees: bool,
+        include_ephemeral: bool,
+        previously_checked: set[str],
+    ) -> str:
+        if project.project_id in previously_checked:
+            return "already_checked"
+        if project.classification == "ephemeral":
+            if project.path.startswith(".worktrees/"):
+                return "" if include_worktrees else "ephemeral_project"
+            return "" if include_ephemeral else "ephemeral_project"
+        if project.classification == "legacy" and not include_legacy:
+            return "legacy_project"
+        if not project.valid and not include_invalid:
+            return "invalid_config"
+        return ""
+
+    def _batch_checked_project(self, root: Path, project: Any) -> dict[str, Any]:
+        project_path = (root / project.path).resolve()
+        validation = self.validate_project({"project_path": str(project_path)})
+        errors = []
+        for key in ("config_errors", "data_contract_errors", "style_errors"):
+            value = validation.get(key)
+            if isinstance(value, list):
+                errors.extend(str(item) for item in value)
+        return {
+            "project_id": project.project_id,
+            "project_root": project.path,
+            "classification": project.classification,
+            "target_format": project.target_format,
+            "valid": bool(validation.get("valid")),
+            "status": validation.get("status", "error"),
+            "errors": errors,
+        }
+
+    @staticmethod
+    def _batch_skipped_project(project: Any, reason: str) -> dict[str, Any]:
+        return {
+            "project_id": project.project_id,
+            "project_root": project.path,
+            "classification": project.classification,
+            "target_format": project.target_format,
+            "valid": bool(project.valid),
+            "reason": reason,
+            "errors": list(project.errors),
         }
 
     @staticmethod
