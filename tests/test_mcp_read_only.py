@@ -2,10 +2,11 @@ import json
 import os
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
-from hub_core.mcp_surface import GraphHubMCPServer, _handle_json_rpc, list_tool_definitions
+from hub_core.mcp_surface import GraphHubMCPServer, _handle_json_rpc, list_tool_definitions, run_stdio_server
 from hub_core.project_discovery import ProjectDiscoveryService
 from themes.style_profiles import PROFILE_ALIASES, list_profiles
 
@@ -64,6 +65,13 @@ class ReadOnlyMCPTest(unittest.TestCase):
         project = root / name
         project.mkdir(parents=True, exist_ok=True)
         (project / "project_config.yaml").write_text(config_text.format(name=name), encoding="utf-8")
+        return project
+
+    def _write_legacy_project(self, root: Path, name: str) -> Path:
+        project = root / name
+        config_dir = project / "scripts"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / "project_config.yaml").write_text(VALID_CONFIG.format(name=name), encoding="utf-8")
         return project
 
     def _call(self, server: GraphHubMCPServer, tool_name: str, arguments: dict | None = None) -> dict:
@@ -134,6 +142,37 @@ class ReadOnlyMCPTest(unittest.TestCase):
             self.assertEqual(by_path["01_Valid"]["declared_figures"], 1)
             self.assertEqual(by_path["01_Valid"]["declared_diagrams"], 1)
 
+    def test_list_projects_preserves_legacy_and_ephemeral_statuses(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            self._write_legacy_project(root, "03_Legacy")
+            self._write_project(root, ".worktrees/feature/04_Worktree")
+
+            server = GraphHubMCPServer()
+            result = self._call(
+                server,
+                "graphhub.list_projects",
+                {"root": str(root), "include_worktrees": True, "include_ephemeral": True, "max_depth": 5},
+            )
+
+            by_path = {project["project_root"]: project for project in result["projects"]}
+            self.assertEqual(by_path["03_Legacy"]["status"], "legacy")
+            self.assertEqual(by_path[".worktrees/feature/04_Worktree"]["status"], "ephemeral")
+
+            inspected = self._call(
+                server,
+                "graphhub.inspect_project",
+                {
+                    "root": str(root),
+                    "project_id": by_path[".worktrees/feature/04_Worktree"]["project_id"],
+                    "include_worktrees": True,
+                    "include_ephemeral": True,
+                    "max_depth": 5,
+                },
+            )
+            self.assertEqual(inspected["status"], "ok")
+            self.assertEqual(inspected["style_summary"]["target_format"], "nature_surfur")
+
     def test_inspect_and_validate_project_do_not_execute_or_write(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
@@ -178,6 +217,38 @@ class ReadOnlyMCPTest(unittest.TestCase):
         self.assertIn("structuredContent", called["result"])
         self.assertFalse(called["result"]["isError"])
         self.assertEqual(called["result"]["structuredContent"]["target_formats"], sorted(ALLOWED_TARGET_FORMATS))
+
+    def test_json_rpc_unknown_tool_returns_protocol_error(self):
+        server = GraphHubMCPServer()
+
+        response = _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {"name": "graphhub.nope", "arguments": {}},
+            },
+        )
+
+        self.assertEqual(response["error"]["code"], -32602)
+        self.assertIn("Unknown tool", response["error"]["message"])
+
+    def test_stdio_server_accepts_content_length_framed_messages(self):
+        request = {"jsonrpc": "2.0", "id": 4, "method": "tools/list"}
+        body = json.dumps(request).encode("utf-8")
+        input_stream = BytesIO(b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
+        output_stream = BytesIO()
+
+        rc = run_stdio_server(GraphHubMCPServer(), input_stream=input_stream, output_stream=output_stream)
+
+        self.assertEqual(rc, 0)
+        raw_output = output_stream.getvalue()
+        header, payload = raw_output.split(b"\r\n\r\n", 1)
+        self.assertIn(b"Content-Length:", header)
+        response = json.loads(payload.decode("utf-8"))
+        self.assertEqual(response["id"], 4)
+        self.assertEqual(response["result"]["tools"][0]["name"], "graphhub.health")
 
 
 if __name__ == "__main__":

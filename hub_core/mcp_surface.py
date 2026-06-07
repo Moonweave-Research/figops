@@ -23,6 +23,11 @@ READ_ONLY_TOOL_NAMES = (
     "graphhub.validate_project",
 )
 
+JSONRPC_INVALID_PARAMS = -32602
+JSONRPC_INTERNAL_ERROR = -32603
+JSONRPC_METHOD_NOT_FOUND = -32601
+JSONRPC_PARSE_ERROR = -32700
+
 
 @dataclass(frozen=True)
 class ToolDefinition:
@@ -470,12 +475,20 @@ class GraphHubMCPServer:
             "project_id": project.project_id,
             "project_root": project.path,
             "config_path": project.config,
-            "status": "valid" if project.valid else project.classification,
+            "status": self._project_status(project),
             "errors": list(project.errors),
             "declared_figures": len(figures),
             "declared_diagrams": len(diagrams),
             "target_format": project.target_format,
         }
+
+    @staticmethod
+    def _project_status(project: Any) -> str:
+        if not project.valid:
+            return "invalid"
+        if project.classification in {"legacy", "ephemeral"}:
+            return project.classification
+        return "valid"
 
     def _resolve_project_path(self, arguments: dict[str, Any]) -> Path:
         project_path = arguments.get("project_path")
@@ -487,7 +500,12 @@ class GraphHubMCPServer:
             raise ValueError("project_id or project_path is required.")
 
         root = self._scan_root(arguments)
-        for project in ProjectDiscoveryService(root).discover(max_depth=self._max_depth(arguments.get("max_depth", 4))):
+        service = ProjectDiscoveryService(
+            root,
+            include_worktrees=bool(arguments.get("include_worktrees", False)),
+            include_ephemeral=bool(arguments.get("include_ephemeral", False)),
+        )
+        for project in service.discover(max_depth=self._max_depth(arguments.get("max_depth", 4))):
             if project.project_id == project_id:
                 return (root / project.path).resolve()
         raise ValueError(f"Project id not found: {project_id}")
@@ -591,20 +609,29 @@ class GraphHubMCPServer:
             return str(path)
 
 
-def run_stdio_server(server: GraphHubMCPServer | None = None) -> int:
-    """Run a small JSON-RPC stdio MCP server for the read-only Graph Hub tools."""
+def run_stdio_server(
+    server: GraphHubMCPServer | None = None,
+    *,
+    input_stream: Any | None = None,
+    output_stream: Any | None = None,
+) -> int:
+    """Run a Content-Length framed JSON-RPC stdio MCP server."""
     active_server = server or GraphHubMCPServer()
-    for line in sys.stdin:
-        if not line.strip():
-            continue
+    in_stream = input_stream or sys.stdin.buffer
+    out_stream = output_stream or sys.stdout.buffer
+
+    while True:
         try:
-            request = json.loads(line)
+            request = _read_stdio_message(in_stream)
+            if request is None:
+                break
             response = _handle_json_rpc(active_server, request)
+        except json.JSONDecodeError as exc:
+            response = _json_rpc_error(None, JSONRPC_PARSE_ERROR, f"Parse error: {exc}")
         except Exception as exc:
-            response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32603, "message": str(exc)}}
+            response = _json_rpc_error(None, JSONRPC_INTERNAL_ERROR, str(exc))
         if response is not None:
-            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
+            _write_stdio_message(out_stream, response)
     return 0
 
 
@@ -630,5 +657,61 @@ def _handle_json_rpc(server: GraphHubMCPServer, request: dict[str, Any]) -> dict
     if method == "tools/call":
         tool_name = params.get("name")
         arguments = params.get("arguments") or {}
+        if not isinstance(tool_name, str) or tool_name not in server._handlers:
+            return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, f"Unknown tool: {tool_name}")
+        if not isinstance(arguments, dict):
+            return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "Tool arguments must be an object.")
         return {"jsonrpc": "2.0", "id": request_id, "result": server.call_tool(tool_name, arguments)}
-    return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": f"Method not found: {method}"}}
+    return _json_rpc_error(request_id, JSONRPC_METHOD_NOT_FOUND, f"Method not found: {method}")
+
+
+def _json_rpc_error(request_id: Any, code: int, message: str) -> dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
+
+
+def _read_stdio_message(stream: Any) -> dict[str, Any] | None:
+    first_line = stream.readline()
+    if first_line == b"" or first_line == "":
+        return None
+    if isinstance(first_line, str):
+        first_line = first_line.encode("utf-8")
+
+    if first_line.lstrip().startswith(b"{"):
+        return json.loads(first_line.decode("utf-8"))
+
+    headers = _read_headers(stream, first_line)
+    content_length = headers.get("content-length")
+    if content_length is None:
+        raise ValueError("Missing Content-Length header.")
+    try:
+        expected_size = int(content_length)
+    except ValueError as exc:
+        raise ValueError(f"Invalid Content-Length header: {content_length}") from exc
+    body = stream.read(expected_size)
+    if isinstance(body, str):
+        body = body.encode("utf-8")
+    if len(body) != expected_size:
+        raise ValueError(f"Incomplete MCP message body: expected {expected_size} bytes, got {len(body)}.")
+    return json.loads(body.decode("utf-8"))
+
+
+def _read_headers(stream: Any, first_line: bytes) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    line = first_line
+    while line not in (b"", b"\n", b"\r\n"):
+        text = line.decode("ascii", errors="replace").strip()
+        if ":" in text:
+            key, value = text.split(":", 1)
+            headers[key.lower()] = value.strip()
+        line = stream.readline()
+        if isinstance(line, str):
+            line = line.encode("utf-8")
+    return headers
+
+
+def _write_stdio_message(stream: Any, response: dict[str, Any]) -> None:
+    body = json.dumps(response, ensure_ascii=False).encode("utf-8")
+    payload = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
+    stream.write(payload)
+    if hasattr(stream, "flush"):
+        stream.flush()
