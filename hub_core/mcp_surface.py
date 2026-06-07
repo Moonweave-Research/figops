@@ -1733,7 +1733,7 @@ class GraphHubMCPServer:
     def _input_file_path(raw_path: Any) -> Path:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise ValueError("data_path is required.")
-        path = Path(raw_path).expanduser().resolve()
+        path = Path(os.path.abspath(os.fspath(Path(raw_path).expanduser())))
         if not path.is_file():
             raise ValueError("data_path is not a file.")
         if path.suffix.lower() != ".csv":

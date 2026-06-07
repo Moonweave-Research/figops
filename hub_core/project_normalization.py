@@ -470,10 +470,31 @@ def _reject_symlinked_project_boundary(project_root: Path) -> None:
     current = Path(project_root.anchor)
     for part in project_root.parts[1:]:
         current = current / part
+        if _is_macos_private_mount_alias(current):
+            continue
         if current.is_symlink():
             raise ValueError(f"Project root must not be a symlink or below a symlink: {current}")
         if not current.exists():
             break
+
+
+def _is_macos_private_mount_alias(path: Path) -> bool:
+    if os.name != "posix":
+        return False
+    try:
+        if os.uname().sysname != "Darwin":
+            return False
+    except AttributeError:
+        return False
+    aliases = {
+        Path("/var"): Path("/private/var"),
+        Path("/tmp"): Path("/private/tmp"),
+        Path("/etc"): Path("/private/etc"),
+    }
+    target = aliases.get(path)
+    if target is None:
+        return False
+    return path.is_symlink() and Path(os.path.realpath(path)) == target
 
 
 def _unlink_destination(path: Path) -> None:
