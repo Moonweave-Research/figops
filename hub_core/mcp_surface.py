@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import sys
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -11,17 +13,25 @@ from typing import Any, Callable
 import yaml
 
 from .config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS, find_config_path, validate_config
+from .data_contract import _read_data_safe, _validate_semantic_constraints
+from .figure_preflight import validate_figure_preflight
 from .project_discovery import ProjectDiscoveryService
-from .utils import get_hub_path, get_research_root
+from .runtime_paths import preview_runtime_root, resolve_runtime_root, runtime_root_lookup_candidates
+from .utils import ensure_local_files, get_hub_path, get_research_root
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
 
-READ_ONLY_TOOL_NAMES = (
+TOOL_NAMES = (
     "graphhub.health",
     "graphhub.list_styles",
     "graphhub.list_projects",
     "graphhub.inspect_project",
     "graphhub.validate_project",
+    "graphhub.render_csv_graph",
+    "graphhub.collect_artifacts",
 )
+WRITE_TOOL_NAMES = ("graphhub.render_csv_graph",)
+SUPPORTED_RENDER_PLOT_TYPES = {"bar", "line", "scatter", "xy"}
+MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
 
 JSONRPC_INVALID_PARAMS = -32602
 JSONRPC_INTERNAL_ERROR = -32603
@@ -85,7 +95,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
     definitions = [
         ToolDefinition(
             "graphhub.health",
-            "Return read-only Graph Hub server health and discovery status.",
+            "Return Graph Hub server health and discovery status.",
             _object_schema(
                 {
                     "root": root_arg,
@@ -167,6 +177,55 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                 }
             ),
         ),
+        ToolDefinition(
+            "graphhub.render_csv_graph",
+            "Render a CSV-backed graph in an isolated runtime-root MCP job workspace.",
+            _object_schema(
+                {
+                    "data_path": {"type": "string"},
+                    "x_column": {"type": "string"},
+                    "y_column": {"type": "string"},
+                    "plot_type": {"type": "string", "enum": sorted(SUPPORTED_RENDER_PLOT_TYPES), "default": "scatter"},
+                    "target_format": {"type": "string", "default": "nature"},
+                    "profile": {"type": "string", "default": DEFAULT_PROFILE},
+                    "output_format": {"type": "string", "default": "png"},
+                    "semantic_checks": {"type": "object"},
+                    "dry_run": {"type": "boolean", "default": False},
+                    "overwrite": {"type": "boolean", "default": False},
+                    "job_id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "x_axis_label": {"type": "string"},
+                    "y_axis_label": {"type": "string"},
+                },
+                required=["data_path", "x_column", "y_column"],
+            ),
+            _standard_output_schema(
+                {
+                    "job_id": {"type": "string"},
+                    "job_root": {"type": "string"},
+                    "output_path": {"type": "string"},
+                    "config_path": {"type": "string"},
+                    "manifest_path": {"type": "string"},
+                    "style_summary": {"type": "object"},
+                    "visual_preflight_status": {"type": "object"},
+                }
+            ),
+        ),
+        ToolDefinition(
+            "graphhub.collect_artifacts",
+            "Return artifact metadata for a completed MCP render job.",
+            _object_schema({"job_id": {"type": "string"}}, required=["job_id"]),
+            _standard_output_schema(
+                {
+                    "figures": {"type": "array", "items": {"type": "object"}},
+                    "diagrams": {"type": "array", "items": {"type": "object"}},
+                    "assemblies": {"type": "array", "items": {"type": "object"}},
+                    "logs": {"type": "array", "items": {"type": "object"}},
+                    "provenance": {"type": "object"},
+                    "visual_preflight_status": {"type": "object"},
+                }
+            ),
+        ),
     ]
     return [definition.to_dict() for definition in definitions]
 
@@ -183,6 +242,7 @@ class GraphHubMCPServer:
     ) -> None:
         self.hub_path = Path(hub_path or get_hub_path()).expanduser().resolve()
         self.research_root = Path(research_root or get_research_root()).expanduser().resolve()
+        self._runtime_root_explicit = runtime_root is not None
         self.runtime_root = self._resolve_runtime_root(runtime_root)
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
             "graphhub.health": self.health,
@@ -190,22 +250,15 @@ class GraphHubMCPServer:
             "graphhub.list_projects": self.list_projects,
             "graphhub.inspect_project": self.inspect_project,
             "graphhub.validate_project": self.validate_project,
+            "graphhub.render_csv_graph": self.render_csv_graph,
+            "graphhub.collect_artifacts": self.collect_artifacts,
         }
 
     @staticmethod
     def _resolve_runtime_root(runtime_root: str | os.PathLike | None = None) -> Path:
         if runtime_root:
             return Path(runtime_root).expanduser().resolve()
-        override = os.environ.get("RESEARCH_HUB_RUNTIME_ROOT") or os.environ.get("RESEARCH_HUB_RUNTIME_HOME")
-        if override:
-            return Path(override).expanduser().resolve()
-        if os.name == "nt":
-            base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        elif os.name == "posix" and hasattr(os, "uname") and os.uname().sysname == "Darwin":
-            base = str(Path.home() / "Library" / "Caches")
-        else:
-            base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-        return (Path(base) / "Graph_making_hub").expanduser().resolve()
+        return Path(preview_runtime_root()).expanduser().resolve()
 
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = dict(arguments or {})
@@ -249,7 +302,7 @@ class GraphHubMCPServer:
         return self._envelope(
             "graphhub.health",
             arguments,
-            summary="Graph Hub read-only MCP surface is available.",
+            summary="Graph Hub MCP surface is available.",
             warnings=warnings,
             hub_path=str(self.hub_path),
             version=self._read_version(),
@@ -257,7 +310,7 @@ class GraphHubMCPServer:
             runtime_root=str(self.runtime_root),
             style_format_count=len(ALLOWED_TARGET_FORMATS),
             discovery_status=discovery,
-            write_tools_enabled=False,
+            write_tools_enabled=any(name in self._handlers for name in WRITE_TOOL_NAMES),
         )
 
     def list_styles(self, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -396,6 +449,300 @@ class GraphHubMCPServer:
             recommended_next_action=next_action,
         )
 
+    def render_csv_graph(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        dry_run = bool(arguments.get("dry_run", False))
+        overwrite = bool(arguments.get("overwrite", False))
+        job_id = self._render_job_id(arguments.get("job_id"))
+        job_root = self._mcp_jobs_root() / job_id
+        data_path = self._input_file_path(arguments.get("data_path"))
+        x_column = self._required_string(arguments, "x_column")
+        y_column = self._required_string(arguments, "y_column")
+        plot_type = str(arguments.get("plot_type") or "scatter").strip().lower()
+        target_format = str(arguments.get("target_format") or "nature").strip().lower()
+        profile = str(arguments.get("profile") or DEFAULT_PROFILE).strip() or DEFAULT_PROFILE
+        output_format = str(arguments.get("output_format") or "png").strip().lower().lstrip(".")
+        raw_semantic_checks = arguments.get("semantic_checks", {})
+        semantic_checks = {} if raw_semantic_checks is None else raw_semantic_checks
+
+        if plot_type not in SUPPORTED_RENDER_PLOT_TYPES:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid plot settings.",
+                errors=[f"Invalid plot_type '{plot_type}'. Supported: {', '.join(sorted(SUPPORTED_RENDER_PLOT_TYPES))}."],
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+            )
+        style_errors = self._render_style_errors(target_format, output_format, profile)
+        if style_errors:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid style settings.",
+                errors=style_errors,
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+            )
+        if not isinstance(semantic_checks, dict):
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid data contract settings.",
+                errors=["semantic_checks must be an object."],
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+            )
+        config = self._render_project_config(
+            target_format=target_format,
+            profile=profile,
+            output_format=output_format,
+            x_column=x_column,
+            y_column=y_column,
+            semantic_checks=semantic_checks,
+        )
+        config_errors = validate_config(config)
+        if config_errors:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid project config settings.",
+                errors=config_errors,
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+            )
+        ensure_local_files([str(data_path)])
+        contract_errors = self._validate_render_data_contract(
+            data_path,
+            required_columns=[x_column, y_column, *[str(key) for key in semantic_checks]],
+            semantic_checks=semantic_checks,
+        )
+        if contract_errors:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render data contract validation failed.",
+                errors=contract_errors,
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+            )
+        if dry_run:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                summary="Render request validated in dry-run mode; no files were created.",
+                is_dry_run=True,
+                job_id=job_id,
+                job_root=str(job_root),
+                output_path=str(job_root / "results" / "figures" / f"graph.{output_format}"),
+                config_path=str(job_root / "project_config.yaml"),
+                manifest_path=str(job_root / "manifest.json"),
+                style_summary={"target_format": target_format, "profile": profile, "output_format": output_format},
+                visual_preflight_status={"passed": None, "checks": [], "warnings": ["dry_run"]},
+            )
+        self._activate_runtime_root_for_runtime_access()
+        job_root = self._mcp_jobs_root() / job_id
+        if job_root.exists() and not overwrite:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render job already exists.",
+                errors=[f"Render job already exists: {job_root}. Set overwrite=true to replace it."],
+                manual_review_needed=True,
+                is_dry_run=False,
+                job_id=job_id,
+                job_root=str(job_root),
+            )
+        if job_root.exists() and overwrite:
+            shutil.rmtree(job_root)
+
+        created_paths: list[str] = []
+        try:
+            job_data_path = job_root / "data" / "input.csv"
+            output_path = job_root / "results" / "figures" / f"graph.{output_format}"
+            config_path = job_root / "project_config.yaml"
+            manifest_path = job_root / "manifest.json"
+            job_data_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(data_path, job_data_path)
+            created_paths.append(str(job_data_path))
+
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+            created_paths.append(str(config_path))
+
+            from plotting.bridge_renderer import BridgeFigureSpec, render_bridge_figure
+
+            spec = BridgeFigureSpec(
+                csv_path=str(job_data_path),
+                output_path=str(output_path),
+                plot_type=plot_type,
+                x_column=x_column,
+                y_column=y_column,
+                title=str(arguments.get("title") or "Graph Hub MCP render"),
+                x_axis_label=str(arguments.get("x_axis_label") or x_column),
+                y_axis_label=str(arguments.get("y_axis_label") or y_column),
+                target_format=target_format,
+                profile_name=profile,
+            )
+            render_bridge_figure(spec)
+            figures = self._rendered_figure_artifacts(output_path)
+            created_paths.extend(str(figure["path"]) for figure in figures)
+            preflight = self._safe_preflight(output_path, target_format)
+            preflight_warnings = self._preflight_warnings(preflight)
+            manual_review_needed = not bool(preflight.get("passed")) or bool(preflight_warnings)
+            status = "warning" if manual_review_needed else "ok"
+            manifest = {
+                "job_id": job_id,
+                "job_root": str(job_root),
+                "source_data_path": str(data_path),
+                "copied_data_path": str(job_data_path),
+                "config_path": str(config_path),
+                "figures": figures,
+                "diagrams": [],
+                "assemblies": [],
+                "logs": [],
+                "created_paths": created_paths + [str(manifest_path)],
+                "modified_paths": [],
+                "skipped_paths": [],
+                "style_summary": {
+                    "target_format": target_format,
+                    "profile": profile,
+                    "output_format": output_format,
+                },
+                "visual_preflight_status": preflight,
+                "manual_review_needed": manual_review_needed,
+            }
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            created_paths.append(str(manifest_path))
+        except Exception as exc:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render execution failed.",
+                created_paths=created_paths,
+                errors=[str(exc)],
+                manual_review_needed=True,
+                is_dry_run=False,
+                job_id=job_id,
+                job_root=str(job_root),
+            )
+
+        return self._envelope(
+            "graphhub.render_csv_graph",
+            arguments,
+            status=status,
+            summary="Rendered CSV graph." if status == "ok" else "Rendered CSV graph with preflight warnings.",
+            created_paths=created_paths,
+            artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
+            warnings=preflight_warnings,
+            manual_review_needed=manual_review_needed,
+            is_dry_run=False,
+            job_id=job_id,
+            job_root=str(job_root),
+            output_path=str(output_path),
+            config_path=str(config_path),
+            manifest_path=str(manifest_path),
+            style_summary=manifest["style_summary"],
+            visual_preflight_status=preflight,
+        )
+
+    def _activate_runtime_root_for_runtime_access(self) -> None:
+        if not self._runtime_root_explicit:
+            self.runtime_root = Path(resolve_runtime_root()).expanduser().resolve()
+
+    def collect_artifacts(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        job_id = self._render_job_id(arguments.get("job_id"))
+        manifest_path = self._find_job_manifest_path(job_id)
+        if not manifest_path.exists():
+            return self._envelope(
+                "graphhub.collect_artifacts",
+                arguments,
+                status="error",
+                summary="Render job manifest was not found.",
+                errors=[f"Manifest not found: {manifest_path}"],
+                manual_review_needed=True,
+            )
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return self._envelope(
+                "graphhub.collect_artifacts",
+                arguments,
+                status="error",
+                summary="Render job manifest could not be read.",
+                errors=[str(exc)],
+                manual_review_needed=True,
+            )
+
+        preflight = manifest.get("visual_preflight_status") or {}
+        figures = manifest.get("figures") if isinstance(manifest.get("figures"), list) else []
+        preflight_warnings = self._preflight_warnings(preflight)
+        manual_review_needed = bool(manifest.get("manual_review_needed")) or bool(preflight_warnings)
+        status = "warning" if manual_review_needed or preflight.get("passed") is False else "ok"
+        return self._envelope(
+            "graphhub.collect_artifacts",
+            arguments,
+            status=status,
+            summary=f"Collected artifacts for render job {job_id}.",
+            artifact_resources=[f"file://{figure['path']}" for figure in figures if isinstance(figure, dict)],
+            warnings=preflight_warnings,
+            created_paths=self._manifest_path_list(manifest, "created_paths"),
+            modified_paths=self._manifest_path_list(manifest, "modified_paths"),
+            skipped_paths=self._manifest_path_list(manifest, "skipped_paths"),
+            manual_review_needed=manual_review_needed,
+            figures=figures,
+            diagrams=manifest.get("diagrams") or [],
+            assemblies=manifest.get("assemblies") or [],
+            logs=manifest.get("logs") or [],
+            provenance={"manifest_path": str(manifest_path), "job_root": manifest.get("job_root", "")},
+            visual_preflight_status=preflight,
+        )
+
+    def _find_job_manifest_path(self, job_id: str) -> Path:
+        candidate_roots = [self.runtime_root]
+        if not self._runtime_root_explicit:
+            candidate_roots.extend(Path(path) for path in runtime_root_lookup_candidates())
+
+        seen = set()
+        for root in candidate_roots:
+            manifest_path = Path(root).expanduser().resolve() / "mcp_jobs" / job_id / "manifest.json"
+            key = str(manifest_path)
+            if key in seen:
+                continue
+            seen.add(key)
+            if manifest_path.exists():
+                return manifest_path
+        return Path(candidate_roots[0]).expanduser().resolve() / "mcp_jobs" / job_id / "manifest.json"
+
+    @staticmethod
+    def _manifest_path_list(manifest: dict[str, Any], key: str) -> list[str]:
+        value = manifest.get(key)
+        return [str(item) for item in value] if isinstance(value, list) else []
+
+    @staticmethod
+    def _preflight_warnings(preflight: dict[str, Any]) -> list[str]:
+        warnings: list[str] = []
+        raw_warnings = preflight.get("warnings")
+        if isinstance(raw_warnings, list):
+            warnings.extend(str(warning) for warning in raw_warnings)
+        raw_checks = preflight.get("checks")
+        if isinstance(raw_checks, list):
+            for check in raw_checks:
+                if isinstance(check, dict) and check.get("passed") is False:
+                    detail = check.get("detail")
+                    if detail:
+                        warnings.append(str(detail))
+        return warnings
+
     def _envelope(
         self,
         tool_name: str,
@@ -410,13 +757,14 @@ class GraphHubMCPServer:
         warnings: list[str] | None = None,
         errors: list[str] | None = None,
         manual_review_needed: bool = False,
+        is_dry_run: bool = True,
         **extra: Any,
     ) -> dict[str, Any]:
         operation_id = self._operation_id(tool_name, arguments)
         result = {
             "status": status,
             "operation_id": operation_id,
-            "is_dry_run": True,
+            "is_dry_run": is_dry_run,
             "summary": summary,
             "created_paths": created_paths or [],
             "modified_paths": modified_paths or [],
@@ -608,6 +956,145 @@ class GraphHubMCPServer:
         except ValueError:
             return str(path)
 
+    def _mcp_jobs_root(self) -> Path:
+        return self.runtime_root / "mcp_jobs"
+
+    @staticmethod
+    def _render_job_id(raw_job_id: Any = None) -> str:
+        if raw_job_id is None or not str(raw_job_id).strip():
+            return f"job-{uuid.uuid4().hex[:12]}"
+        text = str(raw_job_id).strip()
+        safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in text)
+        safe = safe.strip("-_")
+        if not safe:
+            raise ValueError("job_id must contain at least one alphanumeric character.")
+        return safe[:80]
+
+    @staticmethod
+    def _required_string(arguments: dict[str, Any], key: str) -> str:
+        value = arguments.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{key} is required.")
+        return value.strip()
+
+    @staticmethod
+    def _input_file_path(raw_path: Any) -> Path:
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ValueError("data_path is required.")
+        path = Path(raw_path).expanduser().resolve()
+        if not path.is_file():
+            raise ValueError(f"data_path is not a file: {path}")
+        if path.suffix.lower() != ".csv":
+            raise ValueError(f"data_path must point to a CSV file: {path}")
+        file_size = path.stat().st_size
+        if file_size > MCP_RENDER_CSV_MAX_BYTES:
+            limit_mb = MCP_RENDER_CSV_MAX_BYTES / (1024 * 1024)
+            actual_mb = file_size / (1024 * 1024)
+            raise ValueError(f"data_path exceeds MCP CSV size limit: {actual_mb:.1f} MB > {limit_mb:.1f} MB.")
+        return path
+
+    @staticmethod
+    def _render_style_errors(target_format: str, output_format: str, profile: str) -> list[str]:
+        errors = []
+        if target_format not in ALLOWED_TARGET_FORMATS:
+            errors.append(f"Invalid target_format: {target_format}. Allowed: {sorted(ALLOWED_TARGET_FORMATS)}")
+        if output_format not in ALLOWED_OUTPUT_FORMATS:
+            errors.append(f"Invalid output_format: {output_format}. Allowed: {sorted(ALLOWED_OUTPUT_FORMATS)}")
+        profile_keys = set(list_profiles()) | set(PROFILE_ALIASES)
+        if profile.strip().lower() not in profile_keys:
+            errors.append(f"Invalid profile: {profile}. Allowed: {sorted(list_profiles())}")
+        return errors
+
+    @staticmethod
+    def _rendered_figure_artifacts(output_path: Path) -> list[dict[str, str]]:
+        artifacts: list[dict[str, str]] = []
+        for candidate in sorted(output_path.parent.glob(f"{output_path.stem}.*")):
+            if candidate.suffix.lower().lstrip(".") in ALLOWED_OUTPUT_FORMATS:
+                artifacts.append({"path": str(candidate), "format": candidate.suffix.lower().lstrip(".")})
+        if not artifacts:
+            artifacts.append({"path": str(output_path), "format": output_path.suffix.lower().lstrip(".")})
+        return artifacts
+
+    @staticmethod
+    def _validate_render_data_contract(
+        data_path: Path,
+        *,
+        required_columns: list[str],
+        semantic_checks: dict[str, Any],
+    ) -> list[str]:
+        try:
+            import pandas as pd
+
+            df = _read_data_safe(str(data_path), pd)
+        except Exception as exc:
+            return [f"Failed to read render data contract input: {exc}"]
+
+        stripped_to_actual = {}
+        for actual_col in df.columns:
+            stripped_col = str(actual_col).strip()
+            if stripped_col in stripped_to_actual and stripped_to_actual[stripped_col] != actual_col:
+                return [
+                    "Ambiguous columns after strip normalization: "
+                    f"'{stripped_to_actual[stripped_col]}' and '{actual_col}'"
+                ]
+            stripped_to_actual[stripped_col] = actual_col
+
+        missing = [col for col in required_columns if str(col).strip() not in stripped_to_actual]
+        if missing:
+            return [f"Missing required columns: {missing}"]
+
+        semantic_errors, _row_violations = _validate_semantic_constraints(df, semantic_checks, stripped_to_actual)
+        return list(semantic_errors)
+
+    @staticmethod
+    def _render_project_config(
+        *,
+        target_format: str,
+        profile: str,
+        output_format: str,
+        x_column: str,
+        y_column: str,
+        semantic_checks: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "project": {"name": "Graph Hub MCP Render Job"},
+            "visual_style": {
+                "target_format": target_format,
+                "font_scale": 1.0,
+                "profile": profile,
+            },
+            "language_policy": {"analysis_lang": "r", "plot_lang": "python", "allow_nonstandard": False},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "data/input.csv",
+                        "required_columns": [x_column, y_column],
+                        "semantic_checks": semantic_checks,
+                    }
+                ]
+            },
+            "figures": [
+                {
+                    "id": "Graph",
+                    "script": "bridge_renderer",
+                    "inputs": ["data/input.csv"],
+                    "output": f"results/figures/graph.{output_format}",
+                }
+            ],
+        }
+
+    @staticmethod
+    def _safe_preflight(output_path: Path, target_format: str) -> dict[str, Any]:
+        journal = target_format if target_format in {"nature", "science", "acs", "rsc", "elsevier"} else "nature"
+        try:
+            return validate_figure_preflight(output_path, journal)
+        except Exception as exc:
+            return {
+                "passed": False,
+                "checks": [],
+                "warnings": [str(exc)],
+            }
+
 
 def run_stdio_server(
     server: GraphHubMCPServer | None = None,
@@ -656,13 +1143,60 @@ def _handle_json_rpc(server: GraphHubMCPServer, request: dict[str, Any]) -> dict
         return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": list_tool_definitions()}}
     if method == "tools/call":
         tool_name = params.get("name")
-        arguments = params.get("arguments") or {}
+        arguments = params.get("arguments", {})
+        if arguments is None:
+            arguments = {}
         if not isinstance(tool_name, str) or tool_name not in server._handlers:
             return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, f"Unknown tool: {tool_name}")
         if not isinstance(arguments, dict):
             return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "Tool arguments must be an object.")
+        argument_errors = _validate_tool_arguments(tool_name, arguments)
+        if argument_errors:
+            return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "; ".join(argument_errors))
         return {"jsonrpc": "2.0", "id": request_id, "result": server.call_tool(tool_name, arguments)}
     return _json_rpc_error(request_id, JSONRPC_METHOD_NOT_FOUND, f"Method not found: {method}")
+
+
+def _validate_tool_arguments(tool_name: str, arguments: dict[str, Any]) -> list[str]:
+    for definition in list_tool_definitions():
+        if definition["name"] != tool_name:
+            continue
+        schema = definition.get("inputSchema", {})
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        errors = [
+            f"Missing required tool argument(s): {key}"
+            for key in required
+            if key not in arguments or not isinstance(arguments.get(key), str) or not arguments.get(key).strip()
+        ]
+        if schema.get("additionalProperties") is False:
+            unknown = sorted(set(arguments) - set(properties))
+            if unknown:
+                errors.append(f"Unknown tool argument(s): {', '.join(unknown)}")
+        for key, value in arguments.items():
+            prop_schema = properties.get(key)
+            if isinstance(prop_schema, dict):
+                expected_type = prop_schema.get("type")
+                if not _matches_json_schema_type(value, expected_type):
+                    errors.append(f"Tool argument '{key}' must be {expected_type}.")
+        return errors
+    return []
+
+
+def _matches_json_schema_type(value: Any, expected_type: Any) -> bool:
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type is None:
+        return True
+    return True
 
 
 def _json_rpc_error(request_id: Any, code: int, message: str) -> dict[str, Any]:

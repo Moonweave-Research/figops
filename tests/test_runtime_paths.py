@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from hub_core.runtime_paths import preview_runtime_root, resolve_runtime_root
 from hub_core.error_dumper import dump_pipeline_failure
 from hub_core.execution_log import write_execution_log
 from hub_core.visual_regression import write_check_all_report
@@ -13,6 +14,78 @@ HUB_ROOT = Path(__file__).resolve().parent.parent
 
 
 class RuntimePathTest(unittest.TestCase):
+    def test_preview_runtime_root_does_not_create_directory(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
+            runtime_root = Path(tmpdir) / "preview-only"
+
+            with patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime_root)}, clear=False):
+                preview = preview_runtime_root()
+
+            self.assertEqual(Path(preview), runtime_root)
+            self.assertFalse(runtime_root.exists())
+
+    def test_preview_runtime_root_preserves_nested_override_without_creating(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
+            runtime_root = Path(tmpdir) / "new" / "nested" / "runtime" / "root"
+
+            with patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime_root)}, clear=False):
+                preview = preview_runtime_root()
+                self.assertEqual(Path(preview), runtime_root)
+                self.assertFalse(runtime_root.exists())
+                self.assertFalse(runtime_root.parent.exists())
+                resolved = resolve_runtime_root()
+
+            self.assertEqual(Path(resolved), runtime_root)
+            self.assertTrue(runtime_root.is_dir())
+
+    def test_preview_runtime_root_matches_resolver_fallback_without_creating(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
+            blocked_cache = Path(tmpdir) / "cache-file"
+            blocked_cache.write_text("not a directory", encoding="utf-8")
+            fallback_root = Path(tmpdir) / "graph_making_hub_runtime"
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {"RESEARCH_HUB_RUNTIME_ROOT": "", "RESEARCH_HUB_RUNTIME_HOME": "", "TMPDIR": tmpdir},
+                    clear=False,
+                ),
+                patch("hub_core.runtime_paths._default_user_cache_dir", return_value=str(blocked_cache)),
+                patch("hub_core.runtime_paths.tempfile.gettempdir", return_value=tmpdir),
+            ):
+                preview = preview_runtime_root()
+                self.assertEqual(Path(preview), fallback_root)
+                self.assertFalse(fallback_root.exists())
+                resolved = resolve_runtime_root()
+
+            self.assertEqual(Path(resolved), fallback_root)
+            self.assertTrue(fallback_root.is_dir())
+
+    def test_preview_runtime_root_fallback_does_not_probe_tempdir(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
+            blocked_cache = Path(tmpdir) / "cache-file"
+            blocked_cache.write_text("not a directory", encoding="utf-8")
+            preview_tmp = Path(tmpdir) / "preview-temp"
+            fallback_root = preview_tmp / "graph_making_hub_runtime"
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "RESEARCH_HUB_RUNTIME_ROOT": "",
+                        "RESEARCH_HUB_RUNTIME_HOME": "",
+                        "TMPDIR": str(preview_tmp),
+                    },
+                    clear=False,
+                ),
+                patch("hub_core.runtime_paths._default_user_cache_dir", return_value=str(blocked_cache)),
+                patch("hub_core.runtime_paths.tempfile.gettempdir", side_effect=FileNotFoundError("probe disallowed")),
+            ):
+                preview = preview_runtime_root()
+
+            self.assertEqual(Path(preview), fallback_root)
+            self.assertFalse(fallback_root.exists())
+
     def test_runtime_logs_and_reports_use_external_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
             runtime_root = Path(tmpdir) / "runtime"

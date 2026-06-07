@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from io import BytesIO
@@ -9,6 +11,8 @@ from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMAT
 from hub_core.mcp_surface import GraphHubMCPServer, _handle_json_rpc, list_tool_definitions, run_stdio_server
 from hub_core.project_discovery import ProjectDiscoveryService
 from themes.style_profiles import PROFILE_ALIASES, list_profiles
+
+HUB_ROOT = Path(__file__).resolve().parent.parent
 
 
 VALID_CONFIG = """
@@ -81,18 +85,44 @@ class ReadOnlyMCPTest(unittest.TestCase):
         self.assertEqual(json.loads(response["content"][0]["text"]), response["structuredContent"])
         return response["structuredContent"]
 
+    def test_read_only_mcp_import_does_not_require_bridge_renderer(self):
+        runtime_root = str(Path(tempfile.gettempdir()) / "graph_hub_mcp_no_bridge")
+        code = f"""
+import importlib.abc
+import sys
+
+class BlockBridgeRenderer(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "plotting.bridge_renderer":
+            raise RuntimeError("bridge renderer import attempted")
+        return None
+
+sys.meta_path.insert(0, BlockBridgeRenderer())
+from hub_core.mcp_surface import GraphHubMCPServer
+server = GraphHubMCPServer(runtime_root={runtime_root!r})
+result = server.call_tool("graphhub.health", {{}})
+assert result["structuredContent"]["status"] in ("ok", "warning")
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=HUB_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
     def test_tool_definitions_include_read_only_tools_and_schemas(self):
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
 
-        self.assertEqual(
-            set(definitions),
+        self.assertTrue(
             {
                 "graphhub.health",
                 "graphhub.list_styles",
                 "graphhub.list_projects",
                 "graphhub.inspect_project",
                 "graphhub.validate_project",
-            },
+            }.issubset(set(definitions))
         )
         for tool in definitions.values():
             self.assertEqual(tool["inputSchema"]["type"], "object")
@@ -129,7 +159,7 @@ class ReadOnlyMCPTest(unittest.TestCase):
             self.assertFalse((runtime_root / "mcp_jobs").exists())
 
             self.assertEqual(health["status"], "ok")
-            self.assertEqual(health["write_tools_enabled"], False)
+            self.assertEqual(health["write_tools_enabled"], True)
             self.assertEqual(health["discovery_status"]["project_count"], 2)
             self.assertEqual(health["discovery_status"]["invalid_count"], 1)
 
