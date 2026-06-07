@@ -1,6 +1,6 @@
 # AGENTS.md — Research Hub Unified Agent Protocol (v4.0)
 
-> Identity: This is the single, model-agnostic operating protocol for `[Graph_making_hub]`.
+> Identity: This is the single, model-agnostic operating protocol for the independent `graph-making-hub` repository.
 > Principle: Data is the API. Quality is absolute. Silent failure is prohibited.
 
 ---
@@ -25,7 +25,7 @@ Coordinate end-to-end planning, implementation, and verification across the modu
 
 1. **Modular Consistency**: Any logic change must be placed in the appropriate `hub_core/` module. No "God Scripts".
 2. **Fail-Fast Enforcement**: Pipeline must exit on script absence, semantic validation failure, or environment mismatch.
-3. **Data Provenance**: Every run must output DVC status and environment hashes to guarantee 100% reproducibility.
+3. **Data Provenance**: Every run must output Git/config/environment hashes for reproducibility. DVC is not part of the current required runtime surface.
 4. **Cloud-Native Awareness**: Use the Prefetcher (`ensure_local_files`) for any input file to prevent GDrive sync deadlocks.
 
 ---
@@ -49,7 +49,7 @@ Programmatic schematic Hub integration may be described in workspace-level specs
 
 ## 6) Common Commands
 
-Run from `[Graph_making_hub]/`:
+Run from the independent `graph-making-hub/` clone:
 
 ```bash
 # Preferred uv entry point: keeps uv's project env outside the repo
@@ -99,8 +99,8 @@ python orchestrator.py --check-all --step all --force --strict-lock
 
 ## 9) Standardized Plotting Policy
 
-Before adding plot-specific utility code, check `[Graph_making_hub]/plotting/utils.py` for an existing shared helper. Reuse and extend shared helpers such as `compress_sample_label` instead of re-implementing ad-hoc formatting logic inside project plots.
+Before adding plot-specific utility code, check `plotting/utils.py` for an existing shared helper. Reuse and extend shared helpers such as `compress_sample_label` instead of re-implementing ad-hoc formatting logic inside project plots.
 
 ---
 
-**Last Update**: 2026-05-13 (AgentOps ownership seed; Modularized Architecture, Semantic Contracts, GDrive Integration)
+**Last Update**: 2026-06-07 (independent repo cleanup, uv/Docker alignment, retired DVC wording)

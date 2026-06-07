@@ -53,6 +53,47 @@ def test_returns_subprocess_returncode(tmp_path):
     assert rc == 42
 
 
+def test_mounts_hub_separately_when_it_is_outside_root(tmp_path):
+    captured = {}
+    hub_path = tmp_path / "graph-making-hub"
+    root_dir = tmp_path / "ResearchOS"
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        result = MagicMock()
+        result.returncode = 0
+        return result
+
+    with (
+        patch("hub_core.docker_runner.shutil.which", return_value="/usr/bin/docker"),
+        patch("hub_core.docker_runner.subprocess.run", side_effect=fake_run),
+    ):
+        rerun_in_docker(str(hub_path), str(root_dir), [])
+
+    assert f"{root_dir}:{root_dir}" in captured["cmd"]
+    assert f"{hub_path}:{hub_path}" in captured["cmd"]
+
+
+def test_uses_single_workspace_mount_when_hub_is_inside_root(tmp_path):
+    captured = {}
+    hub_path = tmp_path / "graph-making-hub"
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        result = MagicMock()
+        result.returncode = 0
+        return result
+
+    with (
+        patch("hub_core.docker_runner.shutil.which", return_value="/usr/bin/docker"),
+        patch("hub_core.docker_runner.subprocess.run", side_effect=fake_run),
+    ):
+        rerun_in_docker(str(hub_path), str(tmp_path), [])
+
+    assert captured["cmd"].count("-v") == 1
+    assert f"{tmp_path}:{tmp_path}" in captured["cmd"]
+
+
 def test_default_image_constant():
     assert DEFAULT_DOCKER_IMAGE == "graph-making-hub:latest"
 

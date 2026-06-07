@@ -13,10 +13,12 @@ import sys
 import os
 import matplotlib.pyplot as plt
 
-# 1. 중앙 통제실(Hub) 경로 탐색 및 테마 엔진 로드
-# orchestrator가 찔러주는 환경변수가 없다면 상대 경로로 스스로 [Graph_making_hub](Hub)를 찾습니다.
-hub_path = os.environ.get('RESEARCH_HUB_PATH', 
-                          os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '[Graph_making_hub]')))
+# 1. Hub 경로 및 테마 엔진 로드
+# orchestrator.py는 RESEARCH_HUB_PATH를 자동 주입합니다.
+# 단독 실행 시에는 이 환경 변수를 명시적으로 설정합니다.
+hub_path = os.environ.get('RESEARCH_HUB_PATH')
+if not hub_path:
+    raise RuntimeError("RESEARCH_HUB_PATH is required when running this plot script outside Graph Hub.")
 sys.path.insert(0, os.path.join(hub_path, 'themes'))
 
 from journal_theme import apply_journal_theme, get_figsize, SINGLE_COLUMN, DOUBLE_COLUMN
@@ -52,11 +54,10 @@ plt.show() # 또는 plt.savefig()
 ```r
 library(ggplot2)
 
-# 1. 중앙 통제실(Hub) 경로 탐색 및 테마 엔진 로드
+# 1. Hub 경로 및 테마 엔진 로드
 hub_path <- Sys.getenv("RESEARCH_HUB_PATH")
 if (hub_path == "") {
-  # 단독 실행 시를 위한 Fallback (상대 경로)
-  hub_path <- file.path(dirname(dirname(getwd())), "[Graph_making_hub]") 
+  stop("RESEARCH_HUB_PATH is required when running this plot script outside Graph Hub.")
 }
 source(file.path(hub_path, "themes", "journal_theme.R"))
 

@@ -18,6 +18,8 @@ def rerun_in_docker(hub_path, root_dir, argv, *, image=DEFAULT_DOCKER_IMAGE, bui
 
     filtered_args = [arg for arg in argv if arg not in {"--docker", "--docker-build"}]
 
+    volume_args = _volume_args(hub_path, root_dir)
+
     command = [
         docker_bin,
         "run",
@@ -26,8 +28,7 @@ def rerun_in_docker(hub_path, root_dir, argv, *, image=DEFAULT_DOCKER_IMAGE, bui
         "RESEARCH_HUB_IN_DOCKER=1",
         "-e",
         "PYTHONUNBUFFERED=1",
-        "-v",
-        f"{root_dir}:{root_dir}",
+        *volume_args,
         "-w",
         hub_path,
         image,
@@ -64,3 +65,33 @@ def _build_docker_image(docker_bin, hub_path, image):
         raise RuntimeError(f"Docker build timed out (600s) for image: {image}")
     if proc.returncode != 0:
         raise RuntimeError(f"Docker build failed for image: {image}")
+
+
+def _volume_args(hub_path, root_dir):
+    mount_paths = [root_dir]
+    if not _path_contains(root_dir, hub_path):
+        mount_paths.append(hub_path)
+
+    args = []
+    for path in _dedupe_paths(mount_paths):
+        args.extend(["-v", f"{path}:{path}"])
+    return args
+
+
+def _path_contains(parent, child):
+    try:
+        return os.path.commonpath([parent, child]) == parent
+    except ValueError:
+        return False
+
+
+def _dedupe_paths(paths):
+    seen = set()
+    unique = []
+    for path in paths:
+        normalized = os.path.abspath(path)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(normalized)
+    return unique

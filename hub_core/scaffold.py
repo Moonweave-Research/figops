@@ -58,10 +58,9 @@ import sys
 import matplotlib.pyplot as plt
 import pandas as pd
 
-hub_path = os.environ.get(
-    "RESEARCH_HUB_PATH",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "[Graph_making_hub]")),
-)
+hub_path = os.environ.get("RESEARCH_HUB_PATH")
+if not hub_path:
+    raise RuntimeError("RESEARCH_HUB_PATH is required when running this plot script outside Graph Hub.")
 if hub_path not in sys.path:
     sys.path.insert(0, hub_path)
 
@@ -107,10 +106,9 @@ import sys
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
-hub_path = os.environ.get(
-    "RESEARCH_HUB_PATH",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "[Graph_making_hub]")),
-)
+hub_path = os.environ.get("RESEARCH_HUB_PATH")
+if not hub_path:
+    raise RuntimeError("RESEARCH_HUB_PATH is required when running this diagram script outside Graph Hub.")
 if hub_path not in sys.path:
     sys.path.insert(0, hub_path)
 

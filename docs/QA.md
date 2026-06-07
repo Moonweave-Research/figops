@@ -1,6 +1,6 @@
 # QA Guide — Smoke Test & Figure Regression (v4.0)
 
-이 문서는 `[Graph_making_hub]`의 최소 품질 보증 절차를 정의합니다.
+이 문서는 독립 `graph-making-hub` repository의 최소 품질 보증 절차를 정의합니다.
 
 일상 실행 가이드는 `README.md`를 먼저 보고, 이 문서는 운영 검증이나 릴리스 전 점검 때만 사용한다.
 
@@ -62,7 +62,7 @@ python orchestrator.py --docker --docker-build --project "12. ionoelastomer" --s
 - `--step diagrams` 실행 시 diagram output verification이 통과해야 함.
 - `--check-all` 요약에 `discovered_configs`, `invalid_configs`가 표시되고, invalid config가 있으면 리포트에 `invalid_projects`가 남아야 함.
 - Docker 경로에서도 lock gate, provenance, plot 출력이 동일하게 통과해야 함.
-- DVC Google Drive 자격증명은 repo 안이 아니라 각 컴퓨터의 로컬 사용자 경로에 있어야 함.
+- uv/R 런타임 상태와 자격증명은 repo 안이 아니라 외부 runtime/cache 경로에 있어야 함.
 
 ---
 
@@ -79,7 +79,7 @@ python orchestrator.py --docker --docker-build --project "12. ionoelastomer" --s
 
 2. **출력물 재현성 (Determinism)**
 - 동일 데이터/코드 조건에서 생성된 PDF의 SHA256 해시값 일치 여부.
-- Python은 전체 transitive `requirements-lock.txt`, R은 repo-level `renv.lock`을 기준으로 환경을 복원했는지 확인.
+- Python은 `pyproject.toml` + `uv.lock`, R은 repo-level `renv.lock`을 기준으로 환경을 복원했는지 확인.
 - `metadata={'CreationDate': None}` 옵션 적용 확인.
 - PNG/JPG 계열 대표 산출물은 `--regression-baseline check` 시 baseline snapshot 대비 `pixel_diff_ratio`, `pixel_rms`, 크기 변경 여부를 함께 확인.
 - PDF는 macOS 환경에서 `qlmanage`가 가능하면 first-page preview 기준으로 같은 diff 메트릭을 기록하고, 렌더러가 없으면 명시적으로 hash-only fallback 상태를 남긴다.
@@ -97,6 +97,6 @@ python orchestrator.py --docker --docker-build --project "12. ionoelastomer" --s
 ## 3) 운영 권고
 
 - **허브 모듈 수정 시**: `hub_core/` 내부 로직 변경 시 반드시 2개 이상의 서로 다른 프로젝트(`ionoelastomer`, `Sulfur_polymer`)에 대해 테스트를 수행.
-- **DVC 갱신**: 데이터 결과값이 바뀌었을 경우 DVC status를 확인하고 `data_registry/` 스냅샷을 갱신.
+- **Runtime 상태 분리**: 데이터 결과값, 회귀 baseline, 실행 로그, 자격증명은 repo 밖 runtime/cache 경로에 둔다. DVC/data registry는 현재 운영 표면에서 retired 상태다.
 
-**Last Update**: 2026-03-06 (Lock hardening and invalid-config reporting 반영)
+**Last Update**: 2026-06-07 (independent repo cleanup and uv lock alignment)

@@ -3,6 +3,8 @@
 > **최종 업데이트**: 2026-03-07 (UX 문서 분리, 사용자용 에러 안내 강화)
 > **원칙**: 우선순위는 **런타임 크래시 > 아키텍처 정합성 > 문서 정확성 > 개선** 순서
 
+> **2026-06-07 note**: 이 파일은 과거 작업 이력/체크리스트로 유지한다. 현재 운영 기준은 `AGENTS.md`, `Research_Central_Architecture.md`, `README.md`, `docs/QA.md`를 우선한다. 아래의 DVC, `requirements-lock.txt`, legacy `[Graph_making_hub]` 경로 언급은 당시 이력으로 해석한다.
+
 ---
 
 ## 🆕 Hardening Milestone (P1: 시스템 강건화)

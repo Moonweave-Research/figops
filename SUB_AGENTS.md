@@ -1,6 +1,6 @@
 # Graph Making Hub - Sub-Agent Protocol (v4.0)
 
-> Scope: This file defines model-agnostic sub-agent ownership for `[Graph_making_hub]`.
+> Scope: This file defines model-agnostic sub-agent ownership for the independent `graph-making-hub` repository.
 > Main agent and global rules are defined in `AGENTS.md`.
 
 ---
@@ -9,7 +9,7 @@
 
 | Sub-agent | Primary Ownership | Key Responsibilities (v4.0) |
 |---|---|---|
-| `Pipeline-Orchestrator` | `hub_core/` (config, cache, runner, provenance, utils) | Interactive CLI selection, Smart Build caching logic, DVC/Git provenance logging. |
+| `Pipeline-Orchestrator` | `hub_core/` (config, cache, runner, provenance, utils) | Interactive CLI selection, Smart Build caching logic, Git/config/environment provenance logging. |
 | `Academic-Stylist` | `themes/*`, `plotting/*` | Journal preset management, palette SSOT (`palettes.yaml`), reusable plot primitives. |
 | `Data-Contract Guardian` | `hub_core/data_contract.py` | Basic (Dtypes) and **Semantic (Range, Null, Unique)** validation logic. |
 | `Project-Migrator` | `project_config_template.yaml`, onboarding | Mapping raw research folders to hub-compliant pipelines and `analysis_helpers` integration. |
@@ -32,4 +32,4 @@
 
 ---
 
-**Last Update**: 2026-03-05 (Refactored Modular Ownership)
+**Last Update**: 2026-06-07 (independent repo wording and retired DVC runtime wording)

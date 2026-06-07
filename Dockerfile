@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -16,16 +16,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pip install --no-cache-dir uv
+
 WORKDIR /opt/graph_making_hub
 
-COPY requirements.txt requirements.txt
-COPY requirements-lock.txt requirements-lock.txt
+COPY pyproject.toml uv.lock README.md ./
 COPY renv.lock renv.lock
 
-RUN pip install --no-cache-dir -r requirements-lock.txt
+ENV UV_PROJECT_ENVIRONMENT=/opt/graph_making_hub/.venv
+
+RUN uv sync --frozen --no-dev --no-install-project
 
 RUN RENV_BOOTSTRAP_VERSION="$RENV_BOOTSTRAP_VERSION" Rscript -e "version <- Sys.getenv('RENV_BOOTSTRAP_VERSION'); urls <- c(sprintf('https://cloud.r-project.org/src/contrib/renv_%s.tar.gz', version), sprintf('https://cloud.r-project.org/src/contrib/Archive/renv/renv_%s.tar.gz', version)); installed <- FALSE; for (url in urls) { tryCatch({ install.packages(url, repos = NULL, type = 'source'); installed <- TRUE }, error = function(e) NULL); if (installed) break }; if (!installed) stop(sprintf('failed to install renv %s', version))"
 RUN Rscript -e "renv::restore(lockfile = 'renv.lock', prompt = FALSE)"
+
+ENV VIRTUAL_ENV=/opt/graph_making_hub/.venv
+ENV PATH="/opt/graph_making_hub/.venv/bin:$PATH"
 
 COPY . .
 

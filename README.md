@@ -1,6 +1,6 @@
 # 📊 Graph Making Hub
 
-> **Keyword Index for AI Navigation**: See [KEYWORDS.md](./KEYWORDS.md) for indexed physical models, analytical thresholds, and material-property correlations.
+> **Keyword Index for AI Navigation**: See [KEYWORDS.md](./docs/KEYWORDS.md) for indexed physical models, analytical thresholds, and material-property correlations.
 
 > **"Data is the API. Quality is Absolute."**
 >  
@@ -9,7 +9,7 @@
 ## 누가 무엇을 보면 되나
 
 - 처음 쓰는 사람: 이 README만 먼저 본다.
-- 운영 검증을 돌리는 사람: [QA.md](./QA.md)를 본다.
+- 운영 검증을 돌리는 사람: [QA.md](./docs/QA.md)를 본다.
 - 내부 구현/이력 확인: [task.md](./task.md), [AGENTS.md](./AGENTS.md)를 본다.
 ## 3단계 시작 가이드
 
@@ -174,9 +174,9 @@ diagrams:
 ## 여러 컴퓨터에서 쓸 때 규칙
 
 - 같은 프로젝트는 한 시점에 한 컴퓨터에서만 실행한다.
-- Google Drive Desktop 앱 로그인 문제와 DVC 인증 문제는 별개다.
-- DVC Google Drive 인증은 각 컴퓨터에서 한 번씩 개별 인증한다.
-- DVC 런타임 상태(`DVC_HOME`, XDG cache/config/state)는 기본적으로 `RESEARCH_HUB_RUNTIME_ROOT` 또는 사용자 캐시 아래로 분리된다.
+- Google Drive Desktop 앱 로그인 문제와 Hub 런타임 문제는 별개로 본다.
+- DVC 통합은 현재 운영 표면에서 retired 상태다. 되살리기 전까지 `data_registry/`나 DVC 자격증명을 repo 안에 두지 않는다.
+- uv/R 런타임 상태는 기본적으로 `RESEARCH_HUB_RUNTIME_ROOT` 또는 사용자 캐시 아래로 분리된다.
 - repo 안 자격증명 파일을 공유하지 않는다.
 
 ## 운영자용 명령
@@ -203,7 +203,7 @@ python orchestrator.py --check-all --step plot --strict-lock --regression-baseli
 python orchestrator.py --docker --docker-build --project "프로젝트명" --step all
 ```
 
-자세한 합격 기준은 [QA.md](./QA.md)에 있다.
+자세한 합격 기준은 [QA.md](./docs/QA.md)에 있다.
 
 ## 핵심 기능
 
@@ -213,7 +213,7 @@ python orchestrator.py --docker --docker-build --project "프로젝트명" --ste
 - **Check-All Regression**: 등록 프로젝트 전체를 순회하고 런타임 루트의 `hub_logs/check_all_report.json`에 결과를 남긴다.
 - **Figure Baseline Regression**: `figures`와 `diagrams` 출력에 대해 `--regression-baseline update/check`로 해시와 diff를 비교한다.
 - **Docker Execution**: 같은 명령을 격리된 컨테이너에서 다시 실행할 수 있다.
-- **Drive-Safe DVC Runtime**: DVC 상태와 자격증명은 Drive 동기화 폴더 밖에서 관리한다.
+- **External Runtime State**: uv/R 런타임 상태와 자격증명은 repo 및 Drive 동기화 폴더 밖에서 관리한다.
 
 ## 환경 설정 및 이식성 (Environment & Portability)
 
@@ -267,7 +267,7 @@ python hub_uv.py --print-env
 ## 관련 문서
 
 - 운영 규약: [AGENTS.md](./AGENTS.md)
-- 검증 기준: [QA.md](./QA.md)
+- 검증 기준: [QA.md](./docs/QA.md)
 - 작업 이력: [task.md](./task.md)
 
-**Last Update**: 2026-03-07 (UX-oriented README split: quick start, operator section, multi-computer rules)
+**Last Update**: 2026-06-07 (independent repo cleanup, uv/Docker alignment, docs link repair)

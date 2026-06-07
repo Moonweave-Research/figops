@@ -2,7 +2,7 @@
 
 - Status: Final direction and work-unit index; updated after live ResearchOS audit
 - Date: 2026-06-07
-- Scope: `[Graph_making_hub]`, Athena visualization bridge, ResearchOS project graph inventory
+- Scope: independent `graph-making-hub` repository, Athena visualization bridge, ResearchOS project graph inventory
 - Decision: Graph Hub remains the canonical graph engine. MCP is added as a thin, typed agent surface. Athena becomes a caller/client of Graph Hub, not the owner of Graph Hub project or style contracts.
 - Implementation start point: finish Phase 0 truth-surface repair and style-contract alignment. Write-capable MCP tools are out of scope until discovery, style, validation, and no-write read-only tests pass.
 
@@ -56,15 +56,15 @@ Read and execute in this order:
 
 ## Current Findings That Drive the Plan
 
-### Live ResearchOS State
+### Live ResearchOS And Graph Hub State
 
 Live audit on 2026-06-07 found:
 
-- ResearchOS root is the actual Git top-level for `[Athena]` and `[Graph_making_hub]`; the current filesystem does not show separate `.git` directories for those two official tools.
-- `ACTIVE_PROJECTS.yaml` still describes both tools as `independent_repo`, so repo/deployment boundary is a governance/documentation mismatch that must not be hidden by MCP.
+- Graph Hub has been physically externalized as its own Git repository at `/Users/choemun-yeong/workspace/graph-making-hub`.
+- ResearchOS still owns workspace governance and Athena. Athena must resolve Graph Hub as an external tool path, not as a nested `[Graph_making_hub]` source tree.
 - Graph Hub discovery now reports 14 projects: 13 valid and 1 invalid.
 - The invalid project is `02_Surfur_Polymer/유전율 측정`, with three `data_contract.csv_checks.path is required` errors.
-- Athena `hub_bridge` is enabled and resolves `hub_path` to the local Graph Hub path.
+- Athena `hub_bridge` is enabled and resolves `hub_path` to the local independent Graph Hub path, with compatibility handling for legacy configured paths.
 - Athena can execute a Graph Hub bridge smoke job, but its `TargetFormat` contract is narrower than Graph Hub's official style set.
 - `workspace_state.md` and `workspace_state.json` can become dirty from health/report generation, so read-only MCP health must not reuse side-effectful report writers.
 

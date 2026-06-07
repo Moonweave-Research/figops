@@ -31,6 +31,7 @@ env/
 *.log
 *.tmp
 *.bak
+.pdca-status.json
 hub_logs/
 **/hub_logs/
 

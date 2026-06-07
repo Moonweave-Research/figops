@@ -8,7 +8,7 @@
 
 Graph Hub should become the independently callable graph engine. Athena should become a client of Graph Hub, not the owner of Graph Hub project structure, style validation, temporary Hub project writing, or render execution.
 
-This is a logical separation first. The current ResearchOS checkout still tracks `[Athena]` and `[Graph_making_hub]` under the root Git repository, so code ownership and deployment boundaries must not be assumed from directory names alone.
+The physical split has now started: Graph Hub is an independent clone at `/Users/choemun-yeong/workspace/graph-making-hub`, while Athena remains in the ResearchOS workspace. Treat any remaining `[Graph_making_hub]` path as a legacy compatibility reference, not as the current code owner.
 
 ## Current Bridge Shape
 
@@ -128,4 +128,3 @@ Do not mix this with the first MCP render rollout.
 - Athena can list Graph Hub styles/projects through MCP or a compatibility client.
 - Render replacement is not considered done until output files, manifests, and failure diagnostics match the current bridge path.
 - The final architecture has one graph contract owner: Graph Hub.
-

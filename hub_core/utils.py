@@ -22,7 +22,7 @@ def get_hub_path():
     if path:
         return os.path.abspath(path)
 
-    # hub_core/utils.py -> [Graph_making_hub]
+    # hub_core/utils.py -> graph-making-hub
     try:
         calculated = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         if os.path.exists(calculated):

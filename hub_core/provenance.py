@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .utils import hash_file, is_executable_available, short_hash
 
-DEFAULT_PYTHON_LOCK_CANDIDATES = ("uv.lock", "requirements-lock.txt")
+DEFAULT_PYTHON_LOCK_CANDIDATES = ("uv.lock",)
 DEFAULT_R_LOCK_CANDIDATE = "renv.lock"
 
 

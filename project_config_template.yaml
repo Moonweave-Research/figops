@@ -46,7 +46,7 @@ language_policy:
 
 # 2.2 실행 환경 및 보안 게이트
 environment:
-  python_lock: "uv.lock"       # Changed from requirements-lock.txt
+  python_lock: "uv.lock"
   r_lock: "renv.lock"
   strict: false                # true 설정 시 lockfile 누락 시 실행 차단
   uv_run: true                 # New flag to signal orchestrator to use 'uv run'
