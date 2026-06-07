@@ -25,6 +25,7 @@ from .utils import (
     scan_csv_export_anomalies,
     verify_output_file,
 )
+from .uv_runtime import build_uv_environment, ensure_uv_runtime_dirs
 
 
 def _fallback_sanitize_path(raw_path: str, allowed_roots: list[Path]) -> Path:
@@ -167,14 +168,12 @@ def run_command(cmd_list, cwd, additional_env=None):
         mpl_cache = os.path.join(tempfile.gettempdir(), "graph_hub_mplcache")
         os.makedirs(mpl_cache, exist_ok=True)
         env["MPLCONFIGDIR"] = mpl_cache
-    if "UV_CACHE_DIR" not in env:
-        uv_cache_dir = os.path.join(tempfile.gettempdir(), "graph_hub_uv_cache")
-        os.makedirs(uv_cache_dir, exist_ok=True)
-        env["UV_CACHE_DIR"] = uv_cache_dir
     if "MPLBACKEND" not in env and not env.get("DISPLAY"):
         env["MPLBACKEND"] = "Agg"
     if additional_env:
         env.update(additional_env)
+    env = build_uv_environment(env, hub_root=hub_path)
+    ensure_uv_runtime_dirs(env)
 
     try:
         process = subprocess.Popen(

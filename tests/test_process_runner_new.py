@@ -1,10 +1,15 @@
 """Unit tests for _build_r_cmd and run_sweep in hub_core.process_runner."""
 
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import hub_core.process_runner as pr
 from hub_core.process_runner import _build_r_cmd, run_comparison, run_sweep
+
+HUB_ROOT = Path(__file__).resolve().parent.parent
 
 
 class TestBuildRCmd(unittest.TestCase):
@@ -45,6 +50,45 @@ class TestBuildRCmd(unittest.TestCase):
         config = {"project": {"name": "test"}}
         cmd = _build_r_cmd("Rscript", "/script.R", config)
         self.assertEqual(cmd, ["Rscript", "/script.R"])
+
+
+class TestRunCommandRuntimeEnv(unittest.TestCase):
+    def test_run_command_pins_uv_environment_outside_repo(self):
+        captured = {}
+
+        class FakeProcess:
+            stdout = []
+            returncode = 0
+
+            def wait(self, timeout=None):
+                return None
+
+        def fake_popen(*_args, **kwargs):
+            captured["env"] = kwargs["env"]
+            return FakeProcess()
+
+        with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
+            runtime_root = str((Path(tmpdir) / "runtime").resolve())
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "RESEARCH_HUB_RUNTIME_ROOT": runtime_root,
+                        "UV_PROJECT_ENVIRONMENT": str(HUB_ROOT / ".venv"),
+                    },
+                    clear=False,
+                ),
+                patch("hub_core.process_runner.subprocess.Popen", side_effect=fake_popen),
+            ):
+                result = pr.run_command(["uv", "run", "python", "-V"], str(HUB_ROOT))
+
+        self.assertTrue(result)
+        self.assertEqual(
+            captured["env"]["UV_PROJECT_ENVIRONMENT"],
+            str(Path(runtime_root) / "uv_envs" / "graph-making-hub"),
+        )
+        self.assertNotEqual(captured["env"]["UV_PROJECT_ENVIRONMENT"], str(HUB_ROOT / ".venv"))
+        self.assertEqual(captured["env"]["UV_CACHE_DIR"], str(Path(runtime_root) / "uv_cache"))
 
 
 class TestRunSweepMonkeyPatch(unittest.TestCase):

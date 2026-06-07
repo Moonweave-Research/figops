@@ -52,6 +52,10 @@ Programmatic schematic Hub integration may be described in workspace-level specs
 Run from `[Graph_making_hub]/`:
 
 ```bash
+# Preferred uv entry point: keeps uv's project env outside the repo
+python hub_uv.py run python orchestrator.py --list-projects
+python hub_uv.py run python -m pytest tests/test_runtime_paths.py -q
+
 # Interactive project selection
 python orchestrator.py
 
@@ -91,6 +95,7 @@ python orchestrator.py --check-all --step all --force --strict-lock
 - Python dependency state from `pyproject.toml` and `uv.lock` for orchestration and plotting.
 - R runtime from `renv.lock` for project analysis scripts.
 - Keep runtime environments outside tracked source unless a repo-level exception is documented.
+- Prefer `python hub_uv.py ...` over bare `uv run ...` inside this repo. The wrapper pins `UV_PROJECT_ENVIRONMENT` and `UV_CACHE_DIR` under the external Graph Hub runtime root so a materialized repo-local `.venv/` is not recreated.
 
 ## 9) Standardized Plotting Policy
 

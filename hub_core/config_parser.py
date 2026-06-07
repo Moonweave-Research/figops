@@ -881,6 +881,7 @@ def list_projects(root_dir, recursive=True, max_depth=4):
 
     rows = []
     valid_count = 0
+    invalid_projects = []
     for project in discovered:
         status_text = "N/A"
         if project["valid"]:
@@ -896,11 +897,14 @@ def list_projects(root_dir, recursive=True, max_depth=4):
                 status_text = "⚠️ Status Error"
         else:
             status_text = "❌ Invalid Config"
+            invalid_projects.append(project)
 
         rows.append(
             [
                 project["name"],
                 project["path"],
+                project.get("classification", "-"),
+                project.get("target_format", "-"),
                 _resolve_operational_state(operational_states, project["path"]),
                 status_text,
             ]
@@ -908,7 +912,7 @@ def list_projects(root_dir, recursive=True, max_depth=4):
 
     ui_table(
         title=f"🏛️ Research Projects (depth <= {max_depth})",
-        columns=["Project Name", "Path", "Op State", "Status"],
+        columns=["Project Name", "Path", "Class", "Style", "Op State", "Status"],
         rows=rows,
     )
 
@@ -916,45 +920,18 @@ def list_projects(root_dir, recursive=True, max_depth=4):
     invalid_count = len(discovered) - valid_count
     invalid_str = f"[red]{invalid_count}[/red]"
     ui_print(f"\n   ✅ Found [bold]{len(discovered)}[/bold] project(s) ({valid_str} valid, {invalid_str} invalid).")
+    if invalid_projects:
+        ui_print("\n   [red]Invalid project config errors:[/red]")
+        for project in invalid_projects:
+            ui_print(f"   - {project['path']} ({project.get('config', 'project_config.yaml')})")
+            for error in project.get("errors", []):
+                ui_print(f"     • {error}")
 
 
 def discover_projects_with_status(root_dir, max_depth=4):
-    discovered = []
-    root_depth = root_dir.rstrip(os.sep).count(os.sep)
+    from .project_discovery import discover_projects_with_status as _discover_projects_with_status
 
-    for current_root, dirs, _files in os.walk(root_dir):
-        dirs[:] = [d for d in dirs if not d.startswith((".", "_", "[")) and d != "__pycache__"]
-        current_depth = current_root.rstrip(os.sep).count(os.sep) - root_depth
-        if current_depth >= max_depth:
-            dirs[:] = []
-
-        if current_root == root_dir:
-            continue
-
-        cfg = find_config_path(current_root)
-        if cfg:
-            rel_project = os.path.relpath(current_root, root_dir)
-            rel_config = os.path.relpath(cfg, current_root)
-            metadata = _load_project_metadata(cfg, os.path.basename(current_root))
-            discovered.append(
-                {
-                    "name": metadata["name"],
-                    "path": rel_project,
-                    "config": rel_config,
-                    "config_path": cfg,
-                    "valid": metadata["valid"],
-                    "errors": list(metadata["errors"]),
-                }
-            )
-
-    return sorted(
-        discovered,
-        key=lambda item: (
-            not item["valid"],
-            str(item["name"]).lower(),
-            item["path"],
-        ),
-    )
+    return _discover_projects_with_status(root_dir, max_depth=max_depth)
 
 
 def _load_registry_operational_states(root_dir):
@@ -1006,16 +983,6 @@ def get_discoverable_projects(root_dir, max_depth=4):
     """
     연구 루트에서 project_config.yaml이 있는 프로젝트들을 수집하여 리스트로 반환합니다.
     """
-    discovered = []
-    for project in discover_projects_with_status(root_dir, max_depth=max_depth):
-        if not project["valid"]:
-            continue
-        discovered.append(
-            {
-                "name": project["name"],
-                "path": project["path"],
-                "config": project["config"],
-            }
-        )
+    from .project_discovery import get_discoverable_projects as _get_discoverable_projects
 
-    return discovered
+    return _get_discoverable_projects(root_dir, max_depth=max_depth)

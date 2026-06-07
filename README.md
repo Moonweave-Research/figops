@@ -226,11 +226,35 @@ environment:
   uv_run: true
 ```
 
-### 가상 환경 심볼릭 링크 (.venv)
-허브 루트에 있는 `.venv` 폴더는 실제 가상 환경을 가리키는 심볼릭 링크로 관리하는 것을 권장한다. Google Drive 동기화 성능과 경로 호환성을 위해 아래와 같이 설정한다:
-1. 실제 가상 환경은 Google Drive 외부(예: `~/.virtualenvs/graph_hub`)에 생성한다.
-2. 허브 루트에서 해당 경로로 심볼릭 링크를 생성한다: `ln -s ~/.virtualenvs/graph_hub .venv`
-3. 허브의 테스트 코드(`tests/test_runtime_paths.py` 등)는 이 `.venv` 경로를 동적으로 인식한다.
+### uv 실행 래퍼와 외부 가상 환경
+허브 루트에 materialized `.venv/`를 만들지 않는다. Graph Hub에서 `uv`를 사용할 때는 bare `uv run` 대신 아래 래퍼를 사용한다.
+
+```bash
+python hub_uv.py run python orchestrator.py --list-projects
+python hub_uv.py run python -m pytest tests/test_runtime_paths.py -q
+```
+
+`hub_uv.py`는 `UV_PROJECT_ENVIRONMENT`와 `UV_CACHE_DIR`를 Graph Hub 외부 runtime root 아래로 고정한다.
+
+기본 위치:
+
+```text
+~/Library/Caches/Graph_making_hub/uv_envs/graph-making-hub
+~/Library/Caches/Graph_making_hub/uv_cache
+```
+
+명시적으로 runtime root를 바꾸려면 실행 전에 `RESEARCH_HUB_RUNTIME_ROOT`를 설정한다.
+
+```bash
+RESEARCH_HUB_RUNTIME_ROOT=/Users/choemun-yeong/ws/research-runtime/graph-hub \
+  python hub_uv.py run python orchestrator.py --list-projects
+```
+
+현재 래퍼가 사용할 경로는 아래 명령으로 확인한다.
+
+```bash
+python hub_uv.py --print-env
+```
 
 ## 시스템 구조
 
