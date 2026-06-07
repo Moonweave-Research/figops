@@ -29,12 +29,87 @@ def _usable_runtime_dir(path):
     return None
 
 
+def _preview_temp_dir():
+    for env_name in ("TMPDIR", "TEMP", "TMP"):
+        value = os.environ.get(env_name)
+        if value:
+            return _abspath(value)
+    if os.name == "nt":
+        return _abspath(os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp"))
+    return os.path.abspath(os.sep + "tmp")
+
+
+def _preview_usable_runtime_dir(path):
+    candidate = _abspath(path)
+    if os.path.isdir(candidate):
+        return candidate if os.access(candidate, os.W_OK | os.X_OK) else None
+    if os.path.exists(candidate):
+        return None
+
+    ancestor = os.path.dirname(candidate) or os.curdir
+    while ancestor and not os.path.exists(ancestor):
+        parent = os.path.dirname(ancestor)
+        if parent == ancestor:
+            break
+        ancestor = parent
+
+    if os.path.isdir(ancestor) and os.access(ancestor, os.W_OK | os.X_OK):
+        return candidate
+    return None
+
+
 def _repo_runtime_root_from_symlink():
     hub_logs_path = os.path.join(_repo_root(), "hub_logs")
     if os.path.islink(hub_logs_path):
         target = os.path.realpath(hub_logs_path)
         return os.path.dirname(target)
     return None
+
+
+def preview_runtime_root():
+    """Return the preferred runtime root path without creating or probing directories."""
+    override = os.environ.get("RESEARCH_HUB_RUNTIME_ROOT") or os.environ.get("RESEARCH_HUB_RUNTIME_HOME")
+    candidates = []
+    if override:
+        candidates.append(override)
+    repo_runtime_root = _repo_runtime_root_from_symlink()
+    if repo_runtime_root:
+        candidates.append(repo_runtime_root)
+    candidates.append(os.path.join(_default_user_cache_dir(), "Graph_making_hub"))
+    candidates.append(os.path.join(_preview_temp_dir(), "graph_making_hub_runtime"))
+
+    for candidate in candidates:
+        usable = _preview_usable_runtime_dir(candidate)
+        if usable:
+            return usable
+
+    return _abspath(os.path.join(_preview_temp_dir(), "graph_making_hub_runtime"))
+
+
+def runtime_root_lookup_candidates():
+    """Return runtime root candidates for metadata lookups without creating directories."""
+    candidates = []
+    override = os.environ.get("RESEARCH_HUB_RUNTIME_ROOT") or os.environ.get("RESEARCH_HUB_RUNTIME_HOME")
+    if override:
+        candidates.append(override)
+    repo_runtime_root = _repo_runtime_root_from_symlink()
+    if repo_runtime_root:
+        candidates.append(repo_runtime_root)
+    candidates.append(os.path.join(_default_user_cache_dir(), "Graph_making_hub"))
+    candidates.append(os.path.join(_preview_temp_dir(), "graph_making_hub_runtime"))
+    try:
+        candidates.append(os.path.join(tempfile.gettempdir(), "graph_making_hub_runtime"))
+    except OSError:
+        pass
+
+    deduped = []
+    seen = set()
+    for candidate in candidates:
+        normalized = _abspath(candidate)
+        if normalized not in seen:
+            deduped.append(normalized)
+            seen.add(normalized)
+    return deduped
 
 
 def resolve_runtime_root():
