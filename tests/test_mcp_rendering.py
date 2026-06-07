@@ -1,13 +1,51 @@
 import csv
 import json
 import os
+import queue
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import yaml
 from hub_core.mcp_surface import GraphHubMCPServer, _handle_json_rpc, list_tool_definitions
+
+
+class _CompletedRenderProcess:
+    exitcode = 0
+
+    def __init__(self, *args, **kwargs):
+        self.started = False
+
+    def start(self):
+        self.started = True
+
+    def join(self, _timeout=None):
+        return None
+
+    def is_alive(self):
+        return False
+
+
+class _DelayedRenderQueue:
+    def __init__(self, *args, **kwargs):
+        self.blocking_get_timeout = None
+
+    def get_nowait(self):
+        raise queue.Empty
+
+    def get(self, timeout=None):
+        self.blocking_get_timeout = timeout
+        return {"status": "ok"}
+
+
+def _sleeping_render_worker(_spec_payload, _result_queue):
+    time.sleep(1)
+
+
+def _path_leaking_render_worker(spec_payload, result_queue):
+    result_queue.put({"status": "error", "error": f"failed at {spec_payload['output_path']}"})
 
 
 def _write_csv(path: Path) -> Path:
@@ -181,6 +219,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(second["status"], "error")
             self.assertTrue(second["manual_review_needed"])
             self.assertIn("already exists", second["errors"][0])
+            self.assertNotIn(str(Path(tmpdir).resolve()), second["errors"][0])
+            self.assertIn("runtime://mcp_jobs/same-job", second["errors"][0])
 
     def test_render_csv_graph_rejects_unknown_profile(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -233,6 +273,56 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertIn("exceeds", result["errors"][0])
             self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_graph_missing_input_error_does_not_expose_absolute_path(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            missing_path = Path(tmpdir) / "private" / "missing.csv"
+            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+
+            result = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {"data_path": str(missing_path), "x_column": "x", "y_column": "y"},
+            )
+
+            serialized = json.dumps(result, sort_keys=True)
+            self.assertEqual(result["status"], "error")
+            self.assertTrue(result["manual_review_needed"])
+            self.assertIn("data_path is not a file", result["errors"][0])
+            self.assertNotIn(str(missing_path), serialized)
+
+    def test_render_csv_graph_uses_csv_size_limit_from_environment(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = Path(tmpdir) / "input" / "small.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y\n1,2\n3,4\n", encoding="utf-8")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+
+            with patch.dict(os.environ, {"GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES": "4"}, clear=False):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
+                )
+
+            self.assertEqual(result["status"], "error")
+            self.assertIn("exceeds", result["errors"][0])
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_graph_ignores_invalid_csv_size_limit_environment(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+
+            with patch.dict(os.environ, {"GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES": "not-an-int"}, clear=False):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
 
     def test_render_csv_graph_records_pdf_companion_artifacts(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -293,6 +383,78 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertIn(result["status"], {"ok", "warning"})
             ensure_local.assert_called_once_with([str(data_path)])
+
+    def test_render_csv_graph_timeout_returns_execution_error(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+
+            with (
+                patch("hub_core.mcp_surface.MCP_RENDER_TIMEOUT_SECONDS", 0.05),
+                patch("hub_core.mcp_surface._render_bridge_figure_worker", _sleeping_render_worker),
+            ):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "timeout-demo"},
+                )
+
+            self.assertEqual(result["status"], "error")
+            self.assertTrue(result["manual_review_needed"])
+            self.assertIn("timed out", result["errors"][0])
+            self.assertTrue(str(Path(result["job_root"]).resolve()).startswith(str(runtime_root.resolve())))
+
+    def test_render_csv_graph_execution_error_sanitizes_runtime_path(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+
+            with patch("hub_core.mcp_surface._render_bridge_figure_worker", _path_leaking_render_worker):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "path-demo"},
+                )
+
+            self.assertEqual(result["status"], "error")
+            self.assertTrue(result["manual_review_needed"])
+            self.assertIn("runtime://mcp_jobs/path-demo/results/figures/graph.png", result["errors"][0])
+            self.assertNotIn(str(runtime_root.resolve()), result["errors"][0])
+
+    def test_render_worker_uses_blocking_queue_read_after_process_exit(self):
+        delayed_queue = _DelayedRenderQueue()
+
+        with (
+            patch("hub_core.mcp_surface.multiprocessing.Queue", return_value=delayed_queue),
+            patch("hub_core.mcp_surface.multiprocessing.Process", _CompletedRenderProcess),
+        ):
+            GraphHubMCPServer._run_render_bridge_figure({"csv_path": "input.csv", "output_path": "graph.png"})
+
+        self.assertIsNotNone(delayed_queue.blocking_get_timeout)
+
+    def test_render_csv_graph_data_contract_error_sanitizes_source_path(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "outside" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+
+            with patch(
+                "hub_core.mcp_surface._read_data_safe",
+                side_effect=OSError(f"cannot read {data_path.resolve()}"),
+            ):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "contract-path"},
+                )
+
+            self.assertEqual(result["status"], "error")
+            self.assertTrue(result["manual_review_needed"])
+            self.assertIn("input://data_path", result["errors"][0])
+            self.assertNotIn(str(data_path.resolve()), result["errors"][0])
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
 
     def test_json_rpc_missing_required_render_argument_returns_protocol_error(self):
         server = GraphHubMCPServer()

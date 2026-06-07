@@ -56,6 +56,9 @@ Result fields:
 - No temporary rendering job may create `.venv`, `.r_libs`, DVC state, or long-lived cache directories inside source project trees.
 - Job manifests must record created, modified, and skipped paths.
 - Outputs must include artifact path, config path, log path, style summary, and visual preflight status.
+- CSV inputs have a bounded size limit. The default is 64 MiB and operators may lower or raise it with `GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES`.
+- Bridge rendering runs behind a bounded execution timeout. A timeout returns a normal tool execution error instead of leaving the call open-ended.
+- Diagnostic errors and warnings must not expose raw local source, hub, or runtime root paths. Returned artifact resources and explicit output paths may remain concrete paths or `file://` resources.
 
 ## Style Preservation
 
@@ -86,6 +89,8 @@ Execution tests:
 - rendering creates outputs only under runtime root,
 - overwrite refusal works,
 - timeout handling produces an execution error instead of a hanging process,
+- CSV size limit enforcement runs before creating a job workspace,
+- diagnostic path sanitization covers missing inputs and overwrite refusal,
 - invalid columns return a useful execution error,
 - visual preflight failure is represented in the result envelope,
 - artifact manifests include created, modified, and skipped paths.
@@ -95,4 +100,3 @@ Compatibility tests:
 - rendered config uses `project_config.yaml` contract,
 - renderer calls existing Graph Hub bridge behavior,
 - style format list matches Graph Hub core.
-
