@@ -1,0 +1,184 @@
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
+from hub_core.mcp_surface import GraphHubMCPServer, _handle_json_rpc, list_tool_definitions
+from hub_core.project_discovery import ProjectDiscoveryService
+from themes.style_profiles import PROFILE_ALIASES, list_profiles
+
+
+VALID_CONFIG = """
+project:
+  name: "{name}"
+visual_style:
+  target_format: nature_surfur
+  font_scale: 1.0
+  profile: baseline
+data_contract:
+  csv_checks:
+    - path: "results/data/summary.csv"
+      required_columns: ["x", "y"]
+      dtypes: {{ x: float, y: float }}
+pipeline:
+  analysis:
+    - script: hub_scripts/analysis.R
+      inputs: ["data/raw.csv"]
+      outputs: ["results/data/summary.csv"]
+figures:
+  - id: Fig1
+    script: hub_scripts/plot.py
+    output: results/figures/Fig1.png
+diagrams:
+  - id: Diagram1
+    script: hub_scripts/diagram.py
+    output: results/figures/Diagram1.svg
+"""
+
+
+INVALID_CONFIG = """
+project: {{}}
+visual_style:
+  target_format: baseline
+data_contract:
+  csv_checks:
+    - required_columns: ["x"]
+"""
+
+
+def _snapshot_files(root: Path) -> dict[str, tuple[int, int]]:
+    snapshot = {}
+    for current_root, dirs, files in os.walk(root):
+        dirs[:] = [dirname for dirname in dirs if dirname != "__pycache__"]
+        for filename in files:
+            path = Path(current_root) / filename
+            stat = path.stat()
+            snapshot[path.relative_to(root).as_posix()] = (stat.st_size, stat.st_mtime_ns)
+    return snapshot
+
+
+class ReadOnlyMCPTest(unittest.TestCase):
+    def _write_project(self, root: Path, name: str, config_text: str = VALID_CONFIG) -> Path:
+        project = root / name
+        project.mkdir(parents=True, exist_ok=True)
+        (project / "project_config.yaml").write_text(config_text.format(name=name), encoding="utf-8")
+        return project
+
+    def _call(self, server: GraphHubMCPServer, tool_name: str, arguments: dict | None = None) -> dict:
+        response = server.call_tool(tool_name, arguments or {})
+        self.assertIn("structuredContent", response)
+        self.assertIn("content", response)
+        self.assertEqual(json.loads(response["content"][0]["text"]), response["structuredContent"])
+        return response["structuredContent"]
+
+    def test_tool_definitions_include_read_only_tools_and_schemas(self):
+        definitions = {tool["name"]: tool for tool in list_tool_definitions()}
+
+        self.assertEqual(
+            set(definitions),
+            {
+                "graphhub.health",
+                "graphhub.list_styles",
+                "graphhub.list_projects",
+                "graphhub.inspect_project",
+                "graphhub.validate_project",
+            },
+        )
+        for tool in definitions.values():
+            self.assertEqual(tool["inputSchema"]["type"], "object")
+            self.assertEqual(tool["outputSchema"]["type"], "object")
+
+    def test_list_styles_uses_graph_hub_canonical_contract(self):
+        server = GraphHubMCPServer()
+
+        result = self._call(server, "graphhub.list_styles")
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["target_formats"], sorted(ALLOWED_TARGET_FORMATS))
+        self.assertEqual(result["output_formats"], sorted(ALLOWED_OUTPUT_FORMATS))
+        self.assertEqual(result["profiles"], list_profiles())
+        self.assertEqual(result["profile_aliases"], dict(sorted(PROFILE_ALIASES.items())))
+        self.assertIn("nature_surfur", result["target_formats"])
+
+    def test_read_only_tools_use_fixture_root_without_writing_files(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            self._write_project(root, "01_Valid")
+            self._write_project(root, "02_Invalid", INVALID_CONFIG)
+            runtime_root = Path(tmpdir) / "runtime"
+            before = _snapshot_files(root)
+
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+            health = self._call(server, "graphhub.health", {"root": str(root)})
+            projects = self._call(server, "graphhub.list_projects", {"root": str(root), "max_depth": 3})
+
+            after = _snapshot_files(root)
+            self.assertEqual(after, before)
+            self.assertFalse((root / "workspace_state.md").exists())
+            self.assertFalse((root / "workspace_state.json").exists())
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+            self.assertEqual(health["status"], "ok")
+            self.assertEqual(health["write_tools_enabled"], False)
+            self.assertEqual(health["discovery_status"]["project_count"], 2)
+            self.assertEqual(health["discovery_status"]["invalid_count"], 1)
+
+            by_path = {project["project_root"]: project for project in projects["projects"]}
+            discovery_paths = {project.path for project in ProjectDiscoveryService(root).discover(max_depth=3)}
+            self.assertEqual(set(by_path), {"01_Valid", "02_Invalid"})
+            self.assertEqual(set(by_path), discovery_paths)
+            self.assertEqual(by_path["01_Valid"]["status"], "valid")
+            self.assertEqual(by_path["02_Invalid"]["status"], "invalid")
+            self.assertEqual(by_path["01_Valid"]["declared_figures"], 1)
+            self.assertEqual(by_path["01_Valid"]["declared_diagrams"], 1)
+
+    def test_inspect_and_validate_project_do_not_execute_or_write(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = self._write_project(root, "01_Valid")
+            before = _snapshot_files(root)
+
+            server = GraphHubMCPServer()
+            inspected = self._call(server, "graphhub.inspect_project", {"project_path": str(project)})
+            validated = self._call(server, "graphhub.validate_project", {"project_path": str(project)})
+
+            self.assertEqual(_snapshot_files(root), before)
+            self.assertEqual(inspected["status"], "ok")
+            self.assertEqual(inspected["project_metadata"]["name"], "01_Valid")
+            self.assertEqual(inspected["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(inspected["pipeline_steps"]["analysis"], 1)
+            self.assertEqual(inspected["figure_outputs"], ["results/figures/Fig1.png"])
+            self.assertEqual(inspected["diagram_outputs"], ["results/figures/Diagram1.svg"])
+            self.assertEqual(inspected["missing_outputs"], ["results/figures/Fig1.png", "results/figures/Diagram1.svg"])
+
+            self.assertEqual(validated["status"], "ok")
+            self.assertTrue(validated["valid"])
+            self.assertEqual(validated["config_errors"], [])
+            self.assertEqual(validated["data_contract_errors"], [])
+            self.assertEqual(validated["style_errors"], [])
+            self.assertEqual(validated["recommended_next_action"], "ready_for_render")
+
+    def test_json_rpc_tools_list_and_call_return_structured_content(self):
+        server = GraphHubMCPServer()
+
+        listed = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        called = _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "graphhub.list_styles", "arguments": {}},
+            },
+        )
+
+        self.assertEqual(listed["result"]["tools"][0]["name"], "graphhub.health")
+        self.assertIn("structuredContent", called["result"])
+        self.assertFalse(called["result"]["isError"])
+        self.assertEqual(called["result"]["structuredContent"]["target_formats"], sorted(ALLOWED_TARGET_FORMATS))
+
+
+if __name__ == "__main__":
+    unittest.main()
