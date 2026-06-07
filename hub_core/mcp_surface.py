@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import multiprocessing
 import os
+import queue
 import shutil
 import sys
 import uuid
@@ -32,11 +34,23 @@ TOOL_NAMES = (
 WRITE_TOOL_NAMES = ("graphhub.render_csv_graph",)
 SUPPORTED_RENDER_PLOT_TYPES = {"bar", "line", "scatter", "xy"}
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
+MCP_RENDER_TIMEOUT_SECONDS = 120.0
+MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS = 5.0
 
 JSONRPC_INVALID_PARAMS = -32602
 JSONRPC_INTERNAL_ERROR = -32603
 JSONRPC_METHOD_NOT_FOUND = -32601
 JSONRPC_PARSE_ERROR = -32700
+
+
+def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_queue: multiprocessing.Queue) -> None:
+    try:
+        from plotting.bridge_renderer import BridgeFigureSpec, render_bridge_figure
+
+        output_path = render_bridge_figure(BridgeFigureSpec(**spec_payload))
+        result_queue.put({"status": "ok", "output_path": output_path})
+    except Exception as exc:
+        result_queue.put({"status": "error", "error": str(exc)})
 
 
 @dataclass(frozen=True)
@@ -552,7 +566,7 @@ class GraphHubMCPServer:
                 arguments,
                 status="error",
                 summary="Render job already exists.",
-                errors=[f"Render job already exists: {job_root}. Set overwrite=true to replace it."],
+                errors=[f"Render job already exists: {self._runtime_uri(job_root)}. Set overwrite=true to replace it."],
                 manual_review_needed=True,
                 is_dry_run=False,
                 job_id=job_id,
@@ -575,21 +589,20 @@ class GraphHubMCPServer:
             config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
             created_paths.append(str(config_path))
 
-            from plotting.bridge_renderer import BridgeFigureSpec, render_bridge_figure
-
-            spec = BridgeFigureSpec(
-                csv_path=str(job_data_path),
-                output_path=str(output_path),
-                plot_type=plot_type,
-                x_column=x_column,
-                y_column=y_column,
-                title=str(arguments.get("title") or "Graph Hub MCP render"),
-                x_axis_label=str(arguments.get("x_axis_label") or x_column),
-                y_axis_label=str(arguments.get("y_axis_label") or y_column),
-                target_format=target_format,
-                profile_name=profile,
+            self._run_render_bridge_figure(
+                {
+                    "csv_path": str(job_data_path),
+                    "output_path": str(output_path),
+                    "plot_type": plot_type,
+                    "x_column": x_column,
+                    "y_column": y_column,
+                    "title": str(arguments.get("title") or "Graph Hub MCP render"),
+                    "x_axis_label": str(arguments.get("x_axis_label") or x_column),
+                    "y_axis_label": str(arguments.get("y_axis_label") or y_column),
+                    "target_format": target_format,
+                    "profile_name": profile,
+                }
             )
-            render_bridge_figure(spec)
             figures = self._rendered_figure_artifacts(output_path)
             created_paths.extend(str(figure["path"]) for figure in figures)
             preflight = self._safe_preflight(output_path, target_format)
@@ -659,6 +672,32 @@ class GraphHubMCPServer:
         if not self._runtime_root_explicit:
             self.runtime_root = Path(resolve_runtime_root()).expanduser().resolve()
 
+    @staticmethod
+    def _run_render_bridge_figure(spec_payload: dict[str, Any]) -> None:
+        result_queue: multiprocessing.Queue = multiprocessing.Queue(maxsize=1)
+        process = multiprocessing.Process(
+            target=_render_bridge_figure_worker,
+            args=(spec_payload, result_queue),
+            name="graphhub-mcp-render",
+        )
+        process.start()
+        process.join(MCP_RENDER_TIMEOUT_SECONDS)
+        if process.is_alive():
+            process.terminate()
+            process.join(5)
+            if process.is_alive():
+                process.kill()
+                process.join(5)
+            raise TimeoutError(f"Render timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.")
+        if process.exitcode not in (0, None):
+            raise RuntimeError(f"Render worker exited with code {process.exitcode}.")
+        try:
+            result = result_queue.get(timeout=MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS)
+        except queue.Empty as exc:
+            raise RuntimeError("Render worker exited without returning a result.") from exc
+        if result.get("status") != "ok":
+            raise RuntimeError(str(result.get("error") or "Render worker failed."))
+
     def collect_artifacts(self, arguments: dict[str, Any]) -> dict[str, Any]:
         job_id = self._render_job_id(arguments.get("job_id"))
         manifest_path = self._find_job_manifest_path(job_id)
@@ -668,7 +707,7 @@ class GraphHubMCPServer:
                 arguments,
                 status="error",
                 summary="Render job manifest was not found.",
-                errors=[f"Manifest not found: {manifest_path}"],
+                errors=[f"Manifest not found: {self._runtime_uri(manifest_path)}"],
                 manual_review_needed=True,
             )
         try:
@@ -770,8 +809,8 @@ class GraphHubMCPServer:
             "modified_paths": modified_paths or [],
             "skipped_paths": skipped_paths or [],
             "artifact_resources": artifact_resources or [],
-            "warnings": warnings or [],
-            "errors": errors or [],
+            "warnings": [self._sanitize_diagnostic_text(warning, arguments) for warning in (warnings or [])],
+            "errors": [self._sanitize_diagnostic_text(error, arguments) for error in (errors or [])],
             "manual_review_needed": manual_review_needed,
         }
         result.update(extra)
@@ -956,6 +995,46 @@ class GraphHubMCPServer:
         except ValueError:
             return str(path)
 
+    def _runtime_uri(self, path: Path) -> str:
+        try:
+            rel_path = path.resolve().relative_to(self.runtime_root).as_posix()
+        except ValueError:
+            return self._display_path(path)
+        return f"runtime://{rel_path}"
+
+    def _sanitize_diagnostic_text(self, text: Any, arguments: dict[str, Any]) -> str:
+        sanitized = str(text)
+        replacements = self._diagnostic_path_replacements(arguments)
+        for root_text, label in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
+            child_label = label if label.endswith("/") else f"{label}/"
+            sanitized = sanitized.replace(f"{root_text}{os.sep}", child_label)
+            sanitized = sanitized.replace(root_text, label)
+        return sanitized
+
+    def _diagnostic_path_replacements(self, arguments: dict[str, Any]) -> list[tuple[str, str]]:
+        replacements = [
+            (str(self.runtime_root), "runtime://"),
+            (str(self.research_root), "research://"),
+            (str(self.hub_path), "hub://"),
+        ]
+        data_path = arguments.get("data_path")
+        if isinstance(data_path, str) and data_path.strip():
+            expanded_path = Path(data_path).expanduser()
+            replacements.append((str(expanded_path), "input://data_path"))
+            replacements.append((str(expanded_path.resolve()), "input://data_path"))
+
+        deduped: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for root_text, label in replacements:
+            if not root_text:
+                continue
+            key = (root_text, label)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(key)
+        return deduped
+
     def _mcp_jobs_root(self) -> Path:
         return self.runtime_root / "mcp_jobs"
 
@@ -983,15 +1062,27 @@ class GraphHubMCPServer:
             raise ValueError("data_path is required.")
         path = Path(raw_path).expanduser().resolve()
         if not path.is_file():
-            raise ValueError(f"data_path is not a file: {path}")
+            raise ValueError("data_path is not a file.")
         if path.suffix.lower() != ".csv":
-            raise ValueError(f"data_path must point to a CSV file: {path}")
+            raise ValueError("data_path must point to a CSV file.")
         file_size = path.stat().st_size
-        if file_size > MCP_RENDER_CSV_MAX_BYTES:
-            limit_mb = MCP_RENDER_CSV_MAX_BYTES / (1024 * 1024)
+        max_bytes = GraphHubMCPServer._render_csv_max_bytes()
+        if file_size > max_bytes:
+            limit_mb = max_bytes / (1024 * 1024)
             actual_mb = file_size / (1024 * 1024)
             raise ValueError(f"data_path exceeds MCP CSV size limit: {actual_mb:.1f} MB > {limit_mb:.1f} MB.")
         return path
+
+    @staticmethod
+    def _render_csv_max_bytes() -> int:
+        raw_value = os.environ.get("GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES")
+        if raw_value is None:
+            return MCP_RENDER_CSV_MAX_BYTES
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            return MCP_RENDER_CSV_MAX_BYTES
+        return value if value > 0 else MCP_RENDER_CSV_MAX_BYTES
 
     @staticmethod
     def _render_style_errors(target_format: str, output_format: str, profile: str) -> list[str]:
