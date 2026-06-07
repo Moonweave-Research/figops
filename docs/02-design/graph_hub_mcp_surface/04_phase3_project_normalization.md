@@ -19,10 +19,11 @@ Creates a standardized project folder and starter `project_config.yaml`.
 Inputs:
 
 - `project_name`
-- `project_root`
+- `project_root`: destination project directory
 - `target_format`
-- `template`
+- `template`: `standard | researchos`
 - `dry_run`: default `true`
+- `overwrite`: default `false`
 
 Acceptance criteria:
 
@@ -40,12 +41,15 @@ Inputs:
 - `plan_only`: default `true`
 - `move_policy`: `copy | move | symlink`
 - `include_raw`: default `false`
+- `overwrite`: default `false`
 
 Behavior:
 
 - discovers current scripts, data, figures, and docs,
 - proposes a migration plan,
 - maps files into `raw/`, `work/`, `hub_scripts/`, `results/data/`, `results/figures/`, and `docs/`,
+- preserves nested relative subpaths under known legacy folders,
+- preserves raw/data inputs by copying them even when `move_policy=move`,
 - writes or updates `project_config.yaml` only in apply mode.
 
 ## Project-Specific Style Preservation
@@ -70,6 +74,11 @@ Apply mode must write a reversible manifest that records:
 - reason,
 - checksum when cheap and appropriate,
 - whether the file was created, modified, or skipped.
+
+Manifest files:
+
+- scaffold apply writes `.graphhub_scaffold_manifest.json`,
+- normalization apply writes `.graphhub_normalization_manifest.json`.
 
 ## Non-Goals
 
@@ -107,4 +116,3 @@ Style tests:
 - existing `visual_style` is preserved,
 - existing presets are preserved,
 - figure-level overrides are not dropped.
-

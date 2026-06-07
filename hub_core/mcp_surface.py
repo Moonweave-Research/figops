@@ -17,6 +17,12 @@ import yaml
 from .config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS, find_config_path, validate_config
 from .data_contract import _read_data_safe, _validate_semantic_constraints
 from .figure_preflight import validate_figure_preflight
+from .project_normalization import (
+    apply_normalize_project,
+    apply_scaffold_project,
+    plan_normalize_project,
+    plan_scaffold_project,
+)
 from .project_discovery import ProjectDiscoveryService
 from .runtime_paths import preview_runtime_root, resolve_runtime_root, runtime_root_lookup_candidates
 from .utils import ensure_local_files, get_hub_path, get_research_root
@@ -30,8 +36,10 @@ TOOL_NAMES = (
     "graphhub.validate_project",
     "graphhub.render_csv_graph",
     "graphhub.collect_artifacts",
+    "graphhub.scaffold_project",
+    "graphhub.normalize_project_structure",
 )
-WRITE_TOOL_NAMES = ("graphhub.render_csv_graph",)
+WRITE_TOOL_NAMES = ("graphhub.render_csv_graph", "graphhub.scaffold_project", "graphhub.normalize_project_structure")
 SUPPORTED_RENDER_PLOT_TYPES = {"bar", "line", "scatter", "xy"}
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0
@@ -240,6 +248,58 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                 }
             ),
         ),
+        ToolDefinition(
+            "graphhub.scaffold_project",
+            "Plan or create a standard Graph Hub project scaffold.",
+            _object_schema(
+                {
+                    "project_name": {"type": "string"},
+                    "project_root": {"type": "string"},
+                    "target_format": {"type": "string", "default": "nature"},
+                    "template": {"type": "string", "enum": ["standard", "researchos"], "default": "standard"},
+                    "dry_run": {"type": "boolean", "default": True},
+                    "overwrite": {"type": "boolean", "default": False},
+                },
+                required=["project_name", "project_root"],
+            ),
+            _standard_output_schema(
+                {
+                    "project_root": {"type": "string"},
+                    "project_name": {"type": "string"},
+                    "planned_paths": {"type": "array", "items": {"type": "string"}},
+                    "manifest": {"type": "object"},
+                    "manifest_path": {"type": "string"},
+                    "config_path": {"type": "string"},
+                    "style_summary": {"type": "object"},
+                    "validation": {"type": "object"},
+                }
+            ),
+        ),
+        ToolDefinition(
+            "graphhub.normalize_project_structure",
+            "Plan or apply migration of an existing graph folder into standard Graph Hub structure.",
+            _object_schema(
+                {
+                    "project_path": {"type": "string"},
+                    "plan_only": {"type": "boolean", "default": True},
+                    "move_policy": {"type": "string", "enum": ["copy", "move", "symlink"], "default": "copy"},
+                    "include_raw": {"type": "boolean", "default": False},
+                    "overwrite": {"type": "boolean", "default": False},
+                },
+                required=["project_path"],
+            ),
+            _standard_output_schema(
+                {
+                    "project_root": {"type": "string"},
+                    "planned_paths": {"type": "array", "items": {"type": "string"}},
+                    "manifest": {"type": "object"},
+                    "manifest_path": {"type": "string"},
+                    "config_path": {"type": "string"},
+                    "style_summary": {"type": "object"},
+                    "validation": {"type": "object"},
+                }
+            ),
+        ),
     ]
     return [definition.to_dict() for definition in definitions]
 
@@ -266,6 +326,8 @@ class GraphHubMCPServer:
             "graphhub.validate_project": self.validate_project,
             "graphhub.render_csv_graph": self.render_csv_graph,
             "graphhub.collect_artifacts": self.collect_artifacts,
+            "graphhub.scaffold_project": self.scaffold_project,
+            "graphhub.normalize_project_structure": self.normalize_project_structure,
         }
 
     @staticmethod
@@ -746,6 +808,150 @@ class GraphHubMCPServer:
             visual_preflight_status=preflight,
         )
 
+    def scaffold_project(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        project_name = self._required_string(arguments, "project_name")
+        project_root = Path(self._required_string(arguments, "project_root"))
+        target_format = str(arguments.get("target_format") or "nature").strip().lower()
+        template = str(arguments.get("template") or "standard").strip().lower()
+        dry_run = bool(arguments.get("dry_run", True))
+        overwrite = bool(arguments.get("overwrite", False))
+        manifest = plan_scaffold_project(
+            project_root=project_root,
+            hub_path=self.hub_path,
+            project_name=project_name,
+            target_format=target_format,
+            template=template,
+        )
+        public_manifest = self._public_manifest(manifest)
+        planned_paths = self._manifest_destinations(public_manifest)
+        config_path = Path(str(manifest["project_root"])) / "project_config.yaml"
+        style_summary = self._manifest_style_summary(manifest)
+        validation = self._validation_summary(config_path)
+        if dry_run:
+            return self._envelope(
+                "graphhub.scaffold_project",
+                arguments,
+                summary=f"Planned scaffold for project {project_name}.",
+                is_dry_run=True,
+                project_root=str(manifest["project_root"]),
+                project_name=project_name,
+                planned_paths=planned_paths,
+                manifest=public_manifest,
+                manifest_path=str(Path(str(manifest["project_root"])) / ".graphhub_scaffold_manifest.json"),
+                config_path=str(config_path),
+                style_summary=style_summary,
+                validation=validation,
+            )
+        try:
+            applied = apply_scaffold_project(manifest, overwrite=overwrite)
+        except FileExistsError as exc:
+            return self._envelope(
+                "graphhub.scaffold_project",
+                arguments,
+                status="error",
+                summary="Scaffold destination already exists.",
+                errors=[str(exc)],
+                manual_review_needed=True,
+                is_dry_run=False,
+                project_root=str(manifest["project_root"]),
+                project_name=project_name,
+                planned_paths=planned_paths,
+                manifest=public_manifest,
+                manifest_path=str(Path(str(manifest["project_root"])) / ".graphhub_scaffold_manifest.json"),
+                config_path=str(config_path),
+                style_summary=style_summary,
+                validation=validation,
+            )
+        validation = self._validation_summary(config_path)
+        return self._envelope(
+            "graphhub.scaffold_project",
+            arguments,
+            summary=f"Created scaffold for project {project_name}.",
+            created_paths=applied["created_paths"],
+            modified_paths=applied["modified_paths"],
+            skipped_paths=applied["skipped_paths"],
+            is_dry_run=False,
+            project_root=str(manifest["project_root"]),
+            project_name=project_name,
+            planned_paths=planned_paths,
+            manifest=applied["manifest"],
+            manifest_path=str(Path(str(manifest["project_root"])) / ".graphhub_scaffold_manifest.json"),
+            config_path=str(config_path),
+            style_summary=style_summary,
+            validation=validation,
+        )
+
+    def normalize_project_structure(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        project_path = Path(self._required_string(arguments, "project_path"))
+        plan_only = bool(arguments.get("plan_only", True))
+        move_policy = str(arguments.get("move_policy") or "copy").strip().lower()
+        include_raw = bool(arguments.get("include_raw", False))
+        overwrite = bool(arguments.get("overwrite", False))
+        manifest = plan_normalize_project(project_path=project_path, move_policy=move_policy, include_raw=include_raw)
+        public_manifest = self._public_manifest(manifest)
+        planned_paths = self._manifest_destinations(public_manifest)
+        project_root = Path(str(manifest["project_root"]))
+        config_path = project_root / "project_config.yaml"
+        validation = self._validation_summary(config_path)
+        if plan_only:
+            return self._envelope(
+                "graphhub.normalize_project_structure",
+                arguments,
+                summary=f"Planned normalization for {project_root.name}.",
+                is_dry_run=True,
+                project_root=str(project_root),
+                planned_paths=planned_paths,
+                manifest=public_manifest,
+                manifest_path=str(project_root / ".graphhub_normalization_manifest.json"),
+                config_path=str(config_path),
+                style_summary=manifest["style_summary"],
+                validation=validation,
+            )
+        try:
+            applied = apply_normalize_project(manifest, hub_path=self.hub_path, overwrite=overwrite)
+        except FileExistsError as exc:
+            return self._envelope(
+                "graphhub.normalize_project_structure",
+                arguments,
+                status="error",
+                summary="Normalization destination already exists.",
+                errors=[str(exc)],
+                manual_review_needed=True,
+                is_dry_run=False,
+                project_root=str(project_root),
+                planned_paths=planned_paths,
+                manifest=public_manifest,
+                manifest_path=str(project_root / ".graphhub_normalization_manifest.json"),
+                config_path=str(config_path),
+                style_summary=manifest["style_summary"],
+                validation=validation,
+            )
+        validation = self._validation_summary(config_path)
+        validation_failed = validation.get("checked") is True and validation.get("valid") is False
+        return self._envelope(
+            "graphhub.normalize_project_structure",
+            arguments,
+            status="warning" if validation_failed else "ok",
+            summary=(
+                f"Applied normalization for {project_root.name}, but project validation still needs changes."
+                if validation_failed
+                else f"Applied normalization for {project_root.name}."
+            ),
+            created_paths=applied["created_paths"],
+            modified_paths=applied["modified_paths"],
+            skipped_paths=applied["skipped_paths"],
+            warnings=["Normalized project config did not pass validation."] if validation_failed else [],
+            manual_review_needed=validation_failed,
+            is_dry_run=False,
+            project_root=str(project_root),
+            planned_paths=planned_paths,
+            manifest=applied["manifest"],
+            manifest_path=str(project_root / ".graphhub_normalization_manifest.json"),
+            config_path=str(config_path),
+            style_summary=applied["manifest"]["style_summary"],
+            validation=validation,
+        )
+
     def _find_job_manifest_path(self, job_id: str) -> Path:
         candidate_roots = [self.runtime_root]
         if not self._runtime_root_explicit:
@@ -761,6 +967,60 @@ class GraphHubMCPServer:
             if manifest_path.exists():
                 return manifest_path
         return Path(candidate_roots[0]).expanduser().resolve() / "mcp_jobs" / job_id / "manifest.json"
+
+    @staticmethod
+    def _public_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+        public = dict(manifest)
+        public["entries"] = [GraphHubMCPServer._public_manifest_entry(entry) for entry in manifest.get("entries", [])]
+        return public
+
+    @staticmethod
+    def _public_manifest_entry(entry: dict[str, Any]) -> dict[str, Any]:
+        public = dict(entry)
+        public.pop("content", None)
+        return public
+
+    @staticmethod
+    def _manifest_destinations(manifest: dict[str, Any]) -> list[str]:
+        paths = []
+        for entry in manifest.get("entries", []):
+            destination = entry.get("destination")
+            if isinstance(destination, str) and destination:
+                paths.append(destination)
+        return paths
+
+    @staticmethod
+    def _manifest_style_summary(manifest: dict[str, Any]) -> dict[str, Any]:
+        for entry in manifest.get("entries", []):
+            if entry.get("destination") != "project_config.yaml":
+                continue
+            raw_config = entry.get("content")
+            if not isinstance(raw_config, str):
+                continue
+            try:
+                config = yaml.safe_load(raw_config) or {}
+            except yaml.YAMLError:
+                break
+            visual_style = config.get("visual_style") if isinstance(config.get("visual_style"), dict) else {}
+            presets = config.get("presets") if isinstance(config.get("presets"), dict) else {}
+            return {
+                "target_format": str(visual_style.get("target_format") or "nature"),
+                "profile": str(visual_style.get("profile") or DEFAULT_PROFILE),
+                "presets": sorted(str(key) for key in presets),
+                "style_update_applied": True,
+            }
+        return {"target_format": "nature", "profile": DEFAULT_PROFILE, "presets": [], "style_update_applied": False}
+
+    @staticmethod
+    def _validation_summary(config_path: Path) -> dict[str, Any]:
+        if not config_path.exists():
+            return {"checked": False, "valid": None, "errors": []}
+        try:
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError) as exc:
+            return {"checked": True, "valid": False, "errors": [str(exc)]}
+        errors = validate_config(config)
+        return {"checked": True, "valid": not errors, "errors": errors}
 
     @staticmethod
     def _manifest_path_list(manifest: dict[str, Any], key: str) -> list[str]:
