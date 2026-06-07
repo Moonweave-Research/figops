@@ -236,7 +236,16 @@ def main():
 
     args = parser.parse_args()
 
-    # 1. Pre-flight Health Check
+    # 루트 경로 계산 (Google Drive '연구' 폴더 상정)
+    root_dir = inferred_root_dir
+    hub_path = inferred_hub_path
+
+    if args.list_projects or args.status:
+        list_projects(root_dir, recursive=not args.list_root_only, max_depth=args.scan_depth)
+        return 0
+
+    # Runtime preflight is required for executable pipeline paths, but read-only
+    # discovery must work on servers that do not have R/project runtimes installed.
     run_preflight_check(exit_on_failure=True)
 
     start_time = datetime.now(timezone.utc)
@@ -250,10 +259,6 @@ def main():
     lock_info = None
     build_state_path = None
     failure_dump_path = None
-
-    # 루트 경로 계산 (Google Drive '연구' 폴더 상정)
-    root_dir = inferred_root_dir
-    hub_path = inferred_hub_path
 
     if args.docker and os.environ.get("RESEARCH_HUB_IN_DOCKER") != "1":
         try:
@@ -316,10 +321,6 @@ def main():
             timestamp=ts,
         )
         return 0 if n >= 0 else 1
-
-    if args.list_projects or args.status:
-        list_projects(root_dir, recursive=not args.list_root_only, max_depth=args.scan_depth)
-        return 0
 
     if args.init or args.wizard:
         # If --wizard is present or --init is used without --project, launch wizard

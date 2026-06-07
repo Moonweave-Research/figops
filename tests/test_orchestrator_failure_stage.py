@@ -8,6 +8,20 @@ import orchestrator
 
 
 class OrchestratorFailureStageTest(unittest.TestCase):
+    def test_list_projects_bypasses_runtime_preflight(self):
+        argv = ["orchestrator.py", "--list-projects", "--scan-depth", "2"]
+
+        with (
+            patch.object(sys, "argv", argv),
+            patch("orchestrator.run_preflight_check", side_effect=AssertionError("preflight should not run")),
+            patch("orchestrator.list_projects") as mock_list_projects,
+        ):
+            rc = orchestrator.main()
+
+        self.assertEqual(rc, 0)
+        mock_list_projects.assert_called_once()
+        self.assertEqual(mock_list_projects.call_args.kwargs["max_depth"], 2)
+
     def test_sweep_failure_context_is_logged_as_validate(self):
         with tempfile.TemporaryDirectory(prefix="hub_orch_stage_") as tmpdir:
             project_dir = Path(tmpdir) / "project"
