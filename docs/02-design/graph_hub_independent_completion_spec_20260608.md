@@ -397,7 +397,6 @@ manifest/status/provenance/failure-stage envelope as `graphhub.render_csv_graph`
 
 Remaining acceptance risk:
 
-- confirm remote server MCP direct-call behavior after local tests pass,
 - keep source-project writes out of the default path,
 - add R-script parity only after the Python project-render contract is stable.
 
@@ -410,7 +409,19 @@ Local acceptance evidence, 2026-06-08:
 - `collect_artifacts` returned `renderer_surface=graphhub.render_project_figure`;
 - stdio JSON-RPC direct-call to `graphhub_mcp_server.py` returned `status=ok` in dry-run mode;
 - invalid `nature_surfur` project stopped at `failure_stage=CONFIG` without creating a job root;
-- the valid render still returned `manual_review_needed=true` because visual preflight warned about `pdf.fonttype=3`.
+- after artifact-based font preflight, the valid render returned `status=ok` and `manual_review_needed=false`.
+
+Server acceptance evidence, 2026-06-08:
+
+- server clone fast-forwarded to `2c4d198`;
+- server smoke returned `status=ok`;
+- server focused MCP/preflight suites passed;
+- server ruff check passed;
+- server stdio JSON-RPC direct-call returned `status=ok` in dry-run mode;
+- server fixture project render and `collect_artifacts` returned `renderer_surface=graphhub.render_project_figure`;
+- server Codex config and shared `agent-config` host config both register `mcp_servers.graphhub`;
+- `codex mcp list` reports `graphhub ... enabled`;
+- `codex doctor --summary` reports 0 fail.
 
 These risks must also be tracked during implementation:
 
@@ -420,7 +431,7 @@ These risks must also be tracked during implementation:
 4. **Athena dependency risk:** new Graph Hub behavior must not import Athena or require Athena runtime.
 5. **Visual quality risk:** numeric checks cannot prove publication readiness alone. Manual-review state must stay visible until visual preflight and baseline comparison pass.
 6. **Project migration risk:** normalization must be dry-run first and manifest-backed; source raw data should never move silently.
-7. **Server reproducibility risk:** direct MCP acceptance must be run on the server after local success.
+7. **Server reproducibility risk:** repeat direct MCP acceptance after future server environment changes.
 
 ## Final Direction
 
