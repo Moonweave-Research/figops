@@ -27,6 +27,7 @@ def test_valid_600dpi_png_passes(tmp_path: Path):
     png = _save_dummy_figure(tmp_path / "fig.png", dpi=600)
     result = validate_figure_preflight(png, "nature")
     assert result["passed"] is True
+    assert not any("fonttype" in warning for warning in result["warnings"])
     dpi_check = next(c for c in result["checks"] if c["name"] == "dpi")
     assert dpi_check["passed"] is True
     assert "600" in dpi_check["detail"]
@@ -71,3 +72,33 @@ def test_pdf_skips_dpi_check(tmp_path: Path):
     dpi_check = next(c for c in result["checks"] if c["name"] == "dpi")
     assert dpi_check["passed"] is True
     assert "skip" in dpi_check["detail"].lower()
+
+
+def test_pdf_font_check_warns_on_type3_fonts(tmp_path: Path):
+    pdf = tmp_path / "fig_type3.pdf"
+    with plt.rc_context({"pdf.fonttype": 3}):
+        fig, ax = plt.subplots(figsize=(3.5, 2.8))
+        ax.plot([1, 2, 3])
+        fig.savefig(pdf, format="pdf")
+        plt.close(fig)
+
+    result = validate_figure_preflight(pdf, "nature")
+
+    assert result["passed"] is True
+    assert any("Type3" in warning for warning in result["warnings"])
+
+
+def test_pdf_font_check_accepts_truetype_fonts(tmp_path: Path):
+    pdf = tmp_path / "fig_truetype.pdf"
+    with plt.rc_context({"pdf.fonttype": 42}):
+        fig, ax = plt.subplots(figsize=(3.5, 2.8))
+        ax.plot([1, 2, 3])
+        fig.savefig(pdf, format="pdf")
+        plt.close(fig)
+
+    result = validate_figure_preflight(pdf, "nature")
+
+    assert result["passed"] is True
+    assert not any("Type3" in warning for warning in result["warnings"])
+    font_check = next(c for c in result["checks"] if c["name"] == "font_settings")
+    assert "No Type3" in font_check["detail"]

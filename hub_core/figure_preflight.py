@@ -140,29 +140,43 @@ def validate_figure_preflight(
         })
 
     # 4. Font settings check
-    try:
-        import matplotlib.pyplot as plt
-        fonttype = plt.rcParams.get("pdf.fonttype")
-        if fonttype != 42:
-            warnings.append(
-                f"PDF fonts may not be embedded (fonttype={fonttype} != 42)"
-            )
+    # For existing artifacts, parent-process matplotlib rcParams are not evidence:
+    # MCP project renders execute plotting scripts in a subprocess. Inspect the PDF
+    # artifact itself when possible; skip the check for non-PDF outputs.
+    if suffix == ".pdf":
+        try:
+            pdf_bytes = figure_path.read_bytes()
+        except OSError as exc:
             checks.append({
                 "name": "font_settings",
-                "passed": True,
-                "detail": f"pdf.fonttype={fonttype} (recommended: 42)",
+                "passed": False,
+                "detail": f"PDF font check failed: {exc}",
             })
         else:
-            checks.append({
-                "name": "font_settings",
-                "passed": True,
-                "detail": "pdf.fonttype=42 (TrueType embedded)",
-            })
-    except ImportError:
+            if b"/Subtype /Type3" in pdf_bytes or b"/Subtype/Type3" in pdf_bytes:
+                warnings.append("PDF contains Type3 fonts; use pdf.fonttype=42 for embedded TrueType fonts")
+                checks.append({
+                    "name": "font_settings",
+                    "passed": True,
+                    "detail": "Type3 fonts detected",
+                })
+            else:
+                checks.append({
+                    "name": "font_settings",
+                    "passed": True,
+                    "detail": "No Type3 PDF fonts detected",
+                })
+    elif is_vector:
         checks.append({
             "name": "font_settings",
             "passed": True,
-            "detail": "matplotlib not available — font check skipped",
+            "detail": "Font embedding check skipped for non-PDF vector format",
+        })
+    else:
+        checks.append({
+            "name": "font_settings",
+            "passed": True,
+            "detail": "Font embedding check skipped for raster format",
         })
 
     # 5. File size check
