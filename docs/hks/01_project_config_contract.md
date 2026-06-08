@@ -56,6 +56,8 @@ presets:
 - `visual_style.target_format` must be one of Graph Hub's canonical target formats.
 - `visual_style.profile` must be a known Graph Hub profile or alias.
 - `data_contract.csv_checks[].path` is required.
+- `data_contract.csv_checks[].semantic_checks.<column>.monotonic` may be one of
+  `increasing`, `decreasing`, `nondecreasing`, or `nonincreasing`.
 - `figures[].script`, `figures[].inputs`, and `figures[].output` must be concrete paths.
 - Legacy `scripts/project_config.yaml` can be inspected, but new projects use root `project_config.yaml`.
 

@@ -28,6 +28,7 @@ ALLOWED_PRESET_KEYS = {
 ALLOWED_ANALYSIS_POLICY_LANGS = {"r"}
 ALLOWED_PLOT_POLICY_LANGS = {"python"}
 ALLOWED_OUTPUT_FORMATS = {"png", "pdf", "svg"}
+ALLOWED_MONOTONIC_MODES = {"increasing", "decreasing", "nondecreasing", "nonincreasing"}
 CONFIG_FILE_CANDIDATES = (
     "project_config.yaml",
     os.path.join("scripts", "project_config.yaml"),
@@ -440,6 +441,14 @@ def validate_config(config):
                             errors.append(f"Semantic allow_null for '{col}' must be a boolean.")
                         if "unique" in constraints and not isinstance(constraints["unique"], bool):
                             errors.append(f"Semantic unique for '{col}' must be a boolean.")
+                        if "monotonic" in constraints:
+                            monotonic_mode = constraints["monotonic"]
+                            if not isinstance(monotonic_mode, str) or monotonic_mode not in ALLOWED_MONOTONIC_MODES:
+                                allowed = ", ".join(sorted(ALLOWED_MONOTONIC_MODES))
+                                errors.append(
+                                    f"Semantic monotonic for '{col}' must be one of: {allowed}. "
+                                    f"Got '{monotonic_mode}'."
+                                )
 
     golden_metrics = config.get("golden_metrics", [])
     if golden_metrics is None:

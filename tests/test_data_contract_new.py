@@ -8,7 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from hub_core.data_contract import _read_data_safe, validate_data_contract_preflight
+from hub_core.config_parser import validate_config
+from hub_core.data_contract import _read_data_safe, validate_data_contract, validate_data_contract_preflight
 
 
 class TestReadDataSafe(unittest.TestCase):
@@ -153,6 +154,125 @@ class TestReadDataSafe(unittest.TestCase):
         self.assertEqual(len(read_hdf_calls), 2)
         self.assertEqual(read_hdf_calls[1][1], "first_key")
         self.assertIs(result, fallback_df)
+
+
+class TestSemanticMonotonicContract(unittest.TestCase):
+    def test_validate_config_accepts_declared_monotonic_mode(self):
+        config = {
+            "project": {"name": "Monotonic Demo"},
+            "visual_style": {"target_format": "nature"},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "results/data/summary.csv",
+                        "semantic_checks": {"time": {"monotonic": "increasing"}},
+                    }
+                ]
+            },
+        }
+
+        self.assertEqual(validate_config(config), [])
+
+    def test_validate_config_rejects_unknown_monotonic_mode(self):
+        config = {
+            "project": {"name": "Monotonic Demo"},
+            "visual_style": {"target_format": "nature"},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "results/data/summary.csv",
+                        "semantic_checks": {"time": {"monotonic": "zigzag"}},
+                    }
+                ]
+            },
+        }
+
+        errors = validate_config(config)
+
+        self.assertTrue(any("monotonic" in error and "zigzag" in error for error in errors))
+
+    def test_data_contract_passes_monotonic_increasing_series(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_mono_pass_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("time,value\n0,10\n1,20\n2,30\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["time", "value"],
+                            "semantic_checks": {"time": {"monotonic": "increasing"}},
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, config))
+
+    def test_data_contract_fails_monotonic_increasing_violation(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_mono_fail_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("time,value\n0,10\n2,20\n1,30\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["time", "value"],
+                            "semantic_checks": {"time": {"monotonic": "increasing"}},
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_data_contract_enforces_monotonic_modes_at_equal_value_boundary(self):
+        cases = (
+            ("increasing", "0,10\n1,20\n1,30\n", False),
+            ("decreasing", "2,10\n1,20\n1,30\n", False),
+            ("nondecreasing", "0,10\n1,20\n1,30\n", True),
+            ("nonincreasing", "2,10\n1,20\n1,30\n", True),
+        )
+        for mode, rows, expected in cases:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory(prefix="dcp_mono_modes_") as tmpdir:
+                data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+                data_path.parent.mkdir(parents=True)
+                data_path.write_text(f"time,value\n{rows}", encoding="utf-8")
+                config = {
+                    "data_contract": {
+                        "csv_checks": [
+                            {
+                                "path": "results/data/summary.csv",
+                                "required_columns": ["time", "value"],
+                                "semantic_checks": {"time": {"monotonic": mode}},
+                            }
+                        ]
+                    }
+                }
+
+                self.assertEqual(validate_data_contract(tmpdir, config), expected)
+
+    def test_data_contract_rejects_runtime_invalid_monotonic_mode(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_mono_invalid_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("time,value\n0,10\n1,20\n2,30\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["time", "value"],
+                            "semantic_checks": {"time": {"monotonic": ""}},
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
 
 
 if __name__ == "__main__":

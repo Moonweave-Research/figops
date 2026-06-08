@@ -73,9 +73,10 @@ data_contract:
       dtypes: { time: float, value: float, molarity: number }
       # 논리적 무결성 검증 (Semantic Checks)
       semantic_checks:
-        time: { range: [0, 10000], allow_null: false }
+        time: { range: [0, 10000], allow_null: false, monotonic: "increasing" }
         molarity: { range: [0, 50], unique: false }
         value: { range: [-2000, 2000] }
+        # monotonic modes: increasing | decreasing | nondecreasing | nonincreasing
         # Unit-aware validation (requires pint): specify expected + actual units
         # current: { unit: "A", actual_unit: "mA" }  # auto-converts mA → A
         # mobility: { unit: "cm^2/V/s", actual_unit: "cm^2/V/s" }

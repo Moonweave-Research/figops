@@ -31,6 +31,7 @@ _OPTIONAL_IO_DEPENDENCIES = {
     ".h5": ("tables", "PyTables (tables)"),
     ".hdf5": ("tables", "PyTables (tables)"),
 }
+_MONOTONIC_MODES = {"increasing", "decreasing", "nondecreasing", "nonincreasing"}
 
 
 def _module_available(module_name: str) -> bool:
@@ -322,7 +323,7 @@ def validate_data_contract(project_dir, config):
 
 def _validate_semantic_constraints(df, semantic_checks, stripped_to_actual):
     """
-    데이터프레임의 논리적 제약 조건(range, allow_null, unique, unit)을 검증합니다.
+    데이터프레임의 논리적 제약 조건(range, allow_null, unique, unit, monotonic)을 검증합니다.
 
     Returns:
         (errors, row_violations) -- errors는 요약 문자열 리스트,
@@ -403,7 +404,20 @@ def _validate_semantic_constraints(df, semantic_checks, stripped_to_actual):
                     "violation_type": "duplicate",
                 })
 
-        # 4. Unit check (requires pint)
+        # 4. Monotonic check
+        if "monotonic" in constraints:
+            monotonic_mode = constraints.get("monotonic")
+            monotonic_error, monotonic_rows = _check_monotonic_constraint(
+                series,
+                col,
+                str(monotonic_mode),
+                max_row_detail,
+            )
+            if monotonic_error:
+                errors.append(monotonic_error)
+                row_violations.extend(monotonic_rows)
+
+        # 5. Unit check (requires pint)
         expected_unit = constraints.get('unit')
         actual_unit = constraints.get('actual_unit')
         if expected_unit and actual_unit:
@@ -433,6 +447,55 @@ def _validate_semantic_constraints(df, semantic_checks, stripped_to_actual):
             )
 
     return errors, row_violations
+
+
+def _check_monotonic_constraint(series, col, mode: str, max_row_detail: int):
+    if mode not in _MONOTONIC_MODES:
+        allowed = ", ".join(sorted(_MONOTONIC_MODES))
+        return f"Column '{col}': unsupported monotonic mode '{mode}'. Allowed: {allowed}", []
+
+    observed = series.dropna()
+    if len(observed) < 2:
+        return None, []
+
+    try:
+        values = list(observed)
+        indexes = list(observed.index)
+        bad_rows = []
+        for offset in range(1, len(values)):
+            previous = values[offset - 1]
+            current = values[offset]
+            violates = (
+                (mode == "increasing" and current <= previous)
+                or (mode == "nondecreasing" and current < previous)
+                or (mode == "decreasing" and current >= previous)
+                or (mode == "nonincreasing" and current > previous)
+            )
+            if violates:
+                bad_rows.append((indexes[offset], previous, current))
+    except TypeError as exc:
+        return f"Column '{col}': monotonic check failed because values are not comparable ({exc})", []
+
+    if not bad_rows:
+        return None, []
+
+    row_violations = []
+    for idx, previous, current in bad_rows[:max_row_detail]:
+        row_violations.append(
+            {
+                "row": str(idx),
+                "column": col,
+                "value": str(current),
+                "expected": f"monotonic {mode}; previous value {previous}",
+                "violation_type": "monotonic_violation",
+            }
+        )
+
+    return (
+        f"Column '{col}': {len(bad_rows)} monotonic violation(s) "
+        f"(expected {mode}; first violation at row {bad_rows[0][0]})",
+        row_violations,
+    )
 
 
 def _check_statistical_quality(df, csv_rel_path, cv_threshold, project_dir):
