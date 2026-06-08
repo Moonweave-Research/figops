@@ -704,6 +704,7 @@ class GraphHubMCPServer:
                 resolution_hint="Fix the CSV data contract, data_path, columns, or semantic_checks.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                calculation_checks=calculation_checks,
             )
         if dry_run:
             calculation_warnings = self._calculation_warnings(calculation_checks)
@@ -1615,7 +1616,7 @@ class GraphHubMCPServer:
     def _calculation_warnings(calculation_checks: dict[str, Any]) -> list[str]:
         warnings = []
         for check in calculation_checks.get("checks", []):
-            if check.get("status") == "warning":
+            if check.get("status") in {"warning", "skipped"} or check.get("manual_review_needed"):
                 name = check.get("name", "calculation_check")
                 message = check.get("message", "requires manual review")
                 warnings.append(f"{name}: {message}")
@@ -2095,7 +2096,7 @@ class GraphHubMCPServer:
             "calculation_checks": {
                 "checks": calculation_checks,
                 "quality_passed": not any(
-                    check.get("status") in {"warning", "failed"} for check in calculation_checks
+                    check.get("status") in {"warning", "failed", "skipped"} for check in calculation_checks
                 ),
                 "manual_review_needed": any(bool(check.get("manual_review_needed")) for check in calculation_checks),
             },

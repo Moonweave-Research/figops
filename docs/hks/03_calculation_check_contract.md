@@ -23,15 +23,27 @@ Current `data_contract.csv_checks` supports:
 - grouped CV warnings or failures per declared group.
 - log-scale positivity when declared,
 - error-bar source column validation,
-- SEM consistency against std/sqrt(n).
+- SEM consistency against std/sqrt(n),
+- declared linear-fit consistency,
+- outlier/anomaly flag validation,
+- axis display unit compatibility.
 
-## Required Future Vocabulary
+## Stable Vocabulary
 
-Future calculation checks should use stable names:
+Calculation checks use stable names:
 
+- `min_replicates`
+- `grouped_cv`
+- `log_scale_positive`
+- `error_bar_source`
+- `mean_sem`
 - `linear_fit`
 - `outlier_flag`
 - `axis_unit`
+
+`axis_unit` is compatibility-only: it records display conversion metadata and
+does not mutate dataframe values. If Pint is unavailable or cannot parse a unit,
+the check is recorded as `status=skipped` with `manual_review_needed=true`.
 
 ## Manifest Requirements
 

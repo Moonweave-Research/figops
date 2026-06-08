@@ -83,6 +83,9 @@ data_contract:
         #   log_scale_positive: true
         #   error_bar_source: { column: "sem", source: "sem" }
         #   mean_sem: { sem_column: "sem", std_column: "std", n_column: "n", tolerance: 1.0e-6 }
+        #   linear_fit: { x_column: "time", slope: 2.0, intercept: 1.0, tolerance: 1.0e-6, r2_min: 0.98 }
+        #   outlier_flag: { column: "outlier", allowed: [0, 1, true, false, "0", "1"], max_fraction: 0.05 }
+        #   axis_unit: { data_unit: "mA", display_unit: "A" }  # compatibility check only; no data mutation
         # monotonic modes: increasing | decreasing | nondecreasing | nonincreasing
         # Unit-aware validation (requires pint): specify expected + actual units
         # current: { unit: "A", actual_unit: "mA" }  # auto-converts mA → A

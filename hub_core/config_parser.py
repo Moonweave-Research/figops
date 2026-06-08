@@ -1,4 +1,5 @@
 import hashlib
+import math
 import os
 import unicodedata
 
@@ -117,6 +118,69 @@ def _validate_mean_sem_check_config(errors, *, column: str, raw_check: object) -
     tolerance = raw_check.get("tolerance", 1.0e-6)
     if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)) or tolerance < 0:
         errors.append(f"Semantic mean_sem.tolerance for '{column}' must be a non-negative number.")
+
+
+def _is_finite_number(value: object) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _validate_linear_fit_check_config(errors, *, column: str, raw_check: object) -> None:
+    if not isinstance(raw_check, dict):
+        errors.append(f"Semantic linear_fit for '{column}' must be a mapping.")
+        return
+    x_column = raw_check.get("x_column")
+    if not isinstance(x_column, str) or not x_column.strip():
+        errors.append(f"Semantic linear_fit.x_column for '{column}' must be a non-empty string.")
+    for key in ("slope", "intercept"):
+        if not _is_finite_number(raw_check.get(key)):
+            errors.append(f"Semantic linear_fit.{key} for '{column}' must be a finite number.")
+    if "r2_min" in raw_check:
+        r2_min = raw_check.get("r2_min")
+        if not _is_finite_number(r2_min) or not 0 <= float(r2_min) <= 1:
+            errors.append(f"Semantic linear_fit.r2_min for '{column}' must be a finite number between 0 and 1.")
+    tolerance = raw_check.get("tolerance", 1.0e-6)
+    if not _is_finite_number(tolerance) or float(tolerance) < 0:
+        errors.append(f"Semantic linear_fit.tolerance for '{column}' must be a non-negative finite number.")
+
+
+def _is_scalar_flag_value(value: object) -> bool:
+    return isinstance(value, (str, bool, int, float)) and not (isinstance(value, float) and math.isnan(value))
+
+
+def _validate_outlier_flag_check_config(errors, *, column: str, raw_check: object) -> None:
+    if not isinstance(raw_check, dict):
+        errors.append(f"Semantic outlier_flag for '{column}' must be a mapping.")
+        return
+    flag_column = raw_check.get("column")
+    if not isinstance(flag_column, str) or not flag_column.strip():
+        errors.append(f"Semantic outlier_flag.column for '{column}' must be a non-empty string.")
+    if "allowed" in raw_check:
+        allowed = raw_check.get("allowed")
+        if not isinstance(allowed, list) or not allowed:
+            errors.append(f"Semantic outlier_flag.allowed for '{column}' must be a non-empty list.")
+        elif any(not _is_scalar_flag_value(item) for item in allowed):
+            errors.append(
+                f"Semantic outlier_flag.allowed for '{column}' must contain only scalar strings, numbers, or booleans."
+            )
+    if "max_fraction" in raw_check:
+        max_fraction = raw_check.get("max_fraction")
+        if not _is_finite_number(max_fraction) or not 0 <= float(max_fraction) <= 1:
+            errors.append(f"Semantic outlier_flag.max_fraction for '{column}' must be a finite number between 0 and 1.")
+
+
+def _validate_axis_unit_check_config(errors, *, column: str, raw_check: object) -> None:
+    if not isinstance(raw_check, dict):
+        errors.append(f"Semantic axis_unit for '{column}' must be a mapping.")
+        return
+    for key in ("data_unit", "display_unit"):
+        value = raw_check.get(key)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"Semantic axis_unit.{key} for '{column}' must be a non-empty string.")
 
 
 def get_language_policy(config):
@@ -533,6 +597,24 @@ def validate_config(config):
                                 errors,
                                 column=str(col),
                                 raw_check=constraints["mean_sem"],
+                            )
+                        if "linear_fit" in constraints:
+                            _validate_linear_fit_check_config(
+                                errors,
+                                column=str(col),
+                                raw_check=constraints["linear_fit"],
+                            )
+                        if "outlier_flag" in constraints:
+                            _validate_outlier_flag_check_config(
+                                errors,
+                                column=str(col),
+                                raw_check=constraints["outlier_flag"],
+                            )
+                        if "axis_unit" in constraints:
+                            _validate_axis_unit_check_config(
+                                errors,
+                                column=str(col),
+                                raw_check=constraints["axis_unit"],
                             )
 
     golden_metrics = config.get("golden_metrics", [])

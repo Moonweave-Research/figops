@@ -10,7 +10,12 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from hub_core.config_parser import validate_config
-from hub_core.data_contract import _read_data_safe, validate_data_contract, validate_data_contract_preflight
+from hub_core.data_contract import (
+    _read_data_safe,
+    _validate_semantic_constraints,
+    validate_data_contract,
+    validate_data_contract_preflight,
+)
 
 
 class TestReadDataSafe(unittest.TestCase):
@@ -390,9 +395,327 @@ class TestLogErrorbarCalculationChecks(unittest.TestCase):
             }
 
             self.assertFalse(validate_data_contract(tmpdir, config))
+
+
+class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
+    def test_validate_config_accepts_final_calculation_checks(self):
+        config = {
+            "project": {"name": "Fit Demo"},
+            "visual_style": {"target_format": "nature"},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "results/data/fit.csv",
+                        "semantic_checks": {
+                            "y": {
+                                "linear_fit": {
+                                    "x_column": "x",
+                                    "slope": 2.0,
+                                    "intercept": 1.0,
+                                    "r2_min": 0.98,
+                                    "tolerance": 1.0e-6,
+                                },
+                                "outlier_flag": {
+                                    "column": "outlier",
+                                    "allowed": [0, 1, True, False, "0", "1", "true", "false"],
+                                    "max_fraction": 0.5,
+                                },
+                                "axis_unit": {"data_unit": "mA", "display_unit": "A"},
+                            }
+                        },
+                    }
+                ]
+            },
+        }
+
+        self.assertEqual(validate_config(config), [])
+
+    def test_validate_config_rejects_malformed_final_calculation_checks(self):
+        config = {
+            "project": {"name": "Fit Demo"},
+            "visual_style": {"target_format": "nature"},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "results/data/fit.csv",
+                        "semantic_checks": {
+                            "y": {
+                                "linear_fit": {
+                                    "x_column": "",
+                                    "slope": "bad",
+                                    "intercept": float("inf"),
+                                    "r2_min": 2,
+                                    "tolerance": -1,
+                                },
+                                "outlier_flag": {
+                                    "column": "",
+                                    "allowed": [],
+                                    "max_fraction": 2,
+                                },
+                                "axis_unit": {"data_unit": "", "display_unit": 1},
+                            }
+                        },
+                    }
+                ]
+            },
+        }
+
+        errors = validate_config(config)
+
+        self.assertTrue(any("linear_fit.x_column" in error for error in errors))
+        self.assertTrue(any("linear_fit.slope" in error for error in errors))
+        self.assertTrue(any("linear_fit.intercept" in error for error in errors))
+        self.assertTrue(any("linear_fit.r2_min" in error for error in errors))
+        self.assertTrue(any("linear_fit.tolerance" in error for error in errors))
+        self.assertTrue(any("outlier_flag.column" in error for error in errors))
+        self.assertTrue(any("outlier_flag.allowed" in error for error in errors))
+        self.assertTrue(any("outlier_flag.max_fraction" in error for error in errors))
+        self.assertTrue(any("axis_unit.data_unit" in error for error in errors))
+        self.assertTrue(any("axis_unit.display_unit" in error for error in errors))
+
+    def test_linear_fit_passes_exact_declared_line(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_linear_fit_pass_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "fit.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("x,y\n0,1\n1,3\n2,5\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/fit.csv",
+                            "required_columns": ["x", "y"],
+                            "semantic_checks": {
+                                "y": {"linear_fit": {"x_column": "x", "slope": 2.0, "intercept": 1.0}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, config))
+
+    def test_linear_fit_fails_inconsistent_row_and_records_sidecar(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_linear_fit_fail_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "fit.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("x,y\n0,1\n1,3\n2,8\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/fit.csv",
+                            "required_columns": ["x", "y"],
+                            "semantic_checks": {
+                                "y": {"linear_fit": {"x_column": "x", "slope": 2.0, "intercept": 1.0}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
             sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
-            self.assertEqual(payload["checks"][0]["name"], "log_scale_positive")
+            self.assertEqual(payload["checks"][0]["name"], "linear_fit")
+            self.assertEqual(payload["checks"][0]["violations"][0]["row"], "2")
+
+    def test_linear_fit_fails_r2_even_when_rows_are_within_tolerance(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_linear_fit_r2_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "fit.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("x,y\n0,1\n1,3\n2,4\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/fit.csv",
+                            "required_columns": ["x", "y"],
+                            "semantic_checks": {
+                                "y": {
+                                    "linear_fit": {
+                                        "x_column": "x",
+                                        "slope": 2.0,
+                                        "intercept": 1.0,
+                                        "tolerance": 10.0,
+                                        "r2_min": 0.99,
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            payload = json.loads(sidecar.read_text(encoding="utf-8"))
+            self.assertIn("r2", payload["checks"][0]["violations"][0])
+
+    def test_linear_fit_fails_unpaired_null_values(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_linear_fit_null_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "fit.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("x,y\n0,1\n,3\n2,5\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/fit.csv",
+                            "required_columns": ["x", "y"],
+                            "semantic_checks": {
+                                "y": {"linear_fit": {"x_column": "x", "slope": 2.0, "intercept": 1.0}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_outlier_flag_canonicalizes_values_and_enforces_fraction(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_outlier_flag_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "flags.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("y,outlier\n1,0\n2, true \n3,1\n4,false\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/flags.csv",
+                            "required_columns": ["y", "outlier"],
+                            "semantic_checks": {
+                                "y": {"outlier_flag": {"column": "outlier", "max_fraction": 0.25}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_outlier_flag_fraction_equality_passes(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_outlier_flag_equal_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "flags.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("y,outlier\n1,1\n2,0\n3,0\n4,0\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/flags.csv",
+                            "required_columns": ["y", "outlier"],
+                            "semantic_checks": {
+                                "y": {"outlier_flag": {"column": "outlier", "max_fraction": 0.25}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, config))
+
+    def test_outlier_flag_rejects_values_outside_allowed_set(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_outlier_flag_invalid_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "flags.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("y,outlier\n1,0\n2,maybe\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/flags.csv",
+                            "required_columns": ["y", "outlier"],
+                            "semantic_checks": {"y": {"outlier_flag": {"column": "outlier"}}},
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_outlier_flag_accepts_nullable_boolean_with_boolean_allowed_set(self):
+        df = pd.DataFrame({"y": [1.0, 2.0], "outlier": pd.Series([True, False], dtype="boolean")})
+        calculation_checks = []
+
+        errors, rows = _validate_semantic_constraints(
+            df,
+            {"y": {"outlier_flag": {"column": "outlier", "allowed": [True, False], "max_fraction": 0.5}}},
+            {"y": "y", "outlier": "outlier"},
+            calculation_checks=calculation_checks,
+            csv_rel_path="results/data/flags.csv",
+            source_config_path="project_config.yaml",
+        )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(rows, [])
+        self.assertEqual(calculation_checks[0]["name"], "outlier_flag")
+        self.assertEqual(calculation_checks[0]["status"], "passed")
+
+    def test_axis_unit_skipped_when_pint_unavailable_requires_manual_review(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_axis_unit_skip_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "axis.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("y\n1\n2\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/axis.csv",
+                            "required_columns": ["y"],
+                            "semantic_checks": {"y": {"axis_unit": {"data_unit": "mA", "display_unit": "A"}}},
+                        }
+                    ]
+                }
+            }
+
+            with patch("hub_core.data_contract._PINT_AVAILABLE", False):
+                self.assertTrue(validate_data_contract(tmpdir, config))
+            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            payload = json.loads(sidecar.read_text(encoding="utf-8"))
+            self.assertEqual(payload["checks"][0]["name"], "axis_unit")
+            self.assertEqual(payload["checks"][0]["status"], "skipped")
+            self.assertTrue(payload["manual_review_needed"])
+
+    def test_axis_unit_incompatible_blocks_contract(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_axis_unit_bad_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "axis.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("y\n1\n2\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/axis.csv",
+                            "required_columns": ["y"],
+                            "semantic_checks": {"y": {"axis_unit": {"data_unit": "s", "display_unit": "A"}}},
+                        }
+                    ]
+                }
+            }
+
+            with patch("hub_core.data_contract._check_unit_compatibility", return_value="incompatible"):
+                self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_axis_unit_compatible_conversion_does_not_mutate_dataframe(self):
+        df = pd.DataFrame({"y": [1.0, 2.0]})
+        calculation_checks = []
+
+        with patch("hub_core.data_contract._check_unit_compatibility", return_value=(0.001, "mA", "A")):
+            errors, rows = _validate_semantic_constraints(
+                df,
+                {"y": {"axis_unit": {"data_unit": "mA", "display_unit": "A"}}},
+                {"y": "y"},
+                calculation_checks=calculation_checks,
+                csv_rel_path="results/data/axis.csv",
+                source_config_path="project_config.yaml",
+            )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(rows, [])
+        self.assertEqual(df["y"].tolist(), [1.0, 2.0])
+        self.assertEqual(calculation_checks[0]["name"], "axis_unit")
+        self.assertEqual(calculation_checks[0]["status"], "passed")
+        self.assertEqual(calculation_checks[0]["violations"][0]["conversion_factor"], 0.001)
 
     def test_error_bar_source_fails_negative_values(self):
         with tempfile.TemporaryDirectory(prefix="dcp_errorbar_") as tmpdir:

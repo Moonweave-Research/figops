@@ -502,6 +502,107 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(any("grouped_cv" in warning for warning in result["warnings"]))
             self.assertFalse(runtime_root.exists())
 
+    def test_render_csv_graph_dry_run_axis_unit_skip_requires_manual_review(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+
+            with patch("hub_core.data_contract._PINT_AVAILABLE", False):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "semantic_checks": {
+                            "y": {"axis_unit": {"data_unit": "mA", "display_unit": "A"}}
+                        },
+                        "job_id": "axis-unit-dry-run",
+                        "dry_run": True,
+                    },
+                )
+
+            self.assertEqual(result["status"], "warning")
+            self.assertTrue(result["manual_review_needed"])
+            self.assertTrue(result["is_dry_run"])
+            self.assertTrue(any("axis_unit" in warning for warning in result["warnings"]))
+            self.assertIn("calculation_checks", result)
+            self.assertFalse(result["calculation_checks"]["quality_passed"])
+            self.assertTrue(result["calculation_checks"]["manual_review_needed"])
+            self.assertEqual(result["calculation_checks"]["checks"][0]["status"], "skipped")
+            self.assertFalse(runtime_root.exists())
+
+    def test_render_csv_graph_contract_failure_includes_calculation_checks(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = Path(tmpdir) / "input" / "data.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("x,y\n0,1\n1,9\n", encoding="utf-8")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "semantic_checks": {
+                        "y": {"linear_fit": {"x_column": "x", "slope": 2.0, "intercept": 1.0}}
+                    },
+                    "job_id": "linear-fit-failure",
+                    "dry_run": True,
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn("calculation_checks", result)
+            self.assertFalse(result["calculation_checks"]["quality_passed"])
+            self.assertEqual(result["calculation_checks"]["checks"][0]["name"], "linear_fit")
+            self.assertEqual(result["calculation_checks"]["checks"][0]["status"], "failed")
+            self.assertFalse(runtime_root.exists())
+
+    def test_render_csv_graph_axis_unit_skip_reaches_manifest_and_status(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+
+            with (
+                patch("hub_core.data_contract._PINT_AVAILABLE", False),
+                patch(
+                    "hub_core.mcp_surface.validate_figure_preflight",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "semantic_checks": {
+                            "y": {"axis_unit": {"data_unit": "mA", "display_unit": "A"}}
+                        },
+                        "job_id": "axis-unit-render",
+                    },
+                )
+
+            self.assertEqual(result["status"], "warning")
+            self.assertTrue(any("axis_unit" in warning for warning in result["warnings"]))
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            status = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
+            for payload in (manifest, status):
+                self.assertIn("calculation_checks", payload)
+                self.assertFalse(payload["calculation_checks"]["quality_passed"])
+                self.assertTrue(payload["calculation_checks"]["manual_review_needed"])
+                self.assertEqual(payload["calculation_checks"]["checks"][0]["name"], "axis_unit")
+                self.assertEqual(payload["calculation_checks"]["checks"][0]["status"], "skipped")
+
     def test_render_csv_graph_prefetches_input_before_reading_or_copying(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")

@@ -529,6 +529,46 @@ def _validate_semantic_constraints(
             errors.extend(mean_sem_errors)
             row_violations.extend(mean_sem_rows)
 
+        if "linear_fit" in constraints:
+            linear_fit_errors, linear_fit_rows = _check_linear_fit_constraint(
+                df,
+                series,
+                col,
+                constraints["linear_fit"],
+                stripped_to_actual,
+                max_row_detail,
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(linear_fit_errors)
+            row_violations.extend(linear_fit_rows)
+
+        if "outlier_flag" in constraints:
+            outlier_errors, outlier_rows = _check_outlier_flag_constraint(
+                df,
+                col,
+                constraints["outlier_flag"],
+                stripped_to_actual,
+                max_row_detail,
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(outlier_errors)
+            row_violations.extend(outlier_rows)
+
+        if "axis_unit" in constraints:
+            axis_errors, axis_rows = _check_axis_unit_constraint(
+                col,
+                constraints["axis_unit"],
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(axis_errors)
+            row_violations.extend(axis_rows)
+
         # 6. Unit check (requires pint)
         expected_unit = constraints.get('unit')
         actual_unit = constraints.get('actual_unit')
@@ -564,7 +604,7 @@ def _validate_semantic_constraints(
 def _calculation_summary(checks: list[dict]) -> dict:
     return {
         "checks": checks,
-        "quality_passed": not any(check.get("status") in {"warning", "failed"} for check in checks),
+        "quality_passed": not any(check.get("status") in {"warning", "failed", "skipped"} for check in checks),
         "manual_review_needed": any(bool(check.get("manual_review_needed")) for check in checks),
     }
 
@@ -1227,6 +1267,493 @@ def _check_mean_sem_constraint(
         violations=violations,
     )
     return [message], row_violations
+
+
+def _finite_float(value):
+    if isinstance(value, bool) or _is_nullish(value):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _check_linear_fit_constraint(
+    df,
+    series,
+    col,
+    raw_check,
+    stripped_to_actual,
+    max_row_detail: int,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    if not isinstance(raw_check, dict):
+        message = f"Column '{col}': linear_fit must be a mapping"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="linear_fit",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    x_column = str(raw_check.get("x_column", "")).strip()
+    x_series, x_error = _numeric_series_or_error(df, stripped_to_actual, x_column, "linear_fit")
+    y_series, y_error = _numeric_series_or_error(df, stripped_to_actual, str(col), "linear_fit")
+    for error in (x_error, y_error):
+        if error:
+            message = f"Column '{col}': {error}"
+            _append_failed_calculation_check(
+                calculation_checks,
+                csv_rel_path=csv_rel_path,
+                name="linear_fit",
+                target=col,
+                source_config_path=source_config_path,
+                message=message,
+            )
+            return [message], []
+
+    slope = _finite_float(raw_check.get("slope"))
+    intercept = _finite_float(raw_check.get("intercept"))
+    tolerance = _finite_float(raw_check.get("tolerance", 1.0e-6))
+    r2_min = _finite_float(raw_check.get("r2_min")) if "r2_min" in raw_check else None
+    if slope is None or intercept is None:
+        message = f"Column '{col}': linear_fit slope and intercept must be finite numbers"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="linear_fit",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+    if tolerance is None or tolerance < 0:
+        message = f"Column '{col}': linear_fit.tolerance must be a non-negative finite number"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="linear_fit",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+    if "r2_min" in raw_check and (r2_min is None or not 0 <= r2_min <= 1):
+        message = f"Column '{col}': linear_fit.r2_min must be between 0 and 1"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="linear_fit",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    paired_values = []
+    violations = []
+    row_violations = []
+    invalid_pair_count = 0
+    for idx in series.index:
+        x_value = _finite_float(x_series.loc[idx])
+        y_value = _finite_float(series.loc[idx])
+        if x_value is None and y_value is None:
+            continue
+        if x_value is None or y_value is None:
+            invalid_pair_count += 1
+            if len(violations) < max_row_detail:
+                violations.append(
+                    {
+                        "row": str(idx),
+                        "x": _json_safe_value(x_series.loc[idx]),
+                        "y": _json_safe_value(series.loc[idx]),
+                        "expected": "finite x and y or paired null values",
+                    }
+                )
+                row_violations.append(
+                    {
+                        "row": str(idx),
+                        "column": col,
+                        "value": str(series.loc[idx]),
+                        "expected": "finite x/y pair",
+                        "violation_type": "linear_fit_invalid_pair",
+                    }
+                )
+            continue
+        paired_values.append((idx, x_value, y_value))
+
+    if len(paired_values) < 2:
+        message = f"Column '{col}': linear_fit requires at least two finite x/y pairs"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="linear_fit",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+            violations=violations,
+        )
+        return [message], row_violations
+
+    residuals = []
+    y_values = []
+    for idx, x_value, y_value in paired_values:
+        expected = slope * x_value + intercept
+        residual = y_value - expected
+        residuals.append(residual)
+        y_values.append(y_value)
+        if abs(residual) > tolerance:
+            if len(violations) < max_row_detail:
+                violations.append(
+                    {
+                        "row": str(idx),
+                        "x": _json_safe_value(x_value),
+                        "y": _json_safe_value(y_value),
+                        "expected": _json_safe_value(expected),
+                        "residual": _json_safe_value(residual),
+                        "tolerance": tolerance,
+                    }
+                )
+                row_violations.append(
+                    {
+                        "row": str(idx),
+                        "column": col,
+                        "value": str(y_value),
+                        "expected": f"{slope} * {x_column} + {intercept} within tolerance {tolerance}",
+                        "violation_type": "linear_fit_mismatch",
+                    }
+                )
+
+    r2_value = None
+    if r2_min is not None:
+        y_mean = sum(y_values) / len(y_values)
+        ss_tot = sum((value - y_mean) ** 2 for value in y_values)
+        ss_res = sum(residual**2 for residual in residuals)
+        if ss_tot == 0:
+            r2_value = 1.0 if not violations and invalid_pair_count == 0 else 0.0
+        else:
+            r2_value = 1.0 - (ss_res / ss_tot)
+        if r2_value < r2_min:
+            violations.append({"r2": _json_safe_value(r2_value), "expected": f">= {r2_min}"})
+
+    if not violations and invalid_pair_count == 0:
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="linear_fit",
+            target=col,
+            group_by=[],
+            source_config_path=source_config_path,
+            status="passed",
+            manual_review_needed=False,
+            message=f"Column '{col}' matches declared linear fit",
+            violations=[],
+        )
+        return [], []
+
+    message = f"Column '{col}': linear_fit found {len(violations)} violation(s)"
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="linear_fit",
+        target=col,
+        group_by=[],
+        source_config_path=source_config_path,
+        status="failed",
+        manual_review_needed=False,
+        message=message,
+        violations=violations,
+    )
+    return [message], row_violations
+
+
+_DEFAULT_OUTLIER_ALLOWED = [0, 1, True, False, "0", "1", "true", "false"]
+_OUTLIER_POSITIVE = {("number", 1), ("bool", True), ("string", "1"), ("string", "true")}
+
+
+def _canonical_flag_value(value):
+    if _is_nullish(value):
+        return None
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except Exception:
+            return ("string", str(value).strip().lower())
+    if isinstance(value, bool):
+        return ("bool", bool(value))
+    if isinstance(value, str):
+        return ("string", value.strip().lower())
+    number = _finite_float(value)
+    if number is not None:
+        if number.is_integer():
+            return ("number", int(number))
+        return ("number", number)
+    return ("string", str(value).strip().lower())
+
+
+def _check_outlier_flag_constraint(
+    df,
+    col,
+    raw_check,
+    stripped_to_actual,
+    max_row_detail: int,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    if not isinstance(raw_check, dict):
+        message = f"Column '{col}': outlier_flag must be a mapping"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="outlier_flag",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    flag_column = str(raw_check.get("column", "")).strip()
+    actual_flag_col = stripped_to_actual.get(flag_column)
+    if actual_flag_col is None:
+        message = f"Column '{col}': outlier_flag column '{flag_column}' not found"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="outlier_flag",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    allowed_values = raw_check.get("allowed", _DEFAULT_OUTLIER_ALLOWED)
+    if not isinstance(allowed_values, list) or not allowed_values:
+        message = f"Column '{col}': outlier_flag.allowed must be a non-empty list"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="outlier_flag",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+    allowed = {_canonical_flag_value(value) for value in allowed_values}
+    max_fraction = _finite_float(raw_check.get("max_fraction", 1.0))
+    if max_fraction is None or not 0 <= max_fraction <= 1:
+        message = f"Column '{col}': outlier_flag.max_fraction must be between 0 and 1"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="outlier_flag",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    flag_series = df[actual_flag_col]
+    violations = []
+    row_violations = []
+    total_non_null = 0
+    outlier_count = 0
+    invalid_count = 0
+    for idx, raw_value in flag_series.items():
+        canonical = _canonical_flag_value(raw_value)
+        if canonical is None:
+            invalid_count += 1
+            if len(violations) < max_row_detail:
+                violations.append({"row": str(idx), "column": flag_column, "value": None, "expected": "non-null flag"})
+            continue
+        total_non_null += 1
+        if canonical not in allowed:
+            invalid_count += 1
+            if len(violations) < max_row_detail:
+                violations.append(
+                    {
+                        "row": str(idx),
+                        "column": flag_column,
+                        "value": _json_safe_value(raw_value),
+                        "expected": "allowed flag value",
+                    }
+                )
+            continue
+        if canonical in _OUTLIER_POSITIVE:
+            outlier_count += 1
+
+    denominator = total_non_null
+    fraction = (outlier_count / denominator) if denominator else 0.0
+    if fraction > max_fraction:
+        violations.append(
+            {
+                "column": flag_column,
+                "outlier_count": outlier_count,
+                "denominator": denominator,
+                "fraction": round(float(fraction), 6),
+                "expected": f"<= {max_fraction}",
+            }
+        )
+
+    for violation in violations[:max_row_detail]:
+        if "row" not in violation:
+            continue
+        row_violations.append(
+            {
+                "row": violation["row"],
+                "column": flag_column,
+                "value": str(violation.get("value")),
+                "expected": str(violation.get("expected")),
+                "violation_type": "outlier_flag_invalid",
+            }
+        )
+
+    if not violations and invalid_count == 0:
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="outlier_flag",
+            target=col,
+            group_by=[],
+            source_config_path=source_config_path,
+            status="passed",
+            manual_review_needed=False,
+            message=f"Outlier flag column '{flag_column}' is valid",
+            violations=[],
+        )
+        return [], []
+
+    message = f"Column '{col}': outlier_flag found {len(violations)} violation(s)"
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="outlier_flag",
+        target=col,
+        group_by=[],
+        source_config_path=source_config_path,
+        status="failed",
+        manual_review_needed=False,
+        message=message,
+        violations=violations,
+    )
+    return [message], row_violations
+
+
+def _check_axis_unit_constraint(
+    col,
+    raw_check,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    if not isinstance(raw_check, dict):
+        message = f"Column '{col}': axis_unit must be a mapping"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="axis_unit",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    data_unit = raw_check.get("data_unit")
+    display_unit = raw_check.get("display_unit")
+    if (
+        not isinstance(data_unit, str)
+        or not data_unit.strip()
+        or not isinstance(display_unit, str)
+        or not display_unit.strip()
+    ):
+        message = f"Column '{col}': axis_unit data_unit and display_unit must be non-empty strings"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="axis_unit",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    result = _check_unit_compatibility(col, data_unit.strip(), display_unit.strip())
+    if result == "incompatible":
+        message = f"Column '{col}': axis_unit '{data_unit}' is incompatible with display unit '{display_unit}'"
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="axis_unit",
+            target=col,
+            group_by=[],
+            source_config_path=source_config_path,
+            status="failed",
+            manual_review_needed=False,
+            message=message,
+            violations=[
+                {
+                    "column": col,
+                    "value": data_unit,
+                    "expected": display_unit,
+                    "violation_type": "axis_unit_incompatible",
+                }
+            ],
+        )
+        return [message], [
+            {
+                "row": "*",
+                "column": col,
+                "value": data_unit,
+                "expected": display_unit,
+                "violation_type": "axis_unit_incompatible",
+            }
+        ]
+
+    if result == "skip":
+        message = f"Column '{col}': axis_unit check skipped; manual review required"
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="axis_unit",
+            target=col,
+            group_by=[],
+            source_config_path=source_config_path,
+            status="skipped",
+            manual_review_needed=True,
+            message=message,
+            violations=[],
+        )
+        return [], []
+
+    if isinstance(result, tuple):
+        factor, from_unit, to_unit = result
+        message = f"Axis unit '{from_unit}' is compatible with '{to_unit}' (x{factor})"
+        violations = [{"conversion_factor": _json_safe_value(factor), "from_unit": from_unit, "to_unit": to_unit}]
+    else:
+        message = f"Axis unit '{data_unit}' matches display unit '{display_unit}'"
+        violations = []
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="axis_unit",
+        target=col,
+        group_by=[],
+        source_config_path=source_config_path,
+        status="passed",
+        manual_review_needed=False,
+        message=message,
+        violations=violations,
+    )
+    return [], []
 
 
 def _check_monotonic_constraint(series, col, mode: str, max_row_detail: int):
