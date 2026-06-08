@@ -54,6 +54,10 @@ Read and execute in this order:
 7. [06 Direction Beyond MCP v1](graph_hub_mcp_surface/06_direction_beyond_mcp_v1.md)
 8. [07 Athena Client Migration Workflow](graph_hub_mcp_surface/07_athena_client_migration_workflow.md)
 
+Post-migration direction lock:
+
+- [Graph Hub Independent Completion Spec](graph_hub_independent_completion_spec_20260608.md)
+
 ## Current Findings That Drive the Plan
 
 ### Live ResearchOS And Graph Hub State
