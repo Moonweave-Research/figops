@@ -104,7 +104,10 @@ def apply_scaffold_project(manifest: dict[str, Any], *, overwrite: bool) -> dict
     if overwrite and _path_occupied(manifest_path):
         _unlink_destination(manifest_path)
     manifest_payload = {**manifest, "entries": applied_entries}
-    manifest_path.write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(manifest_payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
     created.append(str(manifest_path))
     applied_entries.append(
         {
@@ -118,8 +121,16 @@ def apply_scaffold_project(manifest: dict[str, Any], *, overwrite: bool) -> dict
         }
     )
     manifest_payload["entries"] = applied_entries
-    manifest_path.write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-    return {"manifest": manifest_payload, "created_paths": created, "modified_paths": modified, "skipped_paths": skipped}
+    manifest_path.write_text(
+        json.dumps(manifest_payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return {
+        "manifest": manifest_payload,
+        "created_paths": created,
+        "modified_paths": modified,
+        "skipped_paths": skipped,
+    }
 
 
 def plan_normalize_project(
@@ -270,10 +281,22 @@ def apply_normalize_project(manifest: dict[str, Any], *, hub_path: Path, overwri
 
     if overwrite and _path_occupied(manifest_path):
         _unlink_destination(manifest_path)
-    manifest_payload = {**manifest, "entries": applied_entries, "style_summary": _style_summary(project_root / "project_config.yaml")}
-    manifest_path.write_text(json.dumps(manifest_payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    manifest_payload = {
+        **manifest,
+        "entries": applied_entries,
+        "style_summary": _style_summary(project_root / "project_config.yaml"),
+    }
+    manifest_path.write_text(
+        json.dumps(manifest_payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
     created.append(str(manifest_path))
-    return {"manifest": manifest_payload, "created_paths": created, "modified_paths": modified, "skipped_paths": skipped}
+    return {
+        "manifest": manifest_payload,
+        "created_paths": created,
+        "modified_paths": modified,
+        "skipped_paths": skipped,
+    }
 
 
 def _scaffold_config(hub_path: Path, project_name: str, target_format: str) -> dict[str, Any]:
@@ -292,9 +315,13 @@ def _scaffold_config(hub_path: Path, project_name: str, target_format: str) -> d
 def _scaffold_entries(project_root: Path, config: dict[str, Any]) -> list[dict[str, Any]]:
     directories = [
         ".",
-        "data/raw",
+        "raw",
+        "work",
         "results/data",
         "results/figures",
+        "results/final",
+        "docs",
+        "archive",
         "hub_scripts",
         "hub_scripts/diagrams",
     ]
@@ -361,7 +388,7 @@ def _normalization_destination(rel_path: Path, *, include_raw: bool, move_policy
         if not include_raw:
             return None, "raw/data input excluded by include_raw=false", "skip"
         tail = _tail_after_prefix(rel_path, (("data", "raw"), ("data",), ("raw",)))
-        return (Path("data/raw") / tail).as_posix(), "raw/data input preserved", "copy"
+        return (Path("raw") / tail).as_posix(), "raw/data input preserved", "copy"
     if suffix in _FIGURE_SUFFIXES:
         tail = _tail_after_prefix(rel_path, (("results", "figures"), ("figures",), ("images",)))
         return (Path("results/figures") / tail).as_posix(), "existing figure preserved", move_policy

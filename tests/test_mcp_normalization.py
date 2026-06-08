@@ -61,6 +61,17 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             self.assertEqual(_snapshot_files(Path(tmpdir)), before)
             self.assertIn("project_config.yaml", result["planned_paths"])
             self.assertIn("hub_scripts/analyze.R", result["planned_paths"])
+            for required_dir in (
+                "raw",
+                "work",
+                "hub_scripts",
+                "results/data",
+                "results/figures",
+                "results/final",
+                "docs",
+                "archive",
+            ):
+                self.assertIn(required_dir, result["planned_paths"])
             self.assertEqual(result["style_summary"]["target_format"], "nature_surfur")
             self.assertEqual(result["manifest"]["operation"], "scaffold_project")
 
@@ -83,6 +94,16 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "ok")
             self.assertFalse(result["is_dry_run"])
             self.assertTrue((project_root / "project_config.yaml").is_file())
+            for required_dir in (
+                "raw",
+                "work",
+                "results/data",
+                "results/figures",
+                "results/final",
+                "docs",
+                "archive",
+            ):
+                self.assertTrue((project_root / required_dir).is_dir())
             self.assertTrue((project_root / "hub_scripts" / "analyze.R").is_file())
             self.assertTrue((project_root / "hub_scripts" / "plot.py").is_file())
             config = yaml.safe_load((project_root / "project_config.yaml").read_text(encoding="utf-8"))
@@ -198,7 +219,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("project_config.yaml", result["errors"][0])
-            self.assertFalse((project_root / "data").exists())
+            self.assertFalse((project_root / "raw").exists())
             self.assertEqual(_snapshot_files(project_root), before)
 
     def test_scaffold_project_refuses_symlinked_scaffold_directory(self):
@@ -206,8 +227,8 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             project_root = Path(tmpdir) / "ResearchOS" / "Blocked_Project"
             target_dir = Path(tmpdir) / "outside_raw"
             target_dir.mkdir(parents=True)
-            (project_root / "data").mkdir(parents=True)
-            os.symlink(target_dir, project_root / "data" / "raw")
+            project_root.mkdir(parents=True)
+            os.symlink(target_dir, project_root / "raw")
             before = _snapshot_files(project_root)
             server = GraphHubMCPServer()
 
@@ -219,7 +240,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn("data/raw", result["errors"][0])
+            self.assertIn("raw", result["errors"][0])
             self.assertFalse((project_root / "project_config.yaml").exists())
             self.assertEqual(_snapshot_files(project_root), before)
 
@@ -309,7 +330,7 @@ figures:
             self.assertEqual(_snapshot_files(project), before)
             destinations = {entry["destination"] for entry in result["manifest"]["entries"]}
             self.assertIn("hub_scripts/plot.py", destinations)
-            self.assertIn("data/raw/summary.csv", destinations)
+            self.assertIn("raw/summary.csv", destinations)
             self.assertIn("results/figures/figure.png", destinations)
             self.assertIn("docs/notes.md", destinations)
             self.assertEqual(result["style_summary"]["target_format"], "nature_surfur")
@@ -333,12 +354,14 @@ figures:
             self.assertEqual(result["status"], "ok")
             self.assertFalse(result["is_dry_run"])
             self.assertTrue((project / "hub_scripts" / "plot.py").is_file())
-            self.assertTrue((project / "data" / "raw" / "summary.csv").is_file())
+            self.assertTrue((project / "raw" / "summary.csv").is_file())
             self.assertTrue((project / ".graphhub_normalization_manifest.json").is_file())
             manifest = json.loads((project / ".graphhub_normalization_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["operation"], "normalize_project_structure")
             self.assertTrue(any(entry["destination"] == "hub_scripts/plot.py" for entry in manifest["entries"]))
-            self.assertTrue(any(path.endswith(".graphhub_normalization_manifest.json") for path in result["created_paths"]))
+            self.assertTrue(
+                any(path.endswith(".graphhub_normalization_manifest.json") for path in result["created_paths"])
+            )
 
     def test_normalize_project_structure_preserves_legacy_scripts_config(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -404,7 +427,7 @@ figures:
 
             destinations = {entry["destination"] for entry in result["manifest"]["entries"]}
             self.assertIn("hub_scripts/plot.py", destinations)
-            self.assertIn("data/raw/summary.csv", destinations)
+            self.assertIn("raw/summary.csv", destinations)
             self.assertIn("docs/notes.md", destinations)
 
     def test_normalize_project_structure_preserves_nested_relative_subpaths(self):
@@ -429,8 +452,8 @@ figures:
             destinations = {entry["destination"] for entry in result["manifest"]["entries"]}
             self.assertIn("hub_scripts/prep/plot.py", destinations)
             self.assertIn("hub_scripts/final/plot.py", destinations)
-            self.assertIn("data/raw/a/results.csv", destinations)
-            self.assertIn("data/raw/b/results.csv", destinations)
+            self.assertIn("raw/a/results.csv", destinations)
+            self.assertIn("raw/b/results.csv", destinations)
 
     def test_normalize_project_structure_preserves_existing_result_tables(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -533,12 +556,14 @@ figures:
                 {"project_path": str(project), "plan_only": False, "include_raw": True, "move_policy": "move"},
             )
 
-            raw_entry = next(entry for entry in planned["manifest"]["entries"] if entry["destination"] == "data/raw/summary.csv")
+            raw_entry = next(
+                entry for entry in planned["manifest"]["entries"] if entry["destination"] == "raw/summary.csv"
+            )
             self.assertEqual(raw_entry["operation"], "copy")
             self.assertIn(applied["status"], {"ok", "warning"})
             self.assertTrue(raw_source.is_file())
             self.assertEqual(raw_source.read_text(encoding="utf-8"), "x,y\n1,2\n")
-            self.assertEqual((project / "data" / "raw" / "summary.csv").read_text(encoding="utf-8"), "x,y\n1,2\n")
+            self.assertEqual((project / "raw" / "summary.csv").read_text(encoding="utf-8"), "x,y\n1,2\n")
 
     def test_normalize_project_structure_symlink_overwrite_replaces_existing_target(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:

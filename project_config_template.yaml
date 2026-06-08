@@ -90,10 +90,10 @@ pipeline:
   analysis:
     - script: "hub_scripts/analyze.R"
       lang: "R"
-      inputs: ["data/raw/"]      # 변경 감지 대상 (GDrive Prefetch 대상)
+      inputs: ["raw/"]           # 변경 감지 대상 (GDrive Prefetch 대상)
       outputs: ["results/data/summary.csv"]
       cache: true                # Smart Build 캐싱 사용 여부
-      # inputs supports glob patterns: ["data/raw/*.csv"]
+      # inputs supports glob patterns: ["raw/*.csv"]
       # expand: batch (default) — all matched files in one script call
       # expand: each  — one script call per file (analysis does not support 'each')
 
@@ -142,9 +142,9 @@ execution:
 #     - label: "70wt%"
 #       env:
 #         SAMPLE_ID: "70wt"
-#         DATA_PATH: "data/raw/70wt.csv"
+#         DATA_PATH: "raw/70wt.csv"
 #     - label: "80wt%"
 #       env:
 #         SAMPLE_ID: "80wt"
-#         DATA_PATH: "data/raw/80wt.csv"
+#         DATA_PATH: "raw/80wt.csv"
 #   overlay_output: "results/figures/comparison_overlay.pdf"
