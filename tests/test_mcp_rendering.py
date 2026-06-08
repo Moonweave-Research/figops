@@ -76,10 +76,19 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         return response["structuredContent"]
 
     def test_tool_definitions_include_controlled_rendering_tools(self):
-        names = {tool["name"] for tool in list_tool_definitions()}
+        definitions = {tool["name"]: tool for tool in list_tool_definitions()}
+        names = set(definitions)
 
         self.assertIn("graphhub.render_csv_graph", names)
         self.assertIn("graphhub.collect_artifacts", names)
+        for tool_name in ("graphhub.render_csv_graph", "graphhub.collect_artifacts"):
+            properties = definitions[tool_name]["outputSchema"]["properties"]
+            self.assertIn("failure_stage", properties)
+            self.assertIn("resolution_hint", properties)
+            self.assertIn("manifest_path", properties)
+            self.assertIn("status_path", properties)
+            self.assertIn("latest_alias", properties)
+            self.assertIn("latest_dir", properties)
 
     def test_default_runtime_root_preview_does_not_create_directory(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -226,6 +235,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(Path(collected["provenance"]["status_path"]).is_file())
             self.assertTrue(Path(collected["provenance"]["latest_dir"]).is_dir())
             self.assertEqual(collected["provenance"]["latest_alias"], collected["provenance"]["latest_dir"])
+            self.assertEqual(collected["manifest_path"], collected["provenance"]["manifest_path"])
+            self.assertEqual(collected["status_path"], collected["provenance"]["status_path"])
+            self.assertEqual(collected["latest_dir"], collected["provenance"]["latest_dir"])
+            self.assertEqual(collected["latest_alias"], collected["provenance"]["latest_alias"])
             self.assertEqual(collected["visual_preflight_status"]["passed"], True)
 
     def test_render_csv_graph_rejects_overwrite_without_flag(self):
@@ -437,6 +450,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("timed out", result["errors"][0])
             self.assertTrue(str(Path(result["job_root"]).resolve()).startswith(str(runtime_root.resolve())))
+            self.assertTrue(Path(result["manifest_path"]).is_file())
+            self.assertTrue(Path(result["status_path"]).is_file())
+            self.assertTrue(Path(result["latest_dir"]).is_dir())
+            self.assertEqual(result["latest_alias"], result["latest_dir"])
 
     def test_render_csv_graph_execution_error_sanitizes_runtime_path(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -457,6 +474,59 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("runtime://mcp_jobs/path-demo/results/figures/graph.png", result["errors"][0])
             self.assertNotIn(str(runtime_root.resolve()), result["errors"][0])
+            self.assertTrue(Path(result["manifest_path"]).is_file())
+            self.assertTrue(Path(result["status_path"]).is_file())
+            self.assertTrue(Path(result["latest_dir"]).is_dir())
+            self.assertEqual(result["latest_alias"], result["latest_dir"])
+            self.assertTrue((Path(result["latest_dir"]) / "manifest.json").is_file())
+            self.assertTrue((Path(result["latest_dir"]) / "status.json").is_file())
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            status = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["failure_stage"], "PLOT")
+            self.assertEqual(manifest["resolution_hint"], result["resolution_hint"])
+            self.assertEqual(manifest["status_path"], result["status_path"])
+            self.assertEqual(manifest["latest_dir"], result["latest_dir"])
+            self.assertEqual(manifest["latest_alias"], result["latest_alias"])
+            self.assertEqual(status["status"], "error")
+            self.assertEqual(status["failure_stage"], "PLOT")
+
+            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "path-demo"})
+            self.assertEqual(collected["status"], "error")
+            self.assertEqual(collected["artifact_status"], "failed")
+            self.assertEqual(collected["failure_stage"], "PLOT")
+            self.assertEqual(collected["resolution_hint"], result["resolution_hint"])
+            self.assertEqual(collected["manifest_path"], result["manifest_path"])
+            self.assertEqual(collected["status_path"], result["status_path"])
+            self.assertEqual(collected["latest_alias"], result["latest_alias"])
+
+    def test_render_csv_graph_failure_manifest_preserves_requested_baseline_state(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            baseline_path = Path(tmpdir) / "baseline" / "graph.png"
+            baseline_path.parent.mkdir()
+            baseline_path.write_bytes(b"not-a-real-png")
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+
+            with patch("hub_core.mcp_surface._render_bridge_figure_worker", _path_leaking_render_worker):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "job_id": "baseline-failure-demo",
+                        "baseline_path": str(baseline_path),
+                    },
+                )
+
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            self.assertTrue(result["baseline_comparison"]["checked"])
+            self.assertEqual(manifest["baseline_comparison"], result["baseline_comparison"])
+
+            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "baseline-failure-demo"})
+            self.assertEqual(collected["baseline_comparison"], result["baseline_comparison"])
 
     def test_render_worker_uses_blocking_queue_read_after_process_exit(self):
         delayed_queue = _DelayedRenderQueue()

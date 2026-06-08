@@ -123,6 +123,12 @@ def _standard_output_schema(extra_properties: dict[str, Any] | None = None) -> d
         "warnings": {"type": "array", "items": {"type": "string"}},
         "errors": {"type": "array", "items": {"type": "string"}},
         "manual_review_needed": {"type": "boolean"},
+        "failure_stage": {"type": "string"},
+        "resolution_hint": {"type": "string"},
+        "manifest_path": {"type": "string"},
+        "status_path": {"type": "string"},
+        "latest_alias": {"type": "string"},
+        "latest_dir": {"type": "string"},
     }
     properties.update(extra_properties or {})
     return _object_schema(properties)
@@ -250,7 +256,6 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "job_root": {"type": "string"},
                     "output_path": {"type": "string"},
                     "config_path": {"type": "string"},
-                    "manifest_path": {"type": "string"},
                     "style_summary": {"type": "object"},
                     "visual_preflight_status": {"type": "object"},
                     "artifact_status": {"type": "string"},
@@ -295,7 +300,6 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "project_name": {"type": "string"},
                     "planned_paths": {"type": "array", "items": {"type": "string"}},
                     "manifest": {"type": "object"},
-                    "manifest_path": {"type": "string"},
                     "config_path": {"type": "string"},
                     "style_summary": {"type": "object"},
                     "validation": {"type": "object"},
@@ -320,7 +324,6 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "project_root": {"type": "string"},
                     "planned_paths": {"type": "array", "items": {"type": "string"}},
                     "manifest": {"type": "object"},
-                    "manifest_path": {"type": "string"},
                     "config_path": {"type": "string"},
                     "style_summary": {"type": "object"},
                     "validation": {"type": "object"},
@@ -348,7 +351,6 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                 {
                     "batch_id": {"type": "string"},
                     "batch_root": {"type": "string"},
-                    "manifest_path": {"type": "string"},
                     "checked_projects": {"type": "array", "items": {"type": "object"}},
                     "skipped_projects": {"type": "array", "items": {"type": "object"}},
                     "resumed_from": {"type": "string"},
@@ -740,14 +742,14 @@ class GraphHubMCPServer:
         if job_root.exists() and overwrite:
             shutil.rmtree(job_root)
 
+        job_data_path = job_root / "data" / "input.csv"
+        output_path = job_root / "results" / "figures" / f"graph.{output_format}"
+        config_path = job_root / "project_config.yaml"
+        manifest_path = job_root / "manifest.json"
+        status_path = job_root / "status.json"
+        latest_dir = self.runtime_root / "_latest" / "mcp_render"
         created_paths: list[str] = []
         try:
-            job_data_path = job_root / "data" / "input.csv"
-            output_path = job_root / "results" / "figures" / f"graph.{output_format}"
-            config_path = job_root / "project_config.yaml"
-            manifest_path = job_root / "manifest.json"
-            status_path = job_root / "status.json"
-            latest_dir = self.runtime_root / "_latest" / "mcp_render"
             job_data_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(data_path, job_data_path)
@@ -836,6 +838,30 @@ class GraphHubMCPServer:
             shutil.copy2(status_path, latest_dir / "status.json")
         except Exception as exc:
             failure_stage = "TIMEOUT" if "timed out" in str(exc).lower() else "PLOT"
+            resolution_hint = (
+                "Increase the render timeout or simplify the figure."
+                if failure_stage == "TIMEOUT"
+                else "Inspect the render engine error and graph input settings."
+            )
+            if job_root.exists():
+                baseline_comparison = self._baseline_comparison(None, arguments.get("baseline_path"))
+                created_paths = self._write_render_failure_artifacts(
+                    job_id=job_id,
+                    job_root=job_root,
+                    source_data_path=data_path,
+                    copied_data_path=job_data_path,
+                    config_path=config_path,
+                    output_path=output_path,
+                    manifest_path=manifest_path,
+                    status_path=status_path,
+                    latest_dir=latest_dir,
+                    created_paths=created_paths,
+                    failure_stage=failure_stage,
+                    resolution_hint=resolution_hint,
+                    baseline_comparison=baseline_comparison,
+                )
+            else:
+                baseline_comparison = self._baseline_comparison(None, arguments.get("baseline_path"))
             return self._envelope(
                 "graphhub.render_csv_graph",
                 arguments,
@@ -847,14 +873,14 @@ class GraphHubMCPServer:
                 is_dry_run=False,
                 job_id=job_id,
                 job_root=str(job_root),
+                manifest_path=str(manifest_path) if job_root.exists() else "",
+                status_path=str(status_path) if job_root.exists() else "",
+                latest_dir=str(latest_dir) if job_root.exists() else "",
+                latest_alias=str(latest_dir) if job_root.exists() else "",
                 failure_stage=failure_stage,
-                resolution_hint=(
-                    "Increase the render timeout or simplify the figure."
-                    if failure_stage == "TIMEOUT"
-                    else "Inspect the render engine error and graph input settings."
-                ),
+                resolution_hint=resolution_hint,
                 artifact_status="failed",
-                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                baseline_comparison=baseline_comparison,
             )
 
         return self._envelope(
@@ -912,6 +938,82 @@ class GraphHubMCPServer:
             "failure_stage": failure_stage,
             "resolution_hint": resolution_hint,
         }
+
+    def _write_render_failure_artifacts(
+        self,
+        *,
+        job_id: str,
+        job_root: Path,
+        source_data_path: Path,
+        copied_data_path: Path,
+        config_path: Path,
+        output_path: Path,
+        manifest_path: Path,
+        status_path: Path,
+        latest_dir: Path,
+        created_paths: list[str],
+        failure_stage: str,
+        resolution_hint: str,
+        baseline_comparison: dict[str, Any],
+    ) -> list[str]:
+        created = list(created_paths)
+        manifest = {
+            "job_id": job_id,
+            "job_root": str(job_root),
+            "source_data_path": str(source_data_path),
+            "copied_data_path": str(copied_data_path) if copied_data_path.exists() else "",
+            "config_path": str(config_path) if config_path.exists() else "",
+            "status_path": str(status_path),
+            "latest_dir": str(latest_dir),
+            "latest_alias": str(latest_dir),
+            "figures": [],
+            "diagrams": [],
+            "assemblies": [],
+            "logs": [],
+            "created_paths": created,
+            "modified_paths": [],
+            "skipped_paths": [],
+            "style_summary": {},
+            "visual_preflight_status": {"passed": False, "checks": [], "warnings": ["render_execution_failed"]},
+            "failure_stage": failure_stage,
+            "resolution_hint": resolution_hint,
+            "artifact_status": "failed",
+            "baseline_comparison": baseline_comparison,
+            "manual_review_needed": True,
+        }
+        status_payload = self._render_status_payload(
+            job_id=job_id,
+            status="error",
+            summary="Render execution failed.",
+            manifest_path=manifest_path,
+            output_path=output_path,
+            artifact_status="failed",
+            manual_review_needed=True,
+            failure_stage=failure_stage,
+            resolution_hint=resolution_hint,
+        )
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        status_path.write_text(
+            json.dumps(status_payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        for path in (manifest_path, status_path):
+            path_text = str(path)
+            if path_text not in created:
+                created.append(path_text)
+        manifest["created_paths"] = created
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        latest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(manifest_path, latest_dir / "manifest.json")
+        shutil.copy2(status_path, latest_dir / "status.json")
+        return created
 
     @staticmethod
     def _run_render_bridge_figure(spec_payload: dict[str, Any]) -> None:
@@ -981,13 +1083,25 @@ class GraphHubMCPServer:
             else manifest.get("baseline_comparison") or self._baseline_comparison(None, None)
         )
         baseline_warnings = self._baseline_warnings(baseline_comparison)
+        persisted_artifact_status = str(manifest.get("artifact_status") or "").strip()
+        persisted_failure_stage = str(manifest.get("failure_stage") or "").strip()
+        persisted_resolution_hint = str(manifest.get("resolution_hint") or "").strip()
+        persisted_failed = persisted_artifact_status == "failed" or bool(persisted_failure_stage)
         manual_review_needed = (
             bool(manifest.get("manual_review_needed"))
             or bool(preflight_warnings)
             or (baseline_comparison["checked"] and not baseline_comparison["matched"])
         )
-        status = "warning" if manual_review_needed or preflight.get("passed") is False else "ok"
-        artifact_status = self._artifact_status(preflight, baseline_comparison)
+        status = (
+            "error"
+            if persisted_failed
+            else ("warning" if manual_review_needed or preflight.get("passed") is False else "ok")
+        )
+        artifact_status = (
+            persisted_artifact_status
+            if persisted_failed
+            else self._artifact_status(preflight, baseline_comparison)
+        )
         return self._envelope(
             "graphhub.collect_artifacts",
             arguments,
@@ -1004,6 +1118,12 @@ class GraphHubMCPServer:
             diagrams=manifest.get("diagrams") or [],
             assemblies=manifest.get("assemblies") or [],
             logs=manifest.get("logs") or [],
+            manifest_path=str(manifest_path),
+            status_path=str(manifest.get("status_path", "")),
+            latest_dir=str(manifest.get("latest_dir", "")),
+            latest_alias=str(manifest.get("latest_alias", "")),
+            failure_stage=persisted_failure_stage,
+            resolution_hint=persisted_resolution_hint,
             provenance={
                 "job_id": job_id,
                 "manifest_path": str(manifest_path),

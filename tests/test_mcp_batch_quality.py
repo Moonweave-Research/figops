@@ -146,7 +146,8 @@ class BatchQualityMCPTest(unittest.TestCase):
             baseline_path = Path(tmpdir) / "baseline" / "graph.png"
             baseline_path.parent.mkdir()
             shutil.copy2(rendered["output_path"], baseline_path)
-            source_snapshot = sorted(path.relative_to(Path(tmpdir) / "input").as_posix() for path in (Path(tmpdir) / "input").rglob("*"))
+            input_root = Path(tmpdir) / "input"
+            source_snapshot = sorted(path.relative_to(input_root).as_posix() for path in input_root.rglob("*"))
 
             collected = self._call(
                 server,
@@ -158,7 +159,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             self.assertEqual(collected["baseline_comparison"]["status"], "baseline_matched")
             self.assertTrue(collected["baseline_comparison"]["matched"])
             self.assertEqual(
-                sorted(path.relative_to(Path(tmpdir) / "input").as_posix() for path in (Path(tmpdir) / "input").rglob("*")),
+                sorted(path.relative_to(input_root).as_posix() for path in input_root.rglob("*")),
                 source_snapshot,
             )
 
