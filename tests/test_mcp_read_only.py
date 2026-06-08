@@ -271,6 +271,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             {item["uriTemplate"] for item in templates["result"]["resourceTemplates"]},
         )
         self.assertIn("make_publication_graph_from_csv", {item["name"] for item in prompts["result"]["prompts"]})
+        self.assertIn("render_project_figure", {item["name"] for item in prompts["result"]["prompts"]})
 
     def test_resources_read_styles_matches_list_styles(self):
         server = GraphHubMCPServer()
@@ -453,6 +454,30 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertIn("graphhub.collect_artifacts", text)
         self.assertIn("manual_review_needed", text)
 
+    def test_prompts_get_project_figure_workflow_mentions_project_render(self):
+        server = GraphHubMCPServer()
+
+        response = _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 34,
+                "method": "prompts/get",
+                "params": {
+                    "name": "render_project_figure",
+                    "arguments": {"project_path": "project", "figure_id": "Fig1"},
+                },
+            },
+        )
+        text = response["result"]["messages"][0]["content"]["text"]
+
+        self.assertIn("graphhub.inspect_project", text)
+        self.assertIn("graphhub.validate_project", text)
+        self.assertIn("graphhub.render_project_figure", text)
+        self.assertIn("dry_run=true", text)
+        self.assertIn("graphhub.collect_artifacts", text)
+        self.assertIn("manual_review_needed", text)
+
     def test_prompts_get_validation_errors(self):
         server = GraphHubMCPServer()
 
@@ -473,10 +498,15 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             server,
             {"jsonrpc": "2.0", "id": 33, "method": "prompts/get", "params": {"name": "inspect_graph_project_quality"}},
         )
+        missing_project_render_selector = _handle_json_rpc(
+            server,
+            {"jsonrpc": "2.0", "id": 34, "method": "prompts/get", "params": {"name": "render_project_figure"}},
+        )
 
         self.assertEqual(missing_arg["error"]["code"], -32602)
         self.assertEqual(unknown_prompt["error"]["code"], -32002)
         self.assertEqual(missing_selector["error"]["code"], -32602)
+        self.assertEqual(missing_project_render_selector["error"]["code"], -32602)
 
     def test_json_rpc_unknown_tool_returns_protocol_error(self):
         server = GraphHubMCPServer()
@@ -509,6 +539,21 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         response = json.loads(payload.decode("utf-8"))
         self.assertEqual(response["id"], 4)
         self.assertEqual(response["result"]["tools"][0]["name"], "graphhub.health")
+
+    def test_mcp_server_smoke_cli_reports_read_only_status(self):
+        completed = subprocess.run(
+            [sys.executable, "graphhub_mcp_server.py", "--smoke"],
+            cwd=HUB_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["tool_surface"], "graphhub_mcp")
+        self.assertGreater(payload["style_format_count"], 0)
 
 
 if __name__ == "__main__":

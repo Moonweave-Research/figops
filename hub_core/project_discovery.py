@@ -5,8 +5,6 @@ import os
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
-
 
 DEFAULT_EXCLUDED_DIRS = {"__pycache__"}
 EPHEMERAL_DIRS = {".worktrees"}
@@ -137,19 +135,26 @@ class ProjectDiscoveryService:
         return "official"
 
     def _include_ephemeral_path(self, rel_project: str) -> bool:
-        if rel_project.startswith(".worktrees/"):
+        if self._is_worktree_path(rel_project):
             return self.include_worktrees
         if self._is_bridge_job_path(rel_project):
             return self.include_ephemeral
         return self.include_ephemeral
 
     def _is_ephemeral_path(self, rel_project: str) -> bool:
-        return rel_project.startswith(".worktrees/") or self._is_bridge_job_path(rel_project)
+        return self._is_worktree_path(rel_project) or self._is_bridge_job_path(rel_project)
+
+    @staticmethod
+    def _is_worktree_path(rel_path: str) -> bool:
+        return ".worktrees" in Path(rel_path).parts
 
     @staticmethod
     def _is_bridge_job_path(rel_path: str) -> bool:
         parts = Path(rel_path).parts
-        return len(parts) >= 2 and parts[0] == "[Athena]" and parts[1] == "bridge_jobs"
+        return any(
+            part == "[Athena]" and index + 1 < len(parts) and parts[index + 1] == "bridge_jobs"
+            for index, part in enumerate(parts)
+        )
 
     def _relative_path(self, path: Path) -> str:
         try:

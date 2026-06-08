@@ -3,7 +3,7 @@
 - Status: Direction lock and implementation specification
 - Date: 2026-06-08
 - Scope: independent `graph-making-hub` repository, Graph Hub MCP, project graph contracts, HKS/common agent protocols
-- Decision: Graph Hub is the primary graph and scientific figure system. Athena is optional and should not be required unless natural-language routing or cross-domain research orchestration is explicitly needed.
+- Decision: Graph Hub is the primary graph and scientific figure system. Athena is optional and should not be required for graph routing. Use Athena or another toolbox only when a separate non-graph solver/literature/research step is explicitly needed.
 
 ## Executive Decision
 
@@ -29,7 +29,7 @@ Graph Hub Core
 validated figure + manifest + status + provenance
 ```
 
-Athena remains a client, not the owner. It may call Graph Hub for ambiguous `/visualize` or multi-tool research workflows, but Graph Hub must be fully usable without Athena.
+Athena remains a client, not the owner. It may call Graph Hub only for explicit legacy compatibility or mixed workflows where Athena produced non-graph data first, but Graph Hub must be fully usable without Athena.
 
 ## What Athena No Longer Owns
 
@@ -243,7 +243,7 @@ Required agent guidance:
 - use `render_csv_graph` for explicit structured CSV render,
 - use `collect_artifacts` after render,
 - use `batch_check` for review boards, not passive health checks,
-- do not call Athena unless routing or cross-domain reasoning is actually needed.
+- do not call Athena for graph routing; use it only when a separate non-graph solver/literature step is actually needed.
 
 Done means:
 
@@ -389,7 +389,30 @@ Done means:
 
 ## Open Risk Review
 
-No blocking design gaps remain after this review, but these risks must be tracked during implementation:
+The former promotion blocker was the lack of a project-aware MCP render tool.
+The current target implementation adds `graphhub.render_project_figure` so
+configured `project_config.yaml` figures can render under
+`runtime_root/mcp_project_jobs/<job_id>/project` with the same
+manifest/status/provenance/failure-stage envelope as `graphhub.render_csv_graph`.
+
+Remaining acceptance risk:
+
+- confirm remote server MCP direct-call behavior after local tests pass,
+- keep source-project writes out of the default path,
+- add R-script parity only after the Python project-render contract is stable.
+
+Local acceptance evidence, 2026-06-08:
+
+- valid `nature_surfur` project render passed for `PI_control` / `FigPI_CvS_Fits`;
+- render wrote under `~/Library/Caches/Graph_making_hub/mcp_project_jobs/real-pi-control-acceptance-20260608`;
+- source project file snapshot was unchanged before/after render;
+- snapshot contained no copied `raw/` files;
+- `collect_artifacts` returned `renderer_surface=graphhub.render_project_figure`;
+- stdio JSON-RPC direct-call to `graphhub_mcp_server.py` returned `status=ok` in dry-run mode;
+- invalid `nature_surfur` project stopped at `failure_stage=CONFIG` without creating a job root;
+- the valid render still returned `manual_review_needed=true` because visual preflight warned about `pdf.fonttype=3`.
+
+These risks must also be tracked during implementation:
 
 1. **HKS naming risk:** HKS is not defined in the current repo. This spec defines it as the common agent protocol layer. Rename if the intended meaning differs.
 2. **Calculation scope risk:** Graph Hub should own graph-related checks, not general scientific derivation. Keep physics/math derivations in HKS methodology docs unless they directly affect figure validation.
@@ -414,4 +437,4 @@ collect artifacts
 review manifest/status/preflight/provenance
 ```
 
-Athena is optional. Use it only when the request is genuinely about natural-language routing, multi-tool research orchestration, or context reasoning beyond Graph Hub's graph contract.
+Athena is optional. Use it only when the request genuinely needs a separate non-graph solver, literature, or local knowledge-base step beyond Graph Hub's graph contract.

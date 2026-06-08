@@ -7,10 +7,12 @@ import os
 import queue
 import re
 import shutil
+import subprocess
 import sys
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote, urlsplit
@@ -39,6 +41,7 @@ TOOL_NAMES = (
     "graphhub.inspect_project",
     "graphhub.validate_project",
     "graphhub.render_csv_graph",
+    "graphhub.render_project_figure",
     "graphhub.collect_artifacts",
     "graphhub.scaffold_project",
     "graphhub.normalize_project_structure",
@@ -46,6 +49,7 @@ TOOL_NAMES = (
 )
 WRITE_TOOL_NAMES = (
     "graphhub.render_csv_graph",
+    "graphhub.render_project_figure",
     "graphhub.scaffold_project",
     "graphhub.normalize_project_structure",
     "graphhub.batch_check",
@@ -63,6 +67,10 @@ JSONRPC_METHOD_NOT_FOUND = -32601
 JSONRPC_PARSE_ERROR = -32700
 JSONRPC_RESOURCE_NOT_FOUND = -32002
 _STRICT_JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+
+
+class ProjectRenderExportError(RuntimeError):
+    """Project render setup/export failed before a plotting script completed successfully."""
 
 
 def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_queue: multiprocessing.Queue) -> None:
@@ -268,6 +276,44 @@ def list_tool_definitions() -> list[dict[str, Any]]:
             ),
         ),
         ToolDefinition(
+            "graphhub.render_project_figure",
+            "Render one configured project figure in an isolated runtime-root MCP job workspace.",
+            _object_schema(
+                {
+                    "project_id": {"type": "string"},
+                    "project_path": {"type": "string"},
+                    "root": root_arg,
+                    "figure_id": {"type": "string"},
+                    "figure_output": {"type": "string"},
+                    "target_format": {"type": "string"},
+                    "profile": {"type": "string"},
+                    "output_format": {"type": "string"},
+                    "dry_run": {"type": "boolean", "default": False},
+                    "overwrite": {"type": "boolean", "default": False},
+                    "job_id": {"type": "string"},
+                    "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
+                    "baseline_path": {"type": "string"},
+                }
+            ),
+            _standard_output_schema(
+                {
+                    "job_id": {"type": "string"},
+                    "project_id": {"type": "string"},
+                    "source_project_path": {"type": "string"},
+                    "job_root": {"type": "string"},
+                    "snapshot_project_path": {"type": "string"},
+                    "selected_figure": {"type": "object"},
+                    "output_path": {"type": "string"},
+                    "config_path": {"type": "string"},
+                    "style_summary": {"type": "object"},
+                    "visual_preflight_status": {"type": "object"},
+                    "artifact_status": {"type": "string"},
+                    "baseline_comparison": {"type": "object"},
+                    "provenance": {"type": "object"},
+                }
+            ),
+        ),
+        ToolDefinition(
             "graphhub.collect_artifacts",
             "Return artifact metadata for a completed MCP render job.",
             _object_schema({"job_id": {"type": "string"}, "baseline_path": {"type": "string"}}, required=["job_id"]),
@@ -435,6 +481,16 @@ def list_prompt_definitions() -> list[dict[str, Any]]:
                 {"name": "move_policy", "description": "copy, move, or symlink.", "required": False},
             ],
         },
+        {
+            "name": "render_project_figure",
+            "description": "Workflow for rendering one configured project figure through Graph Hub MCP.",
+            "arguments": [
+                {"name": "project_id", "description": "Discovered Graph Hub project ID.", "required": False},
+                {"name": "project_path", "description": "Project path.", "required": False},
+                {"name": "figure_id", "description": "Configured figures[].id.", "required": False},
+                {"name": "figure_output", "description": "Configured figures[].output.", "required": False},
+            ],
+        },
     ]
 
 
@@ -459,6 +515,7 @@ class GraphHubMCPServer:
             "graphhub.inspect_project": self.inspect_project,
             "graphhub.validate_project": self.validate_project,
             "graphhub.render_csv_graph": self.render_csv_graph,
+            "graphhub.render_project_figure": self.render_project_figure,
             "graphhub.collect_artifacts": self.collect_artifacts,
             "graphhub.scaffold_project": self.scaffold_project,
             "graphhub.normalize_project_structure": self.normalize_project_structure,
@@ -868,6 +925,16 @@ class GraphHubMCPServer:
             baseline_comparison = self._baseline_comparison(output_path, arguments.get("baseline_path"))
             baseline_warnings = self._baseline_warnings(baseline_comparison)
             calculation_warnings = self._calculation_warnings(calculation_checks)
+            provenance = self._mcp_render_provenance(
+                job_id=job_id,
+                source_data_path=data_path,
+                copied_data_path=job_data_path,
+                config_path=config_path,
+                output_path=output_path,
+                target_format=target_format,
+                profile=profile,
+                output_format=output_format,
+            )
             manual_review_needed = (
                 not bool(preflight.get("passed"))
                 or bool(preflight_warnings)
@@ -905,6 +972,7 @@ class GraphHubMCPServer:
                 "baseline_comparison": baseline_comparison,
                 "manual_review_needed": manual_review_needed,
                 "calculation_checks": calculation_checks,
+                "provenance": provenance,
             }
             status_payload = self._render_status_payload(
                 job_id=job_id,
@@ -918,6 +986,7 @@ class GraphHubMCPServer:
                 resolution_hint="",
             )
             status_payload["calculation_checks"] = calculation_checks
+            status_payload["provenance"] = provenance
             manifest_path.write_text(
                 json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
                 encoding="utf-8",
@@ -1001,6 +1070,336 @@ class GraphHubMCPServer:
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
             calculation_checks=calculation_checks,
+        )
+
+    def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        dry_run = bool(arguments.get("dry_run", False))
+        overwrite = bool(arguments.get("overwrite", False))
+        job_id = self._render_job_id(arguments.get("job_id"))
+        job_root = self._mcp_project_jobs_root() / job_id
+        try:
+            project_path = self._resolve_project_render_path(arguments)
+            loaded = self._load_project_config(project_path, allow_invalid=True)
+            config = loaded["config"] if isinstance(loaded["config"], dict) else {}
+            config_errors = validate_config(config) if isinstance(config, dict) else list(loaded["errors"])
+            if config_errors:
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project config is not valid for rendering.",
+                    errors=config_errors,
+                    failure_stage="CONFIG",
+                    resolution_hint="Fix project_config.yaml before rendering this project figure.",
+                )
+            figures = self._project_figure_entries(config)
+            selected, selection_errors = self._select_project_figure(
+                figures,
+                figure_id=arguments.get("figure_id"),
+                figure_output=arguments.get("figure_output"),
+            )
+            if selection_errors or selected is None:
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project figure selection is ambiguous or invalid.",
+                    errors=selection_errors,
+                    failure_stage="CONTRACT",
+                    resolution_hint=f"Select one of: {self._figure_selector_summary(figures)}",
+                )
+            output_relpath = self._project_relative_path(selected.get("output"), "figures[].output").as_posix()
+            style_summary = self._selected_figure_style_summary(config, selected, arguments)
+            style_errors = self._render_style_errors(
+                style_summary["target_format"],
+                style_summary["output_format"],
+                style_summary["profile"],
+            )
+            if style_errors:
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project figure style settings are invalid.",
+                    errors=style_errors,
+                    failure_stage="CONFIG",
+                    resolution_hint="Use a supported target_format, output_format, and profile.",
+                    selected_figure=self._public_selected_figure(selected),
+                )
+        except ValueError as exc:
+            return self._project_render_error(
+                arguments,
+                dry_run=dry_run,
+                job_id=job_id,
+                job_root=job_root,
+                summary="Project render request is invalid.",
+                errors=[str(exc)],
+                failure_stage="CONTRACT",
+                resolution_hint="Provide a valid project_id or project_path and figure selector.",
+            )
+
+        config_relpath = str(loaded["config_relpath"] or "project_config.yaml")
+        source_project_path = self._public_project_path(project_path)
+        selected_public = self._public_selected_figure(selected)
+        snapshot_project_path = job_root / "project"
+        output_path = snapshot_project_path / output_relpath
+        config_path = snapshot_project_path / config_relpath
+        manifest_path = job_root / "manifest.json"
+        status_path = job_root / "status.json"
+        latest_dir = self.runtime_root / "_latest" / "mcp_project_render"
+        project_id = self._stable_project_id_for_path(project_path)
+
+        if dry_run:
+            return self._envelope(
+                "graphhub.render_project_figure",
+                arguments,
+                summary="Project figure render validated in dry-run mode; no files were created.",
+                is_dry_run=True,
+                job_id=job_id,
+                project_id=project_id,
+                source_project_path=source_project_path,
+                job_root=str(job_root),
+                snapshot_project_path=str(snapshot_project_path),
+                selected_figure=selected_public,
+                output_path=str(output_path),
+                config_path=str(config_path),
+                manifest_path=str(manifest_path),
+                status_path=str(status_path),
+                latest_dir=str(latest_dir),
+                latest_alias=str(latest_dir),
+                style_summary=style_summary,
+                visual_preflight_status={"passed": None, "checks": [], "warnings": ["dry_run"]},
+                artifact_status="validated",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                provenance={},
+                failure_stage="",
+                resolution_hint="",
+            )
+
+        self._activate_runtime_root_for_runtime_access()
+        job_root = self._mcp_project_jobs_root() / job_id
+        snapshot_project_path = job_root / "project"
+        output_path = snapshot_project_path / output_relpath
+        config_path = snapshot_project_path / config_relpath
+        manifest_path = job_root / "manifest.json"
+        status_path = job_root / "status.json"
+        latest_dir = self.runtime_root / "_latest" / "mcp_project_render"
+
+        if job_root.exists() and not overwrite:
+            return self._project_render_error(
+                arguments,
+                dry_run=False,
+                job_id=job_id,
+                job_root=job_root,
+                summary="Project render job already exists.",
+                errors=[
+                    f"Project render job already exists: {self._runtime_uri(job_root)}. "
+                    "Set overwrite=true to replace it."
+                ],
+                failure_stage="EXPORT",
+                resolution_hint="Set overwrite=true to replace the existing MCP project render job.",
+                project_id=project_id,
+                source_project_path=source_project_path,
+                snapshot_project_path=str(snapshot_project_path),
+                selected_figure=selected_public,
+                output_path=str(output_path),
+                config_path=str(config_path),
+            )
+        if job_root.exists() and overwrite:
+            shutil.rmtree(job_root)
+
+        created_paths: list[str] = []
+        try:
+            created_paths = self._copy_project_snapshot(
+                source_project=project_path,
+                snapshot_project=snapshot_project_path,
+                config_relpath=config_relpath,
+                selected_figure=selected,
+            )
+            self._run_project_figure_script(
+                snapshot_project_path=snapshot_project_path,
+                selected_figure=selected,
+                style_summary=style_summary,
+            )
+            if not output_path.is_file():
+                raise ProjectRenderExportError(f"Selected figure output was not created: {output_relpath}")
+            figures_out = self._rendered_figure_artifacts(output_path)
+            for figure in figures_out:
+                path_text = str(figure["path"])
+                if path_text not in created_paths:
+                    created_paths.append(path_text)
+            preflight = self._safe_preflight(output_path, style_summary["target_format"])
+            preflight_warnings = self._preflight_warnings(preflight)
+            baseline_comparison = self._baseline_comparison(output_path, arguments.get("baseline_path"))
+            baseline_warnings = self._baseline_warnings(baseline_comparison)
+            manual_review_needed = (
+                not bool(preflight.get("passed"))
+                or bool(preflight_warnings)
+                or (baseline_comparison["checked"] and not baseline_comparison["matched"])
+            )
+            status = "warning" if manual_review_needed else "ok"
+            artifact_status = self._artifact_status(preflight, baseline_comparison)
+            provenance = self._mcp_project_render_provenance(
+                job_id=job_id,
+                project_path=project_path,
+                snapshot_project_path=snapshot_project_path,
+                config_path=config_path,
+                output_path=output_path,
+                selected_figure=selected,
+                style_summary=style_summary,
+            )
+            created_paths.extend([str(manifest_path), str(status_path)])
+            manifest = {
+                "job_id": job_id,
+                "project_id": project_id,
+                "source_project_path": source_project_path,
+                "job_root": str(job_root),
+                "snapshot_project_path": str(snapshot_project_path),
+                "config_path": str(config_path),
+                "status_path": str(status_path),
+                "latest_dir": str(latest_dir),
+                "latest_alias": str(latest_dir),
+                "selected_figure": selected_public,
+                "figures": figures_out,
+                "diagrams": [],
+                "assemblies": [],
+                "logs": [],
+                "created_paths": created_paths,
+                "modified_paths": [],
+                "skipped_paths": [],
+                "style_summary": style_summary,
+                "visual_preflight_status": preflight,
+                "failure_stage": "",
+                "resolution_hint": "",
+                "artifact_status": artifact_status,
+                "baseline_comparison": baseline_comparison,
+                "manual_review_needed": manual_review_needed,
+                "provenance": provenance,
+            }
+            status_payload = self._render_status_payload(
+                job_id=job_id,
+                status=status,
+                summary=(
+                    "Rendered project figure."
+                    if status == "ok"
+                    else "Rendered project figure with preflight warnings."
+                ),
+                manifest_path=manifest_path,
+                output_path=output_path,
+                artifact_status=artifact_status,
+                manual_review_needed=manual_review_needed,
+                failure_stage="",
+                resolution_hint="",
+            )
+            status_payload["provenance"] = provenance
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            status_path.write_text(
+                json.dumps(status_payload, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            latest_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(manifest_path, latest_dir / "manifest.json")
+            shutil.copy2(status_path, latest_dir / "status.json")
+        except Exception as exc:
+            if isinstance(exc, TimeoutError) or "timed out" in str(exc).lower():
+                failure_stage = "TIMEOUT"
+            elif isinstance(exc, ProjectRenderExportError):
+                failure_stage = "EXPORT"
+            else:
+                failure_stage = "PLOT"
+            resolution_hint = (
+                "Increase the render timeout or simplify the figure."
+                if failure_stage == "TIMEOUT"
+                else (
+                    "Fix the selected figure script, declared inputs, and output path."
+                    if failure_stage == "EXPORT"
+                    else "Inspect the selected figure script error."
+                )
+            )
+            baseline_comparison = self._baseline_comparison(None, arguments.get("baseline_path"))
+            if job_root.exists():
+                created_paths = self._write_project_render_failure_artifacts(
+                    job_id=job_id,
+                    job_root=job_root,
+                    snapshot_project_path=snapshot_project_path,
+                    selected_figure=selected_public,
+                    manifest_path=manifest_path,
+                    status_path=status_path,
+                    latest_dir=latest_dir,
+                    created_paths=created_paths,
+                    failure_stage=failure_stage,
+                    resolution_hint=resolution_hint,
+                    baseline_comparison=baseline_comparison,
+                )
+            return self._envelope(
+                "graphhub.render_project_figure",
+                arguments,
+                status="error",
+                summary="Project figure render execution failed.",
+                created_paths=created_paths,
+                errors=[str(exc)],
+                manual_review_needed=True,
+                is_dry_run=False,
+                job_id=job_id,
+                project_id=project_id,
+                source_project_path=source_project_path,
+                job_root=str(job_root),
+                snapshot_project_path=str(snapshot_project_path),
+                selected_figure=selected_public,
+                output_path=str(output_path),
+                config_path=str(config_path),
+                manifest_path=str(manifest_path) if job_root.exists() else "",
+                status_path=str(status_path) if job_root.exists() else "",
+                latest_dir=str(latest_dir) if job_root.exists() else "",
+                latest_alias=str(latest_dir) if job_root.exists() else "",
+                style_summary=style_summary,
+                visual_preflight_status={"passed": False, "checks": [], "warnings": ["render_execution_failed"]},
+                artifact_status="failed",
+                baseline_comparison=baseline_comparison,
+                provenance={},
+                failure_stage=failure_stage,
+                resolution_hint=resolution_hint,
+            )
+
+        return self._envelope(
+            "graphhub.render_project_figure",
+            arguments,
+            status=status,
+            summary=(
+                "Rendered project figure."
+                if status == "ok"
+                else "Rendered project figure with preflight warnings."
+            ),
+            created_paths=created_paths,
+            artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
+            warnings=preflight_warnings + baseline_warnings,
+            manual_review_needed=manual_review_needed,
+            is_dry_run=False,
+            job_id=job_id,
+            project_id=project_id,
+            source_project_path=source_project_path,
+            job_root=str(job_root),
+            snapshot_project_path=str(snapshot_project_path),
+            selected_figure=selected_public,
+            output_path=str(output_path),
+            config_path=str(config_path),
+            manifest_path=str(manifest_path),
+            status_path=str(status_path),
+            latest_dir=str(latest_dir),
+            latest_alias=str(latest_dir),
+            style_summary=style_summary,
+            visual_preflight_status=preflight,
+            artifact_status=artifact_status,
+            baseline_comparison=baseline_comparison,
+            provenance=provenance,
+            failure_stage="",
+            resolution_hint="",
         )
 
     def _activate_runtime_root_for_runtime_access(self) -> None:
@@ -1135,6 +1534,352 @@ class GraphHubMCPServer:
         if result.get("status") != "ok":
             raise RuntimeError(str(result.get("error") or "Render worker failed."))
 
+    def _project_render_error(
+        self,
+        arguments: dict[str, Any],
+        *,
+        dry_run: bool,
+        job_id: str,
+        job_root: Path,
+        summary: str,
+        errors: list[str],
+        failure_stage: str,
+        resolution_hint: str,
+        **extra: Any,
+    ) -> dict[str, Any]:
+        return self._envelope(
+            "graphhub.render_project_figure",
+            arguments,
+            status="error",
+            summary=summary,
+            errors=errors,
+            manual_review_needed=True,
+            is_dry_run=dry_run,
+            job_id=job_id,
+            job_root=str(job_root),
+            artifact_status="failed",
+            baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+            provenance={},
+            failure_stage=failure_stage,
+            resolution_hint=resolution_hint,
+            **extra,
+        )
+
+    def _resolve_project_render_path(self, arguments: dict[str, Any]) -> Path:
+        project_path_value = arguments.get("project_path")
+        project_id_value = arguments.get("project_id")
+        if project_path_value and project_id_value:
+            project_path = Path(str(project_path_value)).expanduser().resolve()
+            id_project_path = self._resolve_project_path(
+                {key: value for key, value in arguments.items() if key != "project_path"}
+            )
+            if project_path != id_project_path:
+                raise ValueError("project_id and project_path resolve to different projects.")
+            return project_path
+        return self._resolve_project_path(arguments)
+
+    @staticmethod
+    def _project_figure_entries(config: dict[str, Any]) -> list[dict[str, Any]]:
+        return GraphHubMCPServer._list_section(config, "figures")
+
+    @staticmethod
+    def _select_project_figure(
+        figures: list[dict[str, Any]],
+        *,
+        figure_id: Any,
+        figure_output: Any,
+    ) -> tuple[dict[str, Any] | None, list[str]]:
+        if not figures:
+            return None, ["Project config has no figures[] entries."]
+        id_text = str(figure_id).strip() if isinstance(figure_id, str) and figure_id.strip() else ""
+        output_text = str(figure_output).strip() if isinstance(figure_output, str) and figure_output.strip() else ""
+        if id_text and output_text:
+            matches = [
+                figure
+                for figure in figures
+                if str(figure.get("id") or "") == id_text and str(figure.get("output") or "") == output_text
+            ]
+            return (
+                (matches[0], [])
+                if len(matches) == 1
+                else (None, ["figure_id and figure_output did not match one figure."])
+            )
+        if id_text:
+            matches = [figure for figure in figures if str(figure.get("id") or "") == id_text]
+            return (matches[0], []) if len(matches) == 1 else (None, [f"figure_id not found or ambiguous: {id_text}"])
+        if output_text:
+            matches = [figure for figure in figures if str(figure.get("output") or "") == output_text]
+            return (
+                (matches[0], [])
+                if len(matches) == 1
+                else (None, [f"figure_output not found or ambiguous: {output_text}"])
+            )
+        if len(figures) == 1:
+            return figures[0], []
+        return None, ["Project has multiple figures; provide figure_id or figure_output."]
+
+    @staticmethod
+    def _figure_selector_summary(figures: list[dict[str, Any]]) -> str:
+        selectors = []
+        for figure in figures:
+            figure_id = str(figure.get("id") or "").strip()
+            output = str(figure.get("output") or "").strip()
+            selector = ", ".join(part for part in (f"figure_id={figure_id}" if figure_id else "", output) if part)
+            if selector:
+                selectors.append(selector)
+        return "; ".join(selectors) if selectors else "<no configured figures>"
+
+    @staticmethod
+    def _public_selected_figure(figure: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": str(figure.get("id") or ""),
+            "script": str(figure.get("script") or ""),
+            "output": str(figure.get("output") or ""),
+        }
+
+    def _stable_project_id_for_path(self, project_path: Path) -> str:
+        try:
+            rel_path = project_path.resolve().relative_to(self.research_root).as_posix()
+        except ValueError:
+            rel_path = project_path.resolve().as_posix()
+        digest = hashlib.sha1(rel_path.encode("utf-8")).hexdigest()[:12]
+        stem = "".join(ch if ch.isalnum() else "_" for ch in project_path.name).strip("_") or "project"
+        return f"{stem}__{digest}"
+
+    def _public_project_path(self, project_path: Path) -> str:
+        try:
+            return project_path.resolve().relative_to(self.research_root).as_posix()
+        except ValueError:
+            return "input://project_path"
+
+    @staticmethod
+    def _project_relative_path(raw_path: Any, field_name: str) -> Path:
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ValueError(f"{field_name} must be a non-empty project-relative path.")
+        relpath = Path(raw_path.strip())
+        if relpath.is_absolute() or ".." in relpath.parts:
+            raise ValueError(f"{field_name} must be project-relative and must not contain '..'.")
+        return relpath
+
+    @staticmethod
+    def _selected_figure_style_summary(
+        config: dict[str, Any],
+        selected_figure: dict[str, Any],
+        arguments: dict[str, Any],
+    ) -> dict[str, str]:
+        visual_style = config.get("visual_style") if isinstance(config.get("visual_style"), dict) else {}
+        output_relpath = str(selected_figure.get("output") or "")
+        inferred_format = Path(output_relpath).suffix.lower().lstrip(".") or "png"
+        return {
+            "target_format": str(arguments.get("target_format") or visual_style.get("target_format") or "nature")
+            .strip()
+            .lower(),
+            "profile": str(arguments.get("profile") or visual_style.get("profile") or DEFAULT_PROFILE).strip()
+            or DEFAULT_PROFILE,
+            "output_format": str(arguments.get("output_format") or selected_figure.get("format") or inferred_format)
+            .strip()
+            .lower()
+            .lstrip("."),
+        }
+
+    @staticmethod
+    def _selected_figure_declared_inputs(selected_figure: dict[str, Any]) -> list[str]:
+        raw_inputs = selected_figure.get("inputs") or selected_figure.get("input") or []
+        if isinstance(raw_inputs, str):
+            raw_inputs = [raw_inputs]
+        if not isinstance(raw_inputs, list):
+            return []
+        return [str(item) for item in raw_inputs if isinstance(item, str) and item.strip()]
+
+    def _copy_project_snapshot(
+        self,
+        *,
+        source_project: Path,
+        snapshot_project: Path,
+        config_relpath: str,
+        selected_figure: dict[str, Any],
+    ) -> list[str]:
+        if snapshot_project.exists():
+            shutil.rmtree(snapshot_project)
+        snapshot_project.mkdir(parents=True, exist_ok=True)
+        copied: list[str] = []
+
+        def copy_relative_path(raw_relpath: str) -> None:
+            try:
+                relpath = self._project_relative_path(raw_relpath, "snapshot path")
+            except ValueError as exc:
+                raise ProjectRenderExportError(str(exc)) from exc
+            source_path = source_project / relpath
+            destination_path = snapshot_project / relpath
+            if not source_path.exists():
+                raise ProjectRenderExportError(f"Required project snapshot path not found: {raw_relpath}")
+            if source_path.is_symlink():
+                raise ProjectRenderExportError(f"Project snapshot refuses symlinked path: {raw_relpath}")
+            try:
+                source_path.resolve().relative_to(source_project.resolve())
+            except ValueError as exc:
+                raise ProjectRenderExportError(f"Project snapshot path escapes project root: {raw_relpath}") from exc
+            if source_path.is_dir():
+                self._copy_project_snapshot_directory(source_path, destination_path, copied)
+                return
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, destination_path)
+            copied.append(str(destination_path))
+
+        copy_relative_path(config_relpath)
+        script_rel = str(selected_figure.get("script") or "").split("::")[0]
+        if script_rel:
+            copy_relative_path(script_rel)
+        for input_rel in self._selected_figure_declared_inputs(selected_figure):
+            copy_relative_path(input_rel)
+        for standard_folder in ("hub_scripts", "results/data"):
+            if (source_project / standard_folder).is_dir():
+                copy_relative_path(standard_folder)
+        return [str(path) for path in snapshot_project.rglob("*") if path.is_file()]
+
+    @staticmethod
+    def _copy_project_snapshot_directory(source_dir: Path, destination_dir: Path, copied: list[str]) -> None:
+        ignored_dirs = {".git", ".venv", "__pycache__", ".pytest_cache", ".dvc"}
+        source_root = source_dir.resolve()
+        for current_root, dirs, files in os.walk(source_dir):
+            current_path = Path(current_root)
+            dirs[:] = [dirname for dirname in dirs if dirname not in ignored_dirs]
+            for dirname in list(dirs):
+                child_dir = current_path / dirname
+                if child_dir.is_symlink():
+                    raise ProjectRenderExportError(f"Project snapshot refuses symlinked directory: {child_dir}")
+                try:
+                    child_dir.resolve().relative_to(source_root)
+                except ValueError as exc:
+                    raise ProjectRenderExportError(
+                        f"Project snapshot directory escapes source tree: {child_dir}"
+                    ) from exc
+            relative_root = current_path.relative_to(source_dir)
+            destination_root = destination_dir / relative_root
+            destination_root.mkdir(parents=True, exist_ok=True)
+            for filename in files:
+                source_file = current_path / filename
+                if source_file.is_symlink():
+                    raise ProjectRenderExportError(f"Project snapshot refuses symlinked file: {source_file}")
+                try:
+                    source_file.resolve().relative_to(source_root)
+                except ValueError as exc:
+                    raise ProjectRenderExportError(f"Project snapshot file escapes source tree: {source_file}") from exc
+                destination_file = destination_root / filename
+                shutil.copy2(source_file, destination_file)
+                copied.append(str(destination_file))
+
+    def _run_project_figure_script(
+        self,
+        *,
+        snapshot_project_path: Path,
+        selected_figure: dict[str, Any],
+        style_summary: dict[str, str],
+    ) -> None:
+        try:
+            script_rel = self._project_relative_path(
+                str(selected_figure.get("script") or "").split("::")[0],
+                "figures[].script",
+            )
+        except ValueError as exc:
+            raise ProjectRenderExportError(str(exc)) from exc
+        script_path = snapshot_project_path / script_rel
+        if not script_path.is_file():
+            raise ProjectRenderExportError(f"Selected figure script not found: {script_rel.as_posix()}")
+        env = os.environ.copy()
+        env.update(
+            {
+                "RESEARCH_HUB_PATH": str(self.hub_path),
+                "PROJECT_ROOT": str(snapshot_project_path),
+                "THEME_FORMAT": style_summary["target_format"],
+                "THEME_PROFILE": style_summary["profile"],
+                "THEME_OUTPUT_FORMAT": style_summary["output_format"],
+            }
+        )
+        completed = subprocess.run(
+            [sys.executable, str(script_path)],
+            cwd=str(snapshot_project_path),
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=MCP_RENDER_TIMEOUT_SECONDS,
+            env=env,
+        )
+        if completed.returncode != 0:
+            message = (
+                completed.stderr.strip()
+                or completed.stdout.strip()
+                or f"Figure script exited {completed.returncode}."
+            )
+            raise RuntimeError(message)
+
+    def _write_project_render_failure_artifacts(
+        self,
+        *,
+        job_id: str,
+        job_root: Path,
+        snapshot_project_path: Path,
+        selected_figure: dict[str, Any],
+        manifest_path: Path,
+        status_path: Path,
+        latest_dir: Path,
+        created_paths: list[str],
+        failure_stage: str,
+        resolution_hint: str,
+        baseline_comparison: dict[str, Any],
+    ) -> list[str]:
+        created = list(created_paths)
+        manifest = {
+            "job_id": job_id,
+            "job_root": str(job_root),
+            "snapshot_project_path": str(snapshot_project_path),
+            "selected_figure": selected_figure,
+            "status_path": str(status_path),
+            "latest_dir": str(latest_dir),
+            "latest_alias": str(latest_dir),
+            "figures": [],
+            "diagrams": [],
+            "assemblies": [],
+            "logs": [],
+            "created_paths": created,
+            "modified_paths": [],
+            "skipped_paths": [],
+            "style_summary": {},
+            "visual_preflight_status": {"passed": False, "checks": [], "warnings": ["render_execution_failed"]},
+            "failure_stage": failure_stage,
+            "resolution_hint": resolution_hint,
+            "artifact_status": "failed",
+            "baseline_comparison": baseline_comparison,
+            "manual_review_needed": True,
+        }
+        status_payload = self._render_status_payload(
+            job_id=job_id,
+            status="error",
+            summary="Project figure render execution failed.",
+            manifest_path=manifest_path,
+            output_path=snapshot_project_path / str(selected_figure.get("output") or ""),
+            artifact_status="failed",
+            manual_review_needed=True,
+            failure_stage=failure_stage,
+            resolution_hint=resolution_hint,
+        )
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        status_path.write_text(
+            json.dumps(status_payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        for path in (manifest_path, status_path):
+            path_text = str(path)
+            if path_text not in created:
+                created.append(path_text)
+        manifest["created_paths"] = created
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        latest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(manifest_path, latest_dir / "manifest.json")
+        shutil.copy2(status_path, latest_dir / "status.json")
+        return created
+
     def collect_artifacts(self, arguments: dict[str, Any]) -> dict[str, Any]:
         job_id = self._render_job_id(arguments.get("job_id"))
         manifest_path = self._find_job_manifest_path(job_id)
@@ -1225,6 +1970,7 @@ class GraphHubMCPServer:
                 "latest_dir": str(manifest.get("latest_dir", "")),
                 "latest_alias": str(manifest.get("latest_alias", "")),
                 "job_root": manifest.get("job_root", ""),
+                **(manifest.get("provenance") if isinstance(manifest.get("provenance"), dict) else {}),
             },
             visual_preflight_status=preflight,
             artifact_status=artifact_status,
@@ -1361,6 +2107,31 @@ class GraphHubMCPServer:
                 "5. Call graphhub.validate_project after apply."
             )
             return self._prompt_payload("Workflow for planning safe project normalization.", text)
+
+        if name == "render_project_figure":
+            self._validate_prompt_arguments(
+                name,
+                arguments,
+                required=set(),
+                optional={"project_id", "project_path", "figure_id", "figure_output"},
+            )
+            if not arguments.get("project_id") and not arguments.get("project_path"):
+                raise ValueError("render_project_figure requires project_id or project_path.")
+            selector = arguments.get("figure_id") or arguments.get("figure_output") or "<single configured figure>"
+            text = (
+                "Project figure workflow:\n"
+                "1. Call graphhub.inspect_project for the selected project.\n"
+                "2. Call graphhub.validate_project and stop on status=error.\n"
+                f"3. Call graphhub.render_project_figure for selector {selector!r} with dry_run=true first.\n"
+                "4. If dry_run is clean, call graphhub.render_project_figure without dry_run.\n"
+                "5. Call graphhub.collect_artifacts for the returned job_id.\n"
+                "6. Report manifest_path, status_path, provenance, failure_stage, resolution_hint, "
+                "and manual_review_needed."
+            )
+            return self._prompt_payload(
+                "Workflow for rendering one configured project figure through Graph Hub MCP.",
+                text,
+            )
 
         raise FileNotFoundError(f"Unknown prompt: {name}")
 
@@ -1662,13 +2433,15 @@ class GraphHubMCPServer:
 
         seen = set()
         for root in candidate_roots:
-            manifest_path = Path(root).expanduser().resolve() / "mcp_jobs" / job_id / "manifest.json"
-            key = str(manifest_path)
-            if key in seen:
-                continue
-            seen.add(key)
-            if manifest_path.exists():
-                return manifest_path
+            resolved_root = Path(root).expanduser().resolve()
+            for jobs_dir_name in ("mcp_jobs", "mcp_project_jobs"):
+                manifest_path = resolved_root / jobs_dir_name / job_id / "manifest.json"
+                key = str(manifest_path)
+                if key in seen:
+                    continue
+                seen.add(key)
+                if manifest_path.exists():
+                    return manifest_path
         return Path(candidate_roots[0]).expanduser().resolve() / "mcp_jobs" / job_id / "manifest.json"
 
     def _styles_payload(self) -> dict[str, Any]:
@@ -1951,6 +2724,149 @@ class GraphHubMCPServer:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(chunk)
         return digest.hexdigest()
+
+    def _mcp_render_provenance(
+        self,
+        *,
+        job_id: str,
+        source_data_path: Path,
+        copied_data_path: Path,
+        config_path: Path,
+        output_path: Path,
+        target_format: str,
+        profile: str,
+        output_format: str,
+    ) -> dict[str, Any]:
+        source_hash = self._file_sha256(source_data_path) if source_data_path.is_file() else ""
+        copied_hash = self._file_sha256(copied_data_path) if copied_data_path.is_file() else ""
+        config_hash = self._file_sha256(config_path) if config_path.is_file() else ""
+        output_hash = self._file_sha256(output_path) if output_path.is_file() else ""
+        python_lock = self.hub_path / "uv.lock"
+        r_lock = self.hub_path / "renv.lock"
+        lock_status = {
+            "python_lock": {
+                "path": str(python_lock),
+                "exists": python_lock.is_file(),
+                "sha256": self._file_sha256(python_lock) if python_lock.is_file() else "",
+            },
+            "r_lock": {
+                "path": str(r_lock),
+                "exists": r_lock.is_file(),
+                "sha256": self._file_sha256(r_lock) if r_lock.is_file() else "",
+            },
+        }
+        env_payload = {
+            "python_executable": sys.executable,
+            "python_version": sys.version.split()[0],
+            "target_format": target_format,
+            "profile": profile,
+            "output_format": output_format,
+            "lock_status": lock_status,
+            "renderer": "plotting.bridge_renderer.render_bridge_figure",
+            "mcp_surface_version": self._read_version(),
+        }
+        environment_hash = hashlib.sha256(
+            json.dumps(env_payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        return {
+            "job_id": job_id,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "renderer": "plotting.bridge_renderer.render_bridge_figure",
+            "renderer_surface": "graphhub.render_csv_graph",
+            "mcp_surface_version": self._read_version(),
+            "hub_git_commit": self._git_commit(),
+            "python_executable": sys.executable,
+            "python_version": sys.version.split()[0],
+            "source_data_sha256": source_hash,
+            "copied_data_sha256": copied_hash,
+            "config_sha256": config_hash,
+            "output_sha256": output_hash,
+            "environment_sha256": environment_hash,
+            "lock_status": lock_status,
+        }
+
+    def _mcp_project_render_provenance(
+        self,
+        *,
+        job_id: str,
+        project_path: Path,
+        snapshot_project_path: Path,
+        config_path: Path,
+        output_path: Path,
+        selected_figure: dict[str, Any],
+        style_summary: dict[str, str],
+    ) -> dict[str, Any]:
+        config_hash = self._file_sha256(config_path) if config_path.is_file() else ""
+        output_hash = self._file_sha256(output_path) if output_path.is_file() else ""
+        project_files = sorted(path for path in snapshot_project_path.rglob("*") if path.is_file())
+        snapshot_payload = [
+            {
+                "path": path.relative_to(snapshot_project_path).as_posix(),
+                "sha256": self._file_sha256(path),
+            }
+            for path in project_files
+        ]
+        python_lock = self.hub_path / "uv.lock"
+        r_lock = self.hub_path / "renv.lock"
+        lock_status = {
+            "python_lock": {
+                "path": str(python_lock),
+                "exists": python_lock.is_file(),
+                "sha256": self._file_sha256(python_lock) if python_lock.is_file() else "",
+            },
+            "r_lock": {
+                "path": str(r_lock),
+                "exists": r_lock.is_file(),
+                "sha256": self._file_sha256(r_lock) if r_lock.is_file() else "",
+            },
+        }
+        env_payload = {
+            "python_executable": sys.executable,
+            "python_version": sys.version.split()[0],
+            "selected_figure": self._public_selected_figure(selected_figure),
+            "style_summary": style_summary,
+            "lock_status": lock_status,
+            "renderer": "project_config.figure_script",
+            "mcp_surface_version": self._read_version(),
+            "snapshot_files": snapshot_payload,
+        }
+        environment_hash = hashlib.sha256(
+            json.dumps(env_payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        return {
+            "job_id": job_id,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "renderer": "project_config.figure_script",
+            "renderer_surface": "graphhub.render_project_figure",
+            "mcp_surface_version": self._read_version(),
+            "hub_git_commit": self._git_commit(),
+            "python_executable": sys.executable,
+            "python_version": sys.version.split()[0],
+            "source_project_path": self._public_project_path(project_path),
+            "snapshot_project_path": str(snapshot_project_path),
+            "selected_figure": self._public_selected_figure(selected_figure),
+            "snapshot_file_count": len(snapshot_payload),
+            "snapshot_files_sha256": hashlib.sha256(
+                json.dumps(snapshot_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            ).hexdigest(),
+            "config_sha256": config_hash,
+            "output_sha256": output_hash,
+            "environment_sha256": environment_hash,
+            "lock_status": lock_status,
+        }
+
+    def _git_commit(self) -> str:
+        try:
+            completed = subprocess.run(
+                ["git", "-C", str(self.hub_path), "rev-parse", "--short", "HEAD"],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=3,
+            )
+        except Exception:
+            return ""
+        return completed.stdout.strip() if completed.returncode == 0 else ""
 
     def _envelope(
         self,
@@ -2296,6 +3212,11 @@ class GraphHubMCPServer:
             expanded_path = Path(data_path).expanduser()
             replacements.append((str(expanded_path), "input://data_path"))
             replacements.append((str(expanded_path.resolve()), "input://data_path"))
+        project_path = arguments.get("project_path")
+        if isinstance(project_path, str) and project_path.strip():
+            expanded_project_path = Path(project_path).expanduser()
+            replacements.append((str(expanded_project_path), "input://project_path"))
+            replacements.append((str(expanded_project_path.resolve()), "input://project_path"))
 
         deduped: list[tuple[str, str]] = []
         seen: set[tuple[str, str]] = set()
@@ -2311,6 +3232,9 @@ class GraphHubMCPServer:
 
     def _mcp_jobs_root(self) -> Path:
         return self.runtime_root / "mcp_jobs"
+
+    def _mcp_project_jobs_root(self) -> Path:
+        return self.runtime_root / "mcp_project_jobs"
 
     @staticmethod
     def _render_job_id(raw_job_id: Any = None) -> str:

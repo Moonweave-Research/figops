@@ -58,6 +58,42 @@ def _write_csv(path: Path) -> Path:
     return path
 
 
+def _write_project_render_fixture(root: Path, name: str = "01_Project") -> Path:
+    project = root / name
+    (project / "hub_scripts").mkdir(parents=True, exist_ok=True)
+    (project / "results" / "data").mkdir(parents=True, exist_ok=True)
+    (project / "raw").mkdir(parents=True, exist_ok=True)
+    (project / "results" / "data" / "summary.csv").write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
+    (project / "raw" / "large-secret.bin").write_bytes(b"do-not-copy")
+    (project / "hub_scripts" / "plot.py").write_text(
+        "from pathlib import Path\n"
+        "Path('results/figures').mkdir(parents=True, exist_ok=True)\n"
+        "Path('results/figures/Fig1.png').write_bytes(b'png')\n",
+        encoding="utf-8",
+    )
+    (project / "project_config.yaml").write_text(
+        """
+project:
+  name: Project Render Fixture
+visual_style:
+  target_format: nature
+  profile: baseline
+data_contract:
+  csv_checks:
+    - path: results/data/summary.csv
+      required_columns: ["x", "y"]
+      dtypes: {x: float, y: float}
+figures:
+  - id: Fig1
+    script: hub_scripts/plot.py
+    inputs: ["results/data/summary.csv"]
+    output: results/figures/Fig1.png
+""",
+        encoding="utf-8",
+    )
+    return project
+
+
 def _snapshot_tree(root: Path) -> dict[str, tuple[int, int]]:
     snapshot = {}
     for current_root, _dirs, files in os.walk(root):
@@ -80,8 +116,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         names = set(definitions)
 
         self.assertIn("graphhub.render_csv_graph", names)
+        self.assertIn("graphhub.render_project_figure", names)
         self.assertIn("graphhub.collect_artifacts", names)
-        for tool_name in ("graphhub.render_csv_graph", "graphhub.collect_artifacts"):
+        for tool_name in ("graphhub.render_csv_graph", "graphhub.render_project_figure", "graphhub.collect_artifacts"):
             properties = definitions[tool_name]["outputSchema"]["properties"]
             self.assertIn("failure_stage", properties)
             self.assertIn("resolution_hint", properties)
@@ -89,6 +126,15 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn("status_path", properties)
             self.assertIn("latest_alias", properties)
             self.assertIn("latest_dir", properties)
+        project_input = definitions["graphhub.render_project_figure"]["inputSchema"]["properties"]
+        project_output = definitions["graphhub.render_project_figure"]["outputSchema"]["properties"]
+        self.assertIn("project_id", project_input)
+        self.assertIn("project_path", project_input)
+        self.assertIn("figure_id", project_input)
+        self.assertIn("figure_output", project_input)
+        self.assertIn("selected_figure", project_output)
+        self.assertIn("snapshot_project_path", project_output)
+        self.assertIn("provenance", project_output)
 
     def test_default_runtime_root_preview_does_not_create_directory(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -201,6 +247,15 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(status["failure_stage"], "")
             self.assertEqual(manifest["style_summary"]["target_format"], "nature_surfur")
             self.assertEqual(manifest["visual_preflight_status"]["passed"], True)
+            provenance = manifest["provenance"]
+            self.assertEqual(provenance["job_id"], "render-demo")
+            self.assertEqual(provenance["renderer_surface"], "graphhub.render_csv_graph")
+            self.assertEqual(provenance["renderer"], "plotting.bridge_renderer.render_bridge_figure")
+            self.assertEqual(provenance["source_data_sha256"], provenance["copied_data_sha256"])
+            self.assertEqual(len(provenance["config_sha256"]), 64)
+            self.assertEqual(len(provenance["environment_sha256"]), 64)
+            self.assertIn("hub_git_commit", provenance)
+            self.assertTrue(provenance["lock_status"]["python_lock"]["exists"])
             config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
             csv_check = config["data_contract"]["csv_checks"][0]
             self.assertEqual(csv_check["required_columns"], ["x", "y"])
@@ -240,6 +295,229 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(collected["latest_dir"], collected["provenance"]["latest_dir"])
             self.assertEqual(collected["latest_alias"], collected["provenance"]["latest_alias"])
             self.assertEqual(collected["visual_preflight_status"]["passed"], True)
+            self.assertEqual(collected["provenance"]["renderer_surface"], "graphhub.render_csv_graph")
+            self.assertEqual(len(collected["provenance"]["source_data_sha256"]), 64)
+            self.assertEqual(len(collected["provenance"]["config_sha256"]), 64)
+            self.assertEqual(len(collected["provenance"]["environment_sha256"]), 64)
+
+    def test_render_project_figure_dry_run_does_not_create_runtime_job(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            runtime_root = Path(tmpdir) / "runtime"
+            before = _snapshot_tree(project)
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "project-dry", "dry_run": True},
+            )
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(result["is_dry_run"])
+            self.assertEqual(result["artifact_status"], "validated")
+            self.assertEqual(result["failure_stage"], "")
+            self.assertEqual(_snapshot_tree(project), before)
+            self.assertFalse((runtime_root / "mcp_project_jobs").exists())
+
+    def test_render_project_figure_runs_selected_figure_in_runtime_snapshot(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            runtime_root = Path(tmpdir) / "runtime"
+            before = _snapshot_tree(project)
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "project-render"},
+            )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(result["job_id"], "project-render")
+            self.assertEqual(result["selected_figure"]["id"], "Fig1")
+            self.assertTrue(Path(result["output_path"]).is_file())
+            self.assertTrue(str(Path(result["output_path"]).resolve()).startswith(str(runtime_root.resolve())))
+            self.assertEqual(_snapshot_tree(project), before)
+            snapshot_project = Path(result["snapshot_project_path"])
+            self.assertTrue((snapshot_project / "project_config.yaml").is_file())
+            self.assertTrue((snapshot_project / "hub_scripts" / "plot.py").is_file())
+            self.assertTrue((snapshot_project / "results" / "data" / "summary.csv").is_file())
+            self.assertFalse((snapshot_project / "raw" / "large-secret.bin").exists())
+            self.assertTrue(Path(result["manifest_path"]).is_file())
+            self.assertTrue(Path(result["status_path"]).is_file())
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["provenance"]["renderer_surface"], "graphhub.render_project_figure")
+            self.assertEqual(manifest["selected_figure"]["output"], "results/figures/Fig1.png")
+            self.assertEqual(manifest["source_project_path"], "01_Project")
+            self.assertEqual(manifest["provenance"]["source_project_path"], "01_Project")
+            self.assertEqual(len(manifest["provenance"]["config_sha256"]), 64)
+            self.assertEqual(len(manifest["provenance"]["environment_sha256"]), 64)
+
+    def test_collect_artifacts_returns_project_render_metadata(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+            self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "project-artifacts"},
+            )
+
+            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "project-artifacts"})
+
+            self.assertIn(collected["status"], {"ok", "warning"})
+            self.assertEqual(collected["job_id"], "project-artifacts")
+            self.assertEqual(collected["provenance"]["renderer_surface"], "graphhub.render_project_figure")
+            self.assertEqual(collected["provenance"]["source_project_path"], "01_Project")
+            self.assertEqual(len(collected["figures"]), 1)
+            self.assertTrue(Path(collected["figures"][0]["path"]).is_file())
+
+    def test_render_project_figure_requires_unambiguous_selector_without_writing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["figures"].append(
+                {"id": "Fig2", "script": "hub_scripts/plot.py", "output": "results/figures/Fig2.png"}
+            )
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "job_id": "ambiguous-project"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn("figure_id", result["resolution_hint"])
+            self.assertFalse((runtime_root / "mcp_project_jobs").exists())
+
+    def test_render_project_figure_rejects_output_path_escape_without_writing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            outside_output = Path(tmpdir) / "outside.png"
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["figures"][0]["output"] = str(outside_output)
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            absolute_result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "absolute-output"},
+            )
+            config["figures"][0]["output"] = "../outside.png"
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+            parent_result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "parent-output"},
+            )
+
+            self.assertEqual(absolute_result["status"], "error")
+            self.assertEqual(parent_result["status"], "error")
+            self.assertEqual(absolute_result["failure_stage"], "CONTRACT")
+            self.assertEqual(parent_result["failure_stage"], "CONTRACT")
+            self.assertFalse(outside_output.exists())
+            self.assertFalse((runtime_root / "mcp_project_jobs").exists())
+
+    def test_render_project_figure_external_project_path_is_labeled_not_leaked(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            external_root = Path(tmpdir) / "external"
+            project = _write_project_render_fixture(external_root)
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "external-project"},
+            )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(result["source_project_path"], "input://project_path")
+            self.assertEqual(manifest["source_project_path"], "input://project_path")
+            self.assertEqual(manifest["provenance"]["source_project_path"], "input://project_path")
+
+    def test_render_project_figure_missing_input_is_export_failure(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            (project / "results" / "data" / "summary.csv").unlink()
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "missing-input"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "EXPORT")
+            self.assertIn("declared inputs", result["resolution_hint"])
+            self.assertTrue(Path(result["manifest_path"]).is_file())
+
+    def test_render_project_figure_refuses_symlinked_snapshot_inputs(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            target = Path(tmpdir) / "secret.csv"
+            target.write_text("x,y\n9,9\n", encoding="utf-8")
+            data_path = project / "results" / "data" / "summary.csv"
+            data_path.unlink()
+            try:
+                data_path.symlink_to(target)
+            except OSError as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "symlink-input"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "EXPORT")
+            self.assertIn("symlink", result["errors"][0])
+
+    def test_render_project_figure_script_failure_error_does_not_leak_absolute_paths(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            (project / "hub_scripts" / "plot.py").write_text(
+                "from pathlib import Path\n"
+                "raise RuntimeError(f'failed at {Path.cwd() / \"private-output.png\"}')\n",
+                encoding="utf-8",
+            )
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "script-fails"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "PLOT")
+            self.assertNotIn(str(tmpdir), result["errors"][0])
+            self.assertIn("runtime://", result["errors"][0])
 
     def test_render_csv_graph_rejects_overwrite_without_flag(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:

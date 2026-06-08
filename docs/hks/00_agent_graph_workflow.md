@@ -6,7 +6,9 @@ This is the common workflow for agents using Graph Hub directly.
 
 Use Graph Hub directly when the user explicitly asks for graph generation, project graph validation, figure quality checks, or project graph normalization.
 
-Do not route through Athena unless the user asks for ambiguous natural-language routing, cross-tool research reasoning, solver/literature context, or a combined workflow outside Graph Hub's graph contract.
+Do not route graph work through Athena. The agent using Graph Hub should decide whether the request is graph-only, mixed, or outside Graph Hub's scope.
+
+Use Athena or another explicit toolbox only for a separate non-graph step such as solver/literature context, then pass the resulting data or claim back into Graph Hub MCP.
 
 ## Direct MCP Workflow
 
@@ -15,9 +17,10 @@ Do not route through Athena unless the user asks for ambiguous natural-language 
 3. Call `graphhub.list_projects` to find known projects.
 4. Call `graphhub.inspect_project` for a selected project.
 5. Call `graphhub.validate_project` before any project-based render or migration.
-6. Call `graphhub.render_csv_graph` for explicit structured CSV graph requests.
-7. Call `graphhub.collect_artifacts` after render.
-8. Inspect `manifest_path`, `status_path`, `failure_stage`, `resolution_hint`, `manual_review_needed`, and `visual_preflight_status`.
+6. Call `graphhub.render_project_figure` for configured `project_config.yaml` figures.
+7. Call `graphhub.render_csv_graph` for explicit structured CSV graph requests.
+8. Call `graphhub.collect_artifacts` after render.
+9. Inspect `manifest_path`, `status_path`, `failure_stage`, `resolution_hint`, `manual_review_needed`, `visual_preflight_status`, and `provenance`.
 
 ## Required Agent Behavior
 

@@ -4,7 +4,6 @@ from pathlib import Path
 
 from hub_core.project_discovery import ProjectDiscoveryService
 
-
 VALID_CONFIG = """
 project:
   name: "{name}"
@@ -104,6 +103,36 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
             by_path = {project.path: project for project in projects}
             self.assertEqual(by_path[".worktrees/feature/02_Worktree"].classification, "ephemeral")
             self.assertEqual(by_path["[Athena]/bridge_jobs/job1/hub_project"].classification, "ephemeral")
+
+    def test_nested_researchos_ephemeral_paths_are_classified_from_workspace_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:
+            root = Path(tmpdir) / "workspace"
+            self._write_config(
+                root / "ResearchOS" / ".worktrees" / "feature" / "02_Worktree",
+                "Worktree Project",
+            )
+            self._write_config(
+                root / "ResearchOS" / "[Athena]" / "bridge_jobs" / "job1" / "hub_project",
+                "Bridge Job",
+            )
+
+            hidden = ProjectDiscoveryService(root).discover(max_depth=6)
+            included = ProjectDiscoveryService(
+                root,
+                include_worktrees=True,
+                include_ephemeral=True,
+            ).discover(max_depth=6)
+
+            self.assertEqual(hidden, [])
+            by_path = {project.path: project for project in included}
+            self.assertEqual(
+                by_path["ResearchOS/.worktrees/feature/02_Worktree"].classification,
+                "ephemeral",
+            )
+            self.assertEqual(
+                by_path["ResearchOS/[Athena]/bridge_jobs/job1/hub_project"].classification,
+                "ephemeral",
+            )
 
 
 if __name__ == "__main__":
