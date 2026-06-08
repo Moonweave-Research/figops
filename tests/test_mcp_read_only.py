@@ -248,6 +248,236 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertFalse(called["result"]["isError"])
         self.assertEqual(called["result"]["structuredContent"]["target_formats"], sorted(ALLOWED_TARGET_FORMATS))
 
+    def test_json_rpc_initialize_advertises_resources_and_prompts(self):
+        server = GraphHubMCPServer()
+
+        response = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 10, "method": "initialize"})
+
+        capabilities = response["result"]["capabilities"]
+        self.assertIn("tools", capabilities)
+        self.assertIn("resources", capabilities)
+        self.assertIn("prompts", capabilities)
+
+    def test_json_rpc_resources_and_prompts_list(self):
+        server = GraphHubMCPServer()
+
+        resources = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 11, "method": "resources/list"})
+        templates = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 12, "method": "resources/templates/list"})
+        prompts = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 13, "method": "prompts/list"})
+
+        self.assertIn("graphhub://styles", {item["uri"] for item in resources["result"]["resources"]})
+        self.assertIn(
+            "graphhub://projects/{project_id}/config",
+            {item["uriTemplate"] for item in templates["result"]["resourceTemplates"]},
+        )
+        self.assertIn("make_publication_graph_from_csv", {item["name"] for item in prompts["result"]["prompts"]})
+
+    def test_resources_read_styles_matches_list_styles(self):
+        server = GraphHubMCPServer()
+
+        resource = _handle_json_rpc(
+            server,
+            {"jsonrpc": "2.0", "id": 20, "method": "resources/read", "params": {"uri": "graphhub://styles"}},
+        )
+        styles = server.call_tool("graphhub.list_styles", {})["structuredContent"]
+        content = resource["result"]["contents"][0]
+        payload = json.loads(content["text"])
+
+        self.assertEqual(content["mimeType"], "application/json")
+        self.assertEqual(payload["target_formats"], styles["target_formats"])
+        self.assertIn("nature_surfur", payload["target_formats"])
+
+    def test_resources_read_projects_and_legacy_config_are_read_only(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_resource_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            self._write_project(root, "01_Valid")
+            self._write_legacy_project(root, "02_Legacy")
+            runtime_root = Path(tmpdir) / "runtime"
+            before = _snapshot_files(root)
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            projects_response = _handle_json_rpc(
+                server,
+                {"jsonrpc": "2.0", "id": 21, "method": "resources/read", "params": {"uri": "graphhub://projects"}},
+            )
+            projects_payload = json.loads(projects_response["result"]["contents"][0]["text"])
+            legacy_project = next(project for project in projects_payload["projects"] if project["status"] == "legacy")
+            config_response = _handle_json_rpc(
+                server,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 22,
+                    "method": "resources/read",
+                    "params": {"uri": f"graphhub://projects/{legacy_project['project_id']}/config"},
+                },
+            )
+
+            self.assertEqual(_snapshot_files(root), before)
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+            self.assertEqual(projects_payload["count"], 2)
+            self.assertIn("project:", config_response["result"]["contents"][0]["text"])
+            self.assertEqual(config_response["result"]["contents"][0]["mimeType"], "application/x-yaml")
+
+    def test_resources_read_job_manifest_after_render(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_resource_") as tmpdir:
+            data_path = Path(tmpdir) / "input" / "data.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+            rendered = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "resource-render"},
+            )
+
+            response = _handle_json_rpc(
+                server,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 23,
+                    "method": "resources/read",
+                    "params": {"uri": "graphhub://jobs/resource-render/manifest"},
+                },
+            )
+            payload = json.loads(response["result"]["contents"][0]["text"])
+
+            self.assertEqual(rendered["job_id"], "resource-render")
+            self.assertEqual(payload["job_id"], "resource-render")
+            self.assertEqual(response["result"]["contents"][0]["mimeType"], "application/json")
+            self.assertNotIn(str(runtime_root), response["result"]["contents"][0]["text"])
+            self.assertNotIn(str(data_path), response["result"]["contents"][0]["text"])
+            self.assertEqual(payload["source_data_path"], "input://data_path")
+
+    def test_resources_read_errors_distinguish_malformed_and_missing(self):
+        server = GraphHubMCPServer()
+
+        malformed_uris = [
+            "graphhub://styles/",
+            "graphhub://jobs/missing-job/manifest/",
+            "graphhub://jobs/missing-job//manifest",
+            "graphhub://projects/%2E%2E/config",
+            "graphhub://projects/foo%2Fbar/config",
+            "graphhub://styles?x=1",
+        ]
+        missing = _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 25,
+                "method": "resources/read",
+                "params": {"uri": "graphhub://jobs/missing-job/manifest"},
+            },
+        )
+
+        for uri in malformed_uris:
+            with self.subTest(uri=uri):
+                malformed = _handle_json_rpc(
+                    server,
+                    {"jsonrpc": "2.0", "id": 24, "method": "resources/read", "params": {"uri": uri}},
+                )
+                self.assertEqual(malformed["error"]["code"], -32602)
+        self.assertEqual(missing["error"]["code"], -32002)
+
+    def test_resources_read_project_config_refuses_symlinked_config(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_resource_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = root / "01_Symlink"
+            project.mkdir(parents=True)
+            secret = Path(tmpdir) / ".env"
+            secret.write_text(
+                "SECRET_TOKEN=do-not-read\nvisual_style:\n  target_format: super_secret\n",
+                encoding="utf-8",
+            )
+            (project / "project_config.yaml").symlink_to(secret)
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+            projects_response = _handle_json_rpc(
+                server,
+                {"jsonrpc": "2.0", "id": 26, "method": "resources/read", "params": {"uri": "graphhub://projects"}},
+            )
+            projects_payload = json.loads(projects_response["result"]["contents"][0]["text"])
+            project_id = projects_payload["projects"][0]["project_id"]
+
+            response = _handle_json_rpc(
+                server,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 27,
+                    "method": "resources/read",
+                    "params": {"uri": f"graphhub://projects/{project_id}/config"},
+                },
+            )
+
+            self.assertEqual(response["error"]["code"], -32602)
+            self.assertNotIn("SECRET_TOKEN", json.dumps(response))
+            self.assertNotIn("SECRET_TOKEN", projects_response["result"]["contents"][0]["text"])
+            self.assertNotIn("super_secret", projects_response["result"]["contents"][0]["text"])
+            self.assertEqual(projects_payload["projects"][0]["target_format"], "")
+
+    def test_json_rpc_rejects_non_object_params(self):
+        server = GraphHubMCPServer()
+
+        resource_response = _handle_json_rpc(
+            server,
+            {"jsonrpc": "2.0", "id": 28, "method": "resources/read", "params": "bad"},
+        )
+        prompt_response = _handle_json_rpc(
+            server,
+            {"jsonrpc": "2.0", "id": 29, "method": "prompts/get", "params": "bad"},
+        )
+
+        self.assertEqual(resource_response["error"]["code"], -32602)
+        self.assertEqual(prompt_response["error"]["code"], -32602)
+
+    def test_prompts_get_publication_graph_workflow(self):
+        server = GraphHubMCPServer()
+
+        response = _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 30,
+                "method": "prompts/get",
+                "params": {
+                    "name": "make_publication_graph_from_csv",
+                    "arguments": {"data_path": "data.csv", "x_column": "x", "y_column": "y"},
+                },
+            },
+        )
+        text = response["result"]["messages"][0]["content"]["text"]
+
+        self.assertIn("graphhub.render_csv_graph", text)
+        self.assertIn("dry_run=true", text)
+        self.assertIn("calculation_checks", text)
+        self.assertIn("visual_preflight_status", text)
+        self.assertIn("graphhub.collect_artifacts", text)
+        self.assertIn("manual_review_needed", text)
+
+    def test_prompts_get_validation_errors(self):
+        server = GraphHubMCPServer()
+
+        missing_arg = _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 31,
+                "method": "prompts/get",
+                "params": {"name": "make_publication_graph_from_csv", "arguments": {"data_path": "data.csv"}},
+            },
+        )
+        unknown_prompt = _handle_json_rpc(
+            server,
+            {"jsonrpc": "2.0", "id": 32, "method": "prompts/get", "params": {"name": "missing_prompt"}},
+        )
+        missing_selector = _handle_json_rpc(
+            server,
+            {"jsonrpc": "2.0", "id": 33, "method": "prompts/get", "params": {"name": "inspect_graph_project_quality"}},
+        )
+
+        self.assertEqual(missing_arg["error"]["code"], -32602)
+        self.assertEqual(unknown_prompt["error"]["code"], -32002)
+        self.assertEqual(missing_selector["error"]["code"], -32602)
+
     def test_json_rpc_unknown_tool_returns_protocol_error(self):
         server = GraphHubMCPServer()
 

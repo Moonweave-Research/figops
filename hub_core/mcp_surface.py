@@ -5,6 +5,7 @@ import json
 import multiprocessing
 import os
 import queue
+import re
 import shutil
 import sys
 import time
@@ -12,6 +13,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import unquote, urlsplit
 
 import yaml
 
@@ -59,6 +61,8 @@ JSONRPC_INVALID_PARAMS = -32602
 JSONRPC_INTERNAL_ERROR = -32603
 JSONRPC_METHOD_NOT_FOUND = -32601
 JSONRPC_PARSE_ERROR = -32700
+JSONRPC_RESOURCE_NOT_FOUND = -32002
+_STRICT_JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
 
 def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_queue: multiprocessing.Queue) -> None:
@@ -360,6 +364,78 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ),
     ]
     return [definition.to_dict() for definition in definitions]
+
+
+def list_resource_definitions() -> list[dict[str, str]]:
+    return [
+        {
+            "uri": "graphhub://styles",
+            "name": "Graph Hub Styles",
+            "description": "Canonical target formats, output formats, profiles, and aliases.",
+            "mimeType": "application/json",
+        },
+        {
+            "uri": "graphhub://profiles",
+            "name": "Graph Hub Style Profiles",
+            "description": "Available style profiles and profile aliases.",
+            "mimeType": "application/json",
+        },
+        {
+            "uri": "graphhub://projects",
+            "name": "Graph Hub Projects",
+            "description": "Discovered Graph Hub project metadata using default discovery rules.",
+            "mimeType": "application/json",
+        },
+    ]
+
+
+def list_resource_templates() -> list[dict[str, str]]:
+    return [
+        {
+            "uriTemplate": "graphhub://projects/{project_id}/config",
+            "name": "Graph Hub Project Config",
+            "description": "Project configuration YAML resolved by discovered project ID.",
+            "mimeType": "application/x-yaml",
+        },
+        {
+            "uriTemplate": "graphhub://jobs/{job_id}/manifest",
+            "name": "Graph Hub Render Job Manifest",
+            "description": "Sanitized render job manifest resolved by job ID.",
+            "mimeType": "application/json",
+        },
+    ]
+
+
+def list_prompt_definitions() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "make_publication_graph_from_csv",
+            "description": "Workflow for rendering a publication-style graph from structured CSV data.",
+            "arguments": [
+                {"name": "data_path", "description": "CSV input path.", "required": True},
+                {"name": "x_column", "description": "CSV x-axis column.", "required": True},
+                {"name": "y_column", "description": "CSV y-axis column.", "required": True},
+                {"name": "target_format", "description": "Graph Hub target format.", "required": False},
+                {"name": "plot_type", "description": "bar, line, scatter, or xy.", "required": False},
+            ],
+        },
+        {
+            "name": "inspect_graph_project_quality",
+            "description": "Workflow for inspecting a graph project without executing scripts.",
+            "arguments": [
+                {"name": "project_id", "description": "Discovered Graph Hub project ID.", "required": False},
+                {"name": "project_path", "description": "Project path.", "required": False},
+            ],
+        },
+        {
+            "name": "standardize_existing_graph_project",
+            "description": "Workflow for planning safe Graph Hub project normalization.",
+            "arguments": [
+                {"name": "project_path", "description": "Existing graph project path.", "required": True},
+                {"name": "move_policy", "description": "copy, move, or symlink.", "required": False},
+            ],
+        },
+    ]
 
 
 class GraphHubMCPServer:
@@ -1155,6 +1231,139 @@ class GraphHubMCPServer:
             baseline_comparison=baseline_comparison,
         )
 
+    def read_resource(self, uri: str) -> dict[str, Any]:
+        parsed = self._parse_resource_uri(uri)
+        authority = parsed["authority"]
+        segments = parsed["segments"]
+
+        if authority == "styles" and not segments:
+            return self._resource_text(uri, "application/json", self._json_resource_text(self._styles_payload()))
+        if authority == "profiles" and not segments:
+            payload = {
+                "profiles": list_profiles(),
+                "profile_aliases": dict(sorted(PROFILE_ALIASES.items())),
+                "default_profile": DEFAULT_PROFILE,
+            }
+            return self._resource_text(uri, "application/json", self._json_resource_text(payload))
+        if authority == "projects" and not segments:
+            root = self.research_root
+            projects = ProjectDiscoveryService(root).discover(max_depth=4)
+            payload = {
+                "root": str(root),
+                "count": len(projects),
+                "projects": [self._serialize_project(project) for project in projects],
+            }
+            return self._resource_text(uri, "application/json", self._json_resource_text(payload))
+        if authority == "projects" and len(segments) == 2 and segments[1] == "config":
+            project = self._discover_project_by_id(segments[0])
+            config_path = Path(project.config_path)
+            self._validate_resource_config_path(config_path, (self.research_root / project.path).resolve())
+            try:
+                text = config_path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise FileNotFoundError(f"Project config not found: {project.project_id}") from exc
+            return self._resource_text(uri, "application/x-yaml", text)
+        if authority == "jobs" and len(segments) == 2 and segments[1] == "manifest":
+            job_id = segments[0]
+            if _STRICT_JOB_ID_RE.fullmatch(job_id) is None:
+                raise ValueError("job_id contains invalid characters.")
+            manifest_path = self._find_job_manifest_path(job_id)
+            if not manifest_path.exists():
+                raise FileNotFoundError(f"Render job manifest not found: {job_id}")
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise RuntimeError(f"Render job manifest could not be read: {exc}") from exc
+            sanitized = self._sanitize_resource_payload(manifest, {"data_path": manifest.get("source_data_path")})
+            return self._resource_text(uri, "application/json", self._json_resource_text(sanitized))
+
+        raise ValueError(f"Unsupported Graph Hub resource URI: {uri}")
+
+    def get_prompt(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+        arguments = dict(arguments or {})
+        if name == "make_publication_graph_from_csv":
+            self._validate_prompt_arguments(
+                name,
+                arguments,
+                required={"data_path", "x_column", "y_column"},
+                optional={"target_format", "plot_type"},
+            )
+            data_path = self._prompt_quote(arguments["data_path"])
+            x_column = self._prompt_quote(arguments["x_column"])
+            y_column = self._prompt_quote(arguments["y_column"])
+            target_format = self._prompt_quote(arguments.get("target_format", "nature"))
+            plot_type = self._prompt_quote(arguments.get("plot_type", "scatter"))
+            text = (
+                "Render a publication-style Graph Hub figure from structured CSV data.\n"
+                f"- data_path: {data_path}\n"
+                f"- x_column: {x_column}\n"
+                f"- y_column: {y_column}\n"
+                f"- target_format: {target_format}\n"
+                f"- plot_type: {plot_type}\n\n"
+                "Workflow:\n"
+                "1. If style support is uncertain, call graphhub.list_styles.\n"
+                "2. Call graphhub.render_csv_graph with dry_run=true using the supplied CSV and columns.\n"
+                "3. Inspect calculation_checks, visual_preflight_status, failure_stage, and resolution_hint.\n"
+                "4. Rerun graphhub.render_csv_graph without dry_run only when the dry run is clean "
+                "or the user accepts warnings.\n"
+                "5. Call graphhub.collect_artifacts for the returned job_id.\n"
+                "6. If manual_review_needed=true, do not claim publication readiness without manual review."
+            )
+            return self._prompt_payload(
+                "Workflow for rendering a publication-style graph from structured CSV data.",
+                text,
+            )
+
+        if name == "inspect_graph_project_quality":
+            self._validate_prompt_arguments(
+                name,
+                arguments,
+                required=set(),
+                optional={"project_id", "project_path"},
+            )
+            if not arguments.get("project_id") and not arguments.get("project_path"):
+                raise ValueError("project_id or project_path is required.")
+            selector = (
+                f"project_id: {self._prompt_quote(arguments['project_id'])}"
+                if arguments.get("project_id")
+                else f"project_path: {self._prompt_quote(arguments['project_path'])}"
+            )
+            text = (
+                "Inspect Graph Hub project quality without executing analysis or plotting scripts.\n"
+                f"- {selector}\n\n"
+                "Workflow:\n"
+                "1. Call graphhub.inspect_project for the selected project.\n"
+                "2. Call graphhub.validate_project for the same selector.\n"
+                "3. Inspect config_errors, data_contract_errors, style_errors, missing_inputs, missing_outputs, "
+                "and normalization_needed.\n"
+                "4. Avoid rendering or normalization unless the user explicitly asks."
+            )
+            return self._prompt_payload("Workflow for inspecting graph project quality.", text)
+
+        if name == "standardize_existing_graph_project":
+            self._validate_prompt_arguments(
+                name,
+                arguments,
+                required={"project_path"},
+                optional={"move_policy"},
+            )
+            project_path = self._prompt_quote(arguments["project_path"])
+            move_policy = self._prompt_quote(arguments.get("move_policy", "copy"))
+            text = (
+                "Plan safe Graph Hub project normalization.\n"
+                f"- project_path: {project_path}\n"
+                f"- move_policy: {move_policy}\n\n"
+                "Workflow:\n"
+                "1. Call graphhub.inspect_project.\n"
+                "2. Call graphhub.normalize_project_structure with plan_only=true.\n"
+                "3. Show the manifest and preserve project style choices.\n"
+                "4. Apply only after user approval.\n"
+                "5. Call graphhub.validate_project after apply."
+            )
+            return self._prompt_payload("Workflow for planning safe project normalization.", text)
+
+        raise FileNotFoundError(f"Unknown prompt: {name}")
+
     def scaffold_project(self, arguments: dict[str, Any]) -> dict[str, Any]:
         project_name = self._required_string(arguments, "project_name")
         project_root = Path(self._required_string(arguments, "project_root"))
@@ -1462,6 +1671,119 @@ class GraphHubMCPServer:
                 return manifest_path
         return Path(candidate_roots[0]).expanduser().resolve() / "mcp_jobs" / job_id / "manifest.json"
 
+    def _styles_payload(self) -> dict[str, Any]:
+        return {
+            "target_formats": sorted(ALLOWED_TARGET_FORMATS),
+            "output_formats": sorted(ALLOWED_OUTPUT_FORMATS),
+            "profiles": list_profiles(),
+            "profile_aliases": dict(sorted(PROFILE_ALIASES.items())),
+            "default_target_format": "nature",
+            "default_profile": DEFAULT_PROFILE,
+        }
+
+    @staticmethod
+    def _resource_text(uri: str, mime_type: str, text: str) -> dict[str, Any]:
+        return {"contents": [{"uri": uri, "mimeType": mime_type, "text": text}]}
+
+    @staticmethod
+    def _json_resource_text(payload: dict[str, Any]) -> str:
+        return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+
+    @staticmethod
+    def _parse_resource_uri(uri: str) -> dict[str, Any]:
+        if not isinstance(uri, str) or not uri.strip():
+            raise ValueError("Resource uri is required.")
+        parsed = urlsplit(uri)
+        if parsed.scheme != "graphhub":
+            raise ValueError("Resource uri scheme must be graphhub.")
+        if parsed.query or parsed.fragment:
+            raise ValueError("Resource uri query and fragment are not supported.")
+        authority = parsed.netloc
+        if authority not in {"styles", "profiles", "projects", "jobs"}:
+            raise ValueError(f"Unsupported Graph Hub resource authority: {authority}")
+        if authority in {"styles", "profiles"} and parsed.path:
+            raise ValueError(f"Resource graphhub://{authority} does not accept path segments.")
+        if authority == "projects" and not parsed.path:
+            return {"authority": authority, "segments": []}
+        if authority == "jobs" and not parsed.path:
+            raise ValueError("Job resource must be graphhub://jobs/{job_id}/manifest.")
+        if authority in {"projects", "jobs"} and not parsed.path.startswith("/"):
+            raise ValueError("Dynamic Graph Hub resource path must start with '/'.")
+        raw_segments = parsed.path[1:].split("/") if parsed.path else []
+        if any(segment == "" for segment in raw_segments):
+            raise ValueError("Resource uri contains an empty path segment.")
+        segments = [unquote(segment) for segment in raw_segments]
+        if any(segment in {"", ".", ".."} or "/" in segment or "\\" in segment for segment in segments):
+            raise ValueError("Resource uri contains an invalid path segment.")
+        if authority == "projects" and not (len(segments) == 2 and segments[1] == "config"):
+            raise ValueError("Project resource must be graphhub://projects or graphhub://projects/{project_id}/config.")
+        if authority == "jobs" and not (len(segments) == 2 and segments[1] == "manifest"):
+            raise ValueError("Job resource must be graphhub://jobs/{job_id}/manifest.")
+        return {"authority": authority, "segments": segments}
+
+    @staticmethod
+    def _validate_resource_config_path(config_path: Path, project_path: Path) -> None:
+        if config_path.is_symlink():
+            raise ValueError("Project config resource refuses symlinked config files.")
+        resolved_config = config_path.resolve()
+        resolved_project = project_path.resolve()
+        try:
+            resolved_config.relative_to(resolved_project)
+        except ValueError as exc:
+            raise ValueError("Project config resource must stay inside the discovered project.") from exc
+        if not config_path.is_file():
+            raise FileNotFoundError(f"Project config not found: {config_path}")
+        if config_path.stat().st_size > 1024 * 1024:
+            raise ValueError("Project config resource refuses configs larger than 1 MiB.")
+
+    def _discover_project_by_id(self, project_id: str) -> Any:
+        for project in ProjectDiscoveryService(self.research_root).discover(max_depth=4):
+            if project.project_id == project_id:
+                return project
+        raise FileNotFoundError(f"Project id not found: {project_id}")
+
+    def _sanitize_resource_payload(self, value: Any, arguments: dict[str, Any]) -> Any:
+        if isinstance(value, dict):
+            return {key: self._sanitize_resource_payload(item, arguments) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._sanitize_resource_payload(item, arguments) for item in value]
+        if isinstance(value, str):
+            return self._sanitize_diagnostic_text(value, arguments)
+        return value
+
+    @staticmethod
+    def _prompt_payload(description: str, text: str) -> dict[str, Any]:
+        return {"description": description, "messages": [{"role": "user", "content": {"type": "text", "text": text}}]}
+
+    @staticmethod
+    def _prompt_quote(value: Any) -> str:
+        return json.dumps(str(value), ensure_ascii=False)
+
+    @staticmethod
+    def _validate_prompt_arguments(
+        name: str,
+        arguments: dict[str, Any],
+        *,
+        required: set[str],
+        optional: set[str],
+    ) -> None:
+        allowed = required | optional
+        unknown = sorted(set(arguments) - allowed)
+        if unknown:
+            raise ValueError(f"Unknown prompt argument(s) for {name}: {', '.join(unknown)}")
+        missing = sorted(
+            key for key in required if not isinstance(arguments.get(key), str) or not arguments.get(key).strip()
+        )
+        if missing:
+            raise ValueError(f"Missing required prompt argument(s) for {name}: {', '.join(missing)}")
+        invalid = sorted(
+            key
+            for key, value in arguments.items()
+            if key in allowed and (not isinstance(value, str) or not value.strip())
+        )
+        if invalid:
+            raise ValueError(f"Prompt argument(s) must be non-empty strings for {name}: {', '.join(invalid)}")
+
     @staticmethod
     def _public_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         public = dict(manifest)
@@ -1739,6 +2061,17 @@ class GraphHubMCPServer:
         return "unknown"
 
     def _serialize_project(self, project: Any) -> dict[str, Any]:
+        if Path(project.config_path).is_symlink():
+            return {
+                "project_id": project.project_id,
+                "project_root": project.path,
+                "config_path": project.config,
+                "status": "invalid",
+                "errors": ["Project config is a symlink and is not exposed through MCP resources."],
+                "declared_figures": 0,
+                "declared_diagrams": 0,
+                "target_format": "",
+            }
         config_data = self._load_project_config(
             Path(project.config_path).parent,
             config_path=Path(project.config_path),
@@ -2181,7 +2514,13 @@ def run_stdio_server(
 def _handle_json_rpc(server: GraphHubMCPServer, request: dict[str, Any]) -> dict[str, Any] | None:
     method = request.get("method")
     request_id = request.get("id")
-    params = request.get("params") or {}
+    raw_params = request.get("params")
+    if raw_params is None:
+        params = {}
+    elif isinstance(raw_params, dict):
+        params = raw_params
+    else:
+        return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "JSON-RPC params must be an object when provided.")
 
     if method == "initialize":
         return {
@@ -2189,7 +2528,7 @@ def _handle_json_rpc(server: GraphHubMCPServer, request: dict[str, Any]) -> dict
             "id": request_id,
             "result": {
                 "protocolVersion": "2025-06-18",
-                "capabilities": {"tools": {}},
+                "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
                 "serverInfo": {"name": "graph-making-hub", "version": server._read_version()},
             },
         }
@@ -2210,6 +2549,47 @@ def _handle_json_rpc(server: GraphHubMCPServer, request: dict[str, Any]) -> dict
         if argument_errors:
             return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "; ".join(argument_errors))
         return {"jsonrpc": "2.0", "id": request_id, "result": server.call_tool(tool_name, arguments)}
+    if method == "resources/list":
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"resources": list_resource_definitions()}}
+    if method == "resources/templates/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {"resourceTemplates": list_resource_templates()},
+        }
+    if method == "resources/read":
+        uri = params.get("uri")
+        if not isinstance(uri, str) or not uri.strip():
+            return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "Resource uri is required.")
+        try:
+            result = server.read_resource(uri)
+        except ValueError as exc:
+            return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, str(exc))
+        except FileNotFoundError as exc:
+            return _json_rpc_error(request_id, JSONRPC_RESOURCE_NOT_FOUND, str(exc))
+        except Exception as exc:
+            return _json_rpc_error(request_id, JSONRPC_INTERNAL_ERROR, str(exc))
+        return {"jsonrpc": "2.0", "id": request_id, "result": result}
+    if method == "prompts/list":
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"prompts": list_prompt_definitions()}}
+    if method == "prompts/get":
+        name = params.get("name")
+        arguments = params.get("arguments", {})
+        if not isinstance(name, str) or not name.strip():
+            return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "Prompt name is required.")
+        if arguments is None:
+            arguments = {}
+        if not isinstance(arguments, dict):
+            return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "Prompt arguments must be an object.")
+        try:
+            result = server.get_prompt(name.strip(), arguments)
+        except ValueError as exc:
+            return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, str(exc))
+        except FileNotFoundError as exc:
+            return _json_rpc_error(request_id, JSONRPC_RESOURCE_NOT_FOUND, str(exc))
+        except Exception as exc:
+            return _json_rpc_error(request_id, JSONRPC_INTERNAL_ERROR, str(exc))
+        return {"jsonrpc": "2.0", "id": request_id, "result": result}
     return _json_rpc_error(request_id, JSONRPC_METHOD_NOT_FOUND, f"Method not found: {method}")
 
 
