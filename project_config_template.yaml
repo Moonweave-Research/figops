@@ -76,6 +76,10 @@ data_contract:
         time: { range: [0, 10000], allow_null: false, monotonic: "increasing" }
         molarity: { range: [0, 50], unique: false }
         value: { range: [-2000, 2000] }
+        # Replicate and grouped-noise checks for graph-defensible summaries
+        # value:
+        #   min_replicates: { group_by: ["molarity"], min_count: 3 }
+        #   grouped_cv: { group_by: ["molarity"], threshold: 0.15, warn_only: true }
         # monotonic modes: increasing | decreasing | nondecreasing | nonincreasing
         # Unit-aware validation (requires pint): specify expected + actual units
         # current: { unit: "A", actual_unit: "mA" }  # auto-converts mA → A

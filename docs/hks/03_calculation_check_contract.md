@@ -18,14 +18,14 @@ Current `data_contract.csv_checks` supports:
 - uniqueness,
 - unit compatibility when `pint` is available,
 - CV quality warnings.
+- monotonicity when declared,
+- minimum replicate count per declared group,
+- grouped CV warnings or failures per declared group.
 
 ## Required Future Vocabulary
 
 Future calculation checks should use stable names:
 
-- `monotonic`
-- `min_replicates`
-- `grouped_cv`
 - `mean_sem`
 - `error_bar_source`
 - `linear_fit`

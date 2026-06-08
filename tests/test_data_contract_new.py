@@ -1,5 +1,6 @@
 """Unit tests for _read_data_safe in hub_core.data_contract."""
 
+import json
 import sys
 import tempfile
 import unittest
@@ -222,6 +223,289 @@ class TestSemanticMonotonicContract(unittest.TestCase):
                             "path": "results/data/summary.csv",
                             "required_columns": ["time", "value"],
                             "semantic_checks": {"time": {"monotonic": "increasing"}},
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+
+class TestGroupedCalculationChecks(unittest.TestCase):
+    def test_validate_config_accepts_grouped_calculation_checks(self):
+        config = {
+            "project": {"name": "Grouped Demo"},
+            "visual_style": {"target_format": "nature"},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "results/data/summary.csv",
+                        "semantic_checks": {
+                            "value": {
+                                "min_replicates": {"group_by": ["condition"], "min_count": 3},
+                                "grouped_cv": {"group_by": ["condition"], "threshold": 0.15},
+                            }
+                        },
+                    }
+                ]
+            },
+        }
+
+        self.assertEqual(validate_config(config), [])
+
+    def test_validate_config_rejects_malformed_grouped_calculation_checks(self):
+        config = {
+            "project": {"name": "Grouped Demo"},
+            "visual_style": {"target_format": "nature"},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "results/data/summary.csv",
+                        "semantic_checks": {
+                            "value": {
+                                "min_replicates": {"group_by": [], "min_count": 0},
+                                "grouped_cv": {
+                                    "group_by": ["condition", 123],
+                                    "threshold": -0.1,
+                                    "warn_only": "yes",
+                                },
+                            }
+                        },
+                    }
+                ]
+            },
+        }
+
+        errors = validate_config(config)
+
+        self.assertTrue(any("min_replicates.group_by" in error for error in errors))
+        self.assertTrue(any("min_replicates.min_count" in error for error in errors))
+        self.assertTrue(any("grouped_cv.group_by" in error for error in errors))
+        self.assertTrue(any("grouped_cv.threshold" in error for error in errors))
+        self.assertTrue(any("grouped_cv.warn_only" in error for error in errors))
+
+    def test_min_replicates_counts_valid_target_observations_not_raw_rows(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_min_reps_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "condition,value\nA,1.0\nA,\nA,3.0\nB,1.0\nB,2.0\nB,3.0\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {"min_replicates": {"group_by": ["condition"], "min_count": 3}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_grouped_cv_warn_only_writes_aggregate_calculation_sidecar(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_grouped_cv_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "condition,value\nA,10\nA,10\nB,1\nB,100\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {"grouped_cv": {"group_by": ["condition"], "threshold": 0.15}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, config))
+            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            payload = json.loads(sidecar.read_text(encoding="utf-8"))
+
+            self.assertFalse(payload["quality_passed"])
+            self.assertTrue(payload["manual_review_needed"])
+            grouped = next(check for check in payload["checks"] if check["name"] == "grouped_cv")
+            self.assertEqual(grouped["status"], "warning")
+            self.assertTrue(grouped["manual_review_needed"])
+            self.assertEqual(grouped["csv_path"], "results/data/summary.csv")
+
+    def test_grouped_cv_warn_only_false_fails_contract(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_grouped_cv_fail_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "condition,value\nB,1\nB,100\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {
+                                    "grouped_cv": {
+                                        "group_by": ["condition"],
+                                        "threshold": 0.15,
+                                        "warn_only": False,
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_grouped_checks_runtime_malformed_config_returns_false_without_crashing(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_grouped_malformed_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("condition,value\nA,1\nA,2\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {
+                                    "min_replicates": {"group_by": [], "min_count": 3},
+                                    "grouped_cv": {"group_by": [], "threshold": 0.15},
+                                }
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_grouped_check_sidecar_is_removed_on_early_contract_failure(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_grouped_early_failure_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("condition,value\nB,1\nB,100\n", encoding="utf-8")
+            warning_config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {"grouped_cv": {"group_by": ["condition"], "threshold": 0.15}}
+                            },
+                        }
+                    ]
+                }
+            }
+            missing_column_config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["missing"],
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, warning_config))
+            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            self.assertTrue(sidecar.exists())
+            self.assertFalse(validate_data_contract(tmpdir, missing_column_config))
+            self.assertFalse(sidecar.exists())
+
+    def test_grouped_check_sidecar_replaces_stale_warning_when_no_grouped_checks_run(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_grouped_stale_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("condition,value\nB,1\nB,100\n", encoding="utf-8")
+            warning_config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {"grouped_cv": {"group_by": ["condition"], "threshold": 0.15}}
+                            },
+                        }
+                    ]
+                }
+            }
+            plain_config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, warning_config))
+            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            self.assertTrue(sidecar.exists())
+            self.assertTrue(validate_data_contract(tmpdir, plain_config))
+            self.assertFalse(sidecar.exists())
+
+    def test_grouped_check_serializes_scalar_and_null_group_keys(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_grouped_null_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("condition,value\nA,1\nA,100\n,1\n,100\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {"grouped_cv": {"group_by": ["condition"], "threshold": 0.15}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, config))
+            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            payload = json.loads(sidecar.read_text(encoding="utf-8"))
+            groups = [violation["group"] for violation in payload["checks"][0]["violations"]]
+
+            self.assertIn({"condition": "A"}, groups)
+            self.assertIn({"condition": None}, groups)
+
+    def test_semantic_check_missing_target_column_fails_runtime_validation(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_grouped_missing_target_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("condition,other\nA,1\nA,2\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition"],
+                            "semantic_checks": {
+                                "value": {"grouped_cv": {"group_by": ["condition"], "threshold": 0.15}}
+                            },
                         }
                     ]
                 }

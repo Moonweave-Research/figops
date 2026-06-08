@@ -64,6 +64,36 @@ def normalize_lang(lang):
     return key
 
 
+def _validate_grouped_check_config(errors, *, column: str, check_name: str, raw_check: object) -> None:
+    if not isinstance(raw_check, dict):
+        errors.append(f"Semantic {check_name} for '{column}' must be a mapping.")
+        return
+
+    group_by = raw_check.get("group_by")
+    if not isinstance(group_by, list) or not group_by:
+        errors.append(f"Semantic {check_name}.group_by for '{column}' must be a non-empty list of column names.")
+    elif any(not isinstance(item, str) or not item.strip() for item in group_by):
+        errors.append(f"Semantic {check_name}.group_by for '{column}' must contain only non-empty strings.")
+
+    if check_name == "min_replicates":
+        min_count = raw_check.get("min_count")
+        if isinstance(min_count, bool) or not isinstance(min_count, int) or min_count <= 0:
+            errors.append(f"Semantic min_replicates.min_count for '{column}' must be a positive integer.")
+        return
+
+    threshold = raw_check.get("threshold")
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or threshold <= 0:
+        errors.append(f"Semantic grouped_cv.threshold for '{column}' must be a positive number.")
+
+    min_count = raw_check.get("min_count", 2)
+    if isinstance(min_count, bool) or not isinstance(min_count, int) or min_count <= 0:
+        errors.append(f"Semantic grouped_cv.min_count for '{column}' must be a positive integer when provided.")
+
+    warn_only = raw_check.get("warn_only", True)
+    if not isinstance(warn_only, bool):
+        errors.append(f"Semantic grouped_cv.warn_only for '{column}' must be a boolean.")
+
+
 def get_language_policy(config):
     raw = config.get("language_policy", {})
     if raw is None:
@@ -449,6 +479,20 @@ def validate_config(config):
                                     f"Semantic monotonic for '{col}' must be one of: {allowed}. "
                                     f"Got '{monotonic_mode}'."
                                 )
+                        if "min_replicates" in constraints:
+                            _validate_grouped_check_config(
+                                errors,
+                                column=str(col),
+                                check_name="min_replicates",
+                                raw_check=constraints["min_replicates"],
+                            )
+                        if "grouped_cv" in constraints:
+                            _validate_grouped_check_config(
+                                errors,
+                                column=str(col),
+                                check_name="grouped_cv",
+                                raw_check=constraints["grouped_cv"],
+                            )
 
     golden_metrics = config.get("golden_metrics", [])
     if golden_metrics is None:

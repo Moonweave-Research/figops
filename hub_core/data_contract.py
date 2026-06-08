@@ -1,5 +1,7 @@
 import importlib.util
+import json
 import os
+from pathlib import Path
 
 from .utils import ensure_local_files, resolve_path
 
@@ -220,6 +222,7 @@ def validate_data_contract(project_dir, config):
     checks = contract.get('csv_checks', []) if isinstance(contract, dict) else []
 
     if not checks:
+        _write_calculation_checks_sidecar(project_dir, [])
         return True
 
     try:
@@ -229,6 +232,9 @@ def validate_data_contract(project_dir, config):
         return False
 
     print("\n🔍 [Data Contract Step]")
+    _write_calculation_checks_sidecar(project_dir, [])
+    calculation_checks = []
+    contract_failed = False
     for i, check in enumerate(checks, 1):
         csv_path = resolve_path(project_dir, check['path'])
         required_cols = check.get('required_columns', []) or []
@@ -291,9 +297,15 @@ def validate_data_contract(project_dir, config):
         semantic_checks = check.get('semantic_checks', {})
         if semantic_checks:
             semantic_errors, row_violations = _validate_semantic_constraints(
-                df, semantic_checks, stripped_to_actual,
+                df,
+                semantic_checks,
+                stripped_to_actual,
+                calculation_checks=calculation_checks,
+                csv_rel_path=check["path"],
+                source_config_path="project_config.yaml",
             )
             if semantic_errors:
+                _write_calculation_checks_sidecar(project_dir, calculation_checks)
                 print(f"      ❌ Semantic validation failed for '{check['path']}':")
                 for s_err in semantic_errors:
                     print(f"         - {s_err}")
@@ -308,7 +320,8 @@ def validate_data_contract(project_dir, config):
                             print(f"      📄 Report: {rpt}")
                     except Exception:
                         pass
-                return False
+                contract_failed = True
+                continue
 
         # --- Statistical Quality Score ---
         cv_threshold = contract.get('cv_threshold', 0.10)
@@ -318,10 +331,22 @@ def validate_data_contract(project_dir, config):
 
         print(f"      ✅ Passed ({len(df)} rows)")
 
+    _write_calculation_checks_sidecar(project_dir, calculation_checks)
+    if contract_failed:
+        return False
     print("   ✅ Data contract checks completed.")
     return True
 
-def _validate_semantic_constraints(df, semantic_checks, stripped_to_actual):
+
+def _validate_semantic_constraints(
+    df,
+    semantic_checks,
+    stripped_to_actual,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str = "",
+    source_config_path: str = "project_config.yaml",
+):
     """
     데이터프레임의 논리적 제약 조건(range, allow_null, unique, unit, monotonic)을 검증합니다.
 
@@ -339,7 +364,8 @@ def _validate_semantic_constraints(df, semantic_checks, stripped_to_actual):
         actual_col = stripped_to_actual.get(norm_col)
 
         if not actual_col:
-            continue  # Already handled by required_columns check
+            errors.append(f"Column '{col}': semantic check target column not found")
+            continue
 
         series = df[actual_col]
 
@@ -417,7 +443,36 @@ def _validate_semantic_constraints(df, semantic_checks, stripped_to_actual):
                 errors.append(monotonic_error)
                 row_violations.extend(monotonic_rows)
 
-        # 5. Unit check (requires pint)
+        # 5. Grouped calculation checks
+        if "min_replicates" in constraints:
+            grouped_errors, grouped_rows = _check_min_replicates_constraint(
+                df,
+                series,
+                col,
+                constraints["min_replicates"],
+                stripped_to_actual,
+                max_row_detail,
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(grouped_errors)
+            row_violations.extend(grouped_rows)
+
+        if "grouped_cv" in constraints:
+            grouped_errors = _check_grouped_cv_constraint(
+                df,
+                series,
+                col,
+                constraints["grouped_cv"],
+                stripped_to_actual,
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(grouped_errors)
+
+        # 6. Unit check (requires pint)
         expected_unit = constraints.get('unit')
         actual_unit = constraints.get('actual_unit')
         if expected_unit and actual_unit:
@@ -447,6 +502,331 @@ def _validate_semantic_constraints(df, semantic_checks, stripped_to_actual):
             )
 
     return errors, row_violations
+
+
+def _calculation_summary(checks: list[dict]) -> dict:
+    return {
+        "checks": checks,
+        "quality_passed": not any(check.get("status") in {"warning", "failed"} for check in checks),
+        "manual_review_needed": any(bool(check.get("manual_review_needed")) for check in checks),
+    }
+
+
+def _write_calculation_checks_sidecar(project_dir, checks: list[dict]) -> None:
+    diag_dir = Path(project_dir).expanduser().resolve() / "results" / "diagnostics"
+    sidecar = diag_dir / "calculation_checks.json"
+    if not checks:
+        if sidecar.exists():
+            sidecar.unlink()
+        return
+    payload = {"schema_version": "1.0", **_calculation_summary(checks)}
+    diag_dir.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False),
+        encoding="utf-8",
+    )
+
+
+def _append_calculation_check(
+    calculation_checks,
+    *,
+    csv_rel_path: str,
+    name: str,
+    target: str,
+    group_by: list[str],
+    source_config_path: str,
+    status: str,
+    manual_review_needed: bool,
+    message: str,
+    violations: list[dict],
+) -> None:
+    if calculation_checks is None:
+        return
+    calculation_checks.append(
+        {
+            "csv_path": csv_rel_path,
+            "name": name,
+            "target": str(target),
+            "group_by": group_by,
+            "source_config_path": source_config_path,
+            "status": status,
+            "manual_review_needed": manual_review_needed,
+            "message": message,
+            "violations": violations,
+        }
+    )
+
+
+def _resolve_group_columns(raw_group_by, stripped_to_actual):
+    group_by = [str(item).strip() for item in raw_group_by or []]
+    if not group_by:
+        return [], [], ["<empty group_by>"]
+    missing = [column for column in group_by if column not in stripped_to_actual]
+    actual = [stripped_to_actual[column] for column in group_by if column in stripped_to_actual]
+    return group_by, actual, missing
+
+
+def _json_safe_value(value):
+    try:
+        import pandas as pd
+
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            return str(value)
+    return value
+
+
+def _group_dict(group_by: list[str], group_key) -> dict:
+    if len(group_by) == 1:
+        if isinstance(group_key, tuple) and len(group_key) == 1:
+            values = group_key
+        else:
+            values = (group_key,)
+    else:
+        values = tuple(group_key)
+    return {column: _json_safe_value(value) for column, value in zip(group_by, values, strict=False)}
+
+
+def _check_min_replicates_constraint(
+    df,
+    series,
+    col,
+    raw_check,
+    stripped_to_actual,
+    max_row_detail: int,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    try:
+        from pandas.api.types import is_numeric_dtype
+    except Exception:
+        is_numeric_dtype = None
+
+    if not isinstance(raw_check, dict):
+        message = f"Column '{col}': min_replicates must be a mapping"
+        return [message], []
+
+    group_by, actual_group_by, missing = _resolve_group_columns(raw_check.get("group_by"), stripped_to_actual)
+    if missing:
+        message = f"Column '{col}': min_replicates group column(s) not found: {missing}"
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="min_replicates",
+            target=col,
+            group_by=group_by,
+            source_config_path=source_config_path,
+            status="failed",
+            manual_review_needed=False,
+            message=message,
+            violations=[],
+        )
+        return [message], []
+
+    if is_numeric_dtype is not None and not is_numeric_dtype(series):
+        message = f"Column '{col}': min_replicates target column must be numeric"
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="min_replicates",
+            target=col,
+            group_by=group_by,
+            source_config_path=source_config_path,
+            status="failed",
+            manual_review_needed=False,
+            message=message,
+            violations=[],
+        )
+        return [message], []
+
+    try:
+        min_count = int(raw_check.get("min_count"))
+    except (TypeError, ValueError):
+        message = f"Column '{col}': min_replicates.min_count must be a positive integer"
+        return [message], []
+    if min_count <= 0:
+        message = f"Column '{col}': min_replicates.min_count must be a positive integer"
+        return [message], []
+    grouped = df.groupby(actual_group_by, dropna=False, sort=False)
+    violations = []
+    row_violations = []
+    for group_key, group_df in grouped:
+        count = int(series.loc[group_df.index].notna().sum())
+        if count >= min_count:
+            continue
+        group_payload = _group_dict(group_by, group_key)
+        violations.append({"group": group_payload, "count": count, "expected": f">= {min_count}"})
+        for idx in group_df.index[:max_row_detail]:
+            row_violations.append(
+                {
+                    "row": str(idx),
+                    "column": col,
+                    "value": str(series.loc[idx]),
+                    "expected": f"min_replicates >= {min_count} for group {group_payload}",
+                    "violation_type": "min_replicates",
+                }
+            )
+
+    if not violations:
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="min_replicates",
+            target=col,
+            group_by=group_by,
+            source_config_path=source_config_path,
+            status="passed",
+            manual_review_needed=False,
+            message=f"All groups meet min_count={min_count}",
+            violations=[],
+        )
+        return [], []
+
+    message = f"Column '{col}': {len(violations)} group(s) below min_count={min_count}"
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="min_replicates",
+        target=col,
+        group_by=group_by,
+        source_config_path=source_config_path,
+        status="failed",
+        manual_review_needed=False,
+        message=message,
+        violations=violations,
+    )
+    return [message], row_violations
+
+
+def _check_grouped_cv_constraint(
+    df,
+    series,
+    col,
+    raw_check,
+    stripped_to_actual,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    try:
+        from pandas.api.types import is_numeric_dtype
+    except Exception:
+        is_numeric_dtype = None
+
+    if not isinstance(raw_check, dict):
+        message = f"Column '{col}': grouped_cv must be a mapping"
+        return [message]
+
+    group_by, actual_group_by, missing = _resolve_group_columns(raw_check.get("group_by"), stripped_to_actual)
+    if missing:
+        message = f"Column '{col}': grouped_cv group column(s) not found: {missing}"
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="grouped_cv",
+            target=col,
+            group_by=group_by,
+            source_config_path=source_config_path,
+            status="failed",
+            manual_review_needed=False,
+            message=message,
+            violations=[],
+        )
+        return [message]
+
+    if is_numeric_dtype is not None and not is_numeric_dtype(series):
+        message = f"Column '{col}': grouped_cv target column must be numeric"
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="grouped_cv",
+            target=col,
+            group_by=group_by,
+            source_config_path=source_config_path,
+            status="failed",
+            manual_review_needed=False,
+            message=message,
+            violations=[],
+        )
+        return [message]
+
+    try:
+        threshold = float(raw_check.get("threshold"))
+    except (TypeError, ValueError):
+        message = f"Column '{col}': grouped_cv.threshold must be a positive number"
+        return [message]
+    if threshold <= 0:
+        message = f"Column '{col}': grouped_cv.threshold must be a positive number"
+        return [message]
+    try:
+        min_count = int(raw_check.get("min_count", 2))
+    except (TypeError, ValueError):
+        message = f"Column '{col}': grouped_cv.min_count must be a positive integer"
+        return [message]
+    if min_count <= 0:
+        message = f"Column '{col}': grouped_cv.min_count must be a positive integer"
+        return [message]
+    warn_only = bool(raw_check.get("warn_only", True))
+    valid_df = df.loc[series.notna()]
+    grouped = valid_df.groupby(actual_group_by, dropna=False, sort=False)
+    violations = []
+    for group_key, group_df in grouped:
+        group_series = series.loc[group_df.index].dropna()
+        if len(group_series) < min_count:
+            continue
+        mean_val = group_series.mean()
+        if abs(mean_val) < 1e-9:
+            continue
+        cv = group_series.std() / abs(mean_val)
+        if cv > threshold:
+            violations.append(
+                {
+                    "group": _group_dict(group_by, group_key),
+                    "cv": round(float(cv), 4),
+                    "threshold": threshold,
+                    "count": int(len(group_series)),
+                }
+            )
+
+    if not violations:
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="grouped_cv",
+            target=col,
+            group_by=group_by,
+            source_config_path=source_config_path,
+            status="passed",
+            manual_review_needed=False,
+            message=f"All groups are within CV threshold {threshold}",
+            violations=[],
+        )
+        return []
+
+    status = "warning" if warn_only else "failed"
+    message = f"Column '{col}': {len(violations)} group(s) exceeded grouped_cv threshold {threshold}"
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="grouped_cv",
+        target=col,
+        group_by=group_by,
+        source_config_path=source_config_path,
+        status=status,
+        manual_review_needed=warn_only,
+        message=message,
+        violations=violations,
+    )
+    return [] if warn_only else [message]
 
 
 def _check_monotonic_constraint(series, col, mode: str, max_row_detail: int):

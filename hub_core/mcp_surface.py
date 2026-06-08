@@ -684,11 +684,13 @@ class GraphHubMCPServer:
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         ensure_local_files([str(data_path)])
-        contract_errors = self._validate_render_data_contract(
+        contract_result = self._validate_render_data_contract(
             data_path,
             required_columns=[x_column, y_column, *[str(key) for key in semantic_checks]],
             semantic_checks=semantic_checks,
         )
+        contract_errors = contract_result["errors"]
+        calculation_checks = contract_result["calculation_checks"]
         if contract_errors:
             return self._envelope(
                 "graphhub.render_csv_graph",
@@ -704,10 +706,19 @@ class GraphHubMCPServer:
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         if dry_run:
+            calculation_warnings = self._calculation_warnings(calculation_checks)
+            manual_review_needed = bool(calculation_checks.get("manual_review_needed"))
             return self._envelope(
                 "graphhub.render_csv_graph",
                 arguments,
-                summary="Render request validated in dry-run mode; no files were created.",
+                status="warning" if manual_review_needed else "ok",
+                summary=(
+                    "Render request validated with calculation warnings in dry-run mode; no files were created."
+                    if manual_review_needed
+                    else "Render request validated in dry-run mode; no files were created."
+                ),
+                warnings=calculation_warnings,
+                manual_review_needed=manual_review_needed,
                 is_dry_run=True,
                 job_id=job_id,
                 job_root=str(job_root),
@@ -720,6 +731,7 @@ class GraphHubMCPServer:
                 resolution_hint="",
                 artifact_status="validated",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                calculation_checks=calculation_checks,
             )
         self._activate_runtime_root_for_runtime_access()
         job_root = self._mcp_jobs_root() / job_id
@@ -778,10 +790,12 @@ class GraphHubMCPServer:
             preflight_warnings = self._preflight_warnings(preflight)
             baseline_comparison = self._baseline_comparison(output_path, arguments.get("baseline_path"))
             baseline_warnings = self._baseline_warnings(baseline_comparison)
+            calculation_warnings = self._calculation_warnings(calculation_checks)
             manual_review_needed = (
                 not bool(preflight.get("passed"))
                 or bool(preflight_warnings)
                 or (baseline_comparison["checked"] and not baseline_comparison["matched"])
+                or bool(calculation_checks.get("manual_review_needed"))
             )
             status = "warning" if manual_review_needed else "ok"
             artifact_status = self._artifact_status(preflight, baseline_comparison)
@@ -813,6 +827,7 @@ class GraphHubMCPServer:
                 "artifact_status": artifact_status,
                 "baseline_comparison": baseline_comparison,
                 "manual_review_needed": manual_review_needed,
+                "calculation_checks": calculation_checks,
             }
             status_payload = self._render_status_payload(
                 job_id=job_id,
@@ -825,6 +840,7 @@ class GraphHubMCPServer:
                 failure_stage="",
                 resolution_hint="",
             )
+            status_payload["calculation_checks"] = calculation_checks
             manifest_path.write_text(
                 json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
                 encoding="utf-8",
@@ -890,7 +906,7 @@ class GraphHubMCPServer:
             summary="Rendered CSV graph." if status == "ok" else "Rendered CSV graph with preflight warnings.",
             created_paths=created_paths,
             artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
-            warnings=preflight_warnings + baseline_warnings,
+            warnings=preflight_warnings + baseline_warnings + calculation_warnings,
             manual_review_needed=manual_review_needed,
             is_dry_run=False,
             job_id=job_id,
@@ -907,6 +923,7 @@ class GraphHubMCPServer:
             resolution_hint="",
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
+            calculation_checks=calculation_checks,
         )
 
     def _activate_runtime_root_for_runtime_access(self) -> None:
@@ -1595,6 +1612,16 @@ class GraphHubMCPServer:
         return [str(warning) for warning in raw_warnings] if isinstance(raw_warnings, list) else []
 
     @staticmethod
+    def _calculation_warnings(calculation_checks: dict[str, Any]) -> list[str]:
+        warnings = []
+        for check in calculation_checks.get("checks", []):
+            if check.get("status") == "warning":
+                name = check.get("name", "calculation_check")
+                message = check.get("message", "requires manual review")
+                warnings.append(f"{name}: {message}")
+        return warnings
+
+    @staticmethod
     def _file_sha256(path: Path) -> str:
         digest = hashlib.sha256()
         with path.open("rb") as handle:
@@ -2025,30 +2052,54 @@ class GraphHubMCPServer:
         *,
         required_columns: list[str],
         semantic_checks: dict[str, Any],
-    ) -> list[str]:
+    ) -> dict[str, Any]:
+        calculation_checks: list[dict[str, Any]] = []
+        empty_summary = {"checks": [], "quality_passed": True, "manual_review_needed": False}
         try:
             import pandas as pd
 
             df = _read_data_safe(str(data_path), pd)
         except Exception as exc:
-            return [f"Failed to read render data contract input: {exc}"]
+            return {
+                "errors": [f"Failed to read render data contract input: {exc}"],
+                "calculation_checks": empty_summary,
+            }
 
         stripped_to_actual = {}
         for actual_col in df.columns:
             stripped_col = str(actual_col).strip()
             if stripped_col in stripped_to_actual and stripped_to_actual[stripped_col] != actual_col:
-                return [
-                    "Ambiguous columns after strip normalization: "
-                    f"'{stripped_to_actual[stripped_col]}' and '{actual_col}'"
-                ]
+                return {
+                    "errors": [
+                        "Ambiguous columns after strip normalization: "
+                        f"'{stripped_to_actual[stripped_col]}' and '{actual_col}'"
+                    ],
+                    "calculation_checks": empty_summary,
+                }
             stripped_to_actual[stripped_col] = actual_col
 
         missing = [col for col in required_columns if str(col).strip() not in stripped_to_actual]
         if missing:
-            return [f"Missing required columns: {missing}"]
+            return {"errors": [f"Missing required columns: {missing}"], "calculation_checks": empty_summary}
 
-        semantic_errors, _row_violations = _validate_semantic_constraints(df, semantic_checks, stripped_to_actual)
-        return list(semantic_errors)
+        semantic_errors, _row_violations = _validate_semantic_constraints(
+            df,
+            semantic_checks,
+            stripped_to_actual,
+            calculation_checks=calculation_checks,
+            csv_rel_path=str(data_path),
+            source_config_path="project_config.yaml",
+        )
+        return {
+            "errors": list(semantic_errors),
+            "calculation_checks": {
+                "checks": calculation_checks,
+                "quality_passed": not any(
+                    check.get("status") in {"warning", "failed"} for check in calculation_checks
+                ),
+                "manual_review_needed": any(bool(check.get("manual_review_needed")) for check in calculation_checks),
+            },
+        }
 
     @staticmethod
     def _render_project_config(

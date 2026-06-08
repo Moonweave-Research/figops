@@ -413,6 +413,95 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(result["manual_review_needed"])
             self.assertEqual(result["warnings"], ["width exceeds journal max"])
 
+    def test_render_csv_graph_grouped_cv_warning_requires_manual_review(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = Path(tmpdir) / "input" / "data.csv"
+            data_path.parent.mkdir(parents=True)
+            with data_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["x", "y", "condition"])
+                writer.writeheader()
+                writer.writerows(
+                    [
+                        {"x": 0, "y": 10, "condition": "A"},
+                        {"x": 1, "y": 10, "condition": "A"},
+                        {"x": 2, "y": 1, "condition": "B"},
+                        {"x": 3, "y": 100, "condition": "B"},
+                    ]
+                )
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+
+            with patch(
+                "hub_core.mcp_surface.validate_figure_preflight",
+                return_value={"passed": True, "checks": [], "warnings": []},
+            ):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "semantic_checks": {
+                            "y": {"grouped_cv": {"group_by": ["condition"], "threshold": 0.15}}
+                        },
+                        "job_id": "grouped-cv-warning",
+                    },
+                )
+
+            self.assertEqual(result["status"], "warning")
+            self.assertTrue(result["manual_review_needed"])
+            self.assertTrue(any("grouped_cv" in warning for warning in result["warnings"]))
+            self.assertIn("calculation_checks", result)
+            self.assertFalse(result["calculation_checks"]["quality_passed"])
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            status = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
+            for payload in (manifest, status):
+                self.assertIn("calculation_checks", payload)
+                self.assertFalse(payload["calculation_checks"]["quality_passed"])
+                self.assertTrue(payload["calculation_checks"]["manual_review_needed"])
+                self.assertEqual(payload["calculation_checks"]["checks"][0]["name"], "grouped_cv")
+
+    def test_render_csv_graph_dry_run_grouped_cv_warning_requires_manual_review(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = Path(tmpdir) / "input" / "data.csv"
+            data_path.parent.mkdir(parents=True)
+            with data_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["x", "y", "condition"])
+                writer.writeheader()
+                writer.writerows(
+                    [
+                        {"x": 0, "y": 10, "condition": "A"},
+                        {"x": 1, "y": 10, "condition": "A"},
+                        {"x": 2, "y": 1, "condition": "B"},
+                        {"x": 3, "y": 100, "condition": "B"},
+                    ]
+                )
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "semantic_checks": {
+                        "y": {"grouped_cv": {"group_by": ["condition"], "threshold": 0.15}}
+                    },
+                    "job_id": "grouped-cv-dry-run",
+                    "dry_run": True,
+                },
+            )
+
+            self.assertEqual(result["status"], "warning")
+            self.assertTrue(result["manual_review_needed"])
+            self.assertTrue(result["is_dry_run"])
+            self.assertIn("calculation_checks", result)
+            self.assertTrue(any("grouped_cv" in warning for warning in result["warnings"]))
+            self.assertFalse(runtime_root.exists())
+
     def test_render_csv_graph_prefetches_input_before_reading_or_copying(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
