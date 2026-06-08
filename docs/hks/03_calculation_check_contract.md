@@ -21,15 +21,15 @@ Current `data_contract.csv_checks` supports:
 - monotonicity when declared,
 - minimum replicate count per declared group,
 - grouped CV warnings or failures per declared group.
+- log-scale positivity when declared,
+- error-bar source column validation,
+- SEM consistency against std/sqrt(n).
 
 ## Required Future Vocabulary
 
 Future calculation checks should use stable names:
 
-- `mean_sem`
-- `error_bar_source`
 - `linear_fit`
-- `log_scale_positive`
 - `outlier_flag`
 - `axis_unit`
 

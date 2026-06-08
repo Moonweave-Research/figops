@@ -80,6 +80,9 @@ data_contract:
         # value:
         #   min_replicates: { group_by: ["molarity"], min_count: 3 }
         #   grouped_cv: { group_by: ["molarity"], threshold: 0.15, warn_only: true }
+        #   log_scale_positive: true
+        #   error_bar_source: { column: "sem", source: "sem" }
+        #   mean_sem: { sem_column: "sem", std_column: "std", n_column: "n", tolerance: 1.0e-6 }
         # monotonic modes: increasing | decreasing | nondecreasing | nonincreasing
         # Unit-aware validation (requires pint): specify expected + actual units
         # current: { unit: "A", actual_unit: "mA" }  # auto-converts mA → A

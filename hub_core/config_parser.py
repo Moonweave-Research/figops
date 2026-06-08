@@ -94,6 +94,31 @@ def _validate_grouped_check_config(errors, *, column: str, check_name: str, raw_
         errors.append(f"Semantic grouped_cv.warn_only for '{column}' must be a boolean.")
 
 
+def _validate_errorbar_check_config(errors, *, column: str, raw_check: object) -> None:
+    if not isinstance(raw_check, dict):
+        errors.append(f"Semantic error_bar_source for '{column}' must be a mapping.")
+        return
+    error_column = raw_check.get("column")
+    if not isinstance(error_column, str) or not error_column.strip():
+        errors.append(f"Semantic error_bar_source.column for '{column}' must be a non-empty string.")
+    source = raw_check.get("source", "custom")
+    if not isinstance(source, str) or not source.strip():
+        errors.append(f"Semantic error_bar_source.source for '{column}' must be a non-empty string.")
+
+
+def _validate_mean_sem_check_config(errors, *, column: str, raw_check: object) -> None:
+    if not isinstance(raw_check, dict):
+        errors.append(f"Semantic mean_sem for '{column}' must be a mapping.")
+        return
+    for key in ("sem_column", "std_column", "n_column"):
+        value = raw_check.get(key)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"Semantic mean_sem.{key} for '{column}' must be a non-empty string.")
+    tolerance = raw_check.get("tolerance", 1.0e-6)
+    if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)) or tolerance < 0:
+        errors.append(f"Semantic mean_sem.tolerance for '{column}' must be a non-negative number.")
+
+
 def get_language_policy(config):
     raw = config.get("language_policy", {})
     if raw is None:
@@ -492,6 +517,22 @@ def validate_config(config):
                                 column=str(col),
                                 check_name="grouped_cv",
                                 raw_check=constraints["grouped_cv"],
+                            )
+                        if "log_scale_positive" in constraints and not isinstance(
+                            constraints["log_scale_positive"], bool
+                        ):
+                            errors.append(f"Semantic log_scale_positive for '{col}' must be a boolean.")
+                        if "error_bar_source" in constraints:
+                            _validate_errorbar_check_config(
+                                errors,
+                                column=str(col),
+                                raw_check=constraints["error_bar_source"],
+                            )
+                        if "mean_sem" in constraints:
+                            _validate_mean_sem_check_config(
+                                errors,
+                                column=str(col),
+                                raw_check=constraints["mean_sem"],
                             )
 
     golden_metrics = config.get("golden_metrics", [])

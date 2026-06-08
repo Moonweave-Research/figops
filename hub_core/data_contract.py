@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 
@@ -472,6 +473,46 @@ def _validate_semantic_constraints(
             )
             errors.extend(grouped_errors)
 
+        if constraints.get("log_scale_positive") is True:
+            log_errors, log_rows = _check_log_scale_positive_constraint(
+                series,
+                col,
+                max_row_detail,
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(log_errors)
+            row_violations.extend(log_rows)
+
+        if "error_bar_source" in constraints:
+            errorbar_errors, errorbar_rows = _check_error_bar_source_constraint(
+                df,
+                col,
+                constraints["error_bar_source"],
+                stripped_to_actual,
+                max_row_detail,
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(errorbar_errors)
+            row_violations.extend(errorbar_rows)
+
+        if "mean_sem" in constraints:
+            mean_sem_errors, mean_sem_rows = _check_mean_sem_constraint(
+                df,
+                col,
+                constraints["mean_sem"],
+                stripped_to_actual,
+                max_row_detail,
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(mean_sem_errors)
+            row_violations.extend(mean_sem_rows)
+
         # 6. Unit check (requires pint)
         expected_unit = constraints.get('unit')
         actual_unit = constraints.get('actual_unit')
@@ -827,6 +868,245 @@ def _check_grouped_cv_constraint(
         violations=violations,
     )
     return [] if warn_only else [message]
+
+
+def _numeric_series_or_error(df, stripped_to_actual, column_name: str, check_name: str):
+    try:
+        from pandas.api.types import is_numeric_dtype
+    except Exception:
+        is_numeric_dtype = None
+
+    normalized = str(column_name).strip()
+    actual = stripped_to_actual.get(normalized)
+    if actual is None:
+        return None, f"{check_name} column '{column_name}' not found"
+    series = df[actual]
+    if is_numeric_dtype is not None and not is_numeric_dtype(series):
+        return None, f"{check_name} column '{column_name}' must be numeric"
+    return series, None
+
+
+def _check_log_scale_positive_constraint(
+    series,
+    col,
+    max_row_detail: int,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    try:
+        from pandas.api.types import is_numeric_dtype
+    except Exception:
+        is_numeric_dtype = None
+
+    if is_numeric_dtype is not None and not is_numeric_dtype(series):
+        message = f"Column '{col}': log_scale_positive target column must be numeric"
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="log_scale_positive",
+            target=col,
+            group_by=[],
+            source_config_path=source_config_path,
+            status="failed",
+            manual_review_needed=False,
+            message=message,
+            violations=[],
+        )
+        return [message], []
+
+    mask = series.notna() & (series <= 0)
+    if not mask.any():
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="log_scale_positive",
+            target=col,
+            group_by=[],
+            source_config_path=source_config_path,
+            status="passed",
+            manual_review_needed=False,
+            message=f"Column '{col}' contains only positive non-null values for log scale",
+            violations=[],
+        )
+        return [], []
+
+    bad_rows = series[mask].index[:max_row_detail]
+    violations = [{"row": str(idx), "value": _json_safe_value(series.loc[idx]), "expected": "> 0"} for idx in bad_rows]
+    row_violations = [
+        {
+            "row": str(idx),
+            "column": col,
+            "value": str(series.loc[idx]),
+            "expected": "> 0 for log scale",
+            "violation_type": "log_scale_non_positive",
+        }
+        for idx in bad_rows
+    ]
+    message = f"Column '{col}': {int(mask.sum())} non-positive value(s) invalid for log scale"
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="log_scale_positive",
+        target=col,
+        group_by=[],
+        source_config_path=source_config_path,
+        status="failed",
+        manual_review_needed=False,
+        message=message,
+        violations=violations,
+    )
+    return [message], row_violations
+
+
+def _check_error_bar_source_constraint(
+    df,
+    col,
+    raw_check,
+    stripped_to_actual,
+    max_row_detail: int,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    if not isinstance(raw_check, dict):
+        return [f"Column '{col}': error_bar_source must be a mapping"], []
+    error_column = raw_check.get("column")
+    error_series, error = _numeric_series_or_error(df, stripped_to_actual, str(error_column), "error_bar_source")
+    if error:
+        return [f"Column '{col}': {error}"], []
+
+    mask = error_series.isna() | (error_series < 0)
+    if not mask.any():
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="error_bar_source",
+            target=col,
+            group_by=[],
+            source_config_path=source_config_path,
+            status="passed",
+            manual_review_needed=False,
+            message=f"Error bar column '{error_column}' is valid",
+            violations=[],
+        )
+        return [], []
+
+    bad_rows = error_series[mask].index[:max_row_detail]
+    violations = [
+        {
+            "row": str(idx),
+            "column": str(error_column),
+            "value": _json_safe_value(error_series.loc[idx]),
+            "expected": ">= 0",
+        }
+        for idx in bad_rows
+    ]
+    row_violations = [
+        {
+            "row": str(idx),
+            "column": str(error_column),
+            "value": str(error_series.loc[idx]),
+            "expected": "non-null and >= 0",
+            "violation_type": "invalid_error_bar",
+        }
+        for idx in bad_rows
+    ]
+    message = f"Column '{col}': {int(mask.sum())} invalid error-bar value(s) in '{error_column}'"
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="error_bar_source",
+        target=col,
+        group_by=[],
+        source_config_path=source_config_path,
+        status="failed",
+        manual_review_needed=False,
+        message=message,
+        violations=violations,
+    )
+    return [message], row_violations
+
+
+def _check_mean_sem_constraint(
+    df,
+    col,
+    raw_check,
+    stripped_to_actual,
+    max_row_detail: int,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    if not isinstance(raw_check, dict):
+        return [f"Column '{col}': mean_sem must be a mapping"], []
+
+    sem_column = raw_check.get("sem_column")
+    std_column = raw_check.get("std_column")
+    n_column = raw_check.get("n_column")
+    sem, sem_error = _numeric_series_or_error(df, stripped_to_actual, str(sem_column), "mean_sem")
+    std, std_error = _numeric_series_or_error(df, stripped_to_actual, str(std_column), "mean_sem")
+    n_values, n_error = _numeric_series_or_error(df, stripped_to_actual, str(n_column), "mean_sem")
+    errors = [error for error in (sem_error, std_error, n_error) if error]
+    if errors:
+        return [f"Column '{col}': {errors[0]}"], []
+
+    tolerance = float(raw_check.get("tolerance", 1.0e-6))
+    expected = std / n_values.map(math.sqrt)
+    mask = sem.isna() | std.isna() | n_values.isna() | (sem < 0) | (std < 0) | (n_values <= 0)
+    mask = mask | ((sem - expected).abs() > tolerance)
+    if not mask.any():
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="mean_sem",
+            target=col,
+            group_by=[],
+            source_config_path=source_config_path,
+            status="passed",
+            manual_review_needed=False,
+            message=f"SEM column '{sem_column}' matches std/sqrt(n)",
+            violations=[],
+        )
+        return [], []
+
+    bad_rows = sem[mask].index[:max_row_detail]
+    violations = [
+        {
+            "row": str(idx),
+            "sem": _json_safe_value(sem.loc[idx]),
+            "expected": _json_safe_value(expected.loc[idx]) if idx in expected.index else None,
+            "tolerance": tolerance,
+        }
+        for idx in bad_rows
+    ]
+    row_violations = [
+        {
+            "row": str(idx),
+            "column": str(sem_column),
+            "value": str(sem.loc[idx]),
+            "expected": f"std/sqrt(n) within tolerance {tolerance}",
+            "violation_type": "mean_sem_mismatch",
+        }
+        for idx in bad_rows
+    ]
+    message = f"Column '{col}': {int(mask.sum())} SEM value(s) inconsistent with std/sqrt(n)"
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="mean_sem",
+        target=col,
+        group_by=[],
+        source_config_path=source_config_path,
+        status="failed",
+        manual_review_needed=False,
+        message=message,
+        violations=violations,
+    )
+    return [message], row_violations
 
 
 def _check_monotonic_constraint(series, col, mode: str, max_row_detail: int):
