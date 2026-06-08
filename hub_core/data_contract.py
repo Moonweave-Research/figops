@@ -473,17 +473,33 @@ def _validate_semantic_constraints(
             )
             errors.extend(grouped_errors)
 
-        if constraints.get("log_scale_positive") is True:
-            log_errors, log_rows = _check_log_scale_positive_constraint(
-                series,
-                col,
-                max_row_detail,
-                calculation_checks=calculation_checks,
-                csv_rel_path=csv_rel_path,
-                source_config_path=source_config_path,
-            )
-            errors.extend(log_errors)
-            row_violations.extend(log_rows)
+        if "log_scale_positive" in constraints:
+            if constraints.get("log_scale_positive") is True:
+                log_errors, log_rows = _check_log_scale_positive_constraint(
+                    series,
+                    col,
+                    max_row_detail,
+                    calculation_checks=calculation_checks,
+                    csv_rel_path=csv_rel_path,
+                    source_config_path=source_config_path,
+                )
+                errors.extend(log_errors)
+                row_violations.extend(log_rows)
+            elif constraints.get("log_scale_positive") is not False:
+                message = f"Column '{col}': log_scale_positive must be a boolean"
+                _append_calculation_check(
+                    calculation_checks,
+                    csv_rel_path=csv_rel_path,
+                    name="log_scale_positive",
+                    target=col,
+                    group_by=[],
+                    source_config_path=source_config_path,
+                    status="failed",
+                    manual_review_needed=False,
+                    message=message,
+                    violations=[],
+                )
+                errors.append(message)
 
         if "error_bar_source" in constraints:
             errorbar_errors, errorbar_rows = _check_error_bar_source_constraint(
@@ -608,19 +624,55 @@ def _resolve_group_columns(raw_group_by, stripped_to_actual):
 
 
 def _json_safe_value(value):
+    if _is_nullish(value):
+        return None
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except Exception:
+            return str(value)
+    if isinstance(value, (float, int)) and not isinstance(value, bool):
+        try:
+            if not math.isfinite(float(value)):
+                return None
+        except (TypeError, ValueError):
+            return str(value)
+    return value
+
+
+def _is_nullish(value) -> bool:
     try:
         import pandas as pd
 
         if pd.isna(value):
-            return None
+            return True
     except Exception:
         pass
-    if hasattr(value, "item"):
-        try:
-            return value.item()
-        except Exception:
-            return str(value)
-    return value
+    return False
+
+
+def _append_failed_calculation_check(
+    calculation_checks,
+    *,
+    csv_rel_path: str,
+    name: str,
+    target: str,
+    source_config_path: str,
+    message: str,
+    violations: list[dict] | None = None,
+) -> None:
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name=name,
+        target=target,
+        group_by=[],
+        source_config_path=source_config_path,
+        status="failed",
+        manual_review_needed=False,
+        message=message,
+        violations=violations or [],
+    )
 
 
 def _group_dict(group_by: list[str], group_key) -> dict:
@@ -972,11 +1024,29 @@ def _check_error_bar_source_constraint(
     source_config_path: str,
 ):
     if not isinstance(raw_check, dict):
-        return [f"Column '{col}': error_bar_source must be a mapping"], []
+        message = f"Column '{col}': error_bar_source must be a mapping"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="error_bar_source",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
     error_column = raw_check.get("column")
     error_series, error = _numeric_series_or_error(df, stripped_to_actual, str(error_column), "error_bar_source")
     if error:
-        return [f"Column '{col}': {error}"], []
+        message = f"Column '{col}': {error}"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="error_bar_source",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
 
     mask = error_series.isna() | (error_series < 0)
     if not mask.any():
@@ -1042,7 +1112,16 @@ def _check_mean_sem_constraint(
     source_config_path: str,
 ):
     if not isinstance(raw_check, dict):
-        return [f"Column '{col}': mean_sem must be a mapping"], []
+        message = f"Column '{col}': mean_sem must be a mapping"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="mean_sem",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
 
     sem_column = raw_check.get("sem_column")
     std_column = raw_check.get("std_column")
@@ -1052,12 +1131,53 @@ def _check_mean_sem_constraint(
     n_values, n_error = _numeric_series_or_error(df, stripped_to_actual, str(n_column), "mean_sem")
     errors = [error for error in (sem_error, std_error, n_error) if error]
     if errors:
-        return [f"Column '{col}': {errors[0]}"], []
+        message = f"Column '{col}': {errors[0]}"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="mean_sem",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
 
-    tolerance = float(raw_check.get("tolerance", 1.0e-6))
-    expected = std / n_values.map(math.sqrt)
-    mask = sem.isna() | std.isna() | n_values.isna() | (sem < 0) | (std < 0) | (n_values <= 0)
-    mask = mask | ((sem - expected).abs() > tolerance)
+    try:
+        tolerance = float(raw_check.get("tolerance", 1.0e-6))
+    except (TypeError, ValueError):
+        message = f"Column '{col}': mean_sem.tolerance must be a non-negative number"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="mean_sem",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+    if tolerance < 0:
+        message = f"Column '{col}': mean_sem.tolerance must be a non-negative number"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="mean_sem",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    finite_mask = sem.map(lambda value: math.isfinite(float(value)) if not _is_nullish(value) else False)
+    finite_mask = finite_mask & std.map(lambda value: math.isfinite(float(value)) if not _is_nullish(value) else False)
+    finite_mask = finite_mask & n_values.map(
+        lambda value: math.isfinite(float(value)) if not _is_nullish(value) else False
+    )
+    valid_mask = finite_mask & (sem >= 0) & (std >= 0) & (n_values > 0)
+    expected = sem.copy()
+    expected[:] = None
+    expected.loc[valid_mask] = std.loc[valid_mask] / n_values.loc[valid_mask].map(math.sqrt)
+    mask = ~valid_mask
+    mask = mask | (valid_mask & ((sem - expected).abs() > tolerance))
     if not mask.any():
         _append_calculation_check(
             calculation_checks,

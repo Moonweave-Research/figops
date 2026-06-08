@@ -465,6 +465,105 @@ class TestLogErrorbarCalculationChecks(unittest.TestCase):
             self.assertEqual(payload["checks"][0]["name"], "mean_sem")
             self.assertEqual(payload["checks"][0]["violations"][0]["row"], "0")
 
+    def test_mean_sem_invalid_n_fails_without_crashing(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_mean_sem_bad_n_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("mean,std,sem,n\n10,2,1,-4\n20,2,1,0\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["mean", "std", "sem", "n"],
+                            "semantic_checks": {
+                                "mean": {
+                                    "mean_sem": {"sem_column": "sem", "std_column": "std", "n_column": "n"}
+                                }
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            payload = json.loads(sidecar.read_text(encoding="utf-8"))
+            self.assertEqual(payload["checks"][0]["name"], "mean_sem")
+            self.assertFalse(payload["quality_passed"])
+
+    def test_mean_sem_bad_tolerance_fails_without_crashing(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_mean_sem_bad_tolerance_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("mean,std,sem,n\n10,2,1,4\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["mean", "std", "sem", "n"],
+                            "semantic_checks": {
+                                "mean": {
+                                    "mean_sem": {
+                                        "sem_column": "sem",
+                                        "std_column": "std",
+                                        "n_column": "n",
+                                        "tolerance": "bad",
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_dependency_column_failure_records_calculation_check(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_errorbar_missing_dep_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("mean\n1\n2\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["mean"],
+                            "semantic_checks": {
+                                "mean": {"error_bar_source": {"column": "sem", "source": "sem"}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            payload = json.loads(sidecar.read_text(encoding="utf-8"))
+            self.assertEqual(payload["checks"][0]["name"], "error_bar_source")
+            self.assertEqual(payload["checks"][0]["status"], "failed")
+
+    def test_log_scale_positive_malformed_runtime_value_fails(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_log_malformed_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("mean\n1\n2\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["mean"],
+                            "semantic_checks": {"mean": {"log_scale_positive": "true"}},
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
     def test_grouped_cv_warn_only_writes_aggregate_calculation_sidecar(self):
         with tempfile.TemporaryDirectory(prefix="dcp_grouped_cv_") as tmpdir:
             data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
