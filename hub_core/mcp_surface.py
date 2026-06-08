@@ -15,19 +15,20 @@ from typing import Any, Callable
 
 import yaml
 
+from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
+
 from .config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS, find_config_path, validate_config
 from .data_contract import _read_data_safe, _validate_semantic_constraints
 from .figure_preflight import validate_figure_preflight
+from .project_discovery import ProjectDiscoveryService
 from .project_normalization import (
     apply_normalize_project,
     apply_scaffold_project,
     plan_normalize_project,
     plan_scaffold_project,
 )
-from .project_discovery import ProjectDiscoveryService
 from .runtime_paths import preview_runtime_root, resolve_runtime_root, runtime_root_lookup_candidates
 from .utils import ensure_local_files, get_hub_path, get_research_root
-from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
 
 TOOL_NAMES = (
     "graphhub.health",
@@ -72,7 +73,11 @@ def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_queue: mul
 
 def _batch_discovery_worker(root: str, max_depth: int, result_queue: multiprocessing.Queue) -> None:
     try:
-        projects = ProjectDiscoveryService(root, include_worktrees=True, include_ephemeral=True).discover(max_depth=max_depth)
+        projects = ProjectDiscoveryService(
+            root,
+            include_worktrees=True,
+            include_ephemeral=True,
+        ).discover(max_depth=max_depth)
         result_queue.put({"status": "ok", "projects": projects})
     except Exception as exc:
         result_queue.put({"status": "error", "error": str(exc)})
@@ -582,9 +587,24 @@ class GraphHubMCPServer:
         overwrite = bool(arguments.get("overwrite", False))
         job_id = self._render_job_id(arguments.get("job_id"))
         job_root = self._mcp_jobs_root() / job_id
-        data_path = self._input_file_path(arguments.get("data_path"))
-        x_column = self._required_string(arguments, "x_column")
-        y_column = self._required_string(arguments, "y_column")
+        try:
+            data_path = self._input_file_path(arguments.get("data_path"))
+            x_column = self._required_string(arguments, "x_column")
+            y_column = self._required_string(arguments, "y_column")
+        except ValueError as exc:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid CSV input settings.",
+                errors=[str(exc)],
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+                failure_stage="CONTRACT",
+                resolution_hint="Fix data_path and CSV column inputs before rendering.",
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+            )
         plot_type = str(arguments.get("plot_type") or "scatter").strip().lower()
         target_format = str(arguments.get("target_format") or "nature").strip().lower()
         profile = str(arguments.get("profile") or DEFAULT_PROFILE).strip() or DEFAULT_PROFILE
@@ -598,9 +618,14 @@ class GraphHubMCPServer:
                 arguments,
                 status="error",
                 summary="Render request has invalid plot settings.",
-                errors=[f"Invalid plot_type '{plot_type}'. Supported: {', '.join(sorted(SUPPORTED_RENDER_PLOT_TYPES))}."],
+                errors=[
+                    f"Invalid plot_type '{plot_type}'. Supported: "
+                    f"{', '.join(sorted(SUPPORTED_RENDER_PLOT_TYPES))}."
+                ],
                 manual_review_needed=True,
                 is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Use a supported plot_type.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
@@ -614,6 +639,8 @@ class GraphHubMCPServer:
                 errors=style_errors,
                 manual_review_needed=True,
                 is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Use a supported target_format, output_format, and profile.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
@@ -626,6 +653,8 @@ class GraphHubMCPServer:
                 errors=["semantic_checks must be an object."],
                 manual_review_needed=True,
                 is_dry_run=dry_run,
+                failure_stage="CONTRACT",
+                resolution_hint="Provide semantic_checks as an object keyed by CSV column.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
@@ -647,6 +676,8 @@ class GraphHubMCPServer:
                 errors=config_errors,
                 manual_review_needed=True,
                 is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Fix the generated render project_config settings.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
@@ -665,6 +696,8 @@ class GraphHubMCPServer:
                 errors=contract_errors,
                 manual_review_needed=True,
                 is_dry_run=dry_run,
+                failure_stage="CONTRACT",
+                resolution_hint="Fix the CSV data contract, data_path, columns, or semantic_checks.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
@@ -681,6 +714,8 @@ class GraphHubMCPServer:
                 manifest_path=str(job_root / "manifest.json"),
                 style_summary={"target_format": target_format, "profile": profile, "output_format": output_format},
                 visual_preflight_status={"passed": None, "checks": [], "warnings": ["dry_run"]},
+                failure_stage="",
+                resolution_hint="",
                 artifact_status="validated",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
@@ -697,6 +732,8 @@ class GraphHubMCPServer:
                 is_dry_run=False,
                 job_id=job_id,
                 job_root=str(job_root),
+                failure_stage="EXPORT",
+                resolution_hint="Set overwrite=true to replace the existing MCP render job.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
@@ -709,6 +746,8 @@ class GraphHubMCPServer:
             output_path = job_root / "results" / "figures" / f"graph.{output_format}"
             config_path = job_root / "project_config.yaml"
             manifest_path = job_root / "manifest.json"
+            status_path = job_root / "status.json"
+            latest_dir = self.runtime_root / "_latest" / "mcp_render"
             job_data_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(data_path, job_data_path)
@@ -744,17 +783,21 @@ class GraphHubMCPServer:
             )
             status = "warning" if manual_review_needed else "ok"
             artifact_status = self._artifact_status(preflight, baseline_comparison)
+            created_paths.extend([str(manifest_path), str(status_path)])
             manifest = {
                 "job_id": job_id,
                 "job_root": str(job_root),
                 "source_data_path": str(data_path),
                 "copied_data_path": str(job_data_path),
                 "config_path": str(config_path),
+                "status_path": str(status_path),
+                "latest_dir": str(latest_dir),
+                "latest_alias": str(latest_dir),
                 "figures": figures,
                 "diagrams": [],
                 "assemblies": [],
                 "logs": [],
-                "created_paths": created_paths + [str(manifest_path)],
+                "created_paths": created_paths,
                 "modified_paths": [],
                 "skipped_paths": [],
                 "style_summary": {
@@ -763,16 +806,36 @@ class GraphHubMCPServer:
                     "output_format": output_format,
                 },
                 "visual_preflight_status": preflight,
+                "failure_stage": "",
+                "resolution_hint": "",
                 "artifact_status": artifact_status,
                 "baseline_comparison": baseline_comparison,
                 "manual_review_needed": manual_review_needed,
             }
+            status_payload = self._render_status_payload(
+                job_id=job_id,
+                status=status,
+                summary="Rendered CSV graph." if status == "ok" else "Rendered CSV graph with preflight warnings.",
+                manifest_path=manifest_path,
+                output_path=output_path,
+                artifact_status=artifact_status,
+                manual_review_needed=manual_review_needed,
+                failure_stage="",
+                resolution_hint="",
+            )
             manifest_path.write_text(
                 json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
                 encoding="utf-8",
             )
-            created_paths.append(str(manifest_path))
+            status_path.write_text(
+                json.dumps(status_payload, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            latest_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(manifest_path, latest_dir / "manifest.json")
+            shutil.copy2(status_path, latest_dir / "status.json")
         except Exception as exc:
+            failure_stage = "TIMEOUT" if "timed out" in str(exc).lower() else "PLOT"
             return self._envelope(
                 "graphhub.render_csv_graph",
                 arguments,
@@ -784,6 +847,12 @@ class GraphHubMCPServer:
                 is_dry_run=False,
                 job_id=job_id,
                 job_root=str(job_root),
+                failure_stage=failure_stage,
+                resolution_hint=(
+                    "Increase the render timeout or simplify the figure."
+                    if failure_stage == "TIMEOUT"
+                    else "Inspect the render engine error and graph input settings."
+                ),
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
@@ -803,8 +872,13 @@ class GraphHubMCPServer:
             output_path=str(output_path),
             config_path=str(config_path),
             manifest_path=str(manifest_path),
+            status_path=str(status_path),
+            latest_dir=str(latest_dir),
+            latest_alias=str(latest_dir),
             style_summary=manifest["style_summary"],
             visual_preflight_status=preflight,
+            failure_stage="",
+            resolution_hint="",
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
         )
@@ -812,6 +886,32 @@ class GraphHubMCPServer:
     def _activate_runtime_root_for_runtime_access(self) -> None:
         if not self._runtime_root_explicit:
             self.runtime_root = Path(resolve_runtime_root()).expanduser().resolve()
+
+    @staticmethod
+    def _render_status_payload(
+        *,
+        job_id: str,
+        status: str,
+        summary: str,
+        manifest_path: Path,
+        output_path: Path,
+        artifact_status: str,
+        manual_review_needed: bool,
+        failure_stage: str,
+        resolution_hint: str,
+    ) -> dict[str, Any]:
+        return {
+            "engine_target": "graphhub_mcp_render",
+            "job_id": job_id,
+            "status": status,
+            "summary": summary,
+            "manifest_path": str(manifest_path),
+            "output_path": str(output_path),
+            "artifact_status": artifact_status,
+            "manual_review_needed": manual_review_needed,
+            "failure_stage": failure_stage,
+            "resolution_hint": resolution_hint,
+        }
 
     @staticmethod
     def _run_render_bridge_figure(spec_payload: dict[str, Any]) -> None:
@@ -870,7 +970,11 @@ class GraphHubMCPServer:
         preflight = manifest.get("visual_preflight_status") or {}
         figures = manifest.get("figures") if isinstance(manifest.get("figures"), list) else []
         preflight_warnings = self._preflight_warnings(preflight)
-        artifact_path = Path(str(figures[0]["path"])) if figures and isinstance(figures[0], dict) and figures[0].get("path") else None
+        artifact_path = (
+            Path(str(figures[0]["path"]))
+            if figures and isinstance(figures[0], dict) and figures[0].get("path")
+            else None
+        )
         baseline_comparison = (
             self._baseline_comparison(artifact_path, arguments.get("baseline_path"))
             if arguments.get("baseline_path")
@@ -895,11 +999,19 @@ class GraphHubMCPServer:
             modified_paths=self._manifest_path_list(manifest, "modified_paths"),
             skipped_paths=self._manifest_path_list(manifest, "skipped_paths"),
             manual_review_needed=manual_review_needed,
+            job_id=job_id,
             figures=figures,
             diagrams=manifest.get("diagrams") or [],
             assemblies=manifest.get("assemblies") or [],
             logs=manifest.get("logs") or [],
-            provenance={"manifest_path": str(manifest_path), "job_root": manifest.get("job_root", "")},
+            provenance={
+                "job_id": job_id,
+                "manifest_path": str(manifest_path),
+                "status_path": str(manifest.get("status_path", "")),
+                "latest_dir": str(manifest.get("latest_dir", "")),
+                "latest_alias": str(manifest.get("latest_alias", "")),
+                "job_root": manifest.get("job_root", ""),
+            },
             visual_preflight_status=preflight,
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
@@ -1166,7 +1278,10 @@ class GraphHubMCPServer:
             manifest_path = batch_root / "batch_manifest.json"
             manifest["batch_root"] = str(batch_root)
             batch_root.mkdir(parents=True, exist_ok=True)
-            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
             created_paths.append(str(manifest_path))
             log_paths.append(str(manifest_path))
 
@@ -1433,7 +1548,12 @@ class GraphHubMCPServer:
         return min(MCP_BATCH_MAX_PROJECTS, max(1, count))
 
     @staticmethod
-    def _discover_batch_projects(root: Path, *, max_depth: int, timeout_seconds: float) -> tuple[list[Any], bool, list[str]]:
+    def _discover_batch_projects(
+        root: Path,
+        *,
+        max_depth: int,
+        timeout_seconds: float,
+    ) -> tuple[list[Any], bool, list[str]]:
         result_queue: multiprocessing.Queue = multiprocessing.Queue(maxsize=1)
         process = multiprocessing.Process(
             target=_batch_discovery_worker,

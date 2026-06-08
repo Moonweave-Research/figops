@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import yaml
+
 from hub_core.mcp_surface import GraphHubMCPServer, _handle_json_rpc, list_tool_definitions
 
 
@@ -167,13 +168,28 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(str(Path(result["output_path"]).resolve()).startswith(str(runtime_root.resolve())))
             self.assertTrue(Path(result["config_path"]).is_file())
             self.assertTrue(Path(result["manifest_path"]).is_file())
+            self.assertEqual(result["failure_stage"], "")
+            self.assertEqual(result["resolution_hint"], "")
+            self.assertTrue(Path(result["status_path"]).is_file())
+            self.assertTrue(Path(result["latest_dir"]).is_dir())
+            self.assertEqual(result["latest_alias"], result["latest_dir"])
+            self.assertTrue((Path(result["latest_dir"]) / "manifest.json").is_file())
+            self.assertTrue((Path(result["latest_dir"]) / "status.json").is_file())
             self.assertEqual(_snapshot_tree(tmp_root / "input"), source_snapshot)
             self.assertFalse((tmp_root / "input" / "project_config.yaml").exists())
             self.assertTrue(any(path.endswith("project_config.yaml") for path in result["created_paths"]))
             self.assertTrue(any(path.endswith("graph.png") for path in result["created_paths"]))
+            self.assertTrue(any(path.endswith("status.json") for path in result["created_paths"]))
 
             manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            status = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
             self.assertEqual(manifest["job_id"], "render-demo")
+            self.assertEqual(manifest["status_path"], result["status_path"])
+            self.assertEqual(manifest["latest_dir"], result["latest_dir"])
+            self.assertEqual(manifest["latest_alias"], result["latest_alias"])
+            self.assertEqual(status["job_id"], "render-demo")
+            self.assertEqual(status["status"], result["status"])
+            self.assertEqual(status["failure_stage"], "")
             self.assertEqual(manifest["style_summary"]["target_format"], "nature_surfur")
             self.assertEqual(manifest["visual_preflight_status"]["passed"], True)
             config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
@@ -201,10 +217,15 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "artifact-demo"})
 
             self.assertIn(collected["status"], {"ok", "warning"})
+            self.assertEqual(collected["job_id"], "artifact-demo")
+            self.assertEqual(collected["provenance"]["job_id"], "artifact-demo")
             self.assertEqual(len(collected["figures"]), 1)
             self.assertTrue(Path(collected["figures"][0]["path"]).is_file())
             self.assertTrue(any(path.endswith("graph.png") for path in collected["created_paths"]))
             self.assertTrue(Path(collected["provenance"]["manifest_path"]).is_file())
+            self.assertTrue(Path(collected["provenance"]["status_path"]).is_file())
+            self.assertTrue(Path(collected["provenance"]["latest_dir"]).is_dir())
+            self.assertEqual(collected["provenance"]["latest_alias"], collected["provenance"]["latest_dir"])
             self.assertEqual(collected["visual_preflight_status"]["passed"], True)
 
     def test_render_csv_graph_rejects_overwrite_without_flag(self):
@@ -217,6 +238,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertIn(first["status"], {"ok", "warning"})
             self.assertEqual(second["status"], "error")
+            self.assertEqual(second["failure_stage"], "EXPORT")
+            self.assertIn("overwrite=true", second["resolution_hint"])
             self.assertTrue(second["manual_review_needed"])
             self.assertIn("already exists", second["errors"][0])
             self.assertNotIn(str(Path(tmpdir).resolve()), second["errors"][0])
@@ -235,6 +258,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             )
 
             self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertIn("profile", result["resolution_hint"])
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("Invalid profile", result["errors"][0])
             self.assertFalse((runtime_root / "mcp_jobs").exists())
@@ -252,6 +277,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             )
 
             self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertIn("plot_type", result["resolution_hint"])
             self.assertIn("plot_type", result["errors"][0])
             self.assertFalse((runtime_root / "mcp_jobs").exists())
 
@@ -271,6 +298,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 )
 
             self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn("CSV", result["resolution_hint"])
             self.assertIn("exceeds", result["errors"][0])
             self.assertFalse((runtime_root / "mcp_jobs").exists())
 
@@ -287,6 +316,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             serialized = json.dumps(result, sort_keys=True)
             self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn("data_path", result["resolution_hint"])
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("data_path is not a file", result["errors"][0])
             self.assertNotIn(str(missing_path), serialized)
@@ -401,6 +432,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 )
 
             self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "TIMEOUT")
+            self.assertIn("timeout", result["resolution_hint"].lower())
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("timed out", result["errors"][0])
             self.assertTrue(str(Path(result["job_root"]).resolve()).startswith(str(runtime_root.resolve())))
@@ -419,6 +452,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 )
 
             self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "PLOT")
+            self.assertIn("render", result["resolution_hint"].lower())
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("runtime://mcp_jobs/path-demo/results/figures/graph.png", result["errors"][0])
             self.assertNotIn(str(runtime_root.resolve()), result["errors"][0])
@@ -451,6 +486,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 )
 
             self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn("data contract", result["resolution_hint"].lower())
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("input://data_path", result["errors"][0])
             self.assertNotIn(str(data_path.resolve()), result["errors"][0])
@@ -545,6 +582,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             )
 
             self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn("semantic_checks", result["resolution_hint"])
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("out of range", result["errors"][0])
             self.assertFalse((runtime_root / "mcp_jobs").exists())
@@ -562,6 +601,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             )
 
             self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn("semantic_checks", result["resolution_hint"])
             self.assertIn("semantic_checks must be an object", result["errors"][0])
             self.assertFalse((runtime_root / "mcp_jobs").exists())
 
