@@ -20,6 +20,7 @@ from urllib.parse import unquote, urlsplit
 
 import yaml
 
+from themes.style_packs import list_style_packs
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
 
 from .config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS, find_config_path, validate_config
@@ -187,6 +188,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "output_formats": {"type": "array", "items": {"type": "string"}},
                     "profiles": {"type": "array", "items": {"type": "string"}},
                     "profile_aliases": {"type": "object"},
+                    "style_packs": {"type": "array", "items": {"type": "object"}},
                     "default_target_format": {"type": "string"},
                     "default_profile": {"type": "string"},
                 }
@@ -592,6 +594,7 @@ class GraphHubMCPServer:
             output_formats=sorted(ALLOWED_OUTPUT_FORMATS),
             profiles=list_profiles(),
             profile_aliases=dict(sorted(PROFILE_ALIASES.items())),
+            style_packs=list_style_packs(),
             default_target_format="nature",
             default_profile=DEFAULT_PROFILE,
         )
@@ -2452,6 +2455,7 @@ class GraphHubMCPServer:
             "output_formats": sorted(ALLOWED_OUTPUT_FORMATS),
             "profiles": list_profiles(),
             "profile_aliases": dict(sorted(PROFILE_ALIASES.items())),
+            "style_packs": list_style_packs(),
             "default_target_format": "nature",
             "default_profile": DEFAULT_PROFILE,
         }

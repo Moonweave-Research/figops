@@ -138,6 +138,8 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(result["output_formats"], sorted(ALLOWED_OUTPUT_FORMATS))
         self.assertEqual(result["profiles"], list_profiles())
         self.assertEqual(result["profile_aliases"], dict(sorted(PROFILE_ALIASES.items())))
+        self.assertIn("style_packs", result)
+        self.assertTrue(any(pack["name"] == "surfur_internal" for pack in result["style_packs"]))
         self.assertIn("nature_surfur", result["target_formats"])
 
     def test_read_only_tools_use_fixture_root_without_writing_files(self):
