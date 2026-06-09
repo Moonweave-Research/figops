@@ -425,6 +425,40 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(manifest["style_summary"]["target_format"], "nature")
             self.assertEqual(manifest["style_summary"]["profile"], "baseline")
 
+    def test_render_project_figure_runs_public_safe_multipanel_fixture(self):
+        fixture = Path(__file__).resolve().parents[1] / "examples" / "multipanel_project"
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_multipanel_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = root / "multipanel_project"
+            _copy_tree(fixture, project)
+            runtime_root = Path(tmpdir) / "runtime"
+            before = _snapshot_tree(project)
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {
+                    "project_path": str(project),
+                    "figure_id": "FigSynthetic_Multipanel",
+                    "job_id": "multipanel-project-render",
+                },
+            )
+
+            output = Path(result["output_path"])
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(result["selected_figure"]["id"], "FigSynthetic_Multipanel")
+            self.assertTrue(output.is_file())
+            self.assertTrue(str(output.resolve()).startswith(str(runtime_root.resolve())))
+            self.assertEqual(_snapshot_tree(project), before)
+            svg = output.read_text(encoding="utf-8")
+            self.assertIn("(a)", svg)
+            self.assertIn("(b)", svg)
+            self.assertIn("(c)", svg)
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["style_summary"]["target_format"], "nature")
+            self.assertEqual(manifest["selected_figure"]["output"], "results/figures/FigSynthetic_Multipanel.svg")
+
     def test_collect_artifacts_returns_project_render_metadata(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"

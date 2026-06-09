@@ -1,0 +1,10 @@
+<svg width="60mm" height="26mm" viewBox="0 0 60 26" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="60" height="26" fill="#ffffff"/>
+  <rect x="8" y="12" width="8" height="11" fill="#d84315"/>
+  <rect x="20" y="8" width="8" height="15" fill="#d84315"/>
+  <rect x="32" y="5" width="8" height="18" fill="#d84315"/>
+  <rect x="44" y="10" width="8" height="13" fill="#d84315"/>
+  <line x1="6" y1="23" x2="55" y2="23" stroke="#222" stroke-width="0.7"/>
+  <line x1="6" y1="4" x2="6" y2="23" stroke="#222" stroke-width="0.7"/>
+  <text x="30" y="6" text-anchor="middle" font-size="4.5">distribution</text>
+</svg>

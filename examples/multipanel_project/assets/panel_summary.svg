@@ -1,0 +1,8 @@
+<svg width="60mm" height="26mm" viewBox="0 0 60 26" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="60" height="26" fill="#ffffff"/>
+  <circle cx="17" cy="14" r="7" fill="#2e7d32" opacity="0.85"/>
+  <circle cx="31" cy="14" r="7" fill="#6a1b9a" opacity="0.75"/>
+  <circle cx="45" cy="14" r="7" fill="#f9a825" opacity="0.78"/>
+  <text x="30" y="6" text-anchor="middle" font-size="4.5">summary</text>
+  <text x="30" y="23" text-anchor="middle" font-size="4">synthetic groups</text>
+</svg>

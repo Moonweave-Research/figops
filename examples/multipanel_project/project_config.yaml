@@ -1,0 +1,17 @@
+project:
+  name: Synthetic Multipanel Figure
+  description: Public-safe Graph Hub multipanel fixture.
+
+visual_style:
+  target_format: nature
+  profile: baseline
+
+figures:
+  - id: FigSynthetic_Multipanel
+    title: Synthetic three-panel publication plate
+    script: hub_scripts/assemble_multipanel.py
+    inputs:
+      - assets/panel_response.svg
+      - assets/panel_distribution.svg
+      - assets/panel_summary.svg
+    output: results/figures/FigSynthetic_Multipanel.svg

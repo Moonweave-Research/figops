@@ -63,6 +63,36 @@ Required result inspection:
 Do not mutate the source project. Default project renders run under
 `runtime_root/mcp_project_jobs/<job_id>/project`.
 
+## Surfur Project Render
+
+The Surfur root is a master workspace, not a direct render target:
+
+```text
+ResearchOS/02_Surfur_Polymer
+```
+
+For graph-only requests, call Graph Hub MCP directly against a concrete
+subproject. The current gold target is:
+
+```text
+ResearchOS/02_Surfur_Polymer/저항 측정/PI_control
+figure_id = FigPI_CvS_Fits
+```
+
+Use the same project render sequence:
+
+```text
+graphhub.inspect_project
+graphhub.validate_project
+graphhub.render_project_figure with dry_run=true
+graphhub.render_project_figure
+graphhub.collect_artifacts
+```
+
+Do not use Athena as a graph router for this case. Use Athena only when the
+same user request also needs a separate non-graph solver, literature, or local
+knowledge-base step.
+
 ## Health Check
 
 User request:

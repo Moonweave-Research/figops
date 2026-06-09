@@ -76,11 +76,11 @@ Current gold smoke:
 - CSV graph render;
 - `02_Surfur_Polymer/저항 측정/PI_control` `FigPI_CvS_Fits` project figure render.
 
-Next gold targets:
+Gold targets:
 
-1. A synthetic public fixture project.
-2. A multi-panel publication-style fixture.
-3. A failure UX fixture with a missing column and clear resolution hint.
+1. Synthetic public fixture project: implemented.
+2. Multi-panel publication-style fixture: implemented.
+3. Failure UX fixture with a missing column and clear resolution hint: implemented.
 
 ## MCP Error UX Checklist
 
@@ -110,8 +110,8 @@ Every user-facing MCP failure should include:
 ### Task 3: Gold Smoke Expansion
 
 - Keep the real PI_control smoke as internal proof.
-- Add synthetic fixture smoke before any public release.
-- Add multi-panel fixture after style pack split is stable.
+- Keep synthetic fixture smoke before any public release.
+- Keep multi-panel fixture smoke before any public release.
 
 ### Task 4: Error UX Audit
 
