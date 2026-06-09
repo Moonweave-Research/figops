@@ -27,6 +27,11 @@ PRIVATE_DOC_PATTERNS = (
     "HKS",
 )
 
+MARKER_SCAN_EXEMPT_PATHS = {
+    "scripts/check_public_release.py",
+    "tests/test_public_release_check.py",
+}
+
 
 @dataclass(frozen=True)
 class ReleaseCheckResult:
@@ -59,7 +64,11 @@ def _iter_text_files(root: Path) -> list[Path]:
     return files
 
 
-def run_release_check(root: Path) -> ReleaseCheckResult:
+def _is_marker_scan_exempt(rel_path: str) -> bool:
+    return rel_path in MARKER_SCAN_EXEMPT_PATHS
+
+
+def run_release_check(root: Path, *, check_style_registry: bool = True) -> ReleaseCheckResult:
     blockers: list[str] = []
     warnings: list[str] = []
 
@@ -77,13 +86,14 @@ def run_release_check(root: Path) -> ReleaseCheckResult:
         if "no open source license" in notice_text:
             blockers.append("NOTICE states no open source license has been granted.")
 
-    for error in validate_style_pack_registry():
-        blockers.append(f"Style pack registry error: {error}")
+    if check_style_registry:
+        for error in validate_style_pack_registry():
+            blockers.append(f"Style pack registry error: {error}")
 
-    internal_packs = private_or_internal_style_packs()
-    if internal_packs:
-        names = ", ".join(str(pack["name"]) for pack in internal_packs)
-        blockers.append(f"Internal/private style packs are present: {names}.")
+        internal_packs = private_or_internal_style_packs()
+        if internal_packs:
+            names = ", ".join(str(pack["name"]) for pack in internal_packs)
+            blockers.append(f"Internal/private style packs are present: {names}.")
 
     for path in _iter_text_files(root):
         rel = path.relative_to(root).as_posix()
@@ -91,6 +101,8 @@ def run_release_check(root: Path) -> ReleaseCheckResult:
             if pattern in rel:
                 blockers.append(f"Private workflow document path present: {rel}.")
                 break
+        if _is_marker_scan_exempt(rel):
+            continue
         text = _read_text(path)
         for marker in PRIVATE_MARKERS:
             if marker in text or marker in rel:
@@ -102,7 +114,7 @@ def run_release_check(root: Path) -> ReleaseCheckResult:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path.cwd(), help="Graph Hub repository root")
+    parser.add_argument("--root", type=Path, default=REPO_ROOT, help="Graph Hub release-candidate repository root")
     args = parser.parse_args(argv)
 
     result = run_release_check(args.root.resolve())
