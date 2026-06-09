@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import uuid
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -816,7 +817,8 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
-        ensure_local_files([str(data_path)])
+        with redirect_stdout(sys.stderr):
+            ensure_local_files([str(data_path)])
         contract_result = self._validate_render_data_contract(
             data_path,
             required_columns=[x_column, y_column, *[str(key) for key in semantic_checks]],

@@ -1,3 +1,4 @@
+import contextlib
 import csv
 import json
 import os
@@ -5,6 +6,7 @@ import queue
 import tempfile
 import time
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -166,6 +168,33 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn(result["status"], {"ok", "warning"})
             self.assertTrue(str(Path(result["output_path"]).resolve()).startswith(str(runtime_root.resolve())))
             self.assertFalse(preview_root.exists())
+
+    def test_render_csv_graph_redirects_prefetch_stdout_away_from_mcp_stdout(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            stdout = StringIO()
+            stderr = StringIO()
+
+            def noisy_prefetch(_paths):
+                print("prefetch stdout would corrupt MCP framing")
+
+            with (
+                patch("hub_core.mcp_surface.resolve_runtime_root", return_value=str(runtime_root)),
+                patch("hub_core.mcp_surface.ensure_local_files", side_effect=noisy_prefetch),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                server = GraphHubMCPServer()
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "quiet-prefetch"},
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertIn("prefetch stdout would corrupt MCP framing", stderr.getvalue())
 
     def test_collect_artifacts_after_restart_uses_shared_runtime_resolver(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
