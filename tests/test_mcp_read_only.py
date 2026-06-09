@@ -540,6 +540,21 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(response["id"], 4)
         self.assertEqual(response["result"]["tools"][0]["name"], "graphhub.health")
 
+    def test_stdio_server_mirrors_newline_delimited_messages(self):
+        request = {"jsonrpc": "2.0", "id": 5, "method": "tools/list"}
+        input_stream = BytesIO(json.dumps(request).encode("utf-8") + b"\n")
+        output_stream = BytesIO()
+
+        rc = run_stdio_server(GraphHubMCPServer(), input_stream=input_stream, output_stream=output_stream)
+
+        self.assertEqual(rc, 0)
+        raw_output = output_stream.getvalue()
+        self.assertNotIn(b"Content-Length:", raw_output)
+        self.assertTrue(raw_output.endswith(b"\n"))
+        response = json.loads(raw_output.decode("utf-8"))
+        self.assertEqual(response["id"], 5)
+        self.assertEqual(response["result"]["tools"][0]["name"], "graphhub.health")
+
     def test_mcp_server_smoke_cli_reports_read_only_status(self):
         completed = subprocess.run(
             [sys.executable, "graphhub_mcp_server.py", "--smoke"],

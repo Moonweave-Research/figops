@@ -3415,14 +3415,15 @@ def run_stdio_server(
     input_stream: Any | None = None,
     output_stream: Any | None = None,
 ) -> int:
-    """Run a Content-Length framed JSON-RPC stdio MCP server."""
+    """Run a JSON-RPC stdio MCP server (newline-delimited or Content-Length framed)."""
     active_server = server or GraphHubMCPServer()
     in_stream = input_stream or sys.stdin.buffer
     out_stream = output_stream or sys.stdout.buffer
 
     while True:
+        framing = "content-length"
         try:
-            request = _read_stdio_message(in_stream)
+            request, framing = _read_stdio_message(in_stream)
             if request is None:
                 break
             response = _handle_json_rpc(active_server, request)
@@ -3431,7 +3432,7 @@ def run_stdio_server(
         except Exception as exc:
             response = _json_rpc_error(None, JSONRPC_INTERNAL_ERROR, str(exc))
         if response is not None:
-            _write_stdio_message(out_stream, response)
+            _write_stdio_message(out_stream, response, framing)
     return 0
 
 
@@ -3563,15 +3564,15 @@ def _json_rpc_error(request_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
-def _read_stdio_message(stream: Any) -> dict[str, Any] | None:
+def _read_stdio_message(stream: Any) -> tuple[dict[str, Any] | None, str]:
     first_line = stream.readline()
     if first_line == b"" or first_line == "":
-        return None
+        return None, "content-length"
     if isinstance(first_line, str):
         first_line = first_line.encode("utf-8")
 
     if first_line.lstrip().startswith(b"{"):
-        return json.loads(first_line.decode("utf-8"))
+        return json.loads(first_line.decode("utf-8")), "newline"
 
     headers = _read_headers(stream, first_line)
     content_length = headers.get("content-length")
@@ -3586,7 +3587,7 @@ def _read_stdio_message(stream: Any) -> dict[str, Any] | None:
         body = body.encode("utf-8")
     if len(body) != expected_size:
         raise ValueError(f"Incomplete MCP message body: expected {expected_size} bytes, got {len(body)}.")
-    return json.loads(body.decode("utf-8"))
+    return json.loads(body.decode("utf-8")), "content-length"
 
 
 def _read_headers(stream: Any, first_line: bytes) -> dict[str, str]:
@@ -3603,9 +3604,12 @@ def _read_headers(stream: Any, first_line: bytes) -> dict[str, str]:
     return headers
 
 
-def _write_stdio_message(stream: Any, response: dict[str, Any]) -> None:
+def _write_stdio_message(stream: Any, response: dict[str, Any], framing: str = "content-length") -> None:
     body = json.dumps(response, ensure_ascii=False).encode("utf-8")
-    payload = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
+    if framing == "newline":
+        payload = body + b"\n"
+    else:
+        payload = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
     stream.write(payload)
     if hasattr(stream, "flush"):
         stream.flush()
