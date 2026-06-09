@@ -1,0 +1,25 @@
+project:
+  name: Synthetic Response Curve
+  description: Public-safe Graph Hub synthetic fixture.
+
+visual_style:
+  target_format: nature
+  profile: baseline
+
+data_contract:
+  csv_checks:
+    - path: results/data/response_curve.csv
+      required_columns: ["time_s", "response_au"]
+      dtypes:
+        time_s: float
+        response_au: float
+      semantic_checks:
+        time_s: {range: [0, 10], allow_null: false}
+        response_au: {range: [0, 2], allow_null: false}
+
+figures:
+  - id: FigSynthetic_Response
+    title: Synthetic response curve
+    script: hub_scripts/plot_response_curve.py
+    inputs: ["results/data/response_curve.csv"]
+    output: results/figures/FigSynthetic_Response.png

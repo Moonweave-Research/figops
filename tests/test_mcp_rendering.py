@@ -96,6 +96,17 @@ figures:
     return project
 
 
+def _copy_tree(source: Path, target: Path) -> None:
+    for path in source.rglob("*"):
+        rel = path.relative_to(source)
+        destination = target / rel
+        if path.is_dir():
+            destination.mkdir(parents=True, exist_ok=True)
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(path.read_bytes())
+
+
 def _snapshot_tree(root: Path) -> dict[str, tuple[int, int]]:
     snapshot = {}
     for current_root, _dirs, files in os.walk(root):
@@ -384,6 +395,35 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(manifest["provenance"]["source_project_path"], "01_Project")
             self.assertEqual(len(manifest["provenance"]["config_sha256"]), 64)
             self.assertEqual(len(manifest["provenance"]["environment_sha256"]), 64)
+
+    def test_render_project_figure_runs_public_safe_synthetic_fixture(self):
+        fixture = Path(__file__).resolve().parents[1] / "examples" / "synthetic_project"
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_synthetic_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = root / "synthetic_project"
+            _copy_tree(fixture, project)
+            runtime_root = Path(tmpdir) / "runtime"
+            before = _snapshot_tree(project)
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {
+                    "project_path": str(project),
+                    "figure_id": "FigSynthetic_Response",
+                    "job_id": "synthetic-project-render",
+                },
+            )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(result["selected_figure"]["id"], "FigSynthetic_Response")
+            self.assertTrue(Path(result["output_path"]).is_file())
+            self.assertTrue(str(Path(result["output_path"]).resolve()).startswith(str(runtime_root.resolve())))
+            self.assertEqual(_snapshot_tree(project), before)
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["style_summary"]["target_format"], "nature")
+            self.assertEqual(manifest["style_summary"]["profile"], "baseline")
 
     def test_collect_artifacts_returns_project_render_metadata(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -1185,7 +1225,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             )
 
             self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
             self.assertTrue(result["manual_review_needed"])
+            self.assertIn("data contract", result["resolution_hint"].lower())
             self.assertIn("missing", result["errors"][0])
 
     def test_render_csv_graph_preflight_failure_sets_manual_review(self):

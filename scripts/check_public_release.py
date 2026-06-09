@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,15 +51,91 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8", errors="ignore")
 
 
+def _load_gitignore_patterns(root: Path) -> tuple[str, ...]:
+    ignore_path = root / ".gitignore"
+    if not ignore_path.exists():
+        return ()
+    patterns: list[str] = []
+    for line in ignore_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            patterns.append(stripped)
+    return tuple(patterns)
+
+
+def _matches_gitignore_pattern(rel_path: str, pattern: str) -> bool:
+    candidate = rel_path.strip("/")
+    core = pattern.strip("/")
+    if not core:
+        return False
+    if core.startswith("**/"):
+        suffix = core[3:]
+        return candidate == suffix or candidate.startswith(f"{suffix}/") or f"/{suffix}/" in f"/{candidate}/"
+    if "/" not in core:
+        parts = candidate.split("/")
+        return core in parts
+    return candidate == core or candidate.startswith(f"{core}/")
+
+
+def _is_ignored_by_gitignore(rel_path: str, patterns: tuple[str, ...]) -> bool:
+    ignored = False
+    for pattern in patterns:
+        negated = pattern.startswith("!")
+        core = pattern[1:] if negated else pattern
+        if _matches_gitignore_pattern(rel_path, core):
+            ignored = not negated
+    return ignored
+
+
+def _iter_git_candidate_files(root: Path) -> list[Path] | None:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "-z"],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    return [root / rel for rel in completed.stdout.split("\0") if rel]
+
+
 def _iter_text_files(root: Path) -> list[Path]:
-    ignored_parts = {".git", "__pycache__", ".pytest_cache", ".ruff_cache"}
+    ignored_parts = {
+        ".git",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        ".uv_cache",
+        ".dvc",
+        ".dvc_home",
+        "venv",
+        "env",
+        "hub_logs",
+    }
+    candidates = _iter_git_candidate_files(root)
+    if candidates is None:
+        patterns = _load_gitignore_patterns(root)
+        candidates = []
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(root).as_posix()
+            if _is_ignored_by_gitignore(rel, patterns):
+                continue
+            candidates.append(path)
+
     files: list[Path] = []
-    for path in root.rglob("*"):
+    for path in candidates:
         if not path.is_file():
             continue
         if ignored_parts & set(path.parts):
             continue
-        if path.suffix.lower() in {".png", ".pdf", ".svg", ".jpg", ".jpeg", ".xlsx", ".rds"}:
+        if path.suffix.lower() in {".png", ".pdf", ".jpg", ".jpeg", ".gif", ".xlsx", ".rds"}:
             continue
         files.append(path)
     return files

@@ -42,6 +42,11 @@ hub_logs/
 # Generated outputs (research pipeline artifacts)
 results/
 **/results/
+!examples/synthetic_project/results/
+!examples/synthetic_project/results/data/
+!examples/synthetic_project/results/data/response_curve.csv
+!examples/synthetic_project/results/figures/
+!examples/synthetic_project/results/figures/.gitkeep
 outputs/
 **/outputs/
 .build_state.json
