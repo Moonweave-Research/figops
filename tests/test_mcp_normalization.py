@@ -42,7 +42,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
     def test_scaffold_project_dry_run_is_side_effect_free(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project_root = Path(tmpdir) / "ResearchOS" / "New_Project"
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
             before = _snapshot_files(Path(tmpdir))
 
             result = self._call(
@@ -75,10 +75,27 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             self.assertEqual(result["style_summary"]["target_format"], "nature_surfur")
             self.assertEqual(result["manifest"]["operation"], "scaffold_project")
 
+    def test_scaffold_project_rejects_project_root_outside_research_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            research_root.mkdir()
+            external_root = Path(tmpdir) / "outside" / "New_Project"
+            server = GraphHubMCPServer(research_root=research_root)
+
+            result = self._call(
+                server,
+                "graphhub.scaffold_project",
+                {"project_name": "Blocked Project", "project_root": str(external_root), "dry_run": False},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertIn("project_root must stay under", result["errors"][0])
+            self.assertFalse(external_root.exists())
+
     def test_scaffold_project_apply_writes_template_and_valid_config(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project_root = Path(tmpdir) / "ResearchOS" / "Applied_Project"
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -120,7 +137,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             project_root.mkdir(parents=True)
             (project_root / "project_config.yaml").write_text("project: {name: existing}\n", encoding="utf-8")
             before = _snapshot_files(project_root)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -144,7 +161,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             manifest_path = project_root / ".graphhub_scaffold_manifest.json"
             manifest_path.write_text('{"existing": true}\n', encoding="utf-8")
             before = _snapshot_files(project_root)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -163,7 +180,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             project_root.mkdir(parents=True)
             (project_root / "hub_scripts").write_text("not a directory\n", encoding="utf-8")
             before = _snapshot_files(project_root)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -182,7 +199,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             project_root.mkdir(parents=True)
             (project_root / "results").write_text("not a directory\n", encoding="utf-8")
             before = _snapshot_files(project_root)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -203,7 +220,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             (project_root / "project_config.yaml").mkdir(parents=True)
             (project_root / "project_config.yaml" / "sentinel").write_text("keep\n", encoding="utf-8")
             before = _snapshot_files(project_root)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -230,7 +247,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             project_root.mkdir(parents=True)
             os.symlink(target_dir, project_root / "raw")
             before = _snapshot_files(project_root)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -251,7 +268,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             symlink_root = Path(tmpdir) / "Project_Link"
             os.symlink(actual_root, symlink_root)
             before_actual = _snapshot_files(actual_root)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -272,7 +289,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             symlink_parent = Path(tmpdir) / "Projects_Link"
             os.symlink(actual_parent, symlink_parent)
             before_actual = _snapshot_files(actual_parent)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -289,6 +306,24 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             self.assertIn("symlink", result["errors"][0])
             self.assertFalse((actual_parent / "Blocked_Project").exists())
             self.assertEqual(_snapshot_files(actual_parent), before_actual)
+
+    def test_scaffold_project_refuses_symlink_alias_back_to_research_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            research_root.mkdir()
+            alias = research_root / "Alias"
+            os.symlink(research_root, alias)
+            server = GraphHubMCPServer(research_root=research_root)
+
+            result = self._call(
+                server,
+                "graphhub.scaffold_project",
+                {"project_name": "Blocked Project", "project_root": str(alias / "Blocked_Project")},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertIn("symlink", result["errors"][0])
+            self.assertFalse((research_root / "Blocked_Project").exists())
 
     def test_normalize_project_structure_plan_is_side_effect_free_and_preserves_style(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -317,7 +352,7 @@ figures:
                 encoding="utf-8",
             )
             before = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -337,13 +372,33 @@ figures:
             self.assertIn("custom_svg", result["style_summary"]["presets"])
             self.assertFalse(result["style_summary"]["style_update_applied"])
 
+    def test_normalize_project_structure_rejects_project_path_outside_research_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            research_root.mkdir()
+            project = Path(tmpdir) / "outside" / "LegacyGraph"
+            project.mkdir(parents=True)
+            (project / "plot.py").write_text("print('plot')\n", encoding="utf-8")
+            before = _snapshot_files(project)
+            server = GraphHubMCPServer(research_root=research_root)
+
+            result = self._call(
+                server,
+                "graphhub.normalize_project_structure",
+                {"project_path": str(project), "plan_only": False},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertIn("project_path must stay under", result["errors"][0])
+            self.assertEqual(_snapshot_files(project), before)
+
     def test_normalize_project_structure_apply_copies_files_and_writes_manifest(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project = Path(tmpdir) / "LegacyGraph"
             project.mkdir()
             (project / "plot.py").write_text("print('plot')\n", encoding="utf-8")
             (project / "summary.csv").write_text("x,y\n1,2\n", encoding="utf-8")
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -386,7 +441,7 @@ figures:
 """,
                 encoding="utf-8",
             )
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             planned = self._call(
                 server,
@@ -417,7 +472,7 @@ figures:
             (project / "scripts" / "plot.py").write_text("print('plot')\n", encoding="utf-8")
             (project / "data" / "summary.csv").write_text("x,y\n1,2\n", encoding="utf-8")
             (project / "docs" / "notes.md").write_text("# Notes\n", encoding="utf-8")
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -441,7 +496,7 @@ figures:
             (project / "scripts" / "final" / "plot.py").write_text("print('final')\n", encoding="utf-8")
             (project / "data" / "a" / "results.csv").write_text("x\n1\n", encoding="utf-8")
             (project / "data" / "b" / "results.csv").write_text("x\n2\n", encoding="utf-8")
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -460,7 +515,7 @@ figures:
             project = Path(tmpdir) / "LegacyGraph"
             (project / "results" / "data").mkdir(parents=True)
             (project / "results" / "data" / "summary.csv").write_text("x,y\n1,2\n", encoding="utf-8")
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             planned = self._call(
                 server,
@@ -480,7 +535,7 @@ figures:
             (project / "plot.py").write_text("print('root')\n", encoding="utf-8")
             (project / "scripts" / "plot.py").write_text("print('scripts')\n", encoding="utf-8")
             before = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -501,7 +556,7 @@ figures:
             (project / "plot.py").write_text("print('root')\n", encoding="utf-8")
             (project / "scripts" / "plot.py").write_text("print('scripts')\n", encoding="utf-8")
             before = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -523,7 +578,7 @@ figures:
             (project / "plot.py").write_text("print('legacy')\n", encoding="utf-8")
             (project / "hub_scripts" / "plot.py").write_text("print('normalized')\n", encoding="utf-8")
             before = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -543,7 +598,7 @@ figures:
             project.mkdir()
             raw_source = project / "summary.csv"
             raw_source.write_text("x,y\n1,2\n", encoding="utf-8")
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             planned = self._call(
                 server,
@@ -571,7 +626,7 @@ figures:
             (project / "hub_scripts").mkdir(parents=True)
             (project / "plot.py").write_text("print('new')\n", encoding="utf-8")
             os.symlink(project / "missing_plot.py", project / "hub_scripts" / "plot.py")
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -589,7 +644,7 @@ figures:
             (project / "hub_scripts").mkdir(parents=True)
             (project / "plot.py").write_text("print('new')\n", encoding="utf-8")
             os.symlink(project / "missing_target.py", project / "hub_scripts" / "plot.py")
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -615,7 +670,7 @@ visual_style:
 """,
                 encoding="utf-8",
             )
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -635,7 +690,7 @@ visual_style:
             project.mkdir()
             (project / "plot.py").write_text("print('plot')\n", encoding="utf-8")
             (project / "project_config.yaml").write_text("- item\n", encoding="utf-8")
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -656,7 +711,7 @@ visual_style:
             (project / "plot.py").write_text("print('new')\n", encoding="utf-8")
             (project / "hub_scripts" / "plot.py").write_text("print('existing')\n", encoding="utf-8")
             before = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -676,7 +731,7 @@ visual_style:
             manifest_path = project / ".graphhub_normalization_manifest.json"
             manifest_path.write_text('{"existing": true}\n', encoding="utf-8")
             before = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -698,7 +753,7 @@ visual_style:
             manifest_path.mkdir()
             (manifest_path / "sentinel").write_text("keep\n", encoding="utf-8")
             before = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -720,7 +775,7 @@ visual_style:
             (project / "docs").write_text("not a directory\n", encoding="utf-8")
             (project / "notes.md").write_text("# Notes\n", encoding="utf-8")
             before = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -743,7 +798,7 @@ visual_style:
             (project / "hub_scripts" / "plot.py").mkdir(parents=True)
             (project / "hub_scripts" / "plot.py" / "sentinel").write_text("keep\n", encoding="utf-8")
             before = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -765,7 +820,7 @@ visual_style:
             (project / "alternate_scripts").mkdir()
             os.symlink(project / "alternate_scripts", project / "hub_scripts")
             before = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -787,7 +842,7 @@ visual_style:
             symlink_root = Path(tmpdir) / "LegacyGraph_Link"
             os.symlink(actual_root, symlink_root)
             before_actual = _snapshot_files(actual_root)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -810,7 +865,7 @@ visual_style:
             symlink_parent = Path(tmpdir) / "Projects_Link"
             os.symlink(actual_parent, symlink_parent)
             before_project = _snapshot_files(project)
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
@@ -822,6 +877,27 @@ visual_style:
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("symlink", result["errors"][0])
             self.assertFalse((project / "hub_scripts" / "plot.py").exists())
+            self.assertEqual(_snapshot_files(project), before_project)
+
+    def test_normalize_project_structure_refuses_symlink_alias_back_to_research_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            project = research_root / "LegacyGraph"
+            project.mkdir(parents=True)
+            (project / "plot.py").write_text("print('plot')\n", encoding="utf-8")
+            alias = research_root / "Alias"
+            os.symlink(research_root, alias)
+            before_project = _snapshot_files(project)
+            server = GraphHubMCPServer(research_root=research_root)
+
+            result = self._call(
+                server,
+                "graphhub.normalize_project_structure",
+                {"project_path": str(alias / "LegacyGraph"), "plan_only": False},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertIn("symlink", result["errors"][0])
             self.assertEqual(_snapshot_files(project), before_project)
 
 

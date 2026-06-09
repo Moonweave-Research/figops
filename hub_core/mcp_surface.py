@@ -76,22 +76,26 @@ class ProjectRenderExportError(RuntimeError):
 
 
 def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_queue: multiprocessing.Queue) -> None:
+    os.environ.setdefault("MPLBACKEND", "Agg")
     try:
-        from plotting.bridge_renderer import BridgeFigureSpec, render_bridge_figure
+        with redirect_stdout(sys.stderr):
+            from plotting.bridge_renderer import BridgeFigureSpec, render_bridge_figure
 
-        output_path = render_bridge_figure(BridgeFigureSpec(**spec_payload))
+            output_path = render_bridge_figure(BridgeFigureSpec(**spec_payload))
         result_queue.put({"status": "ok", "output_path": output_path})
     except Exception as exc:
         result_queue.put({"status": "error", "error": str(exc)})
 
 
 def _batch_discovery_worker(root: str, max_depth: int, result_queue: multiprocessing.Queue) -> None:
+    os.environ.setdefault("MPLBACKEND", "Agg")
     try:
-        projects = ProjectDiscoveryService(
-            root,
-            include_worktrees=True,
-            include_ephemeral=True,
-        ).discover(max_depth=max_depth)
+        with redirect_stdout(sys.stderr):
+            projects = ProjectDiscoveryService(
+                root,
+                include_worktrees=True,
+                include_ephemeral=True,
+            ).discover(max_depth=max_depth)
         result_queue.put({"status": "ok", "projects": projects})
     except Exception as exc:
         result_queue.put({"status": "error", "error": str(exc)})
@@ -498,7 +502,7 @@ def list_prompt_definitions() -> list[dict[str, Any]]:
 
 
 class GraphHubMCPServer:
-    """Dependency-free read-only MCP surface over Graph Hub core contracts."""
+    """Dependency-free MCP surface over Graph Hub core contracts."""
 
     def __init__(
         self,
@@ -506,11 +510,14 @@ class GraphHubMCPServer:
         hub_path: str | os.PathLike | None = None,
         research_root: str | os.PathLike | None = None,
         runtime_root: str | os.PathLike | None = None,
+        write_tools_enabled: bool | None = None,
     ) -> None:
         self.hub_path = Path(hub_path or get_hub_path()).expanduser().resolve()
         self.research_root = Path(research_root or get_research_root()).expanduser().resolve()
         self._runtime_root_explicit = runtime_root is not None
         self.runtime_root = self._resolve_runtime_root(runtime_root)
+        self.allowed_data_roots = self._allowed_data_roots()
+        self.write_tools_enabled = self._resolve_write_tools_enabled(write_tools_enabled)
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
             "graphhub.health": self.health,
             "graphhub.list_styles": self.list_styles,
@@ -531,11 +538,89 @@ class GraphHubMCPServer:
             return Path(runtime_root).expanduser().resolve()
         return Path(preview_runtime_root()).expanduser().resolve()
 
+    @staticmethod
+    def _resolve_write_tools_enabled(write_tools_enabled: bool | None) -> bool:
+        if write_tools_enabled is not None:
+            return bool(write_tools_enabled)
+        raw = os.environ.get("GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED")
+        if raw is None:
+            return True
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+    def _allowed_data_roots(self) -> tuple[Path, ...]:
+        roots = [self.research_root, self.runtime_root]
+        raw_extra = os.environ.get("GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS", "")
+        for item in raw_extra.split(os.pathsep):
+            if item.strip():
+                roots.append(Path(item).expanduser().resolve())
+        deduped: list[Path] = []
+        seen: set[str] = set()
+        for root in roots:
+            key = str(root)
+            if key not in seen:
+                seen.add(key)
+                deduped.append(root)
+        return tuple(deduped)
+
+    @staticmethod
+    def _is_relative_to(path: Path, root: Path) -> bool:
+        try:
+            path.relative_to(root)
+        except ValueError:
+            return False
+        return True
+
+    def _resolve_under_root(self, raw_path: Any, *, field_name: str, root: Path | None = None) -> Path:
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ValueError(f"{field_name} is required.")
+        raw = Path(raw_path).expanduser()
+        trusted_root_raw = Path(root or self.research_root).expanduser()
+        if not trusted_root_raw.is_absolute():
+            trusted_root_raw = trusted_root_raw.resolve()
+        raw_absolute = raw if raw.is_absolute() else trusted_root_raw / raw
+        trusted_root = trusted_root_raw.resolve()
+        path = raw_absolute.resolve()
+        if not self._is_relative_to(path, trusted_root):
+            raise ValueError(f"{field_name} must stay under {trusted_root}.")
+        current = Path(raw_absolute.anchor)
+        for part in raw_absolute.parts[1:]:
+            current = current / part
+            if current.is_symlink():
+                target = current.resolve()
+                if target == trusted_root or self._is_relative_to(target, trusted_root):
+                    raise ValueError(f"{field_name} must not include symlinked path components.")
+                if not self._is_relative_to(trusted_root, target):
+                    raise ValueError(f"{field_name} must not include symlinked path components.")
+        return path
+
+    def _resolve_allowed_data_path(self, raw_path: Any, *, field_name: str) -> Path:
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ValueError(f"{field_name} is required.")
+        path = Path(raw_path).expanduser().resolve()
+        if not any(self._is_relative_to(path, root) for root in self.allowed_data_roots):
+            allowed = ", ".join(str(root) for root in self.allowed_data_roots)
+            raise ValueError(f"{field_name} must stay under an allowed data root: {allowed}.")
+        return path
+
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = dict(arguments or {})
         handler = self._handlers.get(name)
         if handler is None:
             raise ValueError(f"Unknown Graph Hub MCP tool: {name}")
+        if name in WRITE_TOOL_NAMES and not self.write_tools_enabled:
+            structured = self._envelope(
+                name,
+                arguments,
+                status="error",
+                summary=f"{name} is disabled by the Graph Hub MCP write-tool guard.",
+                errors=["Write tools are disabled for this Graph Hub MCP server."],
+                manual_review_needed=True,
+            )
+            return {
+                "content": [{"type": "text", "text": json.dumps(structured, ensure_ascii=False, sort_keys=True)}],
+                "structuredContent": structured,
+                "isError": True,
+            }
 
         try:
             structured = handler(arguments)
@@ -581,7 +666,7 @@ class GraphHubMCPServer:
             runtime_root=str(self.runtime_root),
             style_format_count=len(ALLOWED_TARGET_FORMATS),
             discovery_status=discovery,
-            write_tools_enabled=any(name in self._handlers for name in WRITE_TOOL_NAMES),
+            write_tools_enabled=self.write_tools_enabled,
         )
 
     def list_styles(self, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -725,6 +810,7 @@ class GraphHubMCPServer:
         dry_run = bool(arguments.get("dry_run", False))
         overwrite = bool(arguments.get("overwrite", False))
         job_id = self._render_job_id(arguments.get("job_id"))
+        self._activate_runtime_root_for_runtime_access()
         job_root = self._mcp_jobs_root() / job_id
         try:
             data_path = self._input_file_path(arguments.get("data_path"))
@@ -1410,6 +1496,7 @@ class GraphHubMCPServer:
     def _activate_runtime_root_for_runtime_access(self) -> None:
         if not self._runtime_root_explicit:
             self.runtime_root = Path(resolve_runtime_root()).expanduser().resolve()
+            self.allowed_data_roots = self._allowed_data_roots()
 
     @staticmethod
     def _render_status_payload(
@@ -1521,23 +1608,33 @@ class GraphHubMCPServer:
             args=(spec_payload, result_queue),
             name="graphhub-mcp-render",
         )
-        process.start()
-        process.join(MCP_RENDER_TIMEOUT_SECONDS)
-        if process.is_alive():
-            process.terminate()
-            process.join(5)
-            if process.is_alive():
-                process.kill()
-                process.join(5)
-            raise TimeoutError(f"Render timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.")
-        if process.exitcode not in (0, None):
-            raise RuntimeError(f"Render worker exited with code {process.exitcode}.")
         try:
-            result = result_queue.get(timeout=MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS)
-        except queue.Empty as exc:
-            raise RuntimeError("Render worker exited without returning a result.") from exc
-        if result.get("status") != "ok":
-            raise RuntimeError(str(result.get("error") or "Render worker failed."))
+            process.start()
+            process.join(MCP_RENDER_TIMEOUT_SECONDS)
+            if process.is_alive():
+                process.terminate()
+                process.join(5)
+                if process.is_alive():
+                    process.kill()
+                    process.join(5)
+                raise TimeoutError(f"Render timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.")
+            try:
+                result = result_queue.get(timeout=MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS)
+            except queue.Empty as exc:
+                if process.exitcode not in (0, None):
+                    raise RuntimeError(f"Render worker exited with code {process.exitcode}.") from exc
+                raise RuntimeError("Render worker exited without returning a result.") from exc
+            if process.exitcode not in (0, None):
+                raise RuntimeError(f"Render worker exited with code {process.exitcode}.")
+            if result.get("status") != "ok":
+                raise RuntimeError(str(result.get("error") or "Render worker failed."))
+        finally:
+            close_queue = getattr(result_queue, "close", None)
+            if close_queue is not None:
+                close_queue()
+            join_queue_thread = getattr(result_queue, "join_thread", None)
+            if join_queue_thread is not None:
+                join_queue_thread()
 
     def _project_render_error(
         self,
@@ -1574,13 +1671,15 @@ class GraphHubMCPServer:
         project_path_value = arguments.get("project_path")
         project_id_value = arguments.get("project_id")
         if project_path_value and project_id_value:
-            project_path = Path(str(project_path_value)).expanduser().resolve()
+            project_path = self._resolve_under_root(project_path_value, field_name="project_path")
             id_project_path = self._resolve_project_path(
                 {key: value for key, value in arguments.items() if key != "project_path"}
             )
             if project_path != id_project_path:
                 raise ValueError("project_id and project_path resolve to different projects.")
             return project_path
+        if project_path_value:
+            return self._resolve_under_root(project_path_value, field_name="project_path")
         return self._resolve_project_path(arguments)
 
     @staticmethod
@@ -1801,15 +1900,18 @@ class GraphHubMCPServer:
                 "THEME_OUTPUT_FORMAT": style_summary["output_format"],
             }
         )
-        completed = subprocess.run(
-            [sys.executable, str(script_path)],
-            cwd=str(snapshot_project_path),
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=MCP_RENDER_TIMEOUT_SECONDS,
-            env=env,
-        )
+        try:
+            completed = subprocess.run(
+                [sys.executable, str(script_path)],
+                cwd=str(snapshot_project_path),
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=MCP_RENDER_TIMEOUT_SECONDS,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError(f"Figure script timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.") from exc
         if completed.returncode != 0:
             message = (
                 completed.stderr.strip()
@@ -2142,7 +2244,7 @@ class GraphHubMCPServer:
 
     def scaffold_project(self, arguments: dict[str, Any]) -> dict[str, Any]:
         project_name = self._required_string(arguments, "project_name")
-        project_root = Path(self._required_string(arguments, "project_root"))
+        project_root = self._resolve_under_root(arguments.get("project_root"), field_name="project_root")
         target_format = str(arguments.get("target_format") or "nature").strip().lower()
         template = str(arguments.get("template") or "standard").strip().lower()
         dry_run = bool(arguments.get("dry_run", True))
@@ -2214,7 +2316,7 @@ class GraphHubMCPServer:
         )
 
     def normalize_project_structure(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        project_path = Path(self._required_string(arguments, "project_path"))
+        project_path = self._resolve_under_root(arguments.get("project_path"), field_name="project_path")
         plan_only = bool(arguments.get("plan_only", True))
         move_policy = str(arguments.get("move_policy") or "copy").strip().lower()
         include_raw = bool(arguments.get("include_raw", False))
@@ -2651,12 +2753,22 @@ class GraphHubMCPServer:
             return "manual_review_needed"
         return "created"
 
-    @staticmethod
-    def _baseline_comparison(artifact_path: Path | None, raw_baseline_path: Any) -> dict[str, Any]:
+    def _baseline_comparison(self, artifact_path: Path | None, raw_baseline_path: Any) -> dict[str, Any]:
         if not isinstance(raw_baseline_path, str) or not raw_baseline_path.strip():
             return {"checked": False, "matched": None, "status": "not_checked", "warnings": []}
 
-        baseline_path = Path(raw_baseline_path).expanduser().resolve()
+        try:
+            baseline_path = self._resolve_allowed_data_path(raw_baseline_path, field_name="baseline_path")
+        except ValueError as exc:
+            return {
+                "checked": True,
+                "matched": False,
+                "status": "manual_review_needed",
+                "baseline_path": "",
+                "artifact_path": str(artifact_path) if artifact_path else "",
+                "algorithm": "sha256",
+                "warnings": [str(exc)],
+            }
         warnings: list[str] = []
         if artifact_path is None:
             warnings.append("Baseline comparison requested but no artifact path was available.")
@@ -2704,7 +2816,6 @@ class GraphHubMCPServer:
             "artifact_path": str(artifact_path),
             "algorithm": "sha256",
             "artifact_sha256": artifact_sha,
-            "baseline_sha256": baseline_sha,
             "warnings": [] if matched else ["Artifact does not match baseline."],
         }
 
@@ -2952,25 +3063,35 @@ class GraphHubMCPServer:
             args=(str(root), max_depth, result_queue),
             name="graphhub-mcp-batch-discovery",
         )
-        process.start()
-        process.join(max(0.0, timeout_seconds))
-        if process.is_alive():
-            process.terminate()
-            process.join(5)
-            if process.is_alive():
-                process.kill()
-                process.join(5)
-            return [], True, [f"Batch discovery timed out after {timeout_seconds:.1f} seconds."]
-        if process.exitcode not in (0, None):
-            return [], True, [f"Batch discovery worker exited with code {process.exitcode}."]
         try:
-            result = result_queue.get(timeout=MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS)
-        except queue.Empty:
-            return [], True, ["Batch discovery worker exited without returning a result."]
-        if result.get("status") != "ok":
-            return [], True, [str(result.get("error") or "Batch discovery failed.")]
-        projects = result.get("projects")
-        return (projects if isinstance(projects, list) else []), False, []
+            process.start()
+            process.join(max(0.0, timeout_seconds))
+            if process.is_alive():
+                process.terminate()
+                process.join(5)
+                if process.is_alive():
+                    process.kill()
+                    process.join(5)
+                return [], True, [f"Batch discovery timed out after {timeout_seconds:.1f} seconds."]
+            try:
+                result = result_queue.get(timeout=MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS)
+            except queue.Empty:
+                if process.exitcode not in (0, None):
+                    return [], True, [f"Batch discovery worker exited with code {process.exitcode}."]
+                return [], True, ["Batch discovery worker exited without returning a result."]
+            if process.exitcode not in (0, None):
+                return [], True, [f"Batch discovery worker exited with code {process.exitcode}."]
+            if result.get("status") != "ok":
+                return [], True, [str(result.get("error") or "Batch discovery failed.")]
+            projects = result.get("projects")
+            return (projects if isinstance(projects, list) else []), False, []
+        finally:
+            close_queue = getattr(result_queue, "close", None)
+            if close_queue is not None:
+                close_queue()
+            join_queue_thread = getattr(result_queue, "join_thread", None)
+            if join_queue_thread is not None:
+                join_queue_thread()
 
     def _read_version(self) -> str:
         pyproject = self.hub_path / "pyproject.toml"
@@ -3260,11 +3381,10 @@ class GraphHubMCPServer:
             raise ValueError(f"{key} is required.")
         return value.strip()
 
-    @staticmethod
-    def _input_file_path(raw_path: Any) -> Path:
+    def _input_file_path(self, raw_path: Any) -> Path:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise ValueError("data_path is required.")
-        path = Path(os.path.abspath(os.fspath(Path(raw_path).expanduser())))
+        path = self._resolve_allowed_data_path(raw_path, field_name="data_path")
         if not path.is_file():
             raise ValueError("data_path is not a file.")
         if path.suffix.lower() != ".csv":
@@ -3445,6 +3565,8 @@ def run_stdio_server(
 def _handle_json_rpc(server: GraphHubMCPServer, request: dict[str, Any]) -> dict[str, Any] | None:
     method = request.get("method")
     request_id = request.get("id")
+    if "id" not in request:
+        return None
     raw_params = request.get("params")
     if raw_params is None:
         params = {}
@@ -3557,13 +3679,15 @@ def _matches_json_schema_type(value: Any, expected_type: Any) -> bool:
         return isinstance(value, bool)
     if expected_type == "integer":
         return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
     if expected_type == "object":
         return isinstance(value, dict)
     if expected_type == "array":
         return isinstance(value, list)
     if expected_type is None:
         return True
-    return True
+    return False
 
 
 def _json_rpc_error(request_id: Any, code: int, message: str) -> dict[str, Any]:

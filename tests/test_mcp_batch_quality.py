@@ -95,7 +95,7 @@ class BatchQualityMCPTest(unittest.TestCase):
     def test_render_csv_graph_reports_preflight_passed_artifact_status(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             with patch(
                 "hub_core.mcp_surface.validate_figure_preflight",
@@ -115,7 +115,7 @@ class BatchQualityMCPTest(unittest.TestCase):
     def test_collect_artifacts_reports_manual_review_for_preflight_warning(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             with patch(
                 "hub_core.mcp_surface.validate_figure_preflight",
@@ -137,7 +137,7 @@ class BatchQualityMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             rendered = self._call(
                 server,
                 "graphhub.render_csv_graph",
@@ -173,7 +173,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             self._write_project(root, "[Athena]/bridge_jobs/job-1/05_Bridge")
             before = _snapshot_files(root)
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             result = self._call(server, "graphhub.batch_check", {"root": str(root), "max_depth": 8, "dry_run": True})
 
@@ -194,7 +194,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             self._write_project(root, "01_Valid")
             before = _snapshot_files(root)
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             result = self._call(
                 server,
@@ -219,7 +219,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             root = Path(tmpdir) / "ResearchOS"
             self._write_project(root, "01_Valid")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             first = self._call(
                 server,
                 "graphhub.batch_check",
@@ -249,7 +249,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             self._write_project(root_a, "01_Valid")
             self._write_project(root_b, "01_Valid")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             first = self._call(
                 server,
                 "graphhub.batch_check",
@@ -277,7 +277,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             root = Path(tmpdir) / "ResearchOS"
             for index in range(4):
                 self._write_project(root, f"{index:02d}_Valid")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             with patch("hub_core.mcp_surface.MCP_BATCH_TIMEOUT_SECONDS", 0):
                 result = self._call(
@@ -295,7 +295,7 @@ class BatchQualityMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
             self._write_project(root, "01_Valid")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             started_at = time.monotonic()
             with (

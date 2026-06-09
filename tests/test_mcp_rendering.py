@@ -34,6 +34,8 @@ class _CompletedRenderProcess:
 class _DelayedRenderQueue:
     def __init__(self, *args, **kwargs):
         self.blocking_get_timeout = None
+        self.closed = False
+        self.joined = False
 
     def get_nowait(self):
         raise queue.Empty
@@ -41,6 +43,12 @@ class _DelayedRenderQueue:
     def get(self, timeout=None):
         self.blocking_get_timeout = timeout
         return {"status": "ok"}
+
+    def close(self):
+        self.closed = True
+
+    def join_thread(self):
+        self.joined = True
 
 
 def _sleeping_render_worker(_spec_payload, _result_queue):
@@ -154,7 +162,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             runtime_root = Path(tmpdir) / "runtime"
 
             with patch("hub_core.mcp_surface.preview_runtime_root", return_value=str(runtime_root)):
-                server = GraphHubMCPServer()
+                server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             self.assertEqual(server.runtime_root, runtime_root.resolve())
             self.assertFalse(runtime_root.exists())
@@ -169,7 +177,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 patch("hub_core.mcp_surface.preview_runtime_root", return_value=str(preview_root)),
                 patch("hub_core.mcp_surface.resolve_runtime_root", return_value=str(runtime_root)),
             ):
-                server = GraphHubMCPServer()
+                server = GraphHubMCPServer(research_root=Path(tmpdir))
                 result = self._call(
                     server,
                     "graphhub.render_csv_graph",
@@ -196,7 +204,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 contextlib.redirect_stdout(stdout),
                 contextlib.redirect_stderr(stderr),
             ):
-                server = GraphHubMCPServer()
+                server = GraphHubMCPServer(research_root=Path(tmpdir))
                 result = self._call(
                     server,
                     "graphhub.render_csv_graph",
@@ -218,7 +226,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 patch("hub_core.mcp_surface.resolve_runtime_root", return_value=str(runtime_root)),
                 patch("hub_core.mcp_surface.runtime_root_lookup_candidates", return_value=[str(runtime_root)]),
             ):
-                render_server = GraphHubMCPServer()
+                render_server = GraphHubMCPServer(research_root=Path(tmpdir))
                 rendered = self._call(
                     render_server,
                     "graphhub.render_csv_graph",
@@ -240,7 +248,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             runtime_root = tmp_root / "runtime"
             source_snapshot = _snapshot_tree(tmp_root / "input")
 
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             result = self._call(
                 server,
                 "graphhub.render_csv_graph",
@@ -301,12 +309,49 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(csv_check["required_columns"], ["x", "y"])
             self.assertEqual(csv_check["semantic_checks"], {"y": {"range": [0, 3], "allow_null": False}})
 
+    def test_render_csv_graph_rejects_data_path_outside_allowed_roots(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            research_root.mkdir()
+            external_data = _write_csv(Path(tmpdir) / "outside" / "data.csv")
+            runtime_root = research_root / "runtime"
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {"data_path": str(external_data), "x_column": "x", "y_column": "y", "job_id": "outside-data"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn("data_path must stay under", result["errors"][0])
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_graph_rejects_data_path_under_runtime_parent_only(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            research_root.mkdir()
+            runtime_root = Path(tmpdir) / "runtime"
+            sibling_data = _write_csv(Path(tmpdir) / "runtime-sibling" / "data.csv")
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {"data_path": str(sibling_data), "x_column": "x", "y_column": "y", "job_id": "runtime-parent"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn("data_path must stay under", result["errors"][0])
+
     def test_collect_artifacts_returns_manifest_metadata(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             tmp_root = Path(tmpdir)
             data_path = _write_csv(tmp_root / "input" / "data.csv")
             runtime_root = tmp_root / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             self._call(
                 server,
                 "graphhub.render_csv_graph",
@@ -536,7 +581,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertFalse(outside_output.exists())
             self.assertFalse((runtime_root / "mcp_project_jobs").exists())
 
-    def test_render_project_figure_external_project_path_is_labeled_not_leaked(self):
+    def test_render_project_figure_rejects_project_path_outside_research_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
             research_root = Path(tmpdir) / "ResearchOS"
             external_root = Path(tmpdir) / "external"
@@ -550,11 +595,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "external-project"},
             )
 
-            self.assertIn(result["status"], {"ok", "warning"})
-            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
-            self.assertEqual(result["source_project_path"], "input://project_path")
-            self.assertEqual(manifest["source_project_path"], "input://project_path")
-            self.assertEqual(manifest["provenance"]["source_project_path"], "input://project_path")
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn("project_path must stay under", result["errors"][0])
+            self.assertFalse((runtime_root / "mcp_project_jobs").exists())
 
     def test_render_project_figure_missing_input_is_export_failure(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -625,7 +669,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_rejects_overwrite_without_flag(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
             args = {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "same-job"}
             first = self._call(server, "graphhub.render_csv_graph", args)
             second = self._call(server, "graphhub.render_csv_graph", args)
@@ -643,7 +687,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             result = self._call(
                 server,
@@ -662,7 +706,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             result = self._call(
                 server,
@@ -682,7 +726,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             data_path.parent.mkdir(parents=True, exist_ok=True)
             data_path.write_text("x,y\n1,2\n3,4\n", encoding="utf-8")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with patch("hub_core.mcp_surface.MCP_RENDER_CSV_MAX_BYTES", 4):
                 result = self._call(
@@ -700,7 +744,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_missing_input_error_does_not_expose_absolute_path(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             missing_path = Path(tmpdir) / "private" / "missing.csv"
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             result = self._call(
                 server,
@@ -722,7 +766,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             data_path.parent.mkdir(parents=True, exist_ok=True)
             data_path.write_text("x,y\n1,2\n3,4\n", encoding="utf-8")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with patch.dict(os.environ, {"GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES": "4"}, clear=False):
                 result = self._call(
@@ -738,7 +782,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_ignores_invalid_csv_size_limit_environment(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             with patch.dict(os.environ, {"GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES": "not-an-int"}, clear=False):
                 result = self._call(
@@ -752,7 +796,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_records_pdf_companion_artifacts(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             result = self._call(
                 server,
@@ -778,7 +822,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_preflight_warnings_require_manual_review(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             with patch(
                 "hub_core.mcp_surface.validate_figure_preflight",
@@ -810,7 +854,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                     ]
                 )
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with patch(
                 "hub_core.mcp_surface.validate_figure_preflight",
@@ -859,7 +903,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                     ]
                 )
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             result = self._call(
                 server,
@@ -887,7 +931,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with patch("hub_core.data_contract._PINT_AVAILABLE", False):
                 result = self._call(
@@ -921,7 +965,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             data_path.parent.mkdir(parents=True)
             data_path.write_text("x,y\n0,1\n1,9\n", encoding="utf-8")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             result = self._call(
                 server,
@@ -950,7 +994,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with (
                 patch("hub_core.data_contract._PINT_AVAILABLE", False),
@@ -987,7 +1031,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_prefetches_input_before_reading_or_copying(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             with patch("hub_core.mcp_surface.ensure_local_files") as ensure_local:
                 result = self._call(
@@ -997,13 +1041,13 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 )
 
             self.assertIn(result["status"], {"ok", "warning"})
-            ensure_local.assert_called_once_with([str(data_path)])
+            ensure_local.assert_called_once_with([str(data_path.resolve())])
 
     def test_render_csv_graph_timeout_returns_execution_error(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with (
                 patch("hub_core.mcp_surface.MCP_RENDER_TIMEOUT_SECONDS", 0.05),
@@ -1030,7 +1074,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with patch("hub_core.mcp_surface._render_bridge_figure_worker", _path_leaking_render_worker):
                 result = self._call(
@@ -1077,7 +1121,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             baseline_path = Path(tmpdir) / "baseline" / "graph.png"
             baseline_path.parent.mkdir()
             baseline_path.write_bytes(b"not-a-real-png")
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with patch("hub_core.mcp_surface._render_bridge_figure_worker", _path_leaking_render_worker):
                 result = self._call(
@@ -1109,12 +1153,88 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             GraphHubMCPServer._run_render_bridge_figure({"csv_path": "input.csv", "output_path": "graph.png"})
 
         self.assertIsNotNone(delayed_queue.blocking_get_timeout)
+        self.assertTrue(delayed_queue.closed)
+        self.assertTrue(delayed_queue.joined)
+
+    def test_batch_discovery_uses_blocking_queue_read_after_process_exit(self):
+        delayed_queue = _DelayedRenderQueue()
+
+        with (
+            patch("hub_core.mcp_surface.multiprocessing.Queue", return_value=delayed_queue),
+            patch("hub_core.mcp_surface.multiprocessing.Process", _CompletedRenderProcess),
+        ):
+            projects, timed_out, warnings = GraphHubMCPServer._discover_batch_projects(
+                Path("/tmp"),
+                max_depth=1,
+                timeout_seconds=1.0,
+            )
+
+        self.assertEqual(projects, [])
+        self.assertFalse(timed_out)
+        self.assertEqual(warnings, [])
+        self.assertIsNotNone(delayed_queue.blocking_get_timeout)
+        self.assertTrue(delayed_queue.closed)
+        self.assertTrue(delayed_queue.joined)
+
+    def test_baseline_comparison_does_not_expose_baseline_hash(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            artifact_path = Path(tmpdir) / "output.png"
+            baseline_path = Path(tmpdir) / "baseline.png"
+            artifact_path.write_bytes(b"same")
+            baseline_path.write_bytes(b"same")
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
+
+            result = server._baseline_comparison(artifact_path, str(baseline_path))
+
+            self.assertTrue(result["checked"])
+            self.assertTrue(result["matched"])
+            self.assertIn("artifact_sha256", result)
+            self.assertNotIn("baseline_sha256", result)
+
+    def test_baseline_comparison_rejects_path_outside_allowed_roots_without_hashing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            research_root.mkdir()
+            artifact_path = research_root / "output.png"
+            artifact_path.write_bytes(b"artifact")
+            baseline_path = Path(tmpdir) / "outside" / "baseline.png"
+            baseline_path.parent.mkdir()
+            baseline_path.write_bytes(b"baseline")
+            server = GraphHubMCPServer(research_root=research_root)
+
+            result = server._baseline_comparison(artifact_path, str(baseline_path))
+
+            self.assertTrue(result["checked"])
+            self.assertFalse(result["matched"])
+            self.assertEqual(result["status"], "manual_review_needed")
+            self.assertIn("baseline_path must stay under", result["warnings"][0])
+            self.assertEqual(result["baseline_path"], "")
+            self.assertNotIn("baseline_sha256", result)
+
+    def test_baseline_comparison_rejects_path_under_runtime_parent_only(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            research_root.mkdir()
+            runtime_root = Path(tmpdir) / "runtime"
+            artifact_path = runtime_root / "output.png"
+            artifact_path.parent.mkdir()
+            artifact_path.write_bytes(b"artifact")
+            baseline_path = Path(tmpdir) / "runtime-sibling" / "baseline.png"
+            baseline_path.parent.mkdir()
+            baseline_path.write_bytes(b"baseline")
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=runtime_root)
+
+            result = server._baseline_comparison(artifact_path, str(baseline_path))
+
+            self.assertEqual(result["status"], "manual_review_needed")
+            self.assertIn("baseline_path must stay under", result["warnings"][0])
+            self.assertNotIn("baseline_sha256", result)
 
     def test_render_csv_graph_data_contract_error_sanitizes_source_path(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "outside" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with patch(
                 "hub_core.mcp_surface._read_data_safe",
@@ -1178,7 +1298,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_json_rpc_render_accepts_label_arguments_declared_in_schema(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             response = _handle_json_rpc(
                 server,
@@ -1208,7 +1328,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             result = self._call(
                 server,
@@ -1233,7 +1353,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             result = self._call(
                 server,
@@ -1250,7 +1370,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_invalid_column_returns_execution_error(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             result = self._call(
                 server,
@@ -1267,7 +1387,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_preflight_failure_sets_manual_review(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             result = self._call(
                 server,
@@ -1305,7 +1425,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             result = self._call(
                 server,

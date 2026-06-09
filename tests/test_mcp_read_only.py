@@ -8,7 +8,13 @@ from io import BytesIO
 from pathlib import Path
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
-from hub_core.mcp_surface import GraphHubMCPServer, _handle_json_rpc, list_tool_definitions, run_stdio_server
+from hub_core.mcp_surface import (
+    GraphHubMCPServer,
+    _handle_json_rpc,
+    _matches_json_schema_type,
+    list_tool_definitions,
+    run_stdio_server,
+)
 from hub_core.project_discovery import ProjectDiscoveryService
 from themes.style_profiles import PROFILE_ALIASES, list_profiles
 
@@ -150,7 +156,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             runtime_root = Path(tmpdir) / "runtime"
             before = _snapshot_files(root)
 
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             health = self._call(server, "graphhub.health", {"root": str(root)})
             projects = self._call(server, "graphhub.list_projects", {"root": str(root), "max_depth": 3})
 
@@ -173,6 +179,22 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             self.assertEqual(by_path["02_Invalid"]["status"], "invalid")
             self.assertEqual(by_path["01_Valid"]["declared_figures"], 1)
             self.assertEqual(by_path["01_Valid"]["declared_diagrams"], 1)
+
+    def test_write_tool_guard_blocks_dispatch_when_disabled(self):
+        server = GraphHubMCPServer(write_tools_enabled=False)
+
+        health = self._call(server, "graphhub.health")
+        styles = self._call(server, "graphhub.list_styles")
+        blocked = server.call_tool(
+            "graphhub.scaffold_project",
+            {"project_name": "Blocked", "project_root": "/tmp/blocked", "dry_run": True},
+        )
+
+        self.assertFalse(health["write_tools_enabled"])
+        self.assertEqual(styles["status"], "ok")
+        self.assertTrue(blocked["isError"])
+        self.assertEqual(blocked["structuredContent"]["status"], "error")
+        self.assertIn("Write tools are disabled", blocked["structuredContent"]["errors"][0])
 
     def test_list_projects_preserves_legacy_and_ephemeral_statuses(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
@@ -327,7 +349,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             data_path.parent.mkdir(parents=True)
             data_path.write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             rendered = self._call(
                 server,
                 "graphhub.render_csv_graph",
@@ -526,6 +548,24 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(response["error"]["code"], -32602)
         self.assertIn("Unknown tool", response["error"]["message"])
 
+    def test_json_rpc_notifications_never_return_response(self):
+        server = GraphHubMCPServer()
+
+        initialized = _handle_json_rpc(server, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+        unknown = _handle_json_rpc(server, {"jsonrpc": "2.0", "method": "missing/method"})
+        invalid_params = _handle_json_rpc(server, {"jsonrpc": "2.0", "method": "tools/call", "params": "bad"})
+
+        self.assertIsNone(initialized)
+        self.assertIsNone(unknown)
+        self.assertIsNone(invalid_params)
+
+    def test_json_schema_number_type_rejects_bool_and_unknown_types(self):
+        self.assertTrue(_matches_json_schema_type(1.5, "number"))
+        self.assertTrue(_matches_json_schema_type(1, "number"))
+        self.assertFalse(_matches_json_schema_type(True, "number"))
+        self.assertFalse(_matches_json_schema_type("1", "number"))
+        self.assertFalse(_matches_json_schema_type("x", "unknown"))
+
     def test_stdio_server_accepts_content_length_framed_messages(self):
         request = {"jsonrpc": "2.0", "id": 4, "method": "tools/list"}
         body = json.dumps(request).encode("utf-8")
@@ -556,6 +596,19 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         response = json.loads(raw_output.decode("utf-8"))
         self.assertEqual(response["id"], 5)
         self.assertEqual(response["result"]["tools"][0]["name"], "graphhub.health")
+
+    def test_stdio_server_reports_malformed_content_length_frame(self):
+        input_stream = BytesIO(b"Content-Length: nope\r\n\r\n{}")
+        output_stream = BytesIO()
+
+        rc = run_stdio_server(GraphHubMCPServer(), input_stream=input_stream, output_stream=output_stream)
+
+        self.assertEqual(rc, 0)
+        header, payload = output_stream.getvalue().split(b"\r\n\r\n", 1)
+        self.assertIn(b"Content-Length:", header)
+        response = json.loads(payload.decode("utf-8"))
+        self.assertEqual(response["error"]["code"], -32603)
+        self.assertIn("Invalid Content-Length", response["error"]["message"])
 
     def test_mcp_server_smoke_cli_reports_read_only_status(self):
         completed = subprocess.run(
