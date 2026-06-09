@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -65,16 +66,37 @@ def _load_gitignore_patterns(root: Path) -> tuple[str, ...]:
 
 def _matches_gitignore_pattern(rel_path: str, pattern: str) -> bool:
     candidate = rel_path.strip("/")
-    core = pattern.strip("/")
+    core = pattern.strip()
+    anchored = core.startswith("/")
+    directory_only = core.endswith("/")
+    core = core.strip("/")
     if not core:
         return False
-    if core.startswith("**/"):
-        suffix = core[3:]
-        return candidate == suffix or candidate.startswith(f"{suffix}/") or f"/{suffix}/" in f"/{candidate}/"
-    if "/" not in core:
+    if directory_only:
+        if core.startswith("**/"):
+            target = core[3:]
+            return candidate == target or candidate.startswith(f"{target}/") or f"/{target}/" in f"/{candidate}/"
+        if anchored:
+            return candidate == core or candidate.startswith(f"{core}/")
+        return (
+            candidate == core
+            or candidate.startswith(f"{core}/")
+            or f"/{core}/" in f"/{candidate}/"
+        )
+    if anchored:
+        if "/" not in core and "/" in candidate:
+            return False
+        return fnmatch.fnmatch(candidate, core)
+    if "/" in core:
+        return fnmatch.fnmatch(candidate, core) or fnmatch.fnmatch(candidate, f"*/{core}")
+    if fnmatch.fnmatch(candidate, core):
+        return True
+    if fnmatch.fnmatch(Path(candidate).name, core):
+        return True
+    if not any(char in core for char in "*?[]"):
         parts = candidate.split("/")
         return core in parts
-    return candidate == core or candidate.startswith(f"{core}/")
+    return False
 
 
 def _is_ignored_by_gitignore(rel_path: str, patterns: tuple[str, ...]) -> bool:

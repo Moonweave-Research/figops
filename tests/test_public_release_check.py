@@ -54,10 +54,14 @@ def test_public_release_check_does_not_block_on_its_own_denylist_terms(tmp_path:
 def test_public_release_check_ignores_gitignored_local_outputs(tmp_path: Path) -> None:
     (tmp_path / "LICENSE").write_text("Apache-2.0\n", encoding="utf-8")
     (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
-    (tmp_path / ".gitignore").write_text("results/\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("**/results/\n/*.log\n", encoding="utf-8")
     output = tmp_path / "results" / "scratch.txt"
     output.parent.mkdir()
     output.write_text("PI_control local scratch output\n", encoding="utf-8")
+    (tmp_path / "local.log").write_text("PI_control local log\n", encoding="utf-8")
+    nested_output = tmp_path / "nested" / "results" / "scratch.txt"
+    nested_output.parent.mkdir(parents=True)
+    nested_output.write_text("PI_control nested local scratch output\n", encoding="utf-8")
 
     result = run_release_check(tmp_path, check_style_registry=False)
 
