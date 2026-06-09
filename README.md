@@ -11,6 +11,13 @@
 - 처음 쓰는 사람: 이 README만 먼저 본다.
 - 운영 검증을 돌리는 사람: [QA.md](./docs/QA.md)를 본다.
 - 내부 구현/이력 확인: [task.md](./task.md), [AGENTS.md](./AGENTS.md)를 본다.
+- 라이선스/배포 정책 확인: [LICENSE](./LICENSE), [NOTICE](./NOTICE), [license_distribution_decision_20260609.md](./docs/02-design/license_distribution_decision_20260609.md)를 본다.
+
+## 라이선스 및 배포 상태
+
+현재 Graph Making Hub는 비공개 내부 연구 도구이며, 오픈소스 라이선스가 부여되어 있지 않다.
+저장소 접근 권한은 코드 복사, 재배포, 상업적 사용, 파생 저장소 공개 권한을 의미하지 않는다.
+
 ## 3단계 시작 가이드
 
 처음에는 아래 3개만 알면 된다.
