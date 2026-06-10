@@ -610,6 +610,21 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(response["error"]["code"], -32603)
         self.assertIn("Invalid Content-Length", response["error"]["message"])
 
+    def test_stdio_server_frames_newline_parse_error_as_newline(self):
+        input_stream = BytesIO(b"{bad json\n")
+        output_stream = BytesIO()
+
+        rc = run_stdio_server(GraphHubMCPServer(), input_stream=input_stream, output_stream=output_stream)
+
+        self.assertEqual(rc, 0)
+        raw_output = output_stream.getvalue()
+        self.assertFalse(raw_output.startswith(b"Content-Length:"))
+        self.assertNotIn(b"Content-Length:", raw_output)
+        self.assertTrue(raw_output.endswith(b"\n"))
+        response = json.loads(raw_output.decode("utf-8"))
+        self.assertEqual(response["error"]["code"], -32700)
+        self.assertIn("Parse error", response["error"]["message"])
+
     def test_mcp_server_smoke_cli_reports_read_only_status(self):
         completed = subprocess.run(
             [sys.executable, "graphhub_mcp_server.py", "--smoke"],

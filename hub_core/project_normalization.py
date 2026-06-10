@@ -273,6 +273,10 @@ def apply_normalize_project(manifest: dict[str, Any], *, hub_path: Path, overwri
             elif entry["operation"] == "move":
                 shutil.move(str(source), str(destination))
             elif entry["operation"] == "symlink":
+                try:
+                    Path(source).resolve().relative_to(project_root.resolve())
+                except ValueError as exc:
+                    raise ValueError("Normalization symlink source must stay inside the project root.") from exc
                 os.symlink(source, destination)
         applied["status"] = "modified" if existed else "created"
         applied["checksum"] = _sha256(destination) if destination.exists() else applied.get("checksum", "")

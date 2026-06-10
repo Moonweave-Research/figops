@@ -900,6 +900,27 @@ visual_style:
             self.assertIn("symlink", result["errors"][0])
             self.assertEqual(_snapshot_files(project), before_project)
 
+    def test_normalize_project_structure_rejects_symlink_source_escaping_project(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            project = research_root / "LegacyGraph"
+            project.mkdir(parents=True)
+            external = Path(tmpdir) / "outside.py"
+            external.write_text("print('outside')\n", encoding="utf-8")
+            os.symlink(external, project / "plot.py")
+            server = GraphHubMCPServer(research_root=research_root)
+
+            result = self._call(
+                server,
+                "graphhub.normalize_project_structure",
+                {"project_path": str(project), "plan_only": False, "move_policy": "symlink"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertTrue(result["manual_review_needed"])
+            self.assertIn("symlink source must stay inside the project root", result["errors"][0])
+            self.assertFalse((project / "hub_scripts" / "plot.py").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
