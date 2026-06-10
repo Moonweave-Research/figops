@@ -844,8 +844,7 @@ class GraphHubMCPServer:
                 status="error",
                 summary="Render request has invalid plot settings.",
                 errors=[
-                    f"Invalid plot_type '{plot_type}'. Supported: "
-                    f"{', '.join(sorted(SUPPORTED_RENDER_PLOT_TYPES))}."
+                    f"Invalid plot_type '{plot_type}'. Supported: {', '.join(sorted(SUPPORTED_RENDER_PLOT_TYPES))}."
                 ],
                 manual_review_needed=True,
                 is_dry_run=dry_run,
@@ -1374,9 +1373,7 @@ class GraphHubMCPServer:
                 job_id=job_id,
                 status=status,
                 summary=(
-                    "Rendered project figure."
-                    if status == "ok"
-                    else "Rendered project figure with preflight warnings."
+                    "Rendered project figure." if status == "ok" else "Rendered project figure with preflight warnings."
                 ),
                 manifest_path=manifest_path,
                 output_path=output_path,
@@ -1463,9 +1460,7 @@ class GraphHubMCPServer:
             arguments,
             status=status,
             summary=(
-                "Rendered project figure."
-                if status == "ok"
-                else "Rendered project figure with preflight warnings."
+                "Rendered project figure." if status == "ok" else "Rendered project figure with preflight warnings."
             ),
             created_paths=created_paths,
             artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
@@ -1914,9 +1909,7 @@ class GraphHubMCPServer:
             raise TimeoutError(f"Figure script timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.") from exc
         if completed.returncode != 0:
             message = (
-                completed.stderr.strip()
-                or completed.stdout.strip()
-                or f"Figure script exited {completed.returncode}."
+                completed.stderr.strip() or completed.stdout.strip() or f"Figure script exited {completed.returncode}."
             )
             raise RuntimeError(message)
 
@@ -2044,9 +2037,7 @@ class GraphHubMCPServer:
             else ("warning" if manual_review_needed or preflight.get("passed") is False else "ok")
         )
         artifact_status = (
-            persisted_artifact_status
-            if persisted_failed
-            else self._artifact_status(preflight, baseline_comparison)
+            persisted_artifact_status if persisted_failed else self._artifact_status(preflight, baseline_comparison)
         )
         return self._envelope(
             "graphhub.collect_artifacts",
@@ -2402,7 +2393,30 @@ class GraphHubMCPServer:
         previously_checked = set()
 
         if arguments.get("resume_manifest_path"):
-            resume_path = Path(self._required_string(arguments, "resume_manifest_path")).expanduser().resolve()
+            try:
+                resume_path = self._resolve_allowed_data_path(
+                    self._required_string(arguments, "resume_manifest_path"),
+                    field_name="resume_manifest_path",
+                )
+            except ValueError as exc:
+                return self._envelope(
+                    "graphhub.batch_check",
+                    arguments,
+                    status="error",
+                    summary="Batch resume manifest path is outside the allowed data roots.",
+                    errors=[str(exc)],
+                    manual_review_needed=True,
+                    is_dry_run=dry_run,
+                    failure_stage="CONTRACT",
+                    resolution_hint="Point resume_manifest_path at a manifest under an allowed data root.",
+                    batch_id=batch_id,
+                    batch_root=str(batch_root),
+                    manifest_path=str(manifest_path),
+                    checked_projects=[],
+                    skipped_projects=[],
+                    resumed_from="",
+                    log_paths=[],
+                )
             resumed_from = str(resume_path)
             try:
                 resume_manifest = json.loads(resume_path.read_text(encoding="utf-8"))
@@ -3553,6 +3567,9 @@ def run_stdio_server(
             if request is None:
                 break
             response = _handle_json_rpc(active_server, request)
+        except _StdioParseError as exc:
+            framing = exc.framing
+            response = _json_rpc_error(None, JSONRPC_PARSE_ERROR, f"Parse error: {exc.error}")
         except json.JSONDecodeError as exc:
             response = _json_rpc_error(None, JSONRPC_PARSE_ERROR, f"Parse error: {exc}")
         except Exception as exc:
@@ -3694,6 +3711,15 @@ def _json_rpc_error(request_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
+class _StdioParseError(Exception):
+    """Carries the detected framing so an error reply matches the client's wire format."""
+
+    def __init__(self, error: ValueError, framing: str) -> None:
+        super().__init__(str(error))
+        self.error = error
+        self.framing = framing
+
+
 def _read_stdio_message(stream: Any) -> tuple[dict[str, Any] | None, str]:
     first_line = stream.readline()
     if first_line == b"" or first_line == "":
@@ -3702,7 +3728,10 @@ def _read_stdio_message(stream: Any) -> tuple[dict[str, Any] | None, str]:
         first_line = first_line.encode("utf-8")
 
     if first_line.lstrip().startswith(b"{"):
-        return json.loads(first_line.decode("utf-8")), "newline"
+        try:
+            return json.loads(first_line.decode("utf-8")), "newline"
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise _StdioParseError(exc, "newline") from exc
 
     headers = _read_headers(stream, first_line)
     content_length = headers.get("content-length")

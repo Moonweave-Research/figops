@@ -242,6 +242,35 @@ class BatchQualityMCPTest(unittest.TestCase):
             self.assertEqual(resumed["skipped_projects"][0]["project_root"], "01_Valid")
             self.assertEqual(resumed["skipped_projects"][0]["reason"], "already_checked")
 
+    def test_batch_check_rejects_resume_manifest_outside_allowed_roots(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
+            research_root = Path(tmpdir) / "research"
+            runtime_root = Path(tmpdir) / "runtime"
+            root = research_root / "ResearchOS"
+            self._write_project(root, "01_Valid")
+            outside_manifest = Path(tmpdir) / "escape" / "batch_manifest.json"
+            outside_manifest.parent.mkdir(parents=True)
+            outside_manifest.write_text(json.dumps({"root": str(root), "checked_projects": []}), encoding="utf-8")
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=runtime_root)
+
+            resumed = self._call(
+                server,
+                "graphhub.batch_check",
+                {
+                    "root": str(root),
+                    "dry_run": False,
+                    "batch_id": "batch-escape",
+                    "resume_manifest_path": str(outside_manifest),
+                },
+            )
+
+            self.assertEqual(resumed["status"], "error")
+            self.assertTrue(resumed["manual_review_needed"])
+            self.assertEqual(resumed["failure_stage"], "CONTRACT")
+            self.assertIn("allowed data root", resumed["errors"][0])
+            self.assertEqual(resumed["resumed_from"], "")
+            self.assertEqual(resumed["checked_projects"], [])
+
     def test_batch_check_rejects_resume_manifest_from_different_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
             root_a = Path(tmpdir) / "ResearchOS_A"
