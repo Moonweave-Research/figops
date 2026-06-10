@@ -33,6 +33,7 @@ from themes.journal_theme import (
     save_journal_fig,
     set_figure_size,
 )
+from themes.physics_colormap import resolve_colormap
 from themes.style_profiles import get_series_style
 
 from .smart_layout import find_empty_quadrant
@@ -122,6 +123,7 @@ class BridgeFigureSpec:
     x_column: str
     y_column: str
     title: str
+    z_column: str = ""
     x_axis_label: str = ""
     y_axis_label: str = ""
     label_column: str = ""
@@ -489,6 +491,8 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
             col = getattr(spec, col_attr)
             if col:
                 required.append(col)
+        if spec.plot_type == "heatmap" and spec.z_column:
+            required.append(spec.z_column)
         missing = [c for c in required if c not in headers]
         if missing:
             raise ValueError(
@@ -500,6 +504,7 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
                 y_val = float(row[spec.y_column])
                 yerr_val = float(row[spec.yerr_column]) if spec.yerr_column else None
                 yerr_minus_val = float(row[spec.yerr_minus_column]) if spec.yerr_minus_column else None
+                z_val = float(row[spec.z_column]) if spec.z_column else None
             except (ValueError, TypeError):
                 skipped += 1
                 continue
@@ -509,10 +514,14 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
             if yerr_minus_val is not None and not math.isfinite(yerr_minus_val):
                 skipped += 1
                 continue
+            if z_val is not None and not math.isfinite(z_val):
+                skipped += 1
+                continue
             points.append(
                 {
                     "x": _parse_x_value(row[spec.x_column]),
                     "y": y_val,
+                    "z": z_val,
                     "label": row[spec.label_column] if spec.label_column else "",
                     "series": row[spec.series_column] if spec.series_column else "",
                     "yerr": yerr_val,
@@ -628,6 +637,21 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
         ax.legend(**_legend_kwargs(ax, spec, n_series=len(grouped)))
 
 
+def _render_heatmap_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
+    xs = sorted({point["x"] for point in points})
+    ys = sorted({point["y"] for point in points})
+    x_index = {value: column for column, value in enumerate(xs)}
+    y_index = {value: row for row, value in enumerate(ys)}
+    grid = np.full((len(ys), len(xs)), np.nan)
+    for point in points:
+        grid[y_index[point["y"]], x_index[point["x"]]] = point["z"]
+
+    cmap = resolve_colormap(spec.physics_type)
+    mesh = ax.pcolormesh(xs, ys, grid, cmap=cmap, shading="auto")
+    colorbar = ax.figure.colorbar(mesh, ax=ax)
+    colorbar.set_label(spec.z_column)
+
+
 def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     grouped = _group_points(points, spec)
     has_multi_series = any(key != "__single__" for key in grouped)
@@ -705,6 +729,9 @@ def _render_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
             f"bridge_renderer: no valid data points for {spec.title!r}, figure will be blank",
             stacklevel=2,
         )
+        return
+    if spec.plot_type == "heatmap":
+        _render_heatmap_plot(ax, points, spec)
         return
     if spec.plot_type == "bar":
         _render_bar_plot(ax, points, spec)

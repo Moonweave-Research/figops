@@ -56,7 +56,7 @@ WRITE_TOOL_NAMES = (
     "graphhub.normalize_project_structure",
     "graphhub.batch_check",
 )
-SUPPORTED_RENDER_PLOT_TYPES = {"bar", "line", "scatter", "xy"}
+SUPPORTED_RENDER_PLOT_TYPES = {"bar", "line", "scatter", "xy", "heatmap"}
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0
 MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS = 5.0
@@ -254,6 +254,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "data_path": {"type": "string"},
                     "x_column": {"type": "string"},
                     "y_column": {"type": "string"},
+                    "z_column": {"type": "string"},
                     "plot_type": {"type": "string", "enum": sorted(SUPPORTED_RENDER_PLOT_TYPES), "default": "scatter"},
                     "target_format": {"type": "string", "default": "nature"},
                     "profile": {"type": "string", "default": DEFAULT_PROFILE},
@@ -469,7 +470,7 @@ def list_prompt_definitions() -> list[dict[str, Any]]:
                 {"name": "x_column", "description": "CSV x-axis column.", "required": True},
                 {"name": "y_column", "description": "CSV y-axis column.", "required": True},
                 {"name": "target_format", "description": "Graph Hub target format.", "required": False},
-                {"name": "plot_type", "description": "bar, line, scatter, or xy.", "required": False},
+                {"name": "plot_type", "description": "bar, line, scatter, xy, or heatmap.", "required": False},
             ],
         },
         {
@@ -816,6 +817,7 @@ class GraphHubMCPServer:
             data_path = self._input_file_path(arguments.get("data_path"))
             x_column = self._required_string(arguments, "x_column")
             y_column = self._required_string(arguments, "y_column")
+            z_column = str(arguments.get("z_column") or "").strip()
         except ValueError as exc:
             return self._envelope(
                 "graphhub.render_csv_graph",
@@ -854,6 +856,20 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
+        if plot_type == "heatmap" and not z_column:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid plot settings.",
+                errors=["plot_type 'heatmap' requires a z_column."],
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Provide z_column for heatmap plot_type.",
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+            )
         style_errors = self._render_style_errors(target_format, output_format, profile)
         if style_errors:
             return self._envelope(
@@ -889,6 +905,7 @@ class GraphHubMCPServer:
             output_format=output_format,
             x_column=x_column,
             y_column=y_column,
+            z_column=z_column,
             semantic_checks=semantic_checks,
         )
         config_errors = validate_config(config)
@@ -910,7 +927,12 @@ class GraphHubMCPServer:
             ensure_local_files([str(data_path)])
         contract_result = self._validate_render_data_contract(
             data_path,
-            required_columns=[x_column, y_column, *[str(key) for key in semantic_checks]],
+            required_columns=[
+                x_column,
+                y_column,
+                *([z_column] if z_column else []),
+                *[str(key) for key in semantic_checks],
+            ],
             semantic_checks=semantic_checks,
         )
         contract_errors = contract_result["errors"]
@@ -1002,6 +1024,7 @@ class GraphHubMCPServer:
                     "plot_type": plot_type,
                     "x_column": x_column,
                     "y_column": y_column,
+                    "z_column": z_column,
                     "title": str(arguments.get("title") or "Graph Hub MCP render"),
                     "x_axis_label": str(arguments.get("x_axis_label") or x_column),
                     "y_axis_label": str(arguments.get("y_axis_label") or y_column),
@@ -3493,6 +3516,7 @@ class GraphHubMCPServer:
         output_format: str,
         x_column: str,
         y_column: str,
+        z_column: str,
         semantic_checks: dict[str, Any],
     ) -> dict[str, Any]:
         return {
@@ -3507,7 +3531,7 @@ class GraphHubMCPServer:
                 "csv_checks": [
                     {
                         "path": "data/input.csv",
-                        "required_columns": [x_column, y_column],
+                        "required_columns": [x_column, y_column, *([z_column] if z_column else [])],
                         "semantic_checks": semantic_checks,
                     }
                 ]

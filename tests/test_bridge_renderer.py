@@ -16,6 +16,7 @@ from plotting.bridge_renderer import (
     _apply_layout,
     _display_label,
     _render_bar_plot,
+    _render_heatmap_plot,
     _render_xy_plot,
     _resolved_legend_layout,
 )
@@ -57,6 +58,34 @@ class BridgeRendererUnitTest(unittest.TestCase):
             labels = [item.get_text() for item in ax.get_xticklabels()]
             self.assertIn("Coated, A, Aln.", labels)
             self.assertIn("Coated, B, Unaln.", labels)
+        finally:
+            plt.close(fig)
+
+    def test_heatmap_plot_renders_mesh_and_colorbar(self):
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="heatmap",
+            x_column="x",
+            y_column="y",
+            z_column="z",
+            title="heatmap",
+        )
+        points = [
+            {"x": 0.0, "y": 0.0, "z": 1.0, "label": "", "series": "", "yerr": None},
+            {"x": 1.0, "y": 0.0, "z": 2.0, "label": "", "series": "", "yerr": None},
+            {"x": 0.0, "y": 1.0, "z": 3.0, "label": "", "series": "", "yerr": None},
+            {"x": 1.0, "y": 1.0, "z": 4.0, "label": "", "series": "", "yerr": None},
+        ]
+
+        fig, ax = plt.subplots()
+        try:
+            _render_heatmap_plot(ax, points, spec)
+            self.assertEqual(len(ax.collections), 1)
+            mesh = ax.collections[0]
+            self.assertEqual(mesh.get_array().count(), 4)
+            self.assertEqual(len(fig.axes), 2)
+            self.assertEqual(fig.axes[1].get_ylabel(), "z")
         finally:
             plt.close(fig)
 

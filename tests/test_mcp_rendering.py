@@ -68,6 +68,15 @@ def _write_csv(path: Path) -> Path:
     return path
 
 
+def _write_grid_csv(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["x", "y", "z"])
+        writer.writeheader()
+        writer.writerows([{"x": x, "y": y, "z": x + y} for y in (0, 1) for x in (0, 1)])
+    return path
+
+
 def _write_project_render_fixture(root: Path, name: str = "01_Project") -> Path:
     project = root / name
     (project / "hub_scripts").mkdir(parents=True, exist_ok=True)
@@ -718,6 +727,50 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["failure_stage"], "CONFIG")
             self.assertIn("plot_type", result["resolution_hint"])
             self.assertIn("plot_type", result["errors"][0])
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_graph_renders_heatmap_end_to_end(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = _write_grid_csv(tmp_root / "input" / "grid.csv")
+            runtime_root = tmp_root / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "z_column": "z",
+                    "plot_type": "heatmap",
+                    "job_id": "render-heatmap",
+                },
+            )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(result["job_id"], "render-heatmap")
+            self.assertTrue(Path(result["output_path"]).is_file())
+            config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
+            csv_check = config["data_contract"]["csv_checks"][0]
+            self.assertEqual(csv_check["required_columns"], ["x", "y", "z"])
+
+    def test_render_csv_graph_rejects_heatmap_without_z_column(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_grid_csv(Path(tmpdir) / "input" / "grid.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {"data_path": str(data_path), "x_column": "x", "y_column": "y", "plot_type": "heatmap"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertIn("z_column", result["errors"][0])
             self.assertFalse((runtime_root / "mcp_jobs").exists())
 
     def test_render_csv_graph_rejects_large_csv_before_copying(self):
