@@ -10,7 +10,9 @@
 """
 
 import copy
+import json
 import os
+import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -44,6 +46,7 @@ except ImportError:
 SINGLE_COLUMN = 89  # mm
 DOUBLE_COLUMN = 183  # mm
 _LAYOUT_LOCK_ATTR = "_graph_hub_layout_lock"
+DIAG_BUDGET_FLOOR_SECONDS = 5.0
 
 _PUBLICATION_LAYOUT_SPECS_MM = {
     "standard": {
@@ -394,6 +397,37 @@ def set_figure_size(width_mm, height_mm=None, ratio=0.8):
 get_figsize = set_figure_size
 
 
+def _safe_geometry_diagnostics_inline(fig) -> dict:
+    """Run geometry diagnostics in the same frame that holds the live figure.
+
+    Never raises: a diagnostics-engine error degrades to a passed:null stub so the
+    worker's broad except can never hard-fail an already-saved figure. The wall-clock
+    budget skip reads ONLY GEOMETRY_DIAGNOSTICS_DEADLINE against a fixed floor;
+    MCP_RENDER_TIMEOUT_SECONDS is a module constant in mcp_surface and is never in
+    os.environ, so it must not be read here.
+    """
+    try:
+        from hub_core.geometry_diagnostics import SCHEMA_VERSION, diagnose_figure_geometry
+
+        deadline = float(os.environ.get("GEOMETRY_DIAGNOSTICS_DEADLINE", "inf"))
+        if deadline - time.time() < DIAG_BUDGET_FLOOR_SECONDS:
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "passed": None,
+                "checks": [],
+                "warnings": ["skipped: render budget"],
+            }
+        data_axes = [
+            axis for axis in fig.axes if axis.get_visible() and getattr(axis, "_graph_hub_role", None) != "colorbar"
+        ]
+        layout_locked = getattr(fig, _LAYOUT_LOCK_ATTR, None) is not None
+        return diagnose_figure_geometry(fig, data_axes, layout_locked=layout_locked)
+    except Exception as exc:
+        from hub_core.geometry_diagnostics import SCHEMA_VERSION
+
+        return {"schema_version": SCHEMA_VERSION, "passed": None, "checks": [], "warnings": [str(exc)]}
+
+
 def save_journal_fig(
     fig,
     filename,
@@ -443,6 +477,17 @@ def save_journal_fig(
 
     with save_ctx:
         fig.savefig(filename, metadata=metadata, **kwargs)
+
+        # Geometry diagnostics: run once, AFTER the primary artifact is durably written,
+        # so a slow/timed-out diagnostics pass can never cost the figure. Sidecar is
+        # addressed by GEOMETRY_DIAGNOSTICS_OUT; absent => no-op (athena_bridge/standalone).
+        diagnostics_out = os.environ.get("GEOMETRY_DIAGNOSTICS_OUT")
+        if diagnostics_out:
+            diag = _safe_geometry_diagnostics_inline(fig)
+            try:
+                Path(diagnostics_out).write_text(json.dumps(diag), encoding="utf-8")
+            except Exception:
+                pass  # writing the sidecar must never fail the save
 
         # Companion file generation for PDF outputs
         if suffix == ".pdf":
