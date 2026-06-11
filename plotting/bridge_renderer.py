@@ -74,9 +74,7 @@ def _figsize_for_format(target_format: str) -> tuple[float, float]:
     return set_figure_size(w_mm, h_mm)
 
 
-def draw_zenith_plot(
-    ax, x, y, label=None, kind="scatter", palette="Nature Energy", series_index=0, **kwargs
-):
+def draw_zenith_plot(ax, x, y, label=None, kind="scatter", palette="Nature Energy", series_index=0, **kwargs):
     """
     최상의 품질을 보장하는 시각화 통합 래퍼입니다.
     - 자동 색상 지정 (CVD 세이프 팔레트)
@@ -328,9 +326,7 @@ def _render_multipanel_draft(spec: MultiPanelSpec):
 def _validated_compose_mode(spec: MultiPanelSpec) -> str:
     compose_mode = str(spec.compose_mode or "draft").strip().lower()
     if compose_mode not in {"draft", "manuscript"}:
-        raise ValueError(
-            f"unsupported compose_mode {spec.compose_mode!r}; expected 'draft' or 'manuscript'"
-        )
+        raise ValueError(f"unsupported compose_mode {spec.compose_mode!r}; expected 'draft' or 'manuscript'")
     if spec.rows <= 0 or spec.cols <= 0:
         raise ValueError("rows and cols must be positive integers")
     if spec.panel_height_mm <= 0:
@@ -496,8 +492,7 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
         missing = [c for c in required if c not in headers]
         if missing:
             raise ValueError(
-                f"CSV {csv_path.name} is missing column(s): {', '.join(missing)}. "
-                f"Available: {', '.join(headers)}"
+                f"CSV {csv_path.name} is missing column(s): {', '.join(missing)}. Available: {', '.join(headers)}"
             )
         for row_num, row in enumerate(reader, start=2):
             try:
@@ -559,6 +554,7 @@ def _yerr_values(points: list[dict], spec: BridgeFigureSpec):
         return None
     if spec.yerr_minus_column:
         import numpy as np
+
         minus = [float(point["yerr_minus"]) for point in points]
         plus = [float(point["yerr"]) for point in points]
         return np.array([minus, plus])
@@ -594,9 +590,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
         xs = [point["x"] for point in series_points]
         ys = [point["y"] for point in series_points]
         yerr = _yerr_values(series_points, spec)
-        legend_label = (
-            _display_label(series_name, compress_labels=spec.compress_labels) if has_multi_series else None
-        )
+        legend_label = _display_label(series_name, compress_labels=spec.compress_labels) if has_multi_series else None
         sty = get_series_style(idx)
 
         cap_size = spec.yerr_cap_width
@@ -604,22 +598,36 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
         if line:
             if yerr is not None:
                 ax.errorbar(
-                    xs, ys, yerr=yerr,
-                    fmt=sty["marker"], linestyle=sty["linestyle"],
-                    linewidth=1.2, capsize=cap_size, capthick=cap_thick, label=legend_label,
+                    xs,
+                    ys,
+                    yerr=yerr,
+                    fmt=sty["marker"],
+                    linestyle=sty["linestyle"],
+                    linewidth=1.2,
+                    capsize=cap_size,
+                    capthick=cap_thick,
+                    label=legend_label,
                 )
             else:
                 ax.plot(
-                    xs, ys,
-                    marker=sty["marker"], linestyle=sty["linestyle"],
-                    linewidth=1.2, label=legend_label,
+                    xs,
+                    ys,
+                    marker=sty["marker"],
+                    linestyle=sty["linestyle"],
+                    linewidth=1.2,
+                    label=legend_label,
                 )
         else:
             if yerr is not None:
                 ax.errorbar(
-                    xs, ys, yerr=yerr,
-                    fmt=sty["marker"], linestyle="none",
-                    capsize=cap_size, capthick=cap_thick, label=legend_label,
+                    xs,
+                    ys,
+                    yerr=yerr,
+                    fmt=sty["marker"],
+                    linestyle="none",
+                    capsize=cap_size,
+                    capthick=cap_thick,
+                    label=legend_label,
                 )
             else:
                 ax.scatter(xs, ys, s=24, marker=sty["marker"], label=legend_label)
@@ -649,6 +657,7 @@ def _render_heatmap_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None
     cmap = resolve_colormap(spec.physics_type)
     mesh = ax.pcolormesh(xs, ys, grid, cmap=cmap, shading="auto")
     colorbar = ax.figure.colorbar(mesh, ax=ax)
+    colorbar.ax._graph_hub_role = "colorbar"  # positive tag for geometry-diagnostics classification
     colorbar.set_label(spec.z_column)
 
 
@@ -669,10 +678,7 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         offset_start = -0.4 + width / 2
         for series_index, series_name in enumerate(series_names):
             series_points = grouped[series_name]
-            xs = [
-                category_to_position[point["x"]] + offset_start + series_index * width
-                for point in series_points
-            ]
+            xs = [category_to_position[point["x"]] + offset_start + series_index * width for point in series_points]
             ys = [point["y"] for point in series_points]
             yerr = _yerr_values(series_points, spec)
             sty = get_series_style(series_index)
@@ -702,8 +708,12 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         ys = [point["y"] for point in points]
         yerr = _yerr_values(points, spec)
         bars = ax.bar(
-            row_positions, ys, yerr=yerr, capsize=spec.yerr_cap_width,
-            edgecolor="black", linewidth=0.5,
+            row_positions,
+            ys,
+            yerr=yerr,
+            capsize=spec.yerr_cap_width,
+            edgecolor="black",
+            linewidth=0.5,
         )
         if spec.label_column:
             _annotate_points(

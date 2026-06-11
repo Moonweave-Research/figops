@@ -27,6 +27,7 @@ Required result inspection:
 - `failure_stage`
 - `resolution_hint`
 - `manual_review_needed`
+- `geometry_diagnostics`
 
 ## Project Figure Render
 
@@ -58,10 +59,37 @@ Required result inspection:
 - `resolution_hint`
 - `manual_review_needed`
 - `visual_preflight_status`
+- `geometry_diagnostics`
 - `provenance`
 
 Do not mutate the source project. Default project renders run under
 `runtime_root/mcp_project_jobs/<job_id>/project`.
+
+## Geometry Diagnostics
+
+Both render tools attach a `geometry_diagnostics` object (and embed it in the
+manifest) reporting deterministic, objective matplotlib geometry facts measured
+on the fully-drawn figure: tick-label overlaps/crowding, out-of-axes/out-of-figure
+artists, legend/colorbar collisions, blank-area ratio, and point-annotation
+overlaps. There is no subjective scoring — every number traces to an artist extent.
+
+Consumption rules:
+
+- Read `schema_version` (`geometry_diagnostics/1`) before branching on check names.
+- `passed` is tri-state: test `passed is False` for a real finding and `passed is None`
+  for "not measured" (dry-run, render budget skip, no sidecar emitted, or engine error).
+  Never use truthiness (`if not passed:` conflates `None` and `False`).
+- Branch only on `name` + `passed` + `detail`; the per-check `data` sub-dict is advisory.
+- Warning-eligible findings (`passed is False`) flip top-level `status` to `warning`
+  through the existing `manual_review_needed` path, intentionally raising the `warning`
+  rate (mainly on dense/rotated ticks). Diagnostics never hard-fail a render: the artifact
+  is saved before they run, and an engine error degrades to `passed:null`.
+
+Diagnostics are render-scoped via two env vars (`GEOMETRY_DIAGNOSTICS_OUT`,
+`GEOMETRY_DIAGNOSTICS_DEADLINE`) that are set and cleared per render, and enter no
+provenance/fingerprint hash. For fully cross-platform tick reproducibility, normalize
+`LC_NUMERIC`/the tick formatter in the render environment (the two tick metrics depend
+on per-machine font metrics; a `near_boundary` flag softens locale-driven width drift).
 
 ## Surfur Project Render
 

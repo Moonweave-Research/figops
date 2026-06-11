@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 import uuid
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -69,6 +69,109 @@ JSONRPC_METHOD_NOT_FOUND = -32601
 JSONRPC_PARSE_ERROR = -32700
 JSONRPC_RESOURCE_NOT_FOUND = -32002
 _STRICT_JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+
+GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION = "geometry_diagnostics/1"
+_GEOMETRY_METRIC_NAMES = (
+    "tick_label_overlaps",
+    "tick_label_crowding",
+    "artists_outside_axes",
+    "artists_outside_figure",
+    "legend_data_collision",
+    "axis_label_title_overlap",
+    "colorbar_overlap",
+    "blank_area_ratio",
+    "point_annotation_overlaps",
+)
+_GEOMETRY_WARNING_ELIGIBLE = frozenset(
+    {
+        "tick_label_overlaps",
+        "tick_label_crowding",
+        "artists_outside_axes",
+        "artists_outside_figure",
+        "axis_label_title_overlap",
+        "colorbar_overlap",
+        "point_annotation_overlaps",
+    }
+)
+
+
+_GEOMETRY_DIAGNOSTICS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "schema_version": {"type": "string"},
+        "passed": {"type": ["boolean", "null"]},
+        "checks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "enum": list(_GEOMETRY_METRIC_NAMES)},
+                    "passed": {"type": ["boolean", "null"]},
+                    "detail": {"type": "string"},
+                    "data": {"type": "object"},
+                },
+                "required": ["name", "passed", "detail"],
+            },
+        },
+        "warnings": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["schema_version", "passed", "checks", "warnings"],
+}
+
+
+def _geometry_stub(reason: str, *, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    stub: dict[str, Any] = {
+        "schema_version": GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
+        "passed": None,
+        "checks": [],
+        "warnings": [reason],
+    }
+    if data is not None:
+        stub["data"] = data
+    return stub
+
+
+def _read_geometry_sidecar(job_root: Path) -> dict[str, Any]:
+    sidecar = job_root / "geometry_diagnostics.json"
+    try:
+        text = sidecar.read_text(encoding="utf-8")
+    except OSError:
+        return _geometry_stub(
+            "geometry_diagnostics_unavailable: no sidecar emitted",
+            data={"reason": "no_sidecar"},
+        )
+    try:
+        loaded = json.loads(text)
+    except (ValueError, TypeError):
+        return _geometry_stub(
+            "geometry_diagnostics_unavailable: unreadable sidecar",
+            data={"reason": "no_sidecar"},
+        )
+    if not isinstance(loaded, dict):
+        return _geometry_stub(
+            "geometry_diagnostics_unavailable: malformed sidecar",
+            data={"reason": "no_sidecar"},
+        )
+    return loaded
+
+
+def _geometry_warnings(diagnostics: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    raw_warnings = diagnostics.get("warnings")
+    if isinstance(raw_warnings, list):
+        warnings.extend(str(warning) for warning in raw_warnings)
+    raw_checks = diagnostics.get("checks")
+    if isinstance(raw_checks, list):
+        for check in raw_checks:
+            if (
+                isinstance(check, dict)
+                and check.get("name") in _GEOMETRY_WARNING_ELIGIBLE
+                and check.get("passed") is False
+            ):
+                detail = check.get("detail")
+                if detail:
+                    warnings.append(str(detail))
+    return warnings
 
 
 class ProjectRenderExportError(RuntimeError):
@@ -278,6 +381,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "config_path": {"type": "string"},
                     "style_summary": {"type": "object"},
                     "visual_preflight_status": {"type": "object"},
+                    "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
+                    "calculation_checks": {"type": "object"},
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
                 }
@@ -315,6 +420,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "config_path": {"type": "string"},
                     "style_summary": {"type": "object"},
                     "visual_preflight_status": {"type": "object"},
+                    "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
                     "provenance": {"type": "object"},
@@ -831,6 +937,7 @@ class GraphHubMCPServer:
                 resolution_hint="Fix data_path and CSV column inputs before rendering.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=_geometry_stub("no figure"),
             )
         plot_type = str(arguments.get("plot_type") or "scatter").strip().lower()
         target_format = str(arguments.get("target_format") or "nature").strip().lower()
@@ -854,6 +961,7 @@ class GraphHubMCPServer:
                 resolution_hint="Use a supported plot_type.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=_geometry_stub("no figure"),
             )
         if plot_type == "heatmap" and not z_column:
             return self._envelope(
@@ -868,6 +976,7 @@ class GraphHubMCPServer:
                 resolution_hint="Provide z_column for heatmap plot_type.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=_geometry_stub("no figure"),
             )
         style_errors = self._render_style_errors(target_format, output_format, profile)
         if style_errors:
@@ -883,6 +992,7 @@ class GraphHubMCPServer:
                 resolution_hint="Use a supported target_format, output_format, and profile.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=_geometry_stub("no figure"),
             )
         if not isinstance(semantic_checks, dict):
             return self._envelope(
@@ -897,6 +1007,7 @@ class GraphHubMCPServer:
                 resolution_hint="Provide semantic_checks as an object keyed by CSV column.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=_geometry_stub("no figure"),
             )
         config = self._render_project_config(
             target_format=target_format,
@@ -921,6 +1032,7 @@ class GraphHubMCPServer:
                 resolution_hint="Fix the generated render project_config settings.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=_geometry_stub("no figure"),
             )
         with redirect_stdout(sys.stderr):
             ensure_local_files([str(data_path)])
@@ -950,6 +1062,7 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 calculation_checks=calculation_checks,
+                geometry_diagnostics=_geometry_stub("no figure"),
             )
         if dry_run:
             calculation_warnings = self._calculation_warnings(calculation_checks)
@@ -978,6 +1091,7 @@ class GraphHubMCPServer:
                 artifact_status="validated",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 calculation_checks=calculation_checks,
+                geometry_diagnostics=_geometry_stub("dry_run"),
             )
         self._activate_runtime_root_for_runtime_access()
         job_root = self._mcp_jobs_root() / job_id
@@ -996,6 +1110,7 @@ class GraphHubMCPServer:
                 resolution_hint="Set overwrite=true to replace the existing MCP render job.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=_geometry_stub("no figure"),
             )
         if job_root.exists() and overwrite:
             shutil.rmtree(job_root)
@@ -1016,21 +1131,24 @@ class GraphHubMCPServer:
             config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
             created_paths.append(str(config_path))
 
-            self._run_render_bridge_figure(
-                {
-                    "csv_path": str(job_data_path),
-                    "output_path": str(output_path),
-                    "plot_type": plot_type,
-                    "x_column": x_column,
-                    "y_column": y_column,
-                    "z_column": z_column,
-                    "title": str(arguments.get("title") or "Graph Hub MCP render"),
-                    "x_axis_label": str(arguments.get("x_axis_label") or x_column),
-                    "y_axis_label": str(arguments.get("y_axis_label") or y_column),
-                    "target_format": target_format,
-                    "profile_name": profile,
-                }
-            )
+            with self._geometry_diagnostics_env(job_root):
+                self._run_render_bridge_figure(
+                    {
+                        "csv_path": str(job_data_path),
+                        "output_path": str(output_path),
+                        "plot_type": plot_type,
+                        "x_column": x_column,
+                        "y_column": y_column,
+                        "z_column": z_column,
+                        "title": str(arguments.get("title") or "Graph Hub MCP render"),
+                        "x_axis_label": str(arguments.get("x_axis_label") or x_column),
+                        "y_axis_label": str(arguments.get("y_axis_label") or y_column),
+                        "target_format": target_format,
+                        "profile_name": profile,
+                    }
+                )
+            geometry_diagnostics = _read_geometry_sidecar(job_root)
+            geometry_warnings = _geometry_warnings(geometry_diagnostics)
             figures = self._rendered_figure_artifacts(output_path)
             created_paths.extend(str(figure["path"]) for figure in figures)
             preflight = self._safe_preflight(output_path, target_format)
@@ -1053,6 +1171,7 @@ class GraphHubMCPServer:
                 or bool(preflight_warnings)
                 or (baseline_comparison["checked"] and not baseline_comparison["matched"])
                 or bool(calculation_checks.get("manual_review_needed"))
+                or geometry_diagnostics.get("passed") is False
             )
             status = "warning" if manual_review_needed else "ok"
             artifact_status = self._artifact_status(preflight, baseline_comparison)
@@ -1079,6 +1198,7 @@ class GraphHubMCPServer:
                     "output_format": output_format,
                 },
                 "visual_preflight_status": preflight,
+                "geometry_diagnostics": geometry_diagnostics,
                 "failure_stage": "",
                 "resolution_hint": "",
                 "artifact_status": artifact_status,
@@ -1156,6 +1276,7 @@ class GraphHubMCPServer:
                 resolution_hint=resolution_hint,
                 artifact_status="failed",
                 baseline_comparison=baseline_comparison,
+                geometry_diagnostics=_geometry_stub("render_execution_failed"),
             )
 
         return self._envelope(
@@ -1165,7 +1286,7 @@ class GraphHubMCPServer:
             summary="Rendered CSV graph." if status == "ok" else "Rendered CSV graph with preflight warnings.",
             created_paths=created_paths,
             artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
-            warnings=preflight_warnings + baseline_warnings + calculation_warnings,
+            warnings=preflight_warnings + baseline_warnings + calculation_warnings + geometry_warnings,
             manual_review_needed=manual_review_needed,
             is_dry_run=False,
             job_id=job_id,
@@ -1178,6 +1299,7 @@ class GraphHubMCPServer:
             latest_alias=str(latest_dir),
             style_summary=manifest["style_summary"],
             visual_preflight_status=preflight,
+            geometry_diagnostics=geometry_diagnostics,
             failure_stage="",
             resolution_hint="",
             artifact_status=artifact_status,
@@ -1285,6 +1407,7 @@ class GraphHubMCPServer:
                 latest_alias=str(latest_dir),
                 style_summary=style_summary,
                 visual_preflight_status={"passed": None, "checks": [], "warnings": ["dry_run"]},
+                geometry_diagnostics=_geometry_stub("dry_run"),
                 artifact_status="validated",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 provenance={},
@@ -1337,6 +1460,8 @@ class GraphHubMCPServer:
                 selected_figure=selected,
                 style_summary=style_summary,
             )
+            geometry_diagnostics = _read_geometry_sidecar(job_root)
+            geometry_warnings = _geometry_warnings(geometry_diagnostics)
             if not output_path.is_file():
                 raise ProjectRenderExportError(f"Selected figure output was not created: {output_relpath}")
             figures_out = self._rendered_figure_artifacts(output_path)
@@ -1352,6 +1477,7 @@ class GraphHubMCPServer:
                 not bool(preflight.get("passed"))
                 or bool(preflight_warnings)
                 or (baseline_comparison["checked"] and not baseline_comparison["matched"])
+                or geometry_diagnostics.get("passed") is False
             )
             status = "warning" if manual_review_needed else "ok"
             artifact_status = self._artifact_status(preflight, baseline_comparison)
@@ -1385,6 +1511,7 @@ class GraphHubMCPServer:
                 "skipped_paths": [],
                 "style_summary": style_summary,
                 "visual_preflight_status": preflight,
+                "geometry_diagnostics": geometry_diagnostics,
                 "failure_stage": "",
                 "resolution_hint": "",
                 "artifact_status": artifact_status,
@@ -1471,6 +1598,9 @@ class GraphHubMCPServer:
                 latest_alias=str(latest_dir) if job_root.exists() else "",
                 style_summary=style_summary,
                 visual_preflight_status={"passed": False, "checks": [], "warnings": ["render_execution_failed"]},
+                geometry_diagnostics=_read_geometry_sidecar(job_root)
+                if job_root.exists()
+                else _geometry_stub("render_execution_failed"),
                 artifact_status="failed",
                 baseline_comparison=baseline_comparison,
                 provenance={},
@@ -1487,7 +1617,7 @@ class GraphHubMCPServer:
             ),
             created_paths=created_paths,
             artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
-            warnings=preflight_warnings + baseline_warnings,
+            warnings=preflight_warnings + baseline_warnings + geometry_warnings,
             manual_review_needed=manual_review_needed,
             is_dry_run=False,
             job_id=job_id,
@@ -1504,6 +1634,7 @@ class GraphHubMCPServer:
             latest_alias=str(latest_dir),
             style_summary=style_summary,
             visual_preflight_status=preflight,
+            geometry_diagnostics=geometry_diagnostics,
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
             provenance=provenance,
@@ -1619,6 +1750,32 @@ class GraphHubMCPServer:
         return created
 
     @staticmethod
+    @contextmanager
+    def _geometry_diagnostics_env(job_root: Path):
+        """Set GEOMETRY_DIAGNOSTICS_OUT/_DEADLINE for the spawn-child render, then restore.
+
+        Both vars mutate the parent os.environ so the spawn child inherits them; the finally
+        restores/pops them so a stale path/deadline never redirects the next in-process render.
+        The deadline is an absolute epoch (time.time()), cross-process comparable; the child
+        reads it against a fixed floor (see themes.journal_theme.DIAG_BUDGET_FLOOR_SECONDS).
+        """
+        prior_out = os.environ.get("GEOMETRY_DIAGNOSTICS_OUT")
+        prior_deadline = os.environ.get("GEOMETRY_DIAGNOSTICS_DEADLINE")
+        os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = str(job_root / "geometry_diagnostics.json")
+        os.environ["GEOMETRY_DIAGNOSTICS_DEADLINE"] = str(time.time() + MCP_RENDER_TIMEOUT_SECONDS)
+        try:
+            yield
+        finally:
+            for key, prior in (
+                ("GEOMETRY_DIAGNOSTICS_OUT", prior_out),
+                ("GEOMETRY_DIAGNOSTICS_DEADLINE", prior_deadline),
+            ):
+                if prior is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = prior
+
+    @staticmethod
     def _run_render_bridge_figure(spec_payload: dict[str, Any]) -> None:
         result_queue: multiprocessing.Queue = multiprocessing.Queue(maxsize=1)
         process = multiprocessing.Process(
@@ -1680,6 +1837,7 @@ class GraphHubMCPServer:
             artifact_status="failed",
             baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             provenance={},
+            geometry_diagnostics=extra.pop("geometry_diagnostics", _geometry_stub("no figure")),
             failure_stage=failure_stage,
             resolution_hint=resolution_hint,
             **extra,
@@ -1908,6 +2066,9 @@ class GraphHubMCPServer:
         script_path = snapshot_project_path / script_rel
         if not script_path.is_file():
             raise ProjectRenderExportError(f"Selected figure script not found: {script_rel.as_posix()}")
+        # job_root is the snapshot parent; the sidecar must land OUTSIDE the snapshot
+        # tree so it never enters environment_sha256 (which rglob-hashes the snapshot).
+        job_root = snapshot_project_path.parent
         env = os.environ.copy()
         env.update(
             {
@@ -1916,6 +2077,8 @@ class GraphHubMCPServer:
                 "THEME_FORMAT": style_summary["target_format"],
                 "THEME_PROFILE": style_summary["profile"],
                 "THEME_OUTPUT_FORMAT": style_summary["output_format"],
+                "GEOMETRY_DIAGNOSTICS_OUT": str(job_root / "geometry_diagnostics.json"),
+                "GEOMETRY_DIAGNOSTICS_DEADLINE": str(time.time() + MCP_RENDER_TIMEOUT_SECONDS),
             }
         )
         try:
