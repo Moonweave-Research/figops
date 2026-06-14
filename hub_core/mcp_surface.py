@@ -899,12 +899,23 @@ class GraphHubMCPServer:
         else:
             next_action = "fix_project_config"
 
+        render_environment_warnings = self._project_context_render_warnings(project_path)
+        warnings = [] if valid else ["Project validation reported warnings or errors."]
+        warnings.extend(render_environment_warnings)
+        status = "warning" if warnings else "ok"
+        if valid and render_environment_warnings:
+            summary = "Project config is valid with render environment warnings."
+        elif valid:
+            summary = "Project config is valid."
+        else:
+            summary = "Project config needs changes before rendering."
+
         return self._envelope(
             "graphhub.validate_project",
             arguments,
-            status="ok" if valid else "warning",
-            summary="Project config is valid." if valid else "Project config needs changes before rendering.",
-            warnings=[] if valid else ["Project validation reported warnings or errors."],
+            status=status,
+            summary=summary,
+            warnings=warnings,
             valid=valid,
             config_errors=config_errors,
             data_contract_errors=data_contract_errors,
@@ -2073,6 +2084,7 @@ class GraphHubMCPServer:
         env.update(
             {
                 "RESEARCH_HUB_PATH": str(self.hub_path),
+                "PYTHONPATH": self._pythonpath_with_hub(env),
                 "PROJECT_ROOT": str(snapshot_project_path),
                 "THEME_FORMAT": style_summary["target_format"],
                 "THEME_PROFILE": style_summary["profile"],
@@ -2098,6 +2110,29 @@ class GraphHubMCPServer:
                 completed.stderr.strip() or completed.stdout.strip() or f"Figure script exited {completed.returncode}."
             )
             raise RuntimeError(message)
+
+    def _pythonpath_with_hub(self, env: dict[str, str]) -> str:
+        hub_path = str(self.hub_path)
+        current = env.get("PYTHONPATH", "")
+        parts = [part for part in current.split(os.pathsep) if part and part != hub_path]
+        return os.pathsep.join([hub_path, *parts])
+
+    @staticmethod
+    def _project_context_render_warnings(project_path: Path) -> list[str]:
+        context_path = project_path / "hub_scripts" / "project_context.py"
+        if not context_path.exists():
+            return []
+        try:
+            context_text = context_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return [f"Could not inspect hub_scripts/project_context.py for MCP render path safety: {exc}"]
+        if "RESEARCH_HUB_PATH" in context_text:
+            return []
+        return [
+            "hub_scripts/project_context.py does not reference RESEARCH_HUB_PATH; MCP snapshot renders "
+            "inject the canonical hub on PYTHONPATH, but this project should be updated to the env-first "
+            "project_context.py template for portable direct runs."
+        ]
 
     def _write_project_render_failure_artifacts(
         self,
