@@ -77,6 +77,21 @@ class ReadOnlyMCPTest(unittest.TestCase):
         (project / "project_config.yaml").write_text(config_text.format(name=name), encoding="utf-8")
         return project
 
+    def _write_legacy_project_context(self, project: Path) -> None:
+        hub_scripts = project / "hub_scripts"
+        hub_scripts.mkdir(parents=True, exist_ok=True)
+        (hub_scripts / "project_context.py").write_text(
+            "from pathlib import Path\n"
+            "import sys\n"
+            "\n"
+            "def setup_hub_path() -> Path:\n"
+            "    hub_path = Path(__file__).resolve().parents[3] / '[Graph_making_hub]'\n"
+            "    if str(hub_path) not in sys.path:\n"
+            "        sys.path.insert(0, str(hub_path))\n"
+            "    return hub_path\n",
+            encoding="utf-8",
+        )
+
     def _write_legacy_project(self, root: Path, name: str) -> Path:
         project = root / name
         config_dir = project / "scripts"
@@ -252,6 +267,27 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             self.assertEqual(validated["data_contract_errors"], [])
             self.assertEqual(validated["style_errors"], [])
             self.assertEqual(validated["recommended_next_action"], "ready_for_render")
+
+    def test_validate_project_warns_about_legacy_project_context_without_executing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = self._write_project(root, "01_Legacy_Context")
+            self._write_legacy_project_context(project)
+            before = _snapshot_files(root)
+
+            server = GraphHubMCPServer()
+            validated = self._call(server, "graphhub.validate_project", {"project_path": str(project)})
+
+            self.assertEqual(_snapshot_files(root), before)
+            self.assertEqual(validated["status"], "warning")
+            self.assertTrue(validated["valid"])
+            self.assertEqual(validated["recommended_next_action"], "ready_for_render")
+            self.assertTrue(
+                any(
+                    "RESEARCH_HUB_PATH" in warning and "project_context.py" in warning
+                    for warning in validated["warnings"]
+                )
+            )
 
     def test_json_rpc_tools_list_and_call_return_structured_content(self):
         server = GraphHubMCPServer()

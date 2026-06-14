@@ -174,6 +174,60 @@ figures:
     return project
 
 
+def _write_project_legacy_context_fixture(root: Path, name: str = "01_Project") -> Path:
+    project = root / name
+    (project / "hub_scripts").mkdir(parents=True, exist_ok=True)
+    (project / "results" / "data").mkdir(parents=True, exist_ok=True)
+    (project / "results" / "data" / "summary.csv").write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
+    (project / "hub_scripts" / "project_context.py").write_text(
+        "from pathlib import Path\n"
+        "import sys\n"
+        "\n"
+        "def get_project_root() -> Path:\n"
+        "    return Path(__file__).resolve().parents[1]\n"
+        "\n"
+        "def setup_hub_path() -> Path:\n"
+        "    project_root = get_project_root()\n"
+        "    hub_path = project_root.parents[1] / '[Graph_making_hub]'\n"
+        "    if str(hub_path) not in sys.path:\n"
+        "        sys.path.insert(0, str(hub_path))\n"
+        "    return hub_path\n",
+        encoding="utf-8",
+    )
+    (project / "hub_scripts" / "plot.py").write_text(
+        "from pathlib import Path\n"
+        "from project_context import setup_hub_path\n"
+        "\n"
+        "setup_hub_path()\n"
+        "from themes.style_profiles import DEFAULT_PROFILE\n"
+        "\n"
+        "Path('results/figures').mkdir(parents=True, exist_ok=True)\n"
+        "Path('results/figures/Fig1.png').write_bytes(DEFAULT_PROFILE.encode('utf-8'))\n",
+        encoding="utf-8",
+    )
+    (project / "project_config.yaml").write_text(
+        """
+project:
+  name: Legacy Project Context Fixture
+visual_style:
+  target_format: nature
+  profile: baseline
+data_contract:
+  csv_checks:
+    - path: results/data/summary.csv
+      required_columns: ["x", "y"]
+      dtypes: {x: float, y: float}
+figures:
+  - id: Fig1
+    script: hub_scripts/plot.py
+    inputs: ["results/data/summary.csv"]
+    output: results/figures/Fig1.png
+""",
+        encoding="utf-8",
+    )
+    return project
+
+
 def _copy_tree(source: Path, target: Path) -> None:
     for path in source.rglob("*"):
         rel = path.relative_to(source)
@@ -512,6 +566,24 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(manifest["provenance"]["source_project_path"], "01_Project")
             self.assertEqual(len(manifest["provenance"]["config_sha256"]), 64)
             self.assertEqual(len(manifest["provenance"]["environment_sha256"]), 64)
+
+    def test_render_project_figure_injects_hub_pythonpath_for_legacy_project_context(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_legacy_context_fixture(root)
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "legacy-context-render"},
+            )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(result["failure_stage"], "")
+            self.assertTrue(Path(result["output_path"]).is_file())
+            self.assertTrue(str(Path(result["output_path"]).resolve()).startswith(str(runtime_root.resolve())))
 
     def test_render_project_figure_runs_public_safe_synthetic_fixture(self):
         fixture = Path(__file__).resolve().parents[1] / "examples" / "synthetic_project"
