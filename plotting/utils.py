@@ -12,6 +12,8 @@
 - get_standard_legend_props: 소형 피규어(89mm)에 최적화된 범례 속성 반환
 """
 
+from collections.abc import Sequence
+
 import matplotlib.pyplot as plt
 
 
@@ -98,6 +100,112 @@ def compress_sample_label(label: str) -> str:
     # 중복 쉼표 및 공백 정리
     compressed = compressed.replace(", ,", ",").strip(", ")
     return compressed
+
+
+def place_point_labels(
+    ax,
+    xs: Sequence[float],
+    ys: Sequence[float],
+    texts: Sequence[str],
+    *,
+    leader: bool = True,
+    min_leader_distance_px: float = 8.0,
+    initial_offset_px: float = 10.0,
+    fontsize: float | None = None,
+    color: str = "black",
+    leader_color: str = "0.35",
+    leader_lw: float = 0.6,
+    bbox: dict | None = None,
+    adjust_kwargs: dict | None = None,
+    existing_texts: Sequence | None = None,
+):
+    """Place point labels in free space and optionally draw leader lines.
+
+    The helper marks each label with ``_graph_hub_leader_target_data`` so geometry
+    diagnostics can distinguish intentional leader-connected labels from accidental
+    text-marker collisions.
+    """
+    from adjustText import adjust_text
+
+    fig = ax.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    axes_box = ax.get_window_extent(renderer)
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    x_per_px = (xlim[1] - xlim[0]) / max(float(axes_box.width), 1.0)
+    y_per_px = (ylim[1] - ylim[0]) / max(float(axes_box.height), 1.0)
+    directions = ((1, 1), (-1, 1), (1, -1), (-1, -1), (0, 1), (1, 0), (0, -1), (-1, 0))
+
+    label_artists = []
+    target_x = []
+    target_y = []
+    default_bbox = {"facecolor": "white", "edgecolor": "none", "alpha": 0.85, "pad": 1.2}
+    label_bbox = default_bbox if bbox is None else bbox
+    for index, (x, y, label) in enumerate(zip(xs, ys, texts)):
+        dx_dir, dy_dir = directions[index % len(directions)]
+        if existing_texts is not None:
+            if index >= len(existing_texts):
+                continue
+            artist = existing_texts[index]
+            if not artist.get_text():
+                continue
+            artist.set_position(
+                (
+                    float(x) + dx_dir * initial_offset_px * x_per_px,
+                    float(y) + dy_dir * initial_offset_px * y_per_px,
+                )
+            )
+        else:
+            label_text = str(label)
+            if not label_text:
+                continue
+            artist = ax.text(
+                float(x) + dx_dir * initial_offset_px * x_per_px,
+                float(y) + dy_dir * initial_offset_px * y_per_px,
+                label_text,
+                ha="center",
+                va="center",
+                fontsize=fontsize,
+                color=color,
+                bbox=label_bbox,
+                zorder=10,
+            )
+        artist._graph_hub_leader_target_data = (round(float(x), 12), round(float(y), 12))
+        label_artists.append(artist)
+        target_x.append(float(x))
+        target_y.append(float(y))
+
+    if not label_artists:
+        return {"texts": [], "leaders": [], "used_adjust_text": False}
+
+    arrowprops = None
+    if leader:
+        arrowprops = {"arrowstyle": "-", "color": leader_color, "lw": leader_lw, "shrinkA": 2.0, "shrinkB": 2.0}
+    kwargs = {
+        "x": list(map(float, xs)),
+        "y": list(map(float, ys)),
+        "target_x": target_x,
+        "target_y": target_y,
+        "ax": ax,
+        "ensure_inside_axes": True,
+        "prevent_crossings": True,
+        "min_arrow_len": float(min_leader_distance_px),
+        "iter_lim": 80,
+    }
+    if arrowprops is not None:
+        kwargs["arrowprops"] = arrowprops
+    if adjust_kwargs:
+        kwargs.update(adjust_kwargs)
+    adjusted_texts, leader_patches = adjust_text(label_artists, **kwargs)
+    for artist in adjusted_texts:
+        artist._graph_hub_leader_connected = False
+    for patch in leader_patches:
+        patch._graph_hub_leader_patch = True
+        patch_text = getattr(patch, "patchA", None)
+        if patch_text is not None:
+            patch_text._graph_hub_leader_connected = True
+    return {"texts": adjusted_texts, "leaders": leader_patches, "used_adjust_text": True}
 
 
 def get_standard_legend_props(style="top_floating"):

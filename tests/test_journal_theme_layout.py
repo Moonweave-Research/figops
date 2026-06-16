@@ -227,6 +227,59 @@ class JournalThemeLayoutTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    def test_save_journal_fig_auto_declutter_adds_leader_for_text_marker_collision(self):
+        fig, ax = plt.subplots()
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.scatter([0.5], [0.5], s=300)
+        text = ax.text(0.5, 0.5, "S70", ha="center", va="center")
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_declutter_leader_") as tmpdir:
+                save_journal_fig(fig, Path(tmpdir) / "declutter.png", auto_declutter=True, dpi=150)
+
+            self.assertEqual(text._graph_hub_leader_target_data, (0.5, 0.5))
+            self.assertTrue(any(getattr(patch, "_graph_hub_leader_patch", False) for patch in ax.patches))
+            fig.canvas.draw()
+            check = next(
+                c for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"] if c["name"] == "artist_overlaps"
+            )
+            self.assertTrue(check["passed"])
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_auto_declutter_targets_nearest_competing_marker(self):
+        fig, ax = plt.subplots()
+        ax.set_xlim(0.48, 0.58)
+        ax.set_ylim(0.48, 0.52)
+        ax.scatter([0.50, 0.56], [0.50, 0.50], s=1500)
+        text = ax.text(0.56, 0.5, "S75", ha="center", va="center")
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_declutter_competing_marker_") as tmpdir:
+                save_journal_fig(fig, Path(tmpdir) / "declutter.png", auto_declutter=True, dpi=150)
+
+            target_x, target_y = text._graph_hub_leader_target_data
+            self.assertAlmostEqual(target_x, 0.56, places=2)
+            self.assertAlmostEqual(target_y, 0.50, places=2)
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_auto_declutter_retargets_stale_leader_metadata(self):
+        fig, ax = plt.subplots()
+        ax.set_xlim(0.48, 0.58)
+        ax.set_ylim(0.48, 0.52)
+        ax.scatter([0.50, 0.56], [0.50, 0.50], s=1500)
+        text = ax.text(0.56, 0.5, "S75", ha="center", va="center")
+        text._graph_hub_leader_target_data = (0.50, 0.50)
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_declutter_stale_marker_") as tmpdir:
+                save_journal_fig(fig, Path(tmpdir) / "declutter.png", auto_declutter=True, dpi=150)
+
+            target_x, target_y = text._graph_hub_leader_target_data
+            self.assertAlmostEqual(target_x, 0.56, places=2)
+            self.assertAlmostEqual(target_y, 0.50, places=2)
+        finally:
+            plt.close(fig)
+
     def test_save_journal_fig_auto_declutter_does_not_move_unrelated_repeated_label(self):
         fig, ax = plt.subplots()
         ax.set_xlim(0, 1)

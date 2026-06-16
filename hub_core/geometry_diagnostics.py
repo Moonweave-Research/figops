@@ -1074,6 +1074,8 @@ def _artist_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]
         area_a = _box_area(box_a)
         for index_b in range(index_a + 1, len(candidates)):
             label_b, box_b, _artist_b = candidates[index_b]
+            if _is_leader_connected_text_marker_pair(ax, label_a, box_a, _artist_a, label_b, box_b, _artist_b):
+                continue
             inter = _inter_area(box_a, box_b)
             if inter <= 0:
                 continue
@@ -1103,6 +1105,43 @@ def _artist_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]
             "overlaps_truncated": bool(truncated),
         },
     }
+
+
+def _is_leader_connected_text_marker_pair(
+    ax: Axes,
+    label_a: str,
+    box_a: Bbox,
+    artist_a: Any,
+    label_b: str,
+    box_b: Bbox,
+    artist_b: Any,
+) -> bool:
+    from matplotlib.text import Text
+
+    if isinstance(artist_a, Text) and label_b.startswith("marker:"):
+        return _leader_target_inside_marker_box(ax, artist_a, box_a, box_b)
+    if isinstance(artist_b, Text) and label_a.startswith("marker:"):
+        return _leader_target_inside_marker_box(ax, artist_b, box_b, box_a)
+    return False
+
+
+def _leader_target_inside_marker_box(ax: Axes, text: Any, text_box: Bbox, marker_box: Bbox) -> bool:
+    if not getattr(text, "_graph_hub_leader_connected", False):
+        return False
+    target = getattr(text, "_graph_hub_leader_target_data", None)
+    if not isinstance(target, (tuple, list)) or len(target) != 2:
+        return False
+    try:
+        target_px = ax.transData.transform((float(target[0]), float(target[1])))
+    except (TypeError, ValueError):
+        return False
+    if not (marker_box.x0 <= target_px[0] <= marker_box.x1 and marker_box.y0 <= target_px[1] <= marker_box.y1):
+        return False
+    if text_box.x0 <= target_px[0] <= text_box.x1 and text_box.y0 <= target_px[1] <= text_box.y1:
+        return False
+    text_center_x, text_center_y = _box_center(text_box)
+    distance_px = ((text_center_x - target_px[0]) ** 2 + (text_center_y - target_px[1]) ** 2) ** 0.5
+    return bool(distance_px > GEOM_EPS_PX * 4)
 
 
 def _nearest_marker_direction(ax: Axes, text: Any, renderer: Any) -> str | None:

@@ -564,6 +564,8 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
 
     try:
         from hub_core.geometry_diagnostics import _artist_overlap_candidate_items, _box_vector_away
+        from hub_core.geometry_diagnostics import _marker_footprint_box_entries
+        from plotting.utils import place_point_labels
     except Exception as exc:
         return {"enabled": True, "applied": False, "iterations": 0, "reason": str(exc)}
 
@@ -579,6 +581,68 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
             if not candidates:
                 continue
             displacements: dict[Text, tuple[float, float]] = {}
+            leader_texts: list[Text] = []
+            leader_xs: list[float] = []
+            leader_ys: list[float] = []
+            marker_boxes = _marker_footprint_box_entries(ax, ax.figure)
+            for text in ax.texts:
+                if not isinstance(text, Text) or not text.get_text() or not text.get_visible():
+                    continue
+                if text.get_transform() is not ax.transData:
+                    continue
+                text_box = text.get_window_extent(renderer)
+                if text_box is None or text_box.width <= 0 or text_box.height <= 0:
+                    continue
+                text_center_x = (text_box.x0 + text_box.x1) / 2
+                text_center_y = (text_box.y0 + text_box.y1) / 2
+                existing_target = getattr(text, "_graph_hub_leader_target_data", None)
+                existing_target_px = None
+                if isinstance(existing_target, (tuple, list)) and len(existing_target) == 2:
+                    try:
+                        existing_target_px = ax.transData.transform((float(existing_target[0]), float(existing_target[1])))
+                    except (TypeError, ValueError):
+                        existing_target_px = None
+                best_marker_box = None
+                best_score: tuple[float, float] | None = None
+                for _marker_label, marker_box in marker_boxes:
+                    inter = Bbox.intersection(text_box, marker_box)
+                    if inter is None or inter.width <= 0 or inter.height <= 0:
+                        continue
+                    marker_center_x = (marker_box.x0 + marker_box.x1) / 2
+                    marker_center_y = (marker_box.y0 + marker_box.y1) / 2
+                    overlap_area = float(inter.width * inter.height)
+                    distance_sq = (text_center_x - marker_center_x) ** 2 + (text_center_y - marker_center_y) ** 2
+                    target_tiebreaker = bool(
+                        existing_target_px is not None
+                        and marker_box.x0 <= existing_target_px[0] <= marker_box.x1
+                        and marker_box.y0 <= existing_target_px[1] <= marker_box.y1
+                    )
+                    score = (overlap_area, -distance_sq, float(target_tiebreaker))
+                    if best_score is None or score > best_score:
+                        best_marker_box = marker_box
+                        best_score = score
+                if best_marker_box is not None:
+                    target_x, target_y = ax.transData.inverted().transform(
+                        ((best_marker_box.x0 + best_marker_box.x1) / 2, (best_marker_box.y0 + best_marker_box.y1) / 2)
+                    )
+                    leader_texts.append(text)
+                    leader_xs.append(float(target_x))
+                    leader_ys.append(float(target_y))
+            if leader_texts:
+                place_point_labels(
+                    ax,
+                    leader_xs,
+                    leader_ys,
+                    [text.get_text() for text in leader_texts],
+                    leader=True,
+                    min_leader_distance_px=1.0,
+                    existing_texts=leader_texts,
+                )
+                moved += len(leader_texts)
+                changed = True
+                fig.canvas.draw()
+                renderer = fig.canvas.get_renderer()
+                candidates = _artist_overlap_candidate_items(ax, renderer)
             for index_a in range(len(candidates)):
                 _label_a, box_a, artist_a = candidates[index_a]
                 for index_b in range(index_a + 1, len(candidates)):
