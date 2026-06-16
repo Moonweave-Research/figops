@@ -81,6 +81,7 @@ _GEOMETRY_METRIC_NAMES = (
     "colorbar_overlap",
     "blank_area_ratio",
     "point_annotation_overlaps",
+    "artist_overlaps",
 )
 _GEOMETRY_WARNING_ELIGIBLE = frozenset(
     {
@@ -91,8 +92,10 @@ _GEOMETRY_WARNING_ELIGIBLE = frozenset(
         "axis_label_title_overlap",
         "colorbar_overlap",
         "point_annotation_overlaps",
+        "artist_overlaps",
     }
 )
+SCRIPT_OUTPUT_TAIL_LINES = 40
 
 
 _GEOMETRY_DIAGNOSTICS_SCHEMA = {
@@ -177,6 +180,10 @@ def _geometry_warnings(diagnostics: dict[str, Any]) -> list[str]:
 class ProjectRenderExportError(RuntimeError):
     """Project render setup/export failed before a plotting script completed successfully."""
 
+    def __init__(self, message: str, *, script_output: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.script_output = script_output or []
+
 
 def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_queue: multiprocessing.Queue) -> None:
     os.environ.setdefault("MPLBACKEND", "Agg")
@@ -243,6 +250,7 @@ def _standard_output_schema(extra_properties: dict[str, Any] | None = None) -> d
         "artifact_resources": {"type": "array", "items": {"type": "string"}},
         "warnings": {"type": "array", "items": {"type": "string"}},
         "errors": {"type": "array", "items": {"type": "string"}},
+        "script_output": {"type": "array", "items": {"type": "string"}},
         "manual_review_needed": {"type": "boolean"},
         "failure_stage": {"type": "string"},
         "resolution_hint": {"type": "string"},
@@ -1162,7 +1170,7 @@ class GraphHubMCPServer:
             geometry_warnings = _geometry_warnings(geometry_diagnostics)
             figures = self._rendered_figure_artifacts(output_path)
             created_paths.extend(str(figure["path"]) for figure in figures)
-            preflight = self._safe_preflight(output_path, target_format)
+            preflight = self._visual_preflight_with_geometry_overlaps(output_path, target_format, geometry_diagnostics)
             preflight_warnings = self._preflight_warnings(preflight)
             baseline_comparison = self._baseline_comparison(output_path, arguments.get("baseline_path"))
             baseline_warnings = self._baseline_warnings(baseline_comparison)
@@ -1474,13 +1482,20 @@ class GraphHubMCPServer:
             geometry_diagnostics = _read_geometry_sidecar(job_root)
             geometry_warnings = _geometry_warnings(geometry_diagnostics)
             if not output_path.is_file():
-                raise ProjectRenderExportError(f"Selected figure output was not created: {output_relpath}")
+                raise ProjectRenderExportError(
+                    f"Selected figure output was not created: {output_relpath}",
+                    script_output=self._read_project_script_output(job_root),
+                )
             figures_out = self._rendered_figure_artifacts(output_path)
             for figure in figures_out:
                 path_text = str(figure["path"])
                 if path_text not in created_paths:
                     created_paths.append(path_text)
-            preflight = self._safe_preflight(output_path, style_summary["target_format"])
+            preflight = self._visual_preflight_with_geometry_overlaps(
+                output_path,
+                style_summary["target_format"],
+                geometry_diagnostics,
+            )
             preflight_warnings = self._preflight_warnings(preflight)
             baseline_comparison = self._baseline_comparison(output_path, arguments.get("baseline_path"))
             baseline_warnings = self._baseline_warnings(baseline_comparison)
@@ -1572,6 +1587,7 @@ class GraphHubMCPServer:
                 )
             )
             baseline_comparison = self._baseline_comparison(None, arguments.get("baseline_path"))
+            script_output = self._project_failure_script_output(exc, job_root)
             if job_root.exists():
                 created_paths = self._write_project_render_failure_artifacts(
                     job_id=job_id,
@@ -1585,6 +1601,7 @@ class GraphHubMCPServer:
                     failure_stage=failure_stage,
                     resolution_hint=resolution_hint,
                     baseline_comparison=baseline_comparison,
+                    script_output=script_output,
                 )
             return self._envelope(
                 "graphhub.render_project_figure",
@@ -1593,6 +1610,7 @@ class GraphHubMCPServer:
                 summary="Project figure render execution failed.",
                 created_paths=created_paths,
                 errors=[str(exc)],
+                script_output=script_output,
                 manual_review_needed=True,
                 is_dry_run=False,
                 job_id=job_id,
@@ -2076,6 +2094,7 @@ class GraphHubMCPServer:
         # job_root is the snapshot parent; the sidecar must land OUTSIDE the snapshot
         # tree so it never enters environment_sha256 (which rglob-hashes the snapshot).
         job_root = snapshot_project_path.parent
+        script_output_path = job_root / "script_output.json"
         env = os.environ.copy()
         env.update(
             {
@@ -2100,12 +2119,84 @@ class GraphHubMCPServer:
                 env=env,
             )
         except subprocess.TimeoutExpired as exc:
+            self._write_project_script_output(
+                script_output_path,
+                returncode=None,
+                stdout=exc.stdout,
+                stderr=exc.stderr,
+                timed_out=True,
+            )
             raise TimeoutError(f"Figure script timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.") from exc
+        self._write_project_script_output(
+            script_output_path,
+            returncode=completed.returncode,
+            stdout=completed.stdout,
+            stderr=completed.stderr,
+            timed_out=False,
+        )
         if completed.returncode != 0:
             message = (
                 completed.stderr.strip() or completed.stdout.strip() or f"Figure script exited {completed.returncode}."
             )
             raise RuntimeError(message)
+
+    @staticmethod
+    def _normalize_script_stream(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return str(value)
+
+    @classmethod
+    def _script_output_tail(cls, stdout: Any, stderr: Any) -> list[str]:
+        combined = "\n".join(
+            part
+            for part in (
+                cls._normalize_script_stream(stdout),
+                cls._normalize_script_stream(stderr),
+            )
+            if part
+        )
+        lines = [line.rstrip() for line in combined.splitlines() if line.strip()]
+        return lines[-SCRIPT_OUTPUT_TAIL_LINES:]
+
+    @classmethod
+    def _write_project_script_output(
+        cls,
+        path: Path,
+        *,
+        returncode: int | None,
+        stdout: Any,
+        stderr: Any,
+        timed_out: bool,
+    ) -> None:
+        payload = {
+            "returncode": returncode,
+            "timed_out": bool(timed_out),
+            "tail": cls._script_output_tail(stdout, stderr),
+        }
+        try:
+            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        except OSError:
+            pass
+
+    @staticmethod
+    def _read_project_script_output(job_root: Path) -> list[str]:
+        try:
+            payload = json.loads((job_root / "script_output.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        tail = payload.get("tail")
+        if not isinstance(tail, list):
+            return []
+        return [str(line) for line in tail if str(line).strip()]
+
+    def _project_failure_script_output(self, exc: Exception, job_root: Path) -> list[str]:
+        explicit = getattr(exc, "script_output", None)
+        if isinstance(explicit, list) and explicit:
+            return [str(line) for line in explicit if str(line).strip()]
+        return self._read_project_script_output(job_root)
 
     def _pythonpath_with_hub(self, env: dict[str, str]) -> str:
         hub_path = str(self.hub_path)
@@ -2144,7 +2235,9 @@ class GraphHubMCPServer:
         failure_stage: str,
         resolution_hint: str,
         baseline_comparison: dict[str, Any],
+        script_output: list[str] | None = None,
     ) -> list[str]:
+        script_output = script_output or []
         created = list(created_paths)
         manifest = {
             "job_id": job_id,
@@ -2165,6 +2258,7 @@ class GraphHubMCPServer:
             "visual_preflight_status": {"passed": False, "checks": [], "warnings": ["render_execution_failed"]},
             "failure_stage": failure_stage,
             "resolution_hint": resolution_hint,
+            "script_output": script_output,
             "artifact_status": "failed",
             "baseline_comparison": baseline_comparison,
             "manual_review_needed": True,
@@ -2180,6 +2274,8 @@ class GraphHubMCPServer:
             failure_stage=failure_stage,
             resolution_hint=resolution_hint,
         )
+        if script_output:
+            status_payload["script_output"] = script_output
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
         status_path.write_text(
@@ -2263,6 +2359,7 @@ class GraphHubMCPServer:
             summary=f"Collected artifacts for render job {job_id}.",
             artifact_resources=[f"file://{figure['path']}" for figure in figures if isinstance(figure, dict)],
             warnings=preflight_warnings + baseline_warnings,
+            script_output=manifest.get("script_output") if isinstance(manifest.get("script_output"), list) else [],
             created_paths=self._manifest_path_list(manifest, "created_paths"),
             modified_paths=self._manifest_path_list(manifest, "modified_paths"),
             skipped_paths=self._manifest_path_list(manifest, "skipped_paths"),
@@ -3234,6 +3331,7 @@ class GraphHubMCPServer:
         **extra: Any,
     ) -> dict[str, Any]:
         operation_id = self._operation_id(tool_name, arguments)
+        script_output = extra.pop("script_output", None)
         result = {
             "status": status,
             "operation_id": operation_id,
@@ -3245,6 +3343,7 @@ class GraphHubMCPServer:
             "artifact_resources": artifact_resources or [],
             "warnings": [self._sanitize_diagnostic_text(warning, arguments) for warning in (warnings or [])],
             "errors": [self._sanitize_diagnostic_text(error, arguments) for error in (errors or [])],
+            "script_output": [self._sanitize_diagnostic_text(line, arguments) for line in (script_output or [])],
             "manual_review_needed": manual_review_needed,
         }
         result.update(extra)
@@ -3765,6 +3864,48 @@ class GraphHubMCPServer:
                 "checks": [],
                 "warnings": [str(exc)],
             }
+
+    @classmethod
+    def _visual_preflight_with_geometry_overlaps(
+        cls,
+        output_path: Path,
+        target_format: str,
+        geometry_diagnostics: dict[str, Any],
+    ) -> dict[str, Any]:
+        preflight = cls._safe_preflight(output_path, target_format)
+        overlaps = cls._artist_overlaps_from_geometry(geometry_diagnostics)
+        if overlaps:
+            preflight = dict(preflight)
+            preflight["overlaps"] = overlaps
+            warnings = list(preflight.get("warnings") or [])
+            warnings.append(f"artist_overlaps_detected:{len(overlaps)}")
+            preflight["warnings"] = warnings
+        return preflight
+
+    @staticmethod
+    def _artist_overlaps_from_geometry(geometry_diagnostics: dict[str, Any]) -> list[dict[str, Any]]:
+        checks = geometry_diagnostics.get("checks") if isinstance(geometry_diagnostics, dict) else None
+        if not isinstance(checks, list):
+            return []
+        overlaps: list[dict[str, Any]] = []
+        for check in checks:
+            if not isinstance(check, dict) or check.get("name") != "artist_overlaps":
+                continue
+            data = check.get("data") if isinstance(check.get("data"), dict) else {}
+            raw_overlaps = data.get("overlaps") if isinstance(data, dict) else []
+            if not isinstance(raw_overlaps, list):
+                continue
+            for item in raw_overlaps:
+                if isinstance(item, dict):
+                    overlaps.append(
+                        {
+                            "axes": int(item.get("axes", data.get("axis_index", 0))),
+                            "a": str(item.get("a", "")),
+                            "b": str(item.get("b", "")),
+                            "iou": float(item.get("iou", 0.0)),
+                        }
+                    )
+        return overlaps
 
 
 def run_stdio_server(
