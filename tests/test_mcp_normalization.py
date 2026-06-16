@@ -122,7 +122,12 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             ):
                 self.assertTrue((project_root / required_dir).is_dir())
             self.assertTrue((project_root / "hub_scripts" / "analyze.R").is_file())
+            self.assertTrue((project_root / "hub_scripts" / "project_context.py").is_file())
             self.assertTrue((project_root / "hub_scripts" / "plot.py").is_file())
+            self.assertIn(
+                "theme_font_tokens",
+                (project_root / "hub_scripts" / "project_context.py").read_text(encoding="utf-8"),
+            )
             config = yaml.safe_load((project_root / "project_config.yaml").read_text(encoding="utf-8"))
             self.assertEqual(config["project"]["name"], "Applied Project")
             self.assertEqual(config["visual_style"]["target_format"], "science")
@@ -365,6 +370,7 @@ figures:
             self.assertEqual(_snapshot_files(project), before)
             destinations = {entry["destination"] for entry in result["manifest"]["entries"]}
             self.assertIn("hub_scripts/plot.py", destinations)
+            self.assertIn("hub_scripts/project_context.py", destinations)
             self.assertIn("raw/summary.csv", destinations)
             self.assertIn("results/figures/figure.png", destinations)
             self.assertIn("docs/notes.md", destinations)

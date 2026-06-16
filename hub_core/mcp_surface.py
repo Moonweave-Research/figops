@@ -71,6 +71,7 @@ JSONRPC_RESOURCE_NOT_FOUND = -32002
 _STRICT_JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
 GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION = "geometry_diagnostics/1"
+LAYOUT_REPORT_SCHEMA_VERSION = "layout_report/1"
 _GEOMETRY_METRIC_NAMES = (
     "tick_label_overlaps",
     "tick_label_crowding",
@@ -82,6 +83,11 @@ _GEOMETRY_METRIC_NAMES = (
     "blank_area_ratio",
     "point_annotation_overlaps",
     "artist_overlaps",
+    "legend_internal_overlaps",
+    "marker_marker_overlaps",
+    "text_axis_edge_proximity",
+    "label_offset_consistency",
+    "font_size_token_drift",
 )
 _GEOMETRY_WARNING_ELIGIBLE = frozenset(
     {
@@ -93,6 +99,11 @@ _GEOMETRY_WARNING_ELIGIBLE = frozenset(
         "colorbar_overlap",
         "point_annotation_overlaps",
         "artist_overlaps",
+        "legend_internal_overlaps",
+        "marker_marker_overlaps",
+        "text_axis_edge_proximity",
+        "label_offset_consistency",
+        "font_size_token_drift",
     }
 )
 SCRIPT_OUTPUT_TAIL_LINES = 40
@@ -119,6 +130,32 @@ _GEOMETRY_DIAGNOSTICS_SCHEMA = {
         "warnings": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["schema_version", "passed", "checks", "warnings"],
+}
+
+_LAYOUT_REPORT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "schema_version": {"type": "string"},
+        "passed": {"type": ["boolean", "null"]},
+        "overlaps": {"type": "array", "items": {"type": "object"}},
+        "clipped": {"type": "array", "items": {"type": "object"}},
+        "font_roles": {"type": "object"},
+        "placement_consistency": {"type": "array", "items": {"type": "object"}},
+        "density": {"type": "object"},
+        "render_errors": {"type": "array", "items": {"type": "object"}},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": [
+        "schema_version",
+        "passed",
+        "overlaps",
+        "clipped",
+        "font_roles",
+        "placement_consistency",
+        "density",
+        "render_errors",
+        "warnings",
+    ],
 }
 
 
@@ -175,6 +212,188 @@ def _geometry_warnings(diagnostics: dict[str, Any]) -> list[str]:
                 if detail:
                     warnings.append(str(detail))
     return warnings
+
+
+def _layout_report_from_geometry(
+    diagnostics: dict[str, Any],
+    *,
+    failure_stage: str = "",
+    script_output: list[str] | None = None,
+) -> dict[str, Any]:
+    report: dict[str, Any] = {
+        "schema_version": LAYOUT_REPORT_SCHEMA_VERSION,
+        "passed": diagnostics.get("passed") if isinstance(diagnostics, dict) else None,
+        "overlaps": [],
+        "clipped": [],
+        "font_roles": {},
+        "placement_consistency": [],
+        "density": {},
+        "render_errors": [],
+        "warnings": [],
+    }
+    if failure_stage:
+        report["passed"] = False
+        tail = [str(line) for line in (script_output or [])][-SCRIPT_OUTPUT_TAIL_LINES:]
+        report["render_errors"].append({"stage": failure_stage, "script_output_tail": tail})
+
+    raw_warnings = diagnostics.get("warnings") if isinstance(diagnostics, dict) else None
+    if isinstance(raw_warnings, list):
+        report["warnings"].extend(str(warning) for warning in raw_warnings)
+
+    checks = diagnostics.get("checks") if isinstance(diagnostics, dict) else None
+    if not isinstance(checks, list):
+        return report
+
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        name = str(check.get("name") or "")
+        data = check.get("data") if isinstance(check.get("data"), dict) else {}
+        if name in {"artist_overlaps", "legend_internal_overlaps", "marker_marker_overlaps"}:
+            report["overlaps"].extend(_layout_overlap_items(name, data))
+        elif name == "text_axis_edge_proximity":
+            report["clipped"].extend(_layout_clipped_items(data))
+        elif name == "label_offset_consistency":
+            report["placement_consistency"].extend(_layout_placement_items(data))
+        elif name == "font_size_token_drift":
+            report["font_roles"] = _layout_font_roles(data, check)
+        elif name in {"point_annotation_overlaps", "artists_outside_axes", "artists_outside_figure"} and check.get(
+            "passed"
+        ) is False:
+            detail = check.get("detail")
+            if detail:
+                report["warnings"].append(str(detail))
+
+    density = _layout_density(checks)
+    if density:
+        report["density"] = density
+    return report
+
+
+def _layout_overlap_items(name: str, data: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_overlaps = data.get("overlaps")
+    if not isinstance(raw_overlaps, list):
+        return []
+    items: list[dict[str, Any]] = []
+    for overlap in raw_overlaps:
+        if not isinstance(overlap, dict):
+            continue
+        a = str(overlap.get("a", ""))
+        b = str(overlap.get("b", ""))
+        kind = str(overlap.get("kind") or _layout_overlap_kind(name, a, b))
+        items.append(
+            {
+                "axes": int(overlap.get("axes", data.get("axis_index", 0))),
+                "a": a,
+                "b": b,
+                "kind": kind,
+                "iou": float(overlap.get("iou", 0.0)),
+                "severity": str(overlap.get("severity") or _layout_overlap_severity(float(overlap.get("iou", 0.0)))),
+            }
+        )
+    return items
+
+
+def _layout_overlap_kind(name: str, a: str, b: str) -> str:
+    if name == "legend_internal_overlaps":
+        return "legend-internal"
+    if name == "marker_marker_overlaps":
+        return "marker-marker"
+    labels = (a, b)
+    if any(label.startswith("marker:") for label in labels) and any(
+        label.startswith(("text:", "annotation:", "title:")) for label in labels
+    ):
+        return "text-marker"
+    if all(label.startswith(("text:", "annotation:", "title:")) for label in labels):
+        return "text-text"
+    if any(label == "legend" or label.startswith("legend") for label in labels):
+        return "legend-data"
+    return "artist-artist"
+
+
+def _layout_overlap_severity(iou: float) -> str:
+    if iou >= 0.50:
+        return "high"
+    if iou >= 0.20:
+        return "medium"
+    if iou > 0:
+        return "low"
+    return "none"
+
+
+def _layout_clipped_items(data: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_findings = data.get("findings")
+    if not isinstance(raw_findings, list):
+        return []
+    items: list[dict[str, Any]] = []
+    for finding in raw_findings:
+        if not isinstance(finding, dict):
+            continue
+        edges = finding.get("edges") if isinstance(finding.get("edges"), list) else []
+        items.append(
+            {
+                "axes": int(finding.get("axes", data.get("axis_index", 0))),
+                "artist": str(finding.get("artist", "")),
+                "edge": str(edges[0]) if edges else "",
+                "edges": [str(edge) for edge in edges],
+                "clipped": bool(finding.get("clipped")),
+                "min_distance_px": float(finding.get("min_distance_px", 0.0)),
+            }
+        )
+    return items
+
+
+def _layout_placement_items(data: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_items = data.get("inconsistencies")
+    if not isinstance(raw_items, list):
+        return []
+    items: list[dict[str, Any]] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        placements = item.get("placements") if isinstance(item.get("placements"), list) else []
+        panels = {
+            str(placement.get("axis_index")): str(placement.get("direction"))
+            for placement in placements
+            if isinstance(placement, dict)
+        }
+        items.append(
+            {
+                "entity": str(item.get("label", "")),
+                "directions": [str(direction) for direction in item.get("directions", [])],
+                "panels": panels,
+                "placements": placements,
+            }
+        )
+    return items
+
+
+def _layout_font_roles(data: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "passed": bool(check.get("passed")),
+        "token_sizes": data.get("token_sizes", []),
+        "offenders": data.get("offenders", []),
+        "role_size_counts": data.get("role_size_counts", {}),
+        "warn": str(check.get("detail", "")) if check.get("passed") is False else "",
+    }
+
+
+def _layout_density(checks: list[Any]) -> dict[str, Any]:
+    text_counts: dict[int, int] = {}
+    repeated_labels = 0
+    for check in checks:
+        if not isinstance(check, dict) or check.get("name") != "label_offset_consistency":
+            continue
+        data = check.get("data") if isinstance(check.get("data"), dict) else {}
+        raw_items = data.get("inconsistencies")
+        if isinstance(raw_items, list):
+            repeated_labels = len(raw_items)
+    if repeated_labels:
+        return {
+            "repeated_label_inconsistency_count": int(repeated_labels),
+            "warn": "repeated labels across sibling axes may be reducible with label-once/dedup placement",
+        }
+    return text_counts
 
 
 class ProjectRenderExportError(RuntimeError):
@@ -390,6 +609,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "style_summary": {"type": "object"},
                     "visual_preflight_status": {"type": "object"},
                     "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
+                    "layout_report": _LAYOUT_REPORT_SCHEMA,
                     "calculation_checks": {"type": "object"},
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
@@ -429,6 +649,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "style_summary": {"type": "object"},
                     "visual_preflight_status": {"type": "object"},
                     "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
+                    "layout_report": _LAYOUT_REPORT_SCHEMA,
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
                     "provenance": {"type": "object"},
@@ -447,6 +668,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "logs": {"type": "array", "items": {"type": "object"}},
                     "provenance": {"type": "object"},
                     "visual_preflight_status": {"type": "object"},
+                    "layout_report": _LAYOUT_REPORT_SCHEMA,
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
                 }
@@ -957,6 +1179,7 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=_geometry_stub("no figure"),
+                layout_report=_layout_report_from_geometry(_geometry_stub("no figure")),
             )
         plot_type = str(arguments.get("plot_type") or "scatter").strip().lower()
         target_format = str(arguments.get("target_format") or "nature").strip().lower()
@@ -981,6 +1204,7 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=_geometry_stub("no figure"),
+                layout_report=_layout_report_from_geometry(_geometry_stub("no figure")),
             )
         if plot_type == "heatmap" and not z_column:
             return self._envelope(
@@ -996,6 +1220,7 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=_geometry_stub("no figure"),
+                layout_report=_layout_report_from_geometry(_geometry_stub("no figure")),
             )
         style_errors = self._render_style_errors(target_format, output_format, profile)
         if style_errors:
@@ -1012,6 +1237,7 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=_geometry_stub("no figure"),
+                layout_report=_layout_report_from_geometry(_geometry_stub("no figure")),
             )
         if not isinstance(semantic_checks, dict):
             return self._envelope(
@@ -1027,6 +1253,7 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=_geometry_stub("no figure"),
+                layout_report=_layout_report_from_geometry(_geometry_stub("no figure")),
             )
         config = self._render_project_config(
             target_format=target_format,
@@ -1052,6 +1279,7 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=_geometry_stub("no figure"),
+                layout_report=_layout_report_from_geometry(_geometry_stub("no figure")),
             )
         with redirect_stdout(sys.stderr):
             ensure_local_files([str(data_path)])
@@ -1082,6 +1310,7 @@ class GraphHubMCPServer:
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 calculation_checks=calculation_checks,
                 geometry_diagnostics=_geometry_stub("no figure"),
+                layout_report=_layout_report_from_geometry(_geometry_stub("no figure")),
             )
         if dry_run:
             calculation_warnings = self._calculation_warnings(calculation_checks)
@@ -1111,6 +1340,7 @@ class GraphHubMCPServer:
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 calculation_checks=calculation_checks,
                 geometry_diagnostics=_geometry_stub("dry_run"),
+                layout_report=_layout_report_from_geometry(_geometry_stub("dry_run")),
             )
         self._activate_runtime_root_for_runtime_access()
         job_root = self._mcp_jobs_root() / job_id
@@ -1130,6 +1360,7 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=_geometry_stub("no figure"),
+                layout_report=_layout_report_from_geometry(_geometry_stub("no figure")),
             )
         if job_root.exists() and overwrite:
             shutil.rmtree(job_root)
@@ -1168,6 +1399,7 @@ class GraphHubMCPServer:
                 )
             geometry_diagnostics = _read_geometry_sidecar(job_root)
             geometry_warnings = _geometry_warnings(geometry_diagnostics)
+            layout_report = _layout_report_from_geometry(geometry_diagnostics)
             figures = self._rendered_figure_artifacts(output_path)
             created_paths.extend(str(figure["path"]) for figure in figures)
             preflight = self._visual_preflight_with_geometry_overlaps(output_path, target_format, geometry_diagnostics)
@@ -1218,6 +1450,7 @@ class GraphHubMCPServer:
                 },
                 "visual_preflight_status": preflight,
                 "geometry_diagnostics": geometry_diagnostics,
+                "layout_report": layout_report,
                 "failure_stage": "",
                 "resolution_hint": "",
                 "artifact_status": artifact_status,
@@ -1239,6 +1472,7 @@ class GraphHubMCPServer:
             )
             status_payload["calculation_checks"] = calculation_checks
             status_payload["provenance"] = provenance
+            status_payload["layout_report"] = layout_report
             manifest_path.write_text(
                 json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
                 encoding="utf-8",
@@ -1296,6 +1530,10 @@ class GraphHubMCPServer:
                 artifact_status="failed",
                 baseline_comparison=baseline_comparison,
                 geometry_diagnostics=_geometry_stub("render_execution_failed"),
+                layout_report=_layout_report_from_geometry(
+                    _geometry_stub("render_execution_failed"),
+                    failure_stage=failure_stage,
+                ),
             )
 
         return self._envelope(
@@ -1319,6 +1557,7 @@ class GraphHubMCPServer:
             style_summary=manifest["style_summary"],
             visual_preflight_status=preflight,
             geometry_diagnostics=geometry_diagnostics,
+            layout_report=layout_report,
             failure_stage="",
             resolution_hint="",
             artifact_status=artifact_status,
@@ -1427,6 +1666,7 @@ class GraphHubMCPServer:
                 style_summary=style_summary,
                 visual_preflight_status={"passed": None, "checks": [], "warnings": ["dry_run"]},
                 geometry_diagnostics=_geometry_stub("dry_run"),
+                layout_report=_layout_report_from_geometry(_geometry_stub("dry_run")),
                 artifact_status="validated",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 provenance={},
@@ -1481,6 +1721,7 @@ class GraphHubMCPServer:
             )
             geometry_diagnostics = _read_geometry_sidecar(job_root)
             geometry_warnings = _geometry_warnings(geometry_diagnostics)
+            layout_report = _layout_report_from_geometry(geometry_diagnostics)
             if not output_path.is_file():
                 raise ProjectRenderExportError(
                     f"Selected figure output was not created: {output_relpath}",
@@ -1538,6 +1779,7 @@ class GraphHubMCPServer:
                 "style_summary": style_summary,
                 "visual_preflight_status": preflight,
                 "geometry_diagnostics": geometry_diagnostics,
+                "layout_report": layout_report,
                 "failure_stage": "",
                 "resolution_hint": "",
                 "artifact_status": artifact_status,
@@ -1559,6 +1801,7 @@ class GraphHubMCPServer:
                 resolution_hint="",
             )
             status_payload["provenance"] = provenance
+            status_payload["layout_report"] = layout_report
             manifest_path.write_text(
                 json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
                 encoding="utf-8",
@@ -1588,6 +1831,14 @@ class GraphHubMCPServer:
             )
             baseline_comparison = self._baseline_comparison(None, arguments.get("baseline_path"))
             script_output = self._project_failure_script_output(exc, job_root)
+            failure_geometry = (
+                _read_geometry_sidecar(job_root) if job_root.exists() else _geometry_stub("render_execution_failed")
+            )
+            failure_layout_report = _layout_report_from_geometry(
+                failure_geometry,
+                failure_stage=failure_stage,
+                script_output=script_output,
+            )
             if job_root.exists():
                 created_paths = self._write_project_render_failure_artifacts(
                     job_id=job_id,
@@ -1602,6 +1853,7 @@ class GraphHubMCPServer:
                     resolution_hint=resolution_hint,
                     baseline_comparison=baseline_comparison,
                     script_output=script_output,
+                    layout_report=failure_layout_report,
                 )
             return self._envelope(
                 "graphhub.render_project_figure",
@@ -1627,9 +1879,8 @@ class GraphHubMCPServer:
                 latest_alias=str(latest_dir) if job_root.exists() else "",
                 style_summary=style_summary,
                 visual_preflight_status={"passed": False, "checks": [], "warnings": ["render_execution_failed"]},
-                geometry_diagnostics=_read_geometry_sidecar(job_root)
-                if job_root.exists()
-                else _geometry_stub("render_execution_failed"),
+                geometry_diagnostics=failure_geometry,
+                layout_report=failure_layout_report,
                 artifact_status="failed",
                 baseline_comparison=baseline_comparison,
                 provenance={},
@@ -1664,6 +1915,7 @@ class GraphHubMCPServer:
             style_summary=style_summary,
             visual_preflight_status=preflight,
             geometry_diagnostics=geometry_diagnostics,
+            layout_report=layout_report,
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
             provenance=provenance,
@@ -1719,6 +1971,10 @@ class GraphHubMCPServer:
         resolution_hint: str,
         baseline_comparison: dict[str, Any],
     ) -> list[str]:
+        layout_report = _layout_report_from_geometry(
+            _geometry_stub("render_execution_failed"),
+            failure_stage=failure_stage,
+        )
         created = list(created_paths)
         manifest = {
             "job_id": job_id,
@@ -1738,6 +1994,7 @@ class GraphHubMCPServer:
             "skipped_paths": [],
             "style_summary": {},
             "visual_preflight_status": {"passed": False, "checks": [], "warnings": ["render_execution_failed"]},
+            "layout_report": layout_report,
             "failure_stage": failure_stage,
             "resolution_hint": resolution_hint,
             "artifact_status": "failed",
@@ -1755,6 +2012,7 @@ class GraphHubMCPServer:
             failure_stage=failure_stage,
             resolution_hint=resolution_hint,
         )
+        status_payload["layout_report"] = layout_report
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         manifest_path.write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
@@ -1853,6 +2111,7 @@ class GraphHubMCPServer:
         resolution_hint: str,
         **extra: Any,
     ) -> dict[str, Any]:
+        geometry_diagnostics = extra.pop("geometry_diagnostics", _geometry_stub("no figure"))
         return self._envelope(
             "graphhub.render_project_figure",
             arguments,
@@ -1866,7 +2125,11 @@ class GraphHubMCPServer:
             artifact_status="failed",
             baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             provenance={},
-            geometry_diagnostics=extra.pop("geometry_diagnostics", _geometry_stub("no figure")),
+            geometry_diagnostics=geometry_diagnostics,
+            layout_report=extra.pop(
+                "layout_report",
+                _layout_report_from_geometry(geometry_diagnostics, failure_stage=failure_stage),
+            ),
             failure_stage=failure_stage,
             resolution_hint=resolution_hint,
             **extra,
@@ -2236,8 +2499,14 @@ class GraphHubMCPServer:
         resolution_hint: str,
         baseline_comparison: dict[str, Any],
         script_output: list[str] | None = None,
+        layout_report: dict[str, Any] | None = None,
     ) -> list[str]:
         script_output = script_output or []
+        layout_report = layout_report or _layout_report_from_geometry(
+            _geometry_stub("render_execution_failed"),
+            failure_stage=failure_stage,
+            script_output=script_output,
+        )
         created = list(created_paths)
         manifest = {
             "job_id": job_id,
@@ -2256,6 +2525,7 @@ class GraphHubMCPServer:
             "skipped_paths": [],
             "style_summary": {},
             "visual_preflight_status": {"passed": False, "checks": [], "warnings": ["render_execution_failed"]},
+            "layout_report": layout_report,
             "failure_stage": failure_stage,
             "resolution_hint": resolution_hint,
             "script_output": script_output,
@@ -2276,6 +2546,7 @@ class GraphHubMCPServer:
         )
         if script_output:
             status_payload["script_output"] = script_output
+        status_payload["layout_report"] = layout_report
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
         status_path.write_text(
@@ -2322,6 +2593,11 @@ class GraphHubMCPServer:
             )
 
         preflight = manifest.get("visual_preflight_status") or {}
+        layout_report = (
+            manifest.get("layout_report")
+            if isinstance(manifest.get("layout_report"), dict)
+            else _layout_report_from_geometry(manifest.get("geometry_diagnostics") or _geometry_stub("no figure"))
+        )
         figures = manifest.get("figures") if isinstance(manifest.get("figures"), list) else []
         preflight_warnings = self._preflight_warnings(preflight)
         artifact_path = (
@@ -2385,6 +2661,7 @@ class GraphHubMCPServer:
                 **(manifest.get("provenance") if isinstance(manifest.get("provenance"), dict) else {}),
             },
             visual_preflight_status=preflight,
+            layout_report=layout_report,
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
         )
