@@ -8,7 +8,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from themes.journal_theme import TIFF_AUTO_PRESETS, apply_publication_layout, mm_to_inch, save_journal_fig
+from hub_core.scaffold import DEFAULT_DIAGRAM_PY, DEFAULT_PLOT_PY
+from themes.journal_theme import TIFF_AUTO_PRESETS, apply_publication_layout, mm_to_inch, panel_label, save_journal_fig
 
 
 def _axes_box_mm(fig, ax):
@@ -18,6 +19,53 @@ def _axes_box_mm(fig, ax):
 
 
 class JournalThemeLayoutTest(unittest.TestCase):
+    def test_panel_label_places_readable_corner_label_with_default_box(self):
+        fig, ax = plt.subplots()
+        try:
+            text = panel_label(ax, "n = 12")
+
+            self.assertEqual(text.get_text(), "n = 12")
+            self.assertEqual(text.get_position(), (0.03, 0.97))
+            self.assertIs(text.get_transform(), ax.transAxes)
+            self.assertEqual(text.get_ha(), "left")
+            self.assertEqual(text.get_va(), "top")
+            self.assertEqual(text.get_zorder(), 20)
+
+            bbox = text.get_bbox_patch()
+            self.assertIsNotNone(bbox)
+            self.assertEqual(bbox.get_facecolor()[:3], (1.0, 1.0, 1.0))
+            self.assertAlmostEqual(bbox.get_alpha(), 0.72)
+            self.assertAlmostEqual(bbox.get_linewidth(), 0.0)
+        finally:
+            plt.close(fig)
+
+    def test_panel_label_supports_corner_presets_and_kw_overrides(self):
+        fig, ax = plt.subplots()
+        try:
+            text = panel_label(ax, "B", loc="lower right", color="#0055aa", box=False, fontsize=9, fontweight="bold")
+
+            self.assertEqual(text.get_position(), (0.97, 0.03))
+            self.assertEqual(text.get_ha(), "right")
+            self.assertEqual(text.get_va(), "bottom")
+            self.assertEqual(text.get_color(), "#0055aa")
+            self.assertEqual(text.get_fontsize(), 9)
+            self.assertEqual(text.get_fontweight(), "bold")
+            self.assertIsNone(text.get_bbox_patch())
+        finally:
+            plt.close(fig)
+
+    def test_panel_label_rejects_unknown_corner_preset(self):
+        fig, ax = plt.subplots()
+        try:
+            with self.assertRaisesRegex(ValueError, "Unsupported panel_label loc"):
+                panel_label(ax, "bad", loc="middle center")
+        finally:
+            plt.close(fig)
+
+    def test_scaffold_templates_expose_panel_label_helper(self):
+        self.assertIn("panel_label", DEFAULT_PLOT_PY)
+        self.assertIn("panel_label", DEFAULT_DIAGRAM_PY)
+
     def test_standard_layout_preserves_absolute_box_size_across_initial_canvas_sizes(self):
         initial_heights_mm = (70.0, 85.0)
 

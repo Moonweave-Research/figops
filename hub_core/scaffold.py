@@ -64,7 +64,7 @@ if not hub_path:
 if hub_path not in sys.path:
     sys.path.insert(0, hub_path)
 
-from themes.journal_theme import apply_journal_theme, get_figsize, SINGLE_COLUMN, save_journal_fig
+from themes.journal_theme import apply_journal_theme, get_figsize, panel_label, SINGLE_COLUMN, save_journal_fig
 
 
 def main():
@@ -112,7 +112,7 @@ if not hub_path:
 if hub_path not in sys.path:
     sys.path.insert(0, hub_path)
 
-from themes.journal_theme import apply_journal_theme, save_journal_fig
+from themes.journal_theme import apply_journal_theme, panel_label, save_journal_fig
 
 
 def main():
