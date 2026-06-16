@@ -229,6 +229,8 @@ class JournalThemeLayoutTest(unittest.TestCase):
 
     def test_save_journal_fig_auto_declutter_does_not_move_unrelated_repeated_label(self):
         fig, ax = plt.subplots()
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
         ax.scatter([0.2], [0.2], s=300)
         colliding = ax.text(0.2, 0.2, "S70", ha="center", va="center")
         unrelated = ax.text(0.8, 0.8, "S70", ha="center", va="center")
@@ -240,6 +242,39 @@ class JournalThemeLayoutTest(unittest.TestCase):
 
             self.assertNotEqual(before_colliding, colliding.get_position())
             self.assertEqual(before_unrelated, unrelated.get_position())
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_auto_declutter_nudges_clipped_text_inside_axes(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        text = ax.text(1.02, 0.5, "S75", ha="left", va="center")
+        try:
+            before = text.get_position()
+            with tempfile.TemporaryDirectory(prefix="journal_declutter_clip_") as tmpdir:
+                save_journal_fig(fig, Path(tmpdir) / "declutter.png", auto_declutter=True, dpi=150)
+
+            self.assertNotEqual(before, text.get_position())
+            fig.canvas.draw()
+            check = next(
+                c
+                for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"]
+                if c["name"] == "text_axis_edge_proximity"
+            )
+            self.assertTrue(check["passed"])
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_auto_declutter_preserves_axes_coordinate_panel_text(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        panel_label = ax.text(-0.08, 1.12, "a)", transform=ax.transAxes, ha="right", va="bottom")
+        try:
+            before = panel_label.get_position()
+            with tempfile.TemporaryDirectory(prefix="journal_declutter_panel_") as tmpdir:
+                save_journal_fig(fig, Path(tmpdir) / "declutter.png", auto_declutter=True, dpi=150)
+
+            self.assertEqual(before, panel_label.get_position())
         finally:
             plt.close(fig)
 

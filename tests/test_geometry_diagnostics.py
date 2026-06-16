@@ -76,6 +76,7 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
             "legend_internal_overlaps",
             "marker_marker_overlaps",
             "text_axis_edge_proximity",
+            "legend_marker_consistency",
             "label_offset_consistency",
             "font_size_token_drift",
         }
@@ -220,6 +221,18 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertFalse(check["passed"])
         self.assertTrue(any(item["kind"] == "handle_handle" for item in check["data"]["overlaps"]))
 
+    def test_legend_internal_overlaps_ignores_empty_data_proxy_handle_extents(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        handles = [
+            Line2D([], [], marker=marker, linestyle="none", markersize=8, label=label)
+            for marker, label in (("o", "sulfur"), ("D", "trap-rich"), ("s", "control"))
+        ]
+        ax.legend(handles=handles, loc="lower right", labelspacing=1.0)
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "legend_internal_overlaps")
+
+        self.assertTrue(check["passed"])
+        self.assertEqual(check["data"]["overlaps"], [])
+
     def test_marker_marker_overlaps_reports_iou_severity(self):
         fig, ax = plt.subplots(figsize=(3, 3))
         ax.set_xlim(0, 1)
@@ -231,6 +244,59 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertTrue(check["data"]["overlaps"])
         self.assertIn(check["data"]["overlaps"][0]["severity"], {"low", "medium", "high"})
         self.assertGreater(check["data"]["overlaps"][0]["iou"], 0)
+
+    def test_legend_marker_consistency_reports_open_marker_against_filled_key(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        label = "electret/leaky ctrl."
+        ax.plot(
+            [0.5],
+            [0.5],
+            marker="s",
+            linestyle="none",
+            markerfacecolor="none",
+            markeredgecolor="gray",
+            markersize=8,
+            label=label,
+        )
+        legend_handle = Line2D(
+            [],
+            [],
+            marker="s",
+            linestyle="none",
+            markerfacecolor="gray",
+            markeredgecolor="gray",
+            markersize=8,
+            label=label,
+        )
+        ax.legend(handles=[legend_handle])
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "legend_marker_consistency")
+
+        self.assertFalse(check["passed"])
+        mismatch = check["data"]["mismatches"][0]
+        self.assertEqual(mismatch["legend_label"], label)
+        self.assertEqual(mismatch["diff"], ["facecolor", "fill"])
+        self.assertFalse(mismatch["data_style"]["fill"])
+        self.assertTrue(mismatch["legend_style"]["fill"])
+
+    def test_legend_marker_consistency_accepts_proxy_line_for_matching_scatter_shape(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        label = "electret/leaky ctrl."
+        ax.scatter([0.5], [0.5], marker="s", facecolors="gray", edgecolors="gray", s=64, label=label)
+        legend_handle = Line2D(
+            [],
+            [],
+            marker="s",
+            linestyle="none",
+            markerfacecolor="gray",
+            markeredgecolor="gray",
+            markersize=8,
+            label=label,
+        )
+        ax.legend(handles=[legend_handle])
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "legend_marker_consistency")
+
+        self.assertTrue(check["passed"])
+        self.assertEqual(check["data"]["mismatches"], [])
 
     def test_label_offset_consistency_warns_for_repeated_label_direction_change(self):
         fig, axes = plt.subplots(1, 3, figsize=(6, 2))

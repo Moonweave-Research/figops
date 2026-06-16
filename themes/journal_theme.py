@@ -586,14 +586,37 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
                     inter = Bbox.intersection(box_a, box_b)
                     if inter is None or inter.width <= 0 or inter.height <= 0:
                         continue
-                    if isinstance(artist_a, Text):
+                    if isinstance(artist_a, Text) and artist_a.get_transform() is ax.transData:
                         dx, dy = _box_vector_away(box_a, box_b, step_px=step_px)
                         old_dx, old_dy = displacements.get(artist_a, (0.0, 0.0))
                         displacements[artist_a] = (old_dx + dx, old_dy + dy)
-                    if isinstance(artist_b, Text):
+                    if isinstance(artist_b, Text) and artist_b.get_transform() is ax.transData:
                         dx, dy = _box_vector_away(box_b, box_a, step_px=step_px)
                         old_dx, old_dy = displacements.get(artist_b, (0.0, 0.0))
                         displacements[artist_b] = (old_dx + dx, old_dy + dy)
+            margin_px = 6.0
+            axes_box = ax.get_window_extent(renderer)
+            for text in ax.texts:
+                if not isinstance(text, Text) or not text.get_text() or not text.get_visible():
+                    continue
+                if text.get_transform() is not ax.transData:
+                    continue
+                box = text.get_window_extent(renderer)
+                if box is None or box.width <= 0 or box.height <= 0:
+                    continue
+                dx = 0.0
+                dy = 0.0
+                if box.x0 < axes_box.x0 + margin_px:
+                    dx += axes_box.x0 + margin_px - box.x0
+                if box.x1 > axes_box.x1 - margin_px:
+                    dx -= box.x1 - (axes_box.x1 - margin_px)
+                if box.y0 < axes_box.y0 + margin_px:
+                    dy += axes_box.y0 + margin_px - box.y0
+                if box.y1 > axes_box.y1 - margin_px:
+                    dy -= box.y1 - (axes_box.y1 - margin_px)
+                if dx or dy:
+                    old_dx, old_dy = displacements.get(text, (0.0, 0.0))
+                    displacements[text] = (old_dx + dx, old_dy + dy)
             for text, (dx, dy) in displacements.items():
                 x, y = text.get_position()
                 try:

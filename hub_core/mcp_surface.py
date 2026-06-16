@@ -86,6 +86,7 @@ _GEOMETRY_METRIC_NAMES = (
     "legend_internal_overlaps",
     "marker_marker_overlaps",
     "text_axis_edge_proximity",
+    "legend_marker_consistency",
     "label_offset_consistency",
     "font_size_token_drift",
 )
@@ -102,6 +103,7 @@ _GEOMETRY_WARNING_ELIGIBLE = frozenset(
         "legend_internal_overlaps",
         "marker_marker_overlaps",
         "text_axis_edge_proximity",
+        "legend_marker_consistency",
         "label_offset_consistency",
         "font_size_token_drift",
     }
@@ -257,6 +259,10 @@ def _layout_report_from_geometry(
             report["placement_consistency"].extend(_layout_placement_items(data))
         elif name == "font_size_token_drift":
             report["font_roles"] = _layout_font_roles(data, check)
+        elif name == "legend_marker_consistency" and check.get("passed") is False:
+            detail = check.get("detail")
+            if detail:
+                report["warnings"].append(str(detail))
         elif name in {"point_annotation_overlaps", "artists_outside_axes", "artists_outside_figure"} and check.get(
             "passed"
         ) is False:
