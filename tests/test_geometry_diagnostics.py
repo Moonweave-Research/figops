@@ -8,6 +8,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.transforms import Bbox  # noqa: E402
 
 from hub_core.geometry_diagnostics import (  # noqa: E402
@@ -71,6 +72,12 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
             "axis_label_title_overlap",
             "colorbar_overlap",
             "point_annotation_overlaps",
+            "artist_overlaps",
+            "legend_internal_overlaps",
+            "marker_marker_overlaps",
+            "text_axis_edge_proximity",
+            "label_offset_consistency",
+            "font_size_token_drift",
         }
         expected = all(c["passed"] for c in result["checks"] if c["name"] in warning_eligible)
         self.assertEqual(result["passed"], expected)
@@ -182,6 +189,16 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertTrue(any(item["a"].startswith("text:") or item["b"].startswith("text:") for item in check["data"]["overlaps"]))
         self.assertTrue(any("marker:" in item["a"] or "marker:" in item["b"] for item in check["data"]["overlaps"]))
 
+    def test_artist_overlaps_reports_text_title_pairs(self):
+        fig, ax = plt.subplots(figsize=(2, 2))
+        ax.set_title("(c) panel title")
+        ax.text(0.5, 1.02, "controls (ref.)", ha="center", va="bottom", transform=ax.transAxes)
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "artist_overlaps")
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(any("controls" in item["a"] or "controls" in item["b"] for item in check["data"]["overlaps"]))
+        self.assertTrue(any("title:" in item["a"] or "title:" in item["b"] for item in check["data"]["overlaps"]))
+
     def test_artist_overlaps_uses_individual_marker_boxes_not_collection_union(self):
         fig, ax = plt.subplots()
         ax.scatter([0.0, 1.0], [0.0, 1.0], s=40)
@@ -190,6 +207,71 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
 
         self.assertTrue(check["passed"])
         self.assertEqual(check["data"]["overlaps"], [])
+
+    def test_legend_internal_overlaps_reports_packed_handles(self):
+        fig, ax = plt.subplots(figsize=(2, 2))
+        handles = [
+            Line2D([0], [0], marker=marker, linestyle="", markersize=14, label=label)
+            for marker, label in (("o", "circle"), ("D", "diamond"), ("s", "square"))
+        ]
+        ax.legend(handles=handles, labels=["circle", "diamond", "square"], labelspacing=-0.2, loc="center")
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "legend_internal_overlaps")
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(any(item["kind"] == "handle_handle" for item in check["data"]["overlaps"]))
+
+    def test_marker_marker_overlaps_reports_iou_severity(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.scatter([0.50, 0.505], [0.50, 0.50], s=900)
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "marker_marker_overlaps")
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(check["data"]["overlaps"])
+        self.assertIn(check["data"]["overlaps"][0]["severity"], {"low", "medium", "high"})
+        self.assertGreater(check["data"]["overlaps"][0]["iou"], 0)
+
+    def test_label_offset_consistency_warns_for_repeated_label_direction_change(self):
+        fig, axes = plt.subplots(1, 3, figsize=(6, 2))
+        for ax in axes:
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.scatter([0.5], [0.5], s=80)
+        axes[0].text(0.62, 0.5, "PDMS", ha="left", va="center")
+        axes[1].text(0.62, 0.5, "PDMS", ha="left", va="center")
+        axes[2].text(0.5, 0.38, "PDMS", ha="center", va="top")
+        check = _check(diagnose_figure_geometry(_drawn(fig), list(axes), layout_locked=False), "label_offset_consistency")
+
+        self.assertFalse(check["passed"])
+        inconsistency = check["data"]["inconsistencies"][0]
+        self.assertEqual(inconsistency["label"], "PDMS")
+        self.assertEqual(set(inconsistency["directions"]), {"below", "right"})
+
+    def test_text_axis_edge_proximity_reports_clipped_label(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.text(0.5, -0.02, "PDMS", ha="center", va="top")
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "text_axis_edge_proximity")
+
+        self.assertFalse(check["passed"])
+        finding = check["data"]["findings"][0]
+        self.assertEqual(finding["artist"], "text:'PDMS'")
+        self.assertIn("bottom", finding["edges"])
+        self.assertTrue(finding["clipped"])
+
+    def test_font_size_token_drift_reports_raw_non_token_sizes(self):
+        fig, ax = plt.subplots()
+        ax.text(0.2, 0.2, "S70", fontsize=5)
+        ax.text(0.4, 0.4, "PET", fontsize=6)
+        ax.text(0.6, 0.6, "drift", fontsize=5.5)
+        result = diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False, font_token_sizes=[5, 6, 7])
+        check = _check(result, "font_size_token_drift")
+
+        self.assertFalse(check["passed"])
+        self.assertEqual(check["data"]["offenders"][0]["text"], "drift")
+        self.assertEqual(check["data"]["offenders"][0]["fontsize"], 5.5)
 
     def test_annotation_cap(self):
         fig, ax = plt.subplots()

@@ -13,6 +13,7 @@ import copy
 import json
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -83,6 +84,78 @@ _LEGACY_LAYOUT_RATIOS = {
 }
 
 TIFF_AUTO_PRESETS: set[str] = {"nature", "nature_surfur", "science", "acs", "rsc", "elsevier", "wiley", "cell"}
+
+
+@dataclass(frozen=True)
+class FontTokens:
+    tag: float
+    label: float
+    annot: float
+    legend: float
+    axis: float
+    tick: float
+
+    @property
+    def annotation(self) -> float:
+        return self.annot
+
+    def __getitem__(self, key: str) -> float:
+        return self.as_dict()[key]
+
+    def as_dict(self) -> dict[str, float]:
+        return {
+            "tag": self.tag,
+            "label": self.label,
+            "annot": self.annot,
+            "annotation": self.annot,
+            "legend": self.legend,
+            "axis": self.axis,
+            "tick": self.tick,
+        }
+
+
+_FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
+    "nature": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
+    "science": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
+    "acs": FontTokens(tag=8.0, label=6.5, annot=6.5, legend=7.0, axis=7.5, tick=6.0),
+    "rsc": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
+    "elsevier": FontTokens(tag=8.5, label=7.0, annot=7.0, legend=7.0, axis=8.0, tick=7.0),
+    "wiley": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
+    "cell": FontTokens(tag=7.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
+    "nature_surfur": FontTokens(tag=6.0, label=5.0, annot=6.0, legend=6.0, axis=7.0, tick=6.0),
+    "ppt": FontTokens(tag=16.0, label=12.0, annot=12.0, legend=12.0, axis=14.0, tick=12.0),
+    "default": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
+}
+_ACTIVE_FONT_TOKENS = _FONT_TOKEN_PRESETS["nature"]
+
+
+def font_tokens(target: str = "nature", font_scale: float = 1.0, profile_name=None) -> FontTokens:
+    target_key = str(target or "nature").lower()
+    tokens = _FONT_TOKEN_PRESETS.get(target_key, _FONT_TOKEN_PRESETS["nature"])
+    if not isinstance(font_scale, (int, float)) or font_scale <= 0:
+        raise ValueError(f"font_scale must be a positive number, got {font_scale!r}")
+    if font_scale == 1.0:
+        scaled = tokens
+    else:
+        scaled = FontTokens(
+            tag=tokens.tag * font_scale,
+            label=tokens.label * font_scale,
+            annot=tokens.annot * font_scale,
+            legend=tokens.legend * font_scale,
+            axis=tokens.axis * font_scale,
+            tick=tokens.tick * font_scale,
+        )
+    if profile_name is None:
+        return scaled
+    profile_rc, _ = get_profile_rc_overrides(resolve_profile_name(profile_name))
+    return FontTokens(
+        tag=scaled.tag,
+        label=scaled.label,
+        annot=scaled.annot,
+        legend=float(profile_rc.get("legend.fontsize", scaled.legend)),
+        axis=float(profile_rc.get("axes.labelsize", scaled.axis)),
+        tick=float(profile_rc.get("xtick.labelsize", profile_rc.get("ytick.labelsize", scaled.tick))),
+    )
 
 
 def mm_to_inch(mm):
@@ -320,6 +393,8 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
         font_scale (float): 기준 테마 폰트 사이즈 대비 보정 배율
         profile_name (str): 세부 스타일 프로파일 이름 (예: baseline, resistance_premium)
     """
+    global _ACTIVE_FONT_TOKENS
+
     # 1. 포맷 가져오기 (fallback: nature)
     target_format = target_format.lower()
     if target_format not in STYLE_PRESETS:
@@ -380,6 +455,7 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
 
     # 3. 전역 적용
     plt.rcParams.update(theme_rc)
+    _ACTIVE_FONT_TOKENS = font_tokens(target_format, font_scale, resolved_profile)
 
 
 # 별칭 (Sulfur 프로젝트 호환성)
@@ -456,11 +532,25 @@ def _safe_geometry_diagnostics_inline(fig) -> dict:
             axis for axis in fig.axes if axis.get_visible() and getattr(axis, "_graph_hub_role", None) != "colorbar"
         ]
         layout_locked = getattr(fig, _LAYOUT_LOCK_ATTR, None) is not None
-        return diagnose_figure_geometry(fig, data_axes, layout_locked=layout_locked)
+        return diagnose_figure_geometry(
+            fig,
+            data_axes,
+            layout_locked=layout_locked,
+            font_token_sizes=_active_font_token_sizes(),
+        )
     except Exception as exc:
         from hub_core.geometry_diagnostics import SCHEMA_VERSION
 
         return {"schema_version": SCHEMA_VERSION, "passed": None, "checks": [], "warnings": [str(exc)]}
+
+
+def _active_font_token_sizes() -> list[float]:
+    sizes = list(_ACTIVE_FONT_TOKENS.as_dict().values())
+    for key in ("font.size", "axes.labelsize", "legend.fontsize", "xtick.labelsize", "ytick.labelsize"):
+        value = plt.rcParams.get(key)
+        if isinstance(value, (int, float)):
+            sizes.append(float(value))
+    return sizes
 
 
 def _env_truthy(name: str) -> bool:

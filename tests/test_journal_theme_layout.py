@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,9 +9,17 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from hub_core.scaffold import DEFAULT_DIAGRAM_PY, DEFAULT_PLOT_PY
+from hub_core.scaffold import DEFAULT_DIAGRAM_PY, DEFAULT_PLOT_PY, DEFAULT_PROJECT_CONTEXT_PY
 from hub_core.geometry_diagnostics import diagnose_figure_geometry
-from themes.journal_theme import TIFF_AUTO_PRESETS, apply_publication_layout, mm_to_inch, panel_label, save_journal_fig
+from themes.journal_theme import (
+    TIFF_AUTO_PRESETS,
+    apply_journal_theme,
+    apply_publication_layout,
+    font_tokens,
+    mm_to_inch,
+    panel_label,
+    save_journal_fig,
+)
 
 
 def _axes_box_mm(fig, ax):
@@ -66,6 +75,83 @@ class JournalThemeLayoutTest(unittest.TestCase):
     def test_scaffold_templates_expose_panel_label_helper(self):
         self.assertIn("panel_label", DEFAULT_PLOT_PY)
         self.assertIn("panel_label", DEFAULT_DIAGRAM_PY)
+
+    def test_scaffold_templates_expose_font_tokens(self):
+        self.assertIn("font_tokens", DEFAULT_PLOT_PY)
+        self.assertIn("font_tokens", DEFAULT_DIAGRAM_PY)
+        self.assertIn("FONT", DEFAULT_PLOT_PY)
+        self.assertIn("FONT", DEFAULT_DIAGRAM_PY)
+
+    def test_project_context_template_exposes_theme_font_tokens(self):
+        self.assertIn("RESEARCH_HUB_PATH", DEFAULT_PROJECT_CONTEXT_PY)
+        self.assertIn("theme_font_tokens", DEFAULT_PROJECT_CONTEXT_PY)
+        self.assertIn("font_tokens", DEFAULT_PROJECT_CONTEXT_PY)
+        self.assertIn("apply_project_theme", DEFAULT_PROJECT_CONTEXT_PY)
+        self.assertIn("THEME_PROFILE", DEFAULT_PROJECT_CONTEXT_PY)
+
+    def test_font_tokens_expose_named_role_sizes(self):
+        tokens = font_tokens("nature_surfur")
+
+        self.assertEqual(tokens.tag, 6.0)
+        self.assertEqual(tokens.label, 5.0)
+        self.assertEqual(tokens.annot, 6.0)
+        self.assertEqual(tokens.annotation, tokens.annot)
+        self.assertEqual(tokens["legend"], 6.0)
+        self.assertEqual(tokens.as_dict()["axis"], 7.0)
+
+    def test_font_tokens_apply_profile_font_overrides(self):
+        tokens = font_tokens("nature_surfur", profile_name="resistance_premium")
+
+        self.assertEqual(tokens.label, 5.0)
+        self.assertEqual(tokens.axis, 7.5)
+        self.assertEqual(tokens.legend, 6.5)
+        self.assertEqual(tokens.tick, 6.5)
+
+    def test_apply_journal_theme_passes_active_tokens_to_diagnostics(self):
+        apply_journal_theme("nature_surfur")
+        fig, ax = plt.subplots()
+        ax.text(0.2, 0.2, "token", fontsize=font_tokens("nature_surfur").label)
+        ax.text(0.4, 0.4, "drift", fontsize=5.5)
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_tokens_") as tmpdir:
+                out_path = Path(tmpdir) / "tokens.png"
+                prior = os.environ.get("GEOMETRY_DIAGNOSTICS_OUT")
+                os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = str(Path(tmpdir) / "geometry.json")
+                try:
+                    save_journal_fig(fig, out_path, dpi=150)
+                finally:
+                    if prior is None:
+                        os.environ.pop("GEOMETRY_DIAGNOSTICS_OUT", None)
+                    else:
+                        os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = prior
+                payload = Path(tmpdir, "geometry.json").read_text(encoding="utf-8")
+                self.assertIn("font_size_token_drift", payload)
+                self.assertIn("drift", payload)
+        finally:
+            plt.close(fig)
+
+    def test_profile_font_overrides_are_allowed_tokens(self):
+        apply_journal_theme("nature_surfur", profile_name="resistance_premium")
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1], label="series")
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        ax.legend()
+        try:
+            result = diagnose_figure_geometry(
+                fig,
+                [ax],
+                layout_locked=False,
+                font_token_sizes=[
+                    *font_tokens("nature_surfur").as_dict().values(),
+                    plt.rcParams["axes.labelsize"],
+                    plt.rcParams["legend.fontsize"],
+                ],
+            )
+            drift = next(check for check in result["checks"] if check["name"] == "font_size_token_drift")
+            self.assertTrue(drift["passed"])
+        finally:
+            plt.close(fig)
 
     def test_standard_layout_preserves_absolute_box_size_across_initial_canvas_sizes(self):
         initial_heights_mm = (70.0, 85.0)

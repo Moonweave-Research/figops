@@ -271,6 +271,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn("status_path", properties)
             self.assertIn("latest_alias", properties)
             self.assertIn("latest_dir", properties)
+            self.assertIn("layout_report", properties)
         project_input = definitions["graphhub.render_project_figure"]["inputSchema"]["properties"]
         project_output = definitions["graphhub.render_project_figure"]["outputSchema"]["properties"]
         self.assertIn("project_id", project_input)
@@ -835,11 +836,17 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn("Selected figure output was not created", result["errors"][0])
             self.assertTrue(any("KeyError" in line for line in result["script_output"]))
             self.assertTrue(any("Unknown layout_type duo" in line for line in result["script_output"]))
+            self.assertEqual(result["layout_report"]["render_errors"][0]["stage"], "EXPORT")
+            self.assertTrue(
+                any("Unknown layout_type duo" in line for line in result["layout_report"]["render_errors"][0]["script_output_tail"])
+            )
             manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
             self.assertTrue(any("KeyError" in line for line in manifest["script_output"]))
+            self.assertEqual(manifest["layout_report"]["render_errors"][0]["stage"], "EXPORT")
             collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "swallowed-traceback"})
             self.assertEqual(collected["status"], "error")
             self.assertTrue(any("Unknown layout_type duo" in line for line in collected["script_output"]))
+            self.assertEqual(collected["layout_report"]["render_errors"][0]["stage"], "EXPORT")
 
     def test_render_csv_graph_rejects_overwrite_without_flag(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -1707,9 +1714,13 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             diag = result["geometry_diagnostics"]
             self.assertEqual(diag["schema_version"], "geometry_diagnostics/1")
             self.assertTrue(diag["checks"])
+            self.assertEqual(result["layout_report"]["schema_version"], "layout_report/1")
             manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
             self.assertIn("geometry_diagnostics", manifest)
             self.assertEqual(manifest["geometry_diagnostics"]["schema_version"], "geometry_diagnostics/1")
+            self.assertEqual(manifest["layout_report"]["schema_version"], "layout_report/1")
+            status = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(status["layout_report"]["schema_version"], "layout_report/1")
 
     def test_project_attaches_key_and_sidecar_outside_snapshot(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
@@ -1724,7 +1735,9 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             )
             self.assertIn(result["status"], {"ok", "warning"})
             self.assertIn("geometry_diagnostics", result)
+            self.assertIn("layout_report", result)
             self.assertEqual(result["geometry_diagnostics"]["schema_version"], "geometry_diagnostics/1")
+            self.assertEqual(result["layout_report"]["schema_version"], "layout_report/1")
             snapshot = Path(result["snapshot_project_path"])
             self.assertFalse((snapshot / "geometry_diagnostics.json").exists())
 
@@ -1786,6 +1799,9 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             overlaps = result["visual_preflight_status"]["overlaps"]
             self.assertTrue(any("S70" in item["a"] or "S70" in item["b"] for item in overlaps))
             self.assertTrue(any("marker:" in item["a"] or "marker:" in item["b"] for item in overlaps))
+            layout_overlaps = result["layout_report"]["overlaps"]
+            self.assertTrue(any(item["kind"] == "text-marker" for item in layout_overlaps))
+            self.assertTrue(any("S70" in item["a"] or "S70" in item["b"] for item in layout_overlaps))
 
     def test_project_engine_error_degrades_real_render(self):
         # Drives the diagnostics-engine failure through a real project render: the engine is
@@ -1971,10 +1987,15 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
         for tool_name in ("graphhub.render_csv_graph", "graphhub.render_project_figure"):
             properties = definitions[tool_name]["outputSchema"]["properties"]
             self.assertIn("geometry_diagnostics", properties)
+            self.assertIn("layout_report", properties)
             geom_schema = properties["geometry_diagnostics"]
             self.assertEqual(set(geom_schema["required"]), {"schema_version", "passed", "checks", "warnings"})
             metric_enum = geom_schema["properties"]["checks"]["items"]["properties"]["name"]["enum"]
             self.assertIn("tick_label_overlaps", metric_enum)
+            self.assertIn("text_axis_edge_proximity", metric_enum)
+            report_schema = properties["layout_report"]
+            self.assertIn("overlaps", report_schema["required"])
+            self.assertIn("render_errors", report_schema["required"])
         # per-tool scoping: not declared on non-render tools
         for tool_name in ("graphhub.health", "graphhub.list_projects"):
             self.assertNotIn("geometry_diagnostics", definitions[tool_name]["outputSchema"]["properties"])
@@ -1992,9 +2013,14 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             _, csv_success = self._render_csv(tmpdir)
             self._assert_validates(csv_success, csv_schema)
             self.assertIn("geometry_diagnostics", csv_success)
+            self.assertIn("layout_report", csv_success)
             # remove the declaration -> additionalProperties:False rejects the response
             stripped = json.loads(json.dumps(csv_schema))
             stripped["properties"].pop("geometry_diagnostics")
+            with self.assertRaises(AssertionError):
+                self._assert_validates(csv_success, stripped)
+            stripped = json.loads(json.dumps(csv_schema))
+            stripped["properties"].pop("layout_report")
             with self.assertRaises(AssertionError):
                 self._assert_validates(csv_success, stripped)
 
@@ -2002,6 +2028,8 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             _, csv_dry_run = self._render_csv(tmpdir, dry_run=True)
             self._assert_validates(csv_dry_run, csv_schema)
             self.assertIn("geometry_diagnostics", csv_dry_run)
+            self.assertIn("layout_report", csv_dry_run)
+            self.assertIn("dry_run", csv_dry_run["layout_report"]["warnings"])
 
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             data_path = _write_dense_csv(Path(tmpdir) / "input" / "data.csv")
@@ -2014,6 +2042,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             self.assertEqual(csv_error["status"], "error")
             self._assert_validates(csv_error, csv_schema)
             self.assertIn("geometry_diagnostics", csv_error)
+            self.assertIn("layout_report", csv_error)
 
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
@@ -2026,6 +2055,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             )
             self._assert_validates(project_success, project_schema)
             self.assertIn("geometry_diagnostics", project_success)
+            self.assertIn("layout_report", project_success)
 
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
@@ -2038,6 +2068,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             )
             self._assert_validates(project_no_sidecar, project_schema)
             self.assertIsNone(project_no_sidecar["geometry_diagnostics"]["passed"])
+            self.assertIsNone(project_no_sidecar["layout_report"]["passed"])
 
     def _assert_validates(self, instance: dict, schema: dict) -> None:
         # Hand-rolled non-vacuous check (jsonschema is not a test dependency):

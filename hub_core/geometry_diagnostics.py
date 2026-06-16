@@ -30,6 +30,8 @@ TICK_CROWDING_WARN = 0.90
 DATA_OUTSIDE_AXES_WARN = 0.01
 LEGEND_OVERLAP_WARN = 0.05
 COLORBAR_OVERLAP_WARN = 0.02
+MARKER_MARKER_OVERLAP_WARN = 0.05
+TEXT_AXIS_EDGE_WARN_PX = 3.0
 
 _CROWDING_NEAR_LOW = 0.85
 _CROWDING_NEAR_HIGH = 0.95
@@ -45,6 +47,11 @@ _WARNING_ELIGIBLE = frozenset(
         "colorbar_overlap",
         "point_annotation_overlaps",
         "artist_overlaps",
+        "legend_internal_overlaps",
+        "marker_marker_overlaps",
+        "text_axis_edge_proximity",
+        "label_offset_consistency",
+        "font_size_token_drift",
     }
 )
 
@@ -54,6 +61,7 @@ def diagnose_figure_geometry(
     data_axes: list[Axes],
     *,
     layout_locked: bool,
+    font_token_sizes: list[float] | None = None,
 ) -> dict[str, Any]:
     """Measure objective geometry facts on a fully-drawn, still-open Figure.
 
@@ -80,6 +88,11 @@ def diagnose_figure_geometry(
         checks.append(_blank_area_ratio(ax, renderer, axis_index))
         checks.append(_point_annotation_overlaps(ax, renderer, axis_index))
         checks.append(_artist_overlaps(ax, renderer, axis_index))
+        checks.append(_legend_internal_overlaps(ax, renderer, axis_index))
+        checks.append(_marker_marker_overlaps(ax, renderer, axis_index))
+        checks.append(_text_axis_edge_proximity(ax, renderer, axis_index))
+    checks.append(_label_offset_consistency(fig, data_axes, renderer))
+    checks.append(_font_size_token_drift(data_axes, font_token_sizes))
 
     passed = all(c["passed"] for c in checks if c["name"] in _WARNING_ELIGIBLE)
     return {
@@ -134,6 +147,23 @@ def _boxes_overlap(box_a: Bbox, box_b: Bbox) -> bool:
 
 def _box_area(box: Bbox) -> float:
     return float(abs(box.width) * abs(box.height))
+
+
+def _overlap_fraction(box_a: Bbox, box_b: Bbox) -> float:
+    denom = min(_box_area(box_a), _box_area(box_b))
+    if denom <= 0:
+        return 0.0
+    return float(_inter_area(box_a, box_b) / denom)
+
+
+def _overlap_severity(value: float) -> str:
+    if value >= 0.50:
+        return "high"
+    if value >= 0.20:
+        return "medium"
+    if value > 0:
+        return "low"
+    return "none"
 
 
 def _visible_data_artists(ax: Axes) -> list[Any]:
@@ -449,6 +479,74 @@ def _legend_data_collision(ax: Axes, renderer: Any, axis_index: int) -> dict[str
     }
 
 
+def _legend_internal_items(ax: Axes, renderer: Any) -> list[tuple[str, str, Bbox]]:
+    legend = ax.get_legend()
+    if legend is None or not _is_paintable(legend):
+        return []
+    items: list[tuple[str, str, Bbox]] = []
+    handles = getattr(legend, "legend_handles", getattr(legend, "legendHandles", []))
+    for index, handle in enumerate(handles):
+        if not _is_paintable(handle):
+            continue
+        bb = _extent(handle, renderer)
+        if bb is not None and _box_area(bb) > 0:
+            items.append(("handle", f"legend_handle:{index}", bb))
+    for index, text in enumerate(legend.get_texts()):
+        if not text.get_text() or not _is_paintable(text):
+            continue
+        bb = _extent(text, renderer)
+        if bb is not None and _box_area(bb) > 0:
+            items.append(("text", f"legend_text:{text.get_text()!r}", bb))
+    return items
+
+
+def _legend_internal_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
+    name = "legend_internal_overlaps"
+    items = _legend_internal_items(ax, renderer)
+    if not items:
+        return {
+            "name": name,
+            "passed": True,
+            "detail": "skipped: no legend internals",
+            "data": {"axis_index": int(axis_index)},
+        }
+
+    overlaps: list[dict[str, Any]] = []
+    for index_a in range(len(items)):
+        kind_a, label_a, box_a = items[index_a]
+        for index_b in range(index_a + 1, len(items)):
+            kind_b, label_b, box_b = items[index_b]
+            overlap = _overlap_fraction(box_a, box_b)
+            if overlap <= 0:
+                continue
+            pair_kind = "handle_text" if {kind_a, kind_b} == {"handle", "text"} else f"{kind_a}_{kind_b}"
+            overlaps.append(
+                {
+                    "axes": int(axis_index),
+                    "a": label_a,
+                    "b": label_b,
+                    "kind": pair_kind,
+                    "iou": round(overlap, 4),
+                    "severity": _overlap_severity(overlap),
+                }
+            )
+    if len(overlaps) > _MAX_REPORTED_PAIRS:
+        overlaps = overlaps[:_MAX_REPORTED_PAIRS]
+        truncated = True
+    else:
+        truncated = False
+    return {
+        "name": name,
+        "passed": len(overlaps) == 0,
+        "detail": f"{len(overlaps)} legend-internal overlaps (axis {axis_index})",
+        "data": {
+            "axis_index": int(axis_index),
+            "overlaps": overlaps,
+            "overlaps_truncated": bool(truncated),
+        },
+    }
+
+
 def _axis_label_title_overlap(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
     name = "axis_label_title_overlap"
     artists = [
@@ -561,6 +659,102 @@ def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox
     return boxes
 
 
+def _marker_marker_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
+    name = "marker_marker_overlaps"
+    markers = _marker_footprint_box_entries(ax, ax.figure)
+    if len(markers) > MAX_TEXT_ARTISTS:
+        return {
+            "name": name,
+            "passed": True,
+            "detail": f"skipped: marker count {len(markers)} exceeds cap {MAX_TEXT_ARTISTS}",
+            "data": {"axis_index": int(axis_index)},
+        }
+    overlaps: list[dict[str, Any]] = []
+    for index_a in range(len(markers)):
+        label_a, box_a = markers[index_a]
+        for index_b in range(index_a + 1, len(markers)):
+            label_b, box_b = markers[index_b]
+            overlap = _overlap_fraction(box_a, box_b)
+            if overlap <= MARKER_MARKER_OVERLAP_WARN:
+                continue
+            overlaps.append(
+                {
+                    "axes": int(axis_index),
+                    "a": label_a,
+                    "b": label_b,
+                    "iou": round(overlap, 4),
+                    "severity": _overlap_severity(overlap),
+                }
+            )
+    if len(overlaps) > _MAX_REPORTED_PAIRS:
+        overlaps = overlaps[:_MAX_REPORTED_PAIRS]
+        truncated = True
+    else:
+        truncated = False
+    return {
+        "name": name,
+        "passed": len(overlaps) == 0,
+        "detail": f"{len(overlaps)} marker-marker overlaps (axis {axis_index})",
+        "data": {
+            "axis_index": int(axis_index),
+            "overlaps": overlaps,
+            "overlaps_truncated": bool(truncated),
+            "threshold": float(MARKER_MARKER_OVERLAP_WARN),
+        },
+    }
+
+
+def _text_axis_edge_proximity(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
+    name = "text_axis_edge_proximity"
+    axes_bb = ax.get_window_extent(renderer)
+    findings: list[dict[str, Any]] = []
+    for text in ax.texts:
+        if not text.get_text() or not _is_paintable(text):
+            continue
+        bb = _extent(text, renderer)
+        if bb is None or _box_area(bb) <= 0:
+            continue
+        distances = {
+            "left": float(bb.x0 - axes_bb.x0),
+            "right": float(axes_bb.x1 - bb.x1),
+            "bottom": float(bb.y0 - axes_bb.y0),
+            "top": float(axes_bb.y1 - bb.y1),
+        }
+        clipped_edges = [edge for edge, distance in distances.items() if distance < 0]
+        near_edges = [
+            edge
+            for edge, distance in distances.items()
+            if 0 <= distance <= TEXT_AXIS_EDGE_WARN_PX and edge not in clipped_edges
+        ]
+        if not clipped_edges and not near_edges:
+            continue
+        findings.append(
+            {
+                "axes": int(axis_index),
+                "artist": f"text:{text.get_text()!r}",
+                "edges": clipped_edges or near_edges,
+                "clipped": bool(clipped_edges),
+                "min_distance_px": round(min(distances.values()), 3),
+            }
+        )
+    if len(findings) > _MAX_REPORTED_PAIRS:
+        findings = findings[:_MAX_REPORTED_PAIRS]
+        truncated = True
+    else:
+        truncated = False
+    return {
+        "name": name,
+        "passed": len(findings) == 0,
+        "detail": f"{len(findings)} text artists clipped or near axes edge (axis {axis_index})",
+        "data": {
+            "axis_index": int(axis_index),
+            "findings": findings,
+            "findings_truncated": bool(truncated),
+            "threshold_px": float(TEXT_AXIS_EDGE_WARN_PX),
+        },
+    }
+
+
 def _marker_footprint_boxes(ax: Axes, fig: Figure, renderer: Any) -> Bbox | None:
     boxes = [box for _label, box in _marker_footprint_box_entries(ax, fig)]
     if not boxes:
@@ -668,6 +862,7 @@ def _artist_overlap_candidate_items(ax: Axes, renderer: Any) -> list[tuple[str, 
     legend = ax.get_legend()
     if legend is not None:
         add_artist(legend, "legend")
+    add_artist(ax.title, "title")
     for index, text in enumerate(ax.texts):
         add_artist(text, f"text:{index}")
 
@@ -725,5 +920,145 @@ def _artist_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]
             "axis_index": int(axis_index),
             "overlaps": overlaps,
             "overlaps_truncated": bool(truncated),
+        },
+    }
+
+
+def _nearest_marker_direction(ax: Axes, text: Any, renderer: Any) -> str | None:
+    text_bb = _extent(text, renderer)
+    if text_bb is None:
+        return None
+    tx, ty = _box_center(text_bb)
+    marker_boxes = _marker_footprint_box_entries(ax, ax.figure)
+    if not marker_boxes:
+        return None
+    nearest_box = min(marker_boxes, key=lambda item: (tx - _box_center(item[1])[0]) ** 2 + (ty - _box_center(item[1])[1]) ** 2)[1]
+    mx, my = _box_center(nearest_box)
+    dx = tx - mx
+    dy = ty - my
+    if abs(dx) < GEOM_EPS_PX and abs(dy) < GEOM_EPS_PX:
+        return "center"
+    if abs(dx) >= abs(dy):
+        return "right" if dx > 0 else "left"
+    return "above" if dy > 0 else "below"
+
+
+def _label_offset_consistency(fig: Figure, data_axes: list[Axes], renderer: Any) -> dict[str, Any]:
+    name = "label_offset_consistency"
+    labels: dict[str, list[dict[str, Any]]] = {}
+    for axis_index, ax in enumerate(data_axes):
+        for text in ax.texts:
+            if not text.get_text() or not _is_paintable(text):
+                continue
+            direction = _nearest_marker_direction(ax, text, renderer)
+            if direction is None:
+                continue
+            labels.setdefault(text.get_text(), []).append(
+                {"axis_index": int(axis_index), "direction": direction}
+            )
+
+    inconsistencies: list[dict[str, Any]] = []
+    for label, placements in labels.items():
+        if len(placements) < 2:
+            continue
+        directions = sorted({str(item["direction"]) for item in placements})
+        if len(directions) <= 1:
+            continue
+        inconsistencies.append(
+            {
+                "label": label,
+                "directions": directions,
+                "placements": placements,
+            }
+        )
+    if len(inconsistencies) > _MAX_REPORTED_PAIRS:
+        inconsistencies = inconsistencies[:_MAX_REPORTED_PAIRS]
+        truncated = True
+    else:
+        truncated = False
+    return {
+        "name": name,
+        "passed": len(inconsistencies) == 0,
+        "detail": f"{len(inconsistencies)} repeated-label offset inconsistencies",
+        "data": {
+            "inconsistencies": inconsistencies,
+            "inconsistencies_truncated": bool(truncated),
+        },
+    }
+
+
+def _default_font_token_sizes(data_axes: list[Axes]) -> list[float]:
+    sizes: set[float] = set()
+    for ax in data_axes:
+        for artist in (ax.xaxis.label, ax.yaxis.label):
+            if artist is not None and _is_paintable(artist):
+                sizes.add(round(float(artist.get_fontsize()), 2))
+        legend = ax.get_legend()
+        if legend is not None and _is_paintable(legend):
+            for text in legend.get_texts():
+                if text.get_text() and _is_paintable(text):
+                    sizes.add(round(float(text.get_fontsize()), 2))
+    return sorted(sizes)
+
+
+def _font_size_matches_token(size: float, token_sizes: list[float], *, tolerance: float = 0.05) -> bool:
+    return any(abs(size - token) <= tolerance for token in token_sizes)
+
+
+def _font_size_token_drift(data_axes: list[Axes], font_token_sizes: list[float] | None) -> dict[str, Any]:
+    name = "font_size_token_drift"
+    token_sizes = sorted({round(float(size), 2) for size in (font_token_sizes or []) if float(size) > 0})
+    if not token_sizes:
+        token_sizes = _default_font_token_sizes(data_axes)
+    if not token_sizes:
+        return {
+            "name": name,
+            "passed": True,
+            "detail": "skipped: no font token sizes",
+            "data": {"token_sizes": []},
+        }
+
+    offenders: list[dict[str, Any]] = []
+    role_sizes: dict[str, set[float]] = {"text": set(), "axis": set(), "legend": set()}
+    for axis_index, ax in enumerate(data_axes):
+        for text in ax.texts:
+            if not text.get_text() or not _is_paintable(text):
+                continue
+            size = round(float(text.get_fontsize()), 2)
+            role_sizes["text"].add(size)
+            if not _font_size_matches_token(size, token_sizes):
+                offenders.append({"axes": int(axis_index), "role": "text", "text": text.get_text(), "fontsize": size})
+        for role, artist in (("axis", ax.xaxis.label), ("axis", ax.yaxis.label)):
+            if artist is None or not artist.get_text() or not _is_paintable(artist):
+                continue
+            size = round(float(artist.get_fontsize()), 2)
+            role_sizes[role].add(size)
+            if not _font_size_matches_token(size, token_sizes):
+                offenders.append({"axes": int(axis_index), "role": role, "text": artist.get_text(), "fontsize": size})
+        legend = ax.get_legend()
+        if legend is not None and _is_paintable(legend):
+            for text in legend.get_texts():
+                if not text.get_text() or not _is_paintable(text):
+                    continue
+                size = round(float(text.get_fontsize()), 2)
+                role_sizes["legend"].add(size)
+                if not _font_size_matches_token(size, token_sizes):
+                    offenders.append({"axes": int(axis_index), "role": "legend", "text": text.get_text(), "fontsize": size})
+
+    role_size_counts = {role: len(sizes) for role, sizes in role_sizes.items() if sizes}
+    if len(offenders) > _MAX_REPORTED_PAIRS:
+        offenders = offenders[:_MAX_REPORTED_PAIRS]
+        truncated = True
+    else:
+        truncated = False
+    return {
+        "name": name,
+        "passed": len(offenders) == 0,
+        "detail": f"{len(offenders)} text artists use non-token font sizes",
+        "data": {
+            "token_sizes": token_sizes,
+            "offenders": offenders,
+            "offenders_truncated": bool(truncated),
+            "role_size_counts": role_size_counts,
         },
     }

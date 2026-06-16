@@ -10,7 +10,13 @@ from typing import Any
 import yaml
 
 from .config_parser import ALLOWED_TARGET_FORMATS, validate_config
-from .scaffold import DEFAULT_ANALYZE_R, DEFAULT_CONFIG_TEMPLATE, DEFAULT_DIAGRAM_PY, DEFAULT_PLOT_PY
+from .scaffold import (
+    DEFAULT_ANALYZE_R,
+    DEFAULT_CONFIG_TEMPLATE,
+    DEFAULT_DIAGRAM_PY,
+    DEFAULT_PLOT_PY,
+    DEFAULT_PROJECT_CONTEXT_PY,
+)
 
 MANIFEST_FILENAME = ".graphhub_normalization_manifest.json"
 SCAFFOLD_MANIFEST_FILENAME = ".graphhub_scaffold_manifest.json"
@@ -203,6 +209,18 @@ def plan_normalize_project(
                 "checksum": "",
             }
         )
+    if not (project_path / "hub_scripts" / "project_context.py").exists():
+        entries.append(
+            {
+                "source": "",
+                "destination": "hub_scripts/project_context.py",
+                "operation": "create_project_context",
+                "kind": "file",
+                "reason": "missing env-first project_context.py with theme font tokens",
+                "status": "planned",
+                "checksum": hashlib.sha256(DEFAULT_PROJECT_CONTEXT_PY.encode("utf-8")).hexdigest(),
+            }
+        )
     return {
         "operation": "normalize_project_structure",
         "project_root": str(project_path),
@@ -259,6 +277,10 @@ def apply_normalize_project(manifest: dict[str, Any], *, hub_path: Path, overwri
                 _unlink_destination(destination)
             config = _scaffold_config(hub_path, project_root.name, "nature")
             destination.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
+        elif entry["operation"] == "create_project_context":
+            if overwrite and existed:
+                _unlink_destination(destination)
+            destination.write_text(DEFAULT_PROJECT_CONTEXT_PY, encoding="utf-8")
         else:
             source = _safe_destination(project_root, entry["source"])
             if _same_path(destination, source):
@@ -332,6 +354,7 @@ def _scaffold_entries(project_root: Path, config: dict[str, Any]) -> list[dict[s
     files = {
         "project_config.yaml": yaml.safe_dump(config, sort_keys=False, allow_unicode=True),
         "hub_scripts/analyze.R": DEFAULT_ANALYZE_R,
+        "hub_scripts/project_context.py": DEFAULT_PROJECT_CONTEXT_PY,
         "hub_scripts/plot.py": DEFAULT_PLOT_PY,
         "hub_scripts/diagrams/device_cross_section.py": DEFAULT_DIAGRAM_PY,
     }

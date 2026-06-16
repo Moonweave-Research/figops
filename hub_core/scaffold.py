@@ -52,6 +52,39 @@ write_csv(summary_df, output_path)
 message(sprintf("Wrote scaffold summary CSV: %s", output_path))
 """
 
+DEFAULT_PROJECT_CONTEXT_PY = """import os
+import sys
+
+
+def setup_hub_path():
+    hub_path = os.environ.get("RESEARCH_HUB_PATH")
+    if not hub_path:
+        raise RuntimeError("RESEARCH_HUB_PATH is required when running Graph Hub project scripts.")
+    if hub_path not in sys.path:
+        sys.path.insert(0, hub_path)
+    return hub_path
+
+
+setup_hub_path()
+
+from themes.journal_theme import apply_journal_theme, font_tokens
+
+
+def theme_font_tokens(target_format=None, font_scale=None, profile_name=None):
+    target = target_format or os.environ.get("THEME_FORMAT", "nature")
+    scale = float(font_scale if font_scale is not None else os.environ.get("THEME_SCALE", "1.0"))
+    profile = profile_name or os.environ.get("THEME_PROFILE", "baseline")
+    return font_tokens(target, scale, profile)
+
+
+def apply_project_theme(target_format=None, font_scale=None, profile_name=None):
+    target = target_format or os.environ.get("THEME_FORMAT", "nature")
+    scale = float(font_scale if font_scale is not None else os.environ.get("THEME_SCALE", "1.0"))
+    profile = profile_name or os.environ.get("THEME_PROFILE", "baseline")
+    apply_journal_theme(target_format=target, font_scale=scale, profile_name=profile)
+    return theme_font_tokens(target, scale, profile)
+"""
+
 DEFAULT_PLOT_PY = """import os
 import sys
 
@@ -64,7 +97,7 @@ if not hub_path:
 if hub_path not in sys.path:
     sys.path.insert(0, hub_path)
 
-from themes.journal_theme import apply_journal_theme, get_figsize, panel_label, SINGLE_COLUMN, save_journal_fig
+from themes.journal_theme import apply_journal_theme, font_tokens, get_figsize, panel_label, SINGLE_COLUMN, save_journal_fig
 
 
 def main():
@@ -77,6 +110,7 @@ def main():
         font_scale=font_scale,
         profile_name=profile_name,
     )
+    FONT = font_tokens(target_format, font_scale)
 
     csv_path = os.path.join(os.getcwd(), "results", "data", "summary.csv")
     output_path = os.path.join(os.getcwd(), "results", "figures", "Fig1.png")
@@ -90,6 +124,7 @@ def main():
     ax.set_xlabel("time")
     ax.set_ylabel("value")
     ax.set_title("Scaffold Figure")
+    panel_label(ax, "(a)", fontsize=FONT.tag)
 
     save_journal_fig(fig, output_path)  # dpi from apply_journal_theme rcParams
     plt.close(fig)
@@ -112,7 +147,7 @@ if not hub_path:
 if hub_path not in sys.path:
     sys.path.insert(0, hub_path)
 
-from themes.journal_theme import apply_journal_theme, panel_label, save_journal_fig
+from themes.journal_theme import apply_journal_theme, font_tokens, panel_label, save_journal_fig
 
 
 def main():
@@ -125,6 +160,7 @@ def main():
         font_scale=font_scale,
         profile_name=profile_name,
     )
+    FONT = font_tokens(target_format, font_scale)
 
     output_path = os.path.join(os.getcwd(), "results", "figures", "device_cross_section.svg")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -142,9 +178,9 @@ def main():
     for x, y, w, h, color, label in layers:
         rect = Rectangle((x, y), w, h, facecolor=color, edgecolor="black", linewidth=1.0)
         ax.add_patch(rect)
-        ax.text(x + w / 2, y + h / 2, label, ha="center", va="center")
+        ax.text(x + w / 2, y + h / 2, label, ha="center", va="center", fontsize=FONT.label)
 
-    ax.text(0.8, 3.55, "Scaffold Device Cross Section", ha="left", va="bottom")
+    ax.text(0.8, 3.55, "Scaffold Device Cross Section", ha="left", va="bottom", fontsize=FONT.annot)
 
     save_journal_fig(fig, output_path)  # dpi from apply_journal_theme rcParams
     plt.close(fig)
@@ -186,6 +222,7 @@ def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
 
     _write_text(config_path, config_text)
     _write_text(project_path / "hub_scripts" / "analyze.R", DEFAULT_ANALYZE_R)
+    _write_text(project_path / "hub_scripts" / "project_context.py", DEFAULT_PROJECT_CONTEXT_PY)
     _write_text(project_path / "hub_scripts" / "plot.py", DEFAULT_PLOT_PY)
     _write_text(project_path / "hub_scripts" / "diagrams" / "device_cross_section.py", DEFAULT_DIAGRAM_PY)
 
@@ -197,6 +234,7 @@ def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
         "created_files": [
             str(config_path),
             str(project_path / "hub_scripts" / "analyze.R"),
+            str(project_path / "hub_scripts" / "project_context.py"),
             str(project_path / "hub_scripts" / "plot.py"),
             str(project_path / "hub_scripts" / "diagrams" / "device_cross_section.py"),
         ],
