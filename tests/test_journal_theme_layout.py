@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 from hub_core.scaffold import DEFAULT_DIAGRAM_PY, DEFAULT_PLOT_PY
+from hub_core.geometry_diagnostics import diagnose_figure_geometry
 from themes.journal_theme import TIFF_AUTO_PRESETS, apply_publication_layout, mm_to_inch, panel_label, save_journal_fig
 
 
@@ -118,6 +119,41 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 save_journal_fig(fig, out_path, dpi=600)
                 with Image.open(out_path) as saved:
                     self.assertEqual(saved.size, (2102, 1771))
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_auto_declutter_nudges_overlapping_text(self):
+        fig, ax = plt.subplots()
+        ax.scatter([0.5], [0.5], s=300)
+        text = ax.text(0.5, 0.5, "S70", ha="center", va="center")
+        try:
+            before = text.get_position()
+            with tempfile.TemporaryDirectory(prefix="journal_declutter_") as tmpdir:
+                save_journal_fig(fig, Path(tmpdir) / "declutter.png", auto_declutter=True, dpi=150)
+
+            after = text.get_position()
+            self.assertNotEqual(before, after)
+            fig.canvas.draw()
+            check = next(
+                c for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"] if c["name"] == "artist_overlaps"
+            )
+            self.assertTrue(check["passed"])
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_auto_declutter_does_not_move_unrelated_repeated_label(self):
+        fig, ax = plt.subplots()
+        ax.scatter([0.2], [0.2], s=300)
+        colliding = ax.text(0.2, 0.2, "S70", ha="center", va="center")
+        unrelated = ax.text(0.8, 0.8, "S70", ha="center", va="center")
+        try:
+            before_colliding = colliding.get_position()
+            before_unrelated = unrelated.get_position()
+            with tempfile.TemporaryDirectory(prefix="journal_declutter_repeat_") as tmpdir:
+                save_journal_fig(fig, Path(tmpdir) / "declutter.png", auto_declutter=True, dpi=150)
+
+            self.assertNotEqual(before_colliding, colliding.get_position())
+            self.assertEqual(before_unrelated, unrelated.get_position())
         finally:
             plt.close(fig)
 

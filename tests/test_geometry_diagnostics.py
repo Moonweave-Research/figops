@@ -172,6 +172,25 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "point_annotation_overlaps")
         self.assertFalse(check["passed"])
 
+    def test_artist_overlaps_reports_text_marker_pairs(self):
+        fig, ax = plt.subplots()
+        ax.scatter([0.5], [0.5], s=300)
+        ax.text(0.5, 0.5, "S70", ha="center", va="center")
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "artist_overlaps")
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(any(item["a"].startswith("text:") or item["b"].startswith("text:") for item in check["data"]["overlaps"]))
+        self.assertTrue(any("marker:" in item["a"] or "marker:" in item["b"] for item in check["data"]["overlaps"]))
+
+    def test_artist_overlaps_uses_individual_marker_boxes_not_collection_union(self):
+        fig, ax = plt.subplots()
+        ax.scatter([0.0, 1.0], [0.0, 1.0], s=40)
+        ax.text(0.5, 0.5, "between markers", ha="center", va="center")
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "artist_overlaps")
+
+        self.assertTrue(check["passed"])
+        self.assertEqual(check["data"]["overlaps"], [])
+
     def test_annotation_cap(self):
         fig, ax = plt.subplots()
         ax.plot([0, 1], [0, 1])

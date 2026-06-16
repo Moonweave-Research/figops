@@ -809,6 +809,38 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertNotIn(str(tmpdir), result["errors"][0])
             self.assertIn("runtime://", result["errors"][0])
 
+    def test_render_project_figure_export_failure_surfaces_swallowed_traceback_tail(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            (project / "hub_scripts" / "plot.py").write_text(
+                "import traceback\n"
+                "try:\n"
+                "    raise KeyError('Unknown layout_type duo')\n"
+                "except Exception:\n"
+                "    traceback.print_exc()\n",
+                encoding="utf-8",
+            )
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "swallowed-traceback"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "EXPORT")
+            self.assertIn("Selected figure output was not created", result["errors"][0])
+            self.assertTrue(any("KeyError" in line for line in result["script_output"]))
+            self.assertTrue(any("Unknown layout_type duo" in line for line in result["script_output"]))
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            self.assertTrue(any("KeyError" in line for line in manifest["script_output"]))
+            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "swallowed-traceback"})
+            self.assertEqual(collected["status"], "error")
+            self.assertTrue(any("Unknown layout_type duo" in line for line in collected["script_output"]))
+
     def test_render_csv_graph_rejects_overwrite_without_flag(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
@@ -1719,6 +1751,41 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             self.assertTrue((job_root / "geometry_diagnostics.json").is_file())
             snapshot = Path(result["snapshot_project_path"])
             self.assertFalse((snapshot / "geometry_diagnostics.json").exists())
+
+    def test_project_render_surfaces_artist_overlaps_in_visual_preflight_status(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_save_journal_fixture(root)
+            (project / "hub_scripts" / "plot.py").write_text(
+                "import os\n"
+                "import sys\n"
+                "import matplotlib\n"
+                "matplotlib.use('Agg')\n"
+                "import matplotlib.pyplot as plt\n"
+                "from pathlib import Path\n"
+                "hub_path = os.environ['RESEARCH_HUB_PATH']\n"
+                "if hub_path not in sys.path:\n"
+                "    sys.path.insert(0, hub_path)\n"
+                "from themes.journal_theme import save_journal_fig\n"
+                "Path('results/figures').mkdir(parents=True, exist_ok=True)\n"
+                "fig, ax = plt.subplots()\n"
+                "ax.scatter([0.5], [0.5], s=300)\n"
+                "ax.text(0.5, 0.5, 'S70', ha='center', va='center')\n"
+                "save_journal_fig(fig, 'results/figures/Fig1.png')\n",
+                encoding="utf-8",
+            )
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "geom-project-overlap"},
+            )
+
+            self.assertEqual(result["status"], "warning")
+            overlaps = result["visual_preflight_status"]["overlaps"]
+            self.assertTrue(any("S70" in item["a"] or "S70" in item["b"] for item in overlaps))
+            self.assertTrue(any("marker:" in item["a"] or "marker:" in item["b"] for item in overlaps))
 
     def test_project_engine_error_degrades_real_render(self):
         # Drives the diagnostics-engine failure through a real project render: the engine is

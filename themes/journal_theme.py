@@ -463,6 +463,67 @@ def _safe_geometry_diagnostics_inline(fig) -> dict:
         return {"schema_version": SCHEMA_VERSION, "passed": None, "checks": [], "warnings": [str(exc)]}
 
 
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) -> dict:
+    """Opt-in, conservative text nudge pass for obvious text/marker overlaps."""
+    from matplotlib.text import Text
+    from matplotlib.transforms import Bbox
+
+    try:
+        from hub_core.geometry_diagnostics import _artist_overlap_candidate_items, _box_vector_away
+    except Exception as exc:
+        return {"enabled": True, "applied": False, "iterations": 0, "reason": str(exc)}
+
+    axes = [axis for axis in fig.axes if axis.get_visible() and getattr(axis, "_graph_hub_role", None) != "colorbar"]
+    moved = 0
+    iterations = 0
+    for iterations in range(1, max_iter + 1):
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        changed = False
+        for ax in axes:
+            candidates = _artist_overlap_candidate_items(ax, renderer)
+            if not candidates:
+                continue
+            displacements: dict[Text, tuple[float, float]] = {}
+            for index_a in range(len(candidates)):
+                _label_a, box_a, artist_a = candidates[index_a]
+                for index_b in range(index_a + 1, len(candidates)):
+                    _label_b, box_b, artist_b = candidates[index_b]
+                    inter = Bbox.intersection(box_a, box_b)
+                    if inter is None or inter.width <= 0 or inter.height <= 0:
+                        continue
+                    if isinstance(artist_a, Text):
+                        dx, dy = _box_vector_away(box_a, box_b, step_px=step_px)
+                        old_dx, old_dy = displacements.get(artist_a, (0.0, 0.0))
+                        displacements[artist_a] = (old_dx + dx, old_dy + dy)
+                    if isinstance(artist_b, Text):
+                        dx, dy = _box_vector_away(box_b, box_a, step_px=step_px)
+                        old_dx, old_dy = displacements.get(artist_b, (0.0, 0.0))
+                        displacements[artist_b] = (old_dx + dx, old_dy + dy)
+            for text, (dx, dy) in displacements.items():
+                x, y = text.get_position()
+                try:
+                    display_xy = text.get_transform().transform((x, y))
+                    new_xy = text.get_transform().inverted().transform((display_xy[0] + dx, display_xy[1] + dy))
+                except Exception:
+                    continue
+                text.set_position((float(new_xy[0]), float(new_xy[1])))
+                moved += 1
+                changed = True
+        if not changed:
+            break
+    return {
+        "enabled": True,
+        "applied": moved > 0,
+        "iterations": int(iterations if moved else 0),
+        "moved_text_artists": int(moved),
+    }
+
+
 def save_journal_fig(
     fig,
     filename,
@@ -470,6 +531,7 @@ def save_journal_fig(
     companion_formats: tuple[str, ...] = ("png",),
     preset: str | None = None,
     tiff_companion: bool = True,
+    auto_declutter: bool | None = None,
     **kwargs,
 ):
     """
@@ -510,7 +572,12 @@ def save_journal_fig(
         metadata.setdefault("CreationDate", None)
         metadata.setdefault("ModDate", None)
 
+    if auto_declutter is None:
+        auto_declutter = _env_truthy("GRAPH_HUB_AUTO_DECLUTTER")
+
     with save_ctx:
+        if auto_declutter:
+            _declutter_text_artists(fig)
         fig.savefig(filename, metadata=metadata, **kwargs)
 
         # Geometry diagnostics: run once, AFTER the primary artifact is durably written,

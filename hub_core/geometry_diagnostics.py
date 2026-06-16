@@ -44,6 +44,7 @@ _WARNING_ELIGIBLE = frozenset(
         "axis_label_title_overlap",
         "colorbar_overlap",
         "point_annotation_overlaps",
+        "artist_overlaps",
     }
 )
 
@@ -78,6 +79,7 @@ def diagnose_figure_geometry(
         checks.append(_colorbar_overlap(ax, fig, renderer, axis_index))
         checks.append(_blank_area_ratio(ax, renderer, axis_index))
         checks.append(_point_annotation_overlaps(ax, renderer, axis_index))
+        checks.append(_artist_overlaps(ax, renderer, axis_index))
 
     passed = all(c["passed"] for c in checks if c["name"] in _WARNING_ELIGIBLE)
     return {
@@ -525,35 +527,60 @@ def _blank_area_ratio(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any
     }
 
 
-def _marker_footprint_boxes(ax: Axes, fig: Figure, renderer: Any) -> Bbox | None:
+def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox]]:
     px_per_point = fig.dpi / 72.0
-    boxes: list[Bbox] = []
-    for collection in ax.collections:
+    boxes: list[tuple[str, Bbox]] = []
+    for collection_index, collection in enumerate(ax.collections):
         if not _is_paintable(collection) or not hasattr(collection, "get_sizes"):
             continue  # scatter-style PathCollection only; QuadMesh/pcolormesh has no markers
         offsets = collection.get_offsets()
         if offsets is None or len(offsets) == 0:
             continue
         sizes = collection.get_sizes()
-        if sizes is not None and len(sizes) > 0:
-            diameter_pt = float(np.sqrt(np.max(sizes)))
-        else:
-            diameter_pt = 6.0
-        radius_px = max(GEOM_EPS_PX, diameter_pt / 2 * px_per_point)
         display = ax.transData.transform(np.asarray(offsets))
-        xs = display[:, 0]
-        ys = display[:, 1]
-        boxes.append(
-            Bbox.from_extents(
-                float(xs.min()) - radius_px,
-                float(ys.min()) - radius_px,
-                float(xs.max()) + radius_px,
-                float(ys.max()) + radius_px,
+        if not np.all(np.isfinite(display)):
+            continue
+        for point_index, (x_px, y_px) in enumerate(display):
+            if sizes is not None and len(sizes) > 0:
+                size = float(sizes[min(point_index, len(sizes) - 1)])
+                diameter_pt = float(np.sqrt(size))
+            else:
+                diameter_pt = 6.0
+            radius_px = max(GEOM_EPS_PX, diameter_pt / 2 * px_per_point)
+            boxes.append(
+                (
+                    f"marker:collection{collection_index}[{point_index}]",
+                    Bbox.from_extents(
+                        float(x_px) - radius_px,
+                        float(y_px) - radius_px,
+                        float(x_px) + radius_px,
+                        float(y_px) + radius_px,
+                    ),
+                )
             )
-        )
+    return boxes
+
+
+def _marker_footprint_boxes(ax: Axes, fig: Figure, renderer: Any) -> Bbox | None:
+    boxes = [box for _label, box in _marker_footprint_box_entries(ax, fig)]
     if not boxes:
         return None
     return Bbox.union(boxes)
+
+
+def _box_center(box: Bbox) -> tuple[float, float]:
+    return (float((box.x0 + box.x1) / 2), float((box.y0 + box.y1) / 2))
+
+
+def _box_vector_away(source: Bbox, obstacle: Bbox, *, step_px: float) -> tuple[float, float]:
+    sx, sy = _box_center(source)
+    ox, oy = _box_center(obstacle)
+    vx = sx - ox
+    vy = sy - oy
+    norm = float(np.hypot(vx, vy))
+    if norm <= GEOM_EPS_PX:
+        return (step_px, step_px)
+    return (float(vx / norm * step_px), float(vy / norm * step_px))
 
 
 def _point_annotation_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
@@ -600,5 +627,103 @@ def _point_annotation_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict
             "overlap_pairs": pairs,
             "overlap_pairs_truncated": bool(truncated),
             "marker_hits": marker_hits,
+        },
+    }
+
+
+def _artist_label(artist: Any, fallback: str) -> str:
+    from matplotlib.legend import Legend
+    from matplotlib.text import Annotation, Text
+
+    if isinstance(artist, Legend):
+        return "legend"
+    if isinstance(artist, Annotation):
+        text = artist.get_text() or fallback
+        return f"annotation:{text!r}"
+    if isinstance(artist, Text):
+        text = artist.get_text() or fallback
+        if artist.axes is not None and artist is artist.axes.title:
+            return f"title:{text!r}"
+        return f"text:{text!r}"
+    return fallback
+
+
+def _artist_overlap_candidate_items(ax: Axes, renderer: Any) -> list[tuple[str, Bbox, Any]]:
+    from matplotlib.text import Text
+
+    candidates: list[tuple[str, Bbox, Any]] = []
+    seen: set[int] = set()
+
+    def add_artist(artist: Any, fallback: str) -> None:
+        if artist is None or id(artist) in seen or not _is_paintable(artist):
+            return
+        if isinstance(artist, Text) and not artist.get_text():
+            return
+        bb = _extent(artist, renderer)
+        if bb is None or _box_area(bb) <= 0:
+            return
+        seen.add(id(artist))
+        candidates.append((_artist_label(artist, fallback), bb, artist))
+
+    legend = ax.get_legend()
+    if legend is not None:
+        add_artist(legend, "legend")
+    for index, text in enumerate(ax.texts):
+        add_artist(text, f"text:{index}")
+
+    for label, marker_box in _marker_footprint_box_entries(ax, ax.figure):
+        if _box_area(marker_box) > 0:
+            candidates.append((label, marker_box, None))
+    return candidates
+
+
+def _artist_overlap_candidates(ax: Axes, renderer: Any) -> list[tuple[str, Bbox]]:
+    return [(label, box) for label, box, _artist in _artist_overlap_candidate_items(ax, renderer)]
+
+
+def _artist_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
+    name = "artist_overlaps"
+    candidates = _artist_overlap_candidate_items(ax, renderer)
+    if len(candidates) > MAX_TEXT_ARTISTS:
+        return {
+            "name": name,
+            "passed": True,
+            "detail": f"skipped: artist count {len(candidates)} exceeds cap {MAX_TEXT_ARTISTS}",
+            "data": {"axis_index": int(axis_index)},
+        }
+
+    overlaps: list[dict[str, Any]] = []
+    for index_a in range(len(candidates)):
+        label_a, box_a, _artist_a = candidates[index_a]
+        area_a = _box_area(box_a)
+        for index_b in range(index_a + 1, len(candidates)):
+            label_b, box_b, _artist_b = candidates[index_b]
+            inter = _inter_area(box_a, box_b)
+            if inter <= 0:
+                continue
+            denom = min(area_a, _box_area(box_b))
+            iou = float(inter / denom) if denom > 0 else 0.0
+            overlaps.append(
+                {
+                    "axes": int(axis_index),
+                    "a": label_a,
+                    "b": label_b,
+                    "iou": round(iou, 4),
+                }
+            )
+
+    truncated = False
+    if len(overlaps) > _MAX_REPORTED_PAIRS:
+        overlaps = overlaps[:_MAX_REPORTED_PAIRS]
+        truncated = True
+
+    return {
+        "name": name,
+        "passed": len(overlaps) == 0,
+        "detail": f"{len(overlaps)} artist overlaps (axis {axis_index})",
+        "data": {
+            "axis_index": int(axis_index),
+            "overlaps": overlaps,
+            "overlaps_truncated": bool(truncated),
         },
     }
