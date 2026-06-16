@@ -190,6 +190,28 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertTrue(any(item["a"].startswith("text:") or item["b"].startswith("text:") for item in check["data"]["overlaps"]))
         self.assertTrue(any("marker:" in item["a"] or "marker:" in item["b"] for item in check["data"]["overlaps"]))
 
+    def test_artist_overlaps_reports_stale_leader_metadata_label_on_marker_pair(self):
+        fig, ax = plt.subplots()
+        ax.scatter([0.5], [0.5], s=300)
+        text = ax.text(0.5, 0.5, "S70", ha="center", va="center")
+        text._graph_hub_leader_target_data = (0.5, 0.5)
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "artist_overlaps")
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(check["data"]["overlaps"])
+
+    def test_artist_overlaps_reports_unmanaged_leader_metadata(self):
+        fig, ax = plt.subplots()
+        ax.set_xlim(0.45, 0.60)
+        ax.set_ylim(0.45, 0.55)
+        ax.scatter([0.5], [0.5], s=5000)
+        text = ax.text(0.515, 0.5, "S70", ha="center", va="center")
+        text._graph_hub_leader_target_data = (0.5, 0.5)
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "artist_overlaps")
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(check["data"]["overlaps"])
+
     def test_artist_overlaps_reports_text_title_pairs(self):
         fig, ax = plt.subplots(figsize=(2, 2))
         ax.set_title("(c) panel title")
