@@ -1929,13 +1929,9 @@ class GraphHubMCPServer:
         }
 
     def _stable_project_id_for_path(self, project_path: Path) -> str:
-        try:
-            rel_path = project_path.resolve().relative_to(self.research_root).as_posix()
-        except ValueError:
-            rel_path = project_path.resolve().as_posix()
-        digest = hashlib.sha1(rel_path.encode("utf-8")).hexdigest()[:12]
-        stem = "".join(ch if ch.isalnum() else "_" for ch in project_path.name).strip("_") or "project"
-        return f"{stem}__{digest}"
+        # Single source of truth: same id ProjectDiscoveryService assigns, so a
+        # rendered project reports back the id list_projects emits for it.
+        return ProjectDiscoveryService._stable_project_id(project_path)
 
     def _public_project_path(self, project_path: Path) -> str:
         try:

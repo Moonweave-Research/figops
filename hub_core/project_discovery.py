@@ -114,7 +114,7 @@ class ProjectDiscoveryService:
         target_format = self._read_target_format(config_path)
 
         return DiscoveredProject(
-            project_id=self._stable_project_id(rel_project),
+            project_id=self._stable_project_id(project_path),
             name=str(metadata["name"]),
             path=rel_project,
             config=rel_config,
@@ -164,11 +164,15 @@ class ProjectDiscoveryService:
         return unicodedata.normalize("NFC", rel.as_posix())
 
     @staticmethod
-    def _stable_project_id(rel_project: str) -> str:
-        normalized = unicodedata.normalize("NFC", rel_project)
+    def _stable_project_id(project_path: str | os.PathLike) -> str:
+        # Canonical, discovery-root-independent id: keyed on the resolved absolute
+        # path so list_projects and render resolve the same project to the same id
+        # regardless of which root each surface scans from.
+        resolved = Path(project_path).resolve()
+        normalized = unicodedata.normalize("NFC", resolved.as_posix())
         digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:12]
-        slug = normalized.replace("/", "__").replace(" ", "_")
-        return f"{slug}::{digest}"
+        stem = "".join(ch if ch.isalnum() else "_" for ch in resolved.name).strip("_") or "project"
+        return f"{stem}__{digest}"
 
     @staticmethod
     def _find_config_path(project_dir: Path) -> Path | None:
