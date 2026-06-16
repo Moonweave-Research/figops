@@ -1615,6 +1615,30 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertFalse((runtime_root / "mcp_jobs").exists())
             self.assertEqual(result["created_paths"], [])
 
+    def test_listed_project_id_resolves_in_render_regardless_of_scan_root(self):
+        # Issue #16: list_projects emits a project_id that render rejects because
+        # the id scheme depends on the discovery root. A project_id from list must
+        # round-trip through render's resolution even when the two surfaces scan
+        # from different roots, and render must report back the same id.
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            research_root = Path(tmpdir)
+            project = _write_project_render_fixture(
+                research_root / "ResearchOS" / "02_Surfur_Polymer", name="260504_sulfur_rh25"
+            )
+            server = GraphHubMCPServer(research_root=research_root)
+
+            # User lists from a narrow root (the project's parent), as in the repro.
+            listed = self._call(server, "graphhub.list_projects", {"root": str(project.parent)})
+            project_id = listed["projects"][0]["project_id"]
+
+            # Render receives only the project_id, so it scans from research_root —
+            # a different root than list used.
+            resolved_path = server._resolve_project_path({"project_id": project_id})
+            self.assertEqual(resolved_path.resolve(), project.resolve())
+
+            # The id render reports back must equal the id list emitted.
+            self.assertEqual(server._stable_project_id_for_path(project), project_id)
+
 
 def _write_dense_csv(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
