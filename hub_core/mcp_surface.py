@@ -61,6 +61,7 @@ WRITE_TOOL_NAMES = (
 )
 SUPPORTED_RENDER_PLOT_TYPES = {"bar", "line", "scatter", "xy", "heatmap"}
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
+MCP_MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0
 MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS = 5.0
 MCP_BATCH_MAX_PROJECTS = 50
@@ -4752,6 +4753,10 @@ def _read_stdio_message(stream: Any) -> tuple[dict[str, Any] | None, str]:
         expected_size = int(content_length)
     except ValueError as exc:
         raise ValueError(f"Invalid Content-Length header: {content_length}") from exc
+    # Reject before reading: a negative size makes stream.read(-1) buffer the whole stream,
+    # and an oversized size invites a single huge allocation — both memory-exhaustion DoS.
+    if expected_size < 0 or expected_size > MCP_MAX_MESSAGE_BYTES:
+        raise ValueError(f"Content-Length out of range: {expected_size} (allowed 0..{MCP_MAX_MESSAGE_BYTES}).")
     body = stream.read(expected_size)
     if isinstance(body, str):
         body = body.encode("utf-8")

@@ -639,6 +639,25 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertFalse(_matches_json_schema_type("1", "number"))
         self.assertFalse(_matches_json_schema_type("x", "unknown"))
 
+    def test_read_stdio_message_rejects_negative_content_length_without_draining(self):
+        from hub_core.mcp_surface import _read_stdio_message
+
+        body = b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+        stream = BytesIO(b"Content-Length: -1\r\n\r\n" + body)
+        with self.assertRaises(ValueError):
+            _read_stdio_message(stream)
+        # Must reject before reading: a negative size would otherwise drain the whole stream.
+        self.assertEqual(stream.read(), body)
+
+    def test_read_stdio_message_rejects_oversized_content_length_without_draining(self):
+        from hub_core.mcp_surface import MCP_MAX_MESSAGE_BYTES, _read_stdio_message
+
+        oversize = MCP_MAX_MESSAGE_BYTES + 1
+        stream = BytesIO(b"Content-Length: " + str(oversize).encode("ascii") + b"\r\n\r\nshort")
+        with self.assertRaises(ValueError):
+            _read_stdio_message(stream)
+        self.assertEqual(stream.read(), b"short")
+
     def test_stdio_server_accepts_content_length_framed_messages(self):
         request = {"jsonrpc": "2.0", "id": 4, "method": "tools/list"}
         body = json.dumps(request).encode("utf-8")
