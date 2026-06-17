@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from io import BytesIO
 from pathlib import Path
 
@@ -182,7 +183,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             self.assertFalse((runtime_root / "mcp_jobs").exists())
 
             self.assertEqual(health["status"], "ok")
-            self.assertEqual(health["write_tools_enabled"], True)
+            self.assertEqual(health["write_tools_enabled"], server.write_tools_enabled)
             self.assertEqual(health["discovery_status"]["project_count"], 2)
             self.assertEqual(health["discovery_status"]["invalid_count"], 1)
 
@@ -211,13 +212,49 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(blocked["structuredContent"]["status"], "error")
         self.assertIn("Write tools are disabled", blocked["structuredContent"]["errors"][0])
 
+    def test_write_tools_fail_closed_by_default(self):
+        with unittest.mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED", None)
+            server = GraphHubMCPServer()
+            self.assertFalse(server.write_tools_enabled)
+            blocked = server.call_tool(
+                "graphhub.scaffold_project",
+                {"project_name": "Blocked", "project_root": "/tmp/blocked", "dry_run": True},
+            )
+        self.assertTrue(blocked["isError"])
+
+    def test_write_tools_enabled_via_env_opt_in(self):
+        with unittest.mock.patch.dict(os.environ, {"GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED": "1"}):
+            server = GraphHubMCPServer()
+            self.assertTrue(server.write_tools_enabled)
+
+    def test_scan_root_rejects_root_outside_research_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            research_root = Path(tmpdir) / "research"
+            research_root.mkdir()
+            outside = Path(tmpdir) / "outside"
+            outside.mkdir()
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=Path(tmpdir) / "runtime")
+            result = self._call(server, "graphhub.list_projects", {"root": str(outside)})
+            self.assertEqual(result["status"], "error")
+            self.assertIn("root must stay under", result["errors"][0])
+
+    def test_inspect_project_rejects_project_path_outside_research_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            research_root = Path(tmpdir) / "research"
+            research_root.mkdir()
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=Path(tmpdir) / "runtime")
+            result = self._call(server, "graphhub.inspect_project", {"project_path": "/etc"})
+            self.assertEqual(result["status"], "error")
+            self.assertIn("project_path must stay under", result["errors"][0])
+
     def test_list_projects_preserves_legacy_and_ephemeral_statuses(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
             self._write_legacy_project(root, "03_Legacy")
             self._write_project(root, ".worktrees/feature/04_Worktree")
 
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
             result = self._call(
                 server,
                 "graphhub.list_projects",
@@ -248,7 +285,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             project = self._write_project(root, "01_Valid")
             before = _snapshot_files(root)
 
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
             inspected = self._call(server, "graphhub.inspect_project", {"project_path": str(project)})
             validated = self._call(server, "graphhub.validate_project", {"project_path": str(project)})
 
@@ -275,7 +312,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             self._write_legacy_project_context(project)
             before = _snapshot_files(root)
 
-            server = GraphHubMCPServer()
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
             validated = self._call(server, "graphhub.validate_project", {"project_path": str(project)})
 
             self.assertEqual(_snapshot_files(root), before)
@@ -385,7 +422,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             data_path.parent.mkdir(parents=True)
             data_path.write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root, write_tools_enabled=True)
             rendered = self._call(
                 server,
                 "graphhub.render_csv_graph",
