@@ -17,6 +17,7 @@ from plotting.bridge_renderer import (
     _deterministic_timestamp,
     _load_points,
     _render_plot,
+    render_bridge_figure,
 )
 
 
@@ -40,15 +41,66 @@ def _make_spec(csv_path: str, **overrides) -> BridgeFigureSpec:
     return BridgeFigureSpec(**defaults)
 
 
+class TestYBreakRangeRejectsUnsupportedFields(unittest.TestCase):
+    """Regression: y_break_range used to silently drop series/error-bar/label/overlay inputs."""
+
+    def test_y_break_with_series_column_raises_instead_of_silent_collapse(self):
+        with tempfile.TemporaryDirectory() as td:
+            csv_path = Path(td) / "data.csv"
+            _write_csv(csv_path, [{"x": "1", "y": "10", "s": "A"}, {"x": "2", "y": "900", "s": "B"}])
+            spec = _make_spec(
+                str(csv_path),
+                output_path=str(Path(td) / "out.png"),
+                series_column="s",
+                y_break_range=(100.0, 800.0),
+            )
+            with self.assertRaises(ValueError) as ctx:
+                render_bridge_figure(spec)
+            self.assertIn("y_break_range", str(ctx.exception))
+            self.assertIn("series_column", str(ctx.exception))
+
+    def test_y_break_with_overlay_baselines_raises(self):
+        with tempfile.TemporaryDirectory() as td:
+            csv_path = Path(td) / "data.csv"
+            _write_csv(csv_path, [{"x": "1", "y": "10"}, {"x": "2", "y": "900"}])
+            spec = _make_spec(
+                str(csv_path),
+                output_path=str(Path(td) / "out.png"),
+                overlay_baselines=({"label": "ref", "y": 5.0},),
+                y_break_range=(100.0, 800.0),
+            )
+            with self.assertRaises(ValueError):
+                render_bridge_figure(spec)
+
+    def test_y_break_without_unsupported_fields_still_renders(self):
+        with tempfile.TemporaryDirectory() as td:
+            csv_path = Path(td) / "data.csv"
+            _write_csv(
+                csv_path,
+                [{"x": "1", "y": "10"}, {"x": "2", "y": "900"}, {"x": "3", "y": "950"}],
+            )
+            spec = _make_spec(
+                str(csv_path),
+                output_path=str(Path(td) / "out.png"),
+                plot_type="scatter",
+                y_break_range=(100.0, 800.0),
+            )
+            out = render_bridge_figure(spec)
+            self.assertTrue(Path(out).exists())
+
+
 class TestLoadPointsNanFiltering(unittest.TestCase):
     def test_nan_rows_are_skipped(self):
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "data.csv"
-            _write_csv(p, [
-                {"x": "1", "y": "10"},
-                {"x": "2", "y": "nan"},
-                {"x": "3", "y": "20"},
-            ])
+            _write_csv(
+                p,
+                [
+                    {"x": "1", "y": "10"},
+                    {"x": "2", "y": "nan"},
+                    {"x": "3", "y": "20"},
+                ],
+            )
             spec = _make_spec(str(p))
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
@@ -60,11 +112,14 @@ class TestLoadPointsNanFiltering(unittest.TestCase):
     def test_inf_rows_are_skipped(self):
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "data.csv"
-            _write_csv(p, [
-                {"x": "1", "y": "inf"},
-                {"x": "2", "y": "-inf"},
-                {"x": "3", "y": "5"},
-            ])
+            _write_csv(
+                p,
+                [
+                    {"x": "1", "y": "inf"},
+                    {"x": "2", "y": "-inf"},
+                    {"x": "3", "y": "5"},
+                ],
+            )
             spec = _make_spec(str(p))
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
@@ -75,10 +130,13 @@ class TestLoadPointsNanFiltering(unittest.TestCase):
     def test_clean_data_no_warning(self):
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "data.csv"
-            _write_csv(p, [
-                {"x": "1", "y": "10"},
-                {"x": "2", "y": "20"},
-            ])
+            _write_csv(
+                p,
+                [
+                    {"x": "1", "y": "10"},
+                    {"x": "2", "y": "20"},
+                ],
+            )
             spec = _make_spec(str(p))
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")

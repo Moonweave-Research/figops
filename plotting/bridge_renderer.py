@@ -152,6 +152,28 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         output_path = Path(spec.output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        if spec.y_break_range is not None:
+            # The broken-axis path flattens all points into a single series and bypasses
+            # series splitting, error bars, labels, overlays, and the legend. Refuse rather
+            # than silently dropping them; multi-series broken-axis is not implemented yet.
+            unsupported = [
+                name
+                for name, value in (
+                    ("series_column", spec.series_column),
+                    ("yerr_column", spec.yerr_column),
+                    ("yerr_minus_column", spec.yerr_minus_column),
+                    ("label_column", spec.label_column),
+                    ("overlay_baselines", spec.overlay_baselines),
+                )
+                if value
+            ]
+            if unsupported:
+                raise ValueError(
+                    f"y_break_range does not support {', '.join(unsupported)} yet; the "
+                    "broken-axis renderer would silently drop them (no series split, error "
+                    "bars, labels, overlays, or legend). Remove y_break_range or those fields."
+                )
+
         points = _load_points(csv_path, spec)
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
         try:
