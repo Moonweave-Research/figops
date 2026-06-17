@@ -8,6 +8,8 @@ with a single command, patching visual_style.target_format in the config.
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,6 +44,10 @@ def patch_target_format(config: dict, target_format: str) -> dict:
         if "theme" in fig:
             fig["theme"] = target_format
 
+    for diagram in patched.get("diagrams", []):
+        if "theme" in diagram:
+            diagram["theme"] = target_format
+
     # Override preset defaults
     for preset_name, preset_vals in patched.get("presets", {}).items():
         if isinstance(preset_vals, dict) and "target_format" in preset_vals:
@@ -74,7 +80,8 @@ def batch_reformat_figures(
         )
 
     figure_count = len(patched_config.get("figures", []))
-    if figure_count == 0:
+    diagram_count = len(patched_config.get("diagrams", []))
+    if figure_count + diagram_count == 0:
         return BatchReformatResult(
             target_journal=target_journal,
             figures_regenerated=0,
@@ -84,31 +91,45 @@ def batch_reformat_figures(
 
     # Import here to avoid circular deps
     from hub_core.cache_manager import load_build_state
-    from hub_core.config_parser import compute_config_hash
-    from hub_core.process_runner import run_plots
+    from hub_core.process_runner import run_diagrams, run_plots
 
     project_path = Path(project_dir).resolve()
     build_state_path = project_path / ".build_state.json"
     build_state = load_build_state(build_state_path)
-    config_hash = compute_config_hash(patched_config)
+    config_hash = hashlib.sha256(
+        json.dumps(patched_config, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
 
-    success = run_plots(
-        str(project_path),
-        patched_config,
-        build_state=build_state,
-        build_state_path=str(build_state_path),
-        config_hash=config_hash,
-        force=force,
-    )
+    success = True
+    if figure_count:
+        success = run_plots(
+            str(project_path),
+            patched_config,
+            build_state=build_state,
+            build_state_path=str(build_state_path),
+            config_hash=config_hash,
+            force=force,
+        )
+
+    if success and diagram_count:
+        success = run_diagrams(
+            str(project_path),
+            patched_config,
+            build_state=build_state,
+            build_state_path=str(build_state_path),
+            config_hash=config_hash,
+            force=force,
+        )
 
     # Collect output paths
     output_paths: list[str] = []
-    for fig in patched_config.get("figures", []):
-        output = fig.get("output", "")
-        if output:
-            full_path = project_path / output
-            if full_path.exists():
-                output_paths.append(str(full_path))
+    for section_name in ("figures", "diagrams"):
+        for item in patched_config.get(section_name, []):
+            output = item.get("output", "")
+            if output:
+                full_path = project_path / output
+                if full_path.exists():
+                    output_paths.append(str(full_path))
 
     elapsed = time.monotonic() - start
     return BatchReformatResult(

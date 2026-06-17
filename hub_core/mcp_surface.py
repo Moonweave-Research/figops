@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import multiprocessing
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 import uuid
 from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
@@ -17,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote, urlsplit
+from xml.etree import ElementTree
 
 import yaml
 
@@ -410,6 +413,15 @@ class ProjectRenderExportError(RuntimeError):
         self.script_output = script_output or []
 
 
+class ProjectRenderScriptError(RuntimeError):
+    """The selected project plotting script ran and exited unsuccessfully."""
+
+    def __init__(self, message: str, *, returncode: int | None, script_output: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.returncode = returncode
+        self.script_output = script_output or []
+
+
 def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_queue: multiprocessing.Queue) -> None:
     os.environ.setdefault("MPLBACKEND", "Agg")
     try:
@@ -419,7 +431,7 @@ def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_queue: mul
             output_path = render_bridge_figure(BridgeFigureSpec(**spec_payload))
         result_queue.put({"status": "ok", "output_path": output_path})
     except Exception as exc:
-        result_queue.put({"status": "error", "error": str(exc)})
+        result_queue.put({"status": "error", "error": str(exc), "traceback": traceback.format_exc().splitlines()})
 
 
 def _batch_discovery_worker(root: str, max_depth: int, result_queue: multiprocessing.Queue) -> None:
@@ -433,7 +445,7 @@ def _batch_discovery_worker(root: str, max_depth: int, result_queue: multiproces
             ).discover(max_depth=max_depth)
         result_queue.put({"status": "ok", "projects": projects})
     except Exception as exc:
-        result_queue.put({"status": "error", "error": str(exc)})
+        result_queue.put({"status": "error", "error": str(exc), "traceback": traceback.format_exc().splitlines()})
 
 
 @dataclass(frozen=True)
@@ -656,6 +668,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "visual_preflight_status": {"type": "object"},
                     "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
                     "layout_report": _LAYOUT_REPORT_SCHEMA,
+                    "figure_metadata": {"type": "object"},
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
                     "provenance": {"type": "object"},
@@ -675,6 +688,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "provenance": {"type": "object"},
                     "visual_preflight_status": {"type": "object"},
                     "layout_report": _LAYOUT_REPORT_SCHEMA,
+                    "figure_metadata": {"type": "object"},
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
                 }
@@ -939,10 +953,21 @@ class GraphHubMCPServer:
     def _resolve_allowed_data_path(self, raw_path: Any, *, field_name: str) -> Path:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise ValueError(f"{field_name} is required.")
-        path = Path(raw_path).expanduser().resolve()
+        raw = Path(raw_path).expanduser()
+        raw_absolute = raw if raw.is_absolute() else self.research_root / raw
+        path = raw_absolute.resolve()
         if not any(self._is_relative_to(path, root) for root in self.allowed_data_roots):
             allowed = ", ".join(str(root) for root in self.allowed_data_roots)
             raise ValueError(f"{field_name} must stay under an allowed data root: {allowed}.")
+        current = Path(raw_absolute.anchor)
+        for part in raw_absolute.parts[1:]:
+            current = current / part
+            if current.is_symlink():
+                target = current.resolve()
+                parent = current.parent.resolve()
+                for root in self.allowed_data_roots:
+                    if self._is_relative_to(parent, root) and self._is_relative_to(target, root):
+                        raise ValueError(f"{field_name} must not include symlinked path components.")
         return path
 
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1575,6 +1600,7 @@ class GraphHubMCPServer:
         dry_run = bool(arguments.get("dry_run", False))
         overwrite = bool(arguments.get("overwrite", False))
         job_id = self._render_job_id(arguments.get("job_id"))
+        self._activate_runtime_root_for_runtime_access()
         job_root = self._mcp_project_jobs_root() / job_id
         try:
             project_path = self._resolve_project_render_path(arguments)
@@ -1680,7 +1706,6 @@ class GraphHubMCPServer:
                 resolution_hint="",
             )
 
-        self._activate_runtime_root_for_runtime_access()
         job_root = self._mcp_project_jobs_root() / job_id
         snapshot_project_path = job_root / "project"
         output_path = snapshot_project_path / output_relpath
@@ -1734,6 +1759,16 @@ class GraphHubMCPServer:
                     script_output=self._read_project_script_output(job_root),
                 )
             figures_out = self._rendered_figure_artifacts(output_path)
+            figure_metadata = self._project_figure_metadata(
+                output_path,
+                selected,
+                project_path=snapshot_project_path,
+                figures=figures,
+            )
+            figure_format_warnings = [
+                *list(figure_metadata.get("canonical_check", {}).get("warnings", [])),
+                *list(figure_metadata.get("family_check", {}).get("warnings", [])),
+            ]
             for figure in figures_out:
                 path_text = str(figure["path"])
                 if path_text not in created_paths:
@@ -1751,6 +1786,7 @@ class GraphHubMCPServer:
                 or bool(preflight_warnings)
                 or (baseline_comparison["checked"] and not baseline_comparison["matched"])
                 or geometry_diagnostics.get("passed") is False
+                or bool(figure_format_warnings)
             )
             status = "warning" if manual_review_needed else "ok"
             artifact_status = self._artifact_status(preflight, baseline_comparison)
@@ -1786,6 +1822,7 @@ class GraphHubMCPServer:
                 "visual_preflight_status": preflight,
                 "geometry_diagnostics": geometry_diagnostics,
                 "layout_report": layout_report,
+                "figure_metadata": figure_metadata,
                 "failure_stage": "",
                 "resolution_hint": "",
                 "artifact_status": artifact_status,
@@ -1808,6 +1845,7 @@ class GraphHubMCPServer:
             )
             status_payload["provenance"] = provenance
             status_payload["layout_report"] = layout_report
+            status_payload["figure_metadata"] = figure_metadata
             manifest_path.write_text(
                 json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
                 encoding="utf-8",
@@ -1820,10 +1858,12 @@ class GraphHubMCPServer:
             shutil.copy2(manifest_path, latest_dir / "manifest.json")
             shutil.copy2(status_path, latest_dir / "status.json")
         except Exception as exc:
-            if isinstance(exc, TimeoutError) or "timed out" in str(exc).lower():
+            if isinstance(exc, TimeoutError):
                 failure_stage = "TIMEOUT"
             elif isinstance(exc, ProjectRenderExportError):
                 failure_stage = "EXPORT"
+            elif isinstance(exc, ProjectRenderScriptError):
+                failure_stage = "PLOT"
             else:
                 failure_stage = "PLOT"
             resolution_hint = (
@@ -1867,7 +1907,7 @@ class GraphHubMCPServer:
                 status="error",
                 summary="Project figure render execution failed.",
                 created_paths=created_paths,
-                errors=[str(exc)],
+                errors=self._exception_error_lines(exc),
                 script_output=script_output,
                 manual_review_needed=True,
                 is_dry_run=False,
@@ -1903,7 +1943,7 @@ class GraphHubMCPServer:
             ),
             created_paths=created_paths,
             artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
-            warnings=preflight_warnings + baseline_warnings + geometry_warnings,
+            warnings=preflight_warnings + baseline_warnings + geometry_warnings + figure_format_warnings,
             manual_review_needed=manual_review_needed,
             is_dry_run=False,
             job_id=job_id,
@@ -1922,6 +1962,7 @@ class GraphHubMCPServer:
             visual_preflight_status=preflight,
             geometry_diagnostics=geometry_diagnostics,
             layout_report=layout_report,
+            figure_metadata=figure_metadata,
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
             provenance=provenance,
@@ -2078,24 +2119,35 @@ class GraphHubMCPServer:
         )
         try:
             process.start()
-            process.join(MCP_RENDER_TIMEOUT_SECONDS)
+            try:
+                result = result_queue.get(timeout=MCP_RENDER_TIMEOUT_SECONDS)
+            except queue.Empty as exc:
+                if process.is_alive():
+                    process.terminate()
+                    process.join(5)
+                    if process.is_alive():
+                        process.kill()
+                        process.join(5)
+                    raise TimeoutError(f"Render timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.") from exc
+                if process.exitcode not in (0, None):
+                    raise RuntimeError(f"Render worker exited with code {process.exitcode}.") from exc
+                raise RuntimeError("Render worker exited without returning a result.") from exc
+            process.join(5)
             if process.is_alive():
                 process.terminate()
                 process.join(5)
                 if process.is_alive():
                     process.kill()
                     process.join(5)
-                raise TimeoutError(f"Render timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.")
-            try:
-                result = result_queue.get(timeout=MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS)
-            except queue.Empty as exc:
-                if process.exitcode not in (0, None):
-                    raise RuntimeError(f"Render worker exited with code {process.exitcode}.") from exc
-                raise RuntimeError("Render worker exited without returning a result.") from exc
+                raise TimeoutError("Render worker returned a result but did not exit cleanly.")
             if process.exitcode not in (0, None):
                 raise RuntimeError(f"Render worker exited with code {process.exitcode}.")
             if result.get("status") != "ok":
-                raise RuntimeError(str(result.get("error") or "Render worker failed."))
+                trace = result.get("traceback") if isinstance(result.get("traceback"), list) else []
+                message = "\n".join(str(line) for line in trace[-SCRIPT_OUTPUT_TAIL_LINES:]) or str(
+                    result.get("error") or "Render worker failed."
+                )
+                raise RuntimeError(message)
         finally:
             close_queue = getattr(result_queue, "close", None)
             if close_queue is not None:
@@ -2407,7 +2459,11 @@ class GraphHubMCPServer:
             message = (
                 completed.stderr.strip() or completed.stdout.strip() or f"Figure script exited {completed.returncode}."
             )
-            raise RuntimeError(message)
+            raise ProjectRenderScriptError(
+                message,
+                returncode=completed.returncode,
+                script_output=self._script_output_tail(completed.stdout, completed.stderr),
+            )
 
     @staticmethod
     def _normalize_script_stream(value: Any) -> str:
@@ -2466,6 +2522,17 @@ class GraphHubMCPServer:
         if isinstance(explicit, list) and explicit:
             return [str(line) for line in explicit if str(line).strip()]
         return self._read_project_script_output(job_root)
+
+    @staticmethod
+    def _exception_error_lines(exc: Exception) -> list[str]:
+        lines = [line.rstrip() for line in traceback.format_exception(type(exc), exc, exc.__traceback__)]
+        compact = [line for line in lines if line.strip()]
+        message = str(exc).strip()
+        tail = compact[-SCRIPT_OUTPUT_TAIL_LINES:]
+        if message:
+            tail = [line for line in tail if line != message]
+            return [message, *tail]
+        return tail or [type(exc).__name__]
 
     def _pythonpath_with_hub(self, env: dict[str, str]) -> str:
         hub_path = str(self.hub_path)
@@ -2605,6 +2672,8 @@ class GraphHubMCPServer:
             else _layout_report_from_geometry(manifest.get("geometry_diagnostics") or _geometry_stub("no figure"))
         )
         figures = manifest.get("figures") if isinstance(manifest.get("figures"), list) else []
+        figure_metadata = manifest.get("figure_metadata") if isinstance(manifest.get("figure_metadata"), dict) else {}
+        figure_format_warnings = self._figure_metadata_warnings(figure_metadata)
         preflight_warnings = self._preflight_warnings(preflight)
         artifact_path = (
             Path(str(figures[0]["path"]))
@@ -2624,6 +2693,7 @@ class GraphHubMCPServer:
         manual_review_needed = (
             bool(manifest.get("manual_review_needed"))
             or bool(preflight_warnings)
+            or bool(figure_format_warnings)
             or (baseline_comparison["checked"] and not baseline_comparison["matched"])
         )
         status = (
@@ -2640,7 +2710,7 @@ class GraphHubMCPServer:
             status=status,
             summary=f"Collected artifacts for render job {job_id}.",
             artifact_resources=[f"file://{figure['path']}" for figure in figures if isinstance(figure, dict)],
-            warnings=preflight_warnings + baseline_warnings,
+            warnings=preflight_warnings + baseline_warnings + figure_format_warnings,
             script_output=manifest.get("script_output") if isinstance(manifest.get("script_output"), list) else [],
             created_paths=self._manifest_path_list(manifest, "created_paths"),
             modified_paths=self._manifest_path_list(manifest, "modified_paths"),
@@ -2668,6 +2738,7 @@ class GraphHubMCPServer:
             },
             visual_preflight_status=preflight,
             layout_report=layout_report,
+            figure_metadata=figure_metadata,
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
         )
@@ -3678,24 +3749,35 @@ class GraphHubMCPServer:
         )
         try:
             process.start()
-            process.join(max(0.0, timeout_seconds))
+            try:
+                result = result_queue.get(timeout=max(0.0, timeout_seconds))
+            except queue.Empty:
+                if process.is_alive():
+                    process.terminate()
+                    process.join(5)
+                    if process.is_alive():
+                        process.kill()
+                        process.join(5)
+                    return [], True, [f"Batch discovery timed out after {timeout_seconds:.1f} seconds."]
+                if process.exitcode not in (0, None):
+                    return [], True, [f"Batch discovery worker exited with code {process.exitcode}."]
+                return [], True, ["Batch discovery worker exited without returning a result."]
+            process.join(5)
             if process.is_alive():
                 process.terminate()
                 process.join(5)
                 if process.is_alive():
                     process.kill()
                     process.join(5)
-                return [], True, [f"Batch discovery timed out after {timeout_seconds:.1f} seconds."]
-            try:
-                result = result_queue.get(timeout=MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS)
-            except queue.Empty:
-                if process.exitcode not in (0, None):
-                    return [], True, [f"Batch discovery worker exited with code {process.exitcode}."]
-                return [], True, ["Batch discovery worker exited without returning a result."]
+                return [], True, ["Batch discovery worker returned a result but did not exit cleanly."]
             if process.exitcode not in (0, None):
                 return [], True, [f"Batch discovery worker exited with code {process.exitcode}."]
             if result.get("status") != "ok":
-                return [], True, [str(result.get("error") or "Batch discovery failed.")]
+                trace = result.get("traceback") if isinstance(result.get("traceback"), list) else []
+                message = "\n".join(str(line) for line in trace[-SCRIPT_OUTPUT_TAIL_LINES:]) or str(
+                    result.get("error") or "Batch discovery failed."
+                )
+                return [], True, [message]
             projects = result.get("projects")
             return (projects if isinstance(projects, list) else []), False, []
         finally:
@@ -4042,6 +4124,292 @@ class GraphHubMCPServer:
         if not artifacts:
             artifacts.append({"path": str(output_path), "format": output_path.suffix.lower().lstrip(".")})
         return artifacts
+
+    @classmethod
+    def _project_figure_metadata(
+        cls,
+        output_path: Path,
+        selected_figure: dict[str, Any],
+        *,
+        project_path: Path | None = None,
+        figures: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        width_px, height_px = cls._image_dimensions(output_path)
+        aspect = round(width_px / height_px, 6) if width_px and height_px else None
+        metadata = {
+            "schema_version": "figure_metadata/1",
+            "width_px": width_px,
+            "height_px": height_px,
+            "aspect": aspect,
+            "layout_type": str(selected_figure.get("layout_type") or selected_figure.get("layout") or "").strip(),
+        }
+        metadata["canonical_check"] = cls._figure_canonical_check(metadata, selected_figure)
+        metadata["family_check"] = cls._figure_family_check(metadata, selected_figure, project_path, figures or [])
+        return metadata
+
+    @staticmethod
+    def _figure_metadata_warnings(figure_metadata: dict[str, Any]) -> list[str]:
+        warnings: list[str] = []
+        for key in ("canonical_check", "family_check"):
+            check = figure_metadata.get(key)
+            if not isinstance(check, dict):
+                continue
+            raw_warnings = check.get("warnings")
+            if isinstance(raw_warnings, list):
+                warnings.extend(str(item) for item in raw_warnings if str(item).strip())
+        return warnings
+
+    @staticmethod
+    def _image_dimensions(output_path: Path) -> tuple[int | None, int | None]:
+        candidates = [output_path, *sorted(output_path.parent.glob(f"{output_path.stem}.*"))]
+        seen: set[Path] = set()
+        for candidate in candidates:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            try:
+                from PIL import Image
+
+                with Image.open(candidate) as image:
+                    width, height = image.size
+                    return int(width), int(height)
+            except Exception:
+                if candidate.suffix.lower() == ".svg":
+                    svg_width, svg_height = GraphHubMCPServer._svg_dimensions(candidate)
+                    if svg_width is not None and svg_height is not None:
+                        return svg_width, svg_height
+        return None, None
+
+    @staticmethod
+    def _svg_dimensions(path: Path) -> tuple[int | None, int | None]:
+        try:
+            root = ElementTree.parse(path).getroot()
+        except Exception:
+            return None, None
+
+        def parse_length(value: Any) -> float | None:
+            match = re.match(r"^\s*([0-9]+(?:\.[0-9]+)?)", str(value or ""))
+            return float(match.group(1)) if match else None
+
+        width = parse_length(root.attrib.get("width"))
+        height = parse_length(root.attrib.get("height"))
+        if width is None or height is None:
+            view_box = root.attrib.get("viewBox") or root.attrib.get("viewbox")
+            parts = [float(part) for part in re.findall(r"[-+]?(?:\d*\.\d+|\d+)", str(view_box or ""))]
+            if len(parts) == 4:
+                width = width if width is not None else parts[2]
+                height = height if height is not None else parts[3]
+        if width is None or height is None:
+            return None, None
+        return int(round(width)), int(round(height))
+
+    @classmethod
+    def _figure_canonical_check(
+        cls,
+        metadata: dict[str, Any],
+        selected_figure: dict[str, Any],
+    ) -> dict[str, Any]:
+        canonical = selected_figure.get("canonical")
+        if canonical is None:
+            canonical = {}
+        if not isinstance(canonical, dict):
+            canonical = {}
+        expected = cls._canonical_expectations(selected_figure, canonical)
+        warnings: list[str] = list(expected.get("warnings", []))
+        tolerance = expected["dimension_tolerance_px"]
+        width_px = metadata.get("width_px")
+        height_px = metadata.get("height_px")
+        expected_width = expected.get("width_px")
+        expected_height = expected.get("height_px")
+        expected_layout = str(expected.get("layout_type") or "").strip()
+        actual_layout = str(metadata.get("layout_type") or "").strip()
+
+        if expected_layout and actual_layout and actual_layout != expected_layout:
+            warnings.append(
+                f"figure canonical mismatch: layout_type {actual_layout!r} != expected {expected_layout!r}"
+            )
+        if isinstance(width_px, int) and isinstance(expected_width, int) and abs(width_px - expected_width) > tolerance:
+            warnings.append(
+                f"figure canonical mismatch: width_px {width_px} != expected {expected_width} "
+                f"(tolerance {tolerance}px)"
+            )
+        if (
+            isinstance(height_px, int)
+            and isinstance(expected_height, int)
+            and abs(height_px - expected_height) > tolerance
+        ):
+            warnings.append(
+                f"figure canonical mismatch: height_px {height_px} != expected {expected_height} "
+                f"(tolerance {tolerance}px)"
+            )
+        declared_dimensions = expected.get("declared_width") or expected.get("declared_height")
+        if declared_dimensions and (width_px is None or height_px is None):
+            warnings.append("figure canonical check could not inspect rendered dimensions")
+        return {
+            "passed": len(warnings) == 0,
+            "expected": expected,
+            "warnings": warnings,
+        }
+
+    @staticmethod
+    def _canonical_expectations(
+        selected_figure: dict[str, Any],
+        canonical: dict[str, Any],
+    ) -> dict[str, Any]:
+        expected_dims = canonical.get("expected_dims") or canonical.get("dims") or canonical.get("dimensions")
+        expected_width = canonical.get("width_px", selected_figure.get("expected_width_px"))
+        expected_height = canonical.get("height_px", selected_figure.get("expected_height_px"))
+        warnings: list[str] = []
+        allowed_keys = {
+            "expected_dims",
+            "dims",
+            "dimensions",
+            "width_px",
+            "height_px",
+            "layout_type",
+            "dimension_tolerance_px",
+            "family_dimension_tolerance_px",
+            "match_family",
+        }
+        for key in sorted(str(item) for item in canonical.keys() if str(item) not in allowed_keys):
+            warnings.append(f"figure canonical config warning: unknown key {key!r}")
+        if isinstance(expected_dims, (list, tuple)) and len(expected_dims) >= 2:
+            expected_width = expected_dims[0]
+            expected_height = expected_dims[1]
+        elif expected_dims is not None:
+            warnings.append("figure canonical config warning: expected_dims must contain width and height")
+        tolerance = canonical.get("dimension_tolerance_px", selected_figure.get("dimension_tolerance_px", 8))
+        try:
+            tolerance_px = max(0, int(tolerance))
+        except (TypeError, ValueError):
+            tolerance_px = 8
+            warnings.append("figure canonical config warning: dimension_tolerance_px must be an integer")
+        family_tolerance = canonical.get(
+            "family_dimension_tolerance_px",
+            selected_figure.get("family_dimension_tolerance_px", 8),
+        )
+        try:
+            family_tolerance_px = max(0, int(family_tolerance))
+        except (TypeError, ValueError):
+            family_tolerance_px = 8
+            warnings.append("figure canonical config warning: family_dimension_tolerance_px must be an integer")
+
+        def optional_int(value: Any, field_name: str) -> int | None:
+            if isinstance(value, bool) or value is None:
+                if isinstance(value, bool):
+                    warnings.append(f"figure canonical config warning: {field_name} must be an integer")
+                return None
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                warnings.append(f"figure canonical config warning: {field_name} must be an integer")
+                return None
+
+        return {
+            "layout_type": str(
+                canonical.get("layout_type") or selected_figure.get("expected_layout_type") or ""
+            ).strip(),
+            "width_px": optional_int(expected_width, "width_px"),
+            "height_px": optional_int(expected_height, "height_px"),
+            "declared_width": expected_width is not None,
+            "declared_height": expected_height is not None,
+            "dimension_tolerance_px": tolerance_px,
+            "family_dimension_tolerance_px": family_tolerance_px,
+            "match_family": str(canonical.get("match_family") or selected_figure.get("match_family") or "").strip(),
+            "warnings": warnings,
+        }
+
+    @classmethod
+    def _figure_family_check(
+        cls,
+        metadata: dict[str, Any],
+        selected_figure: dict[str, Any],
+        project_path: Path | None,
+        figures: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        expected = metadata.get("canonical_check", {}).get("expected", {})
+        family_pattern = str(expected.get("match_family") or "").strip() if isinstance(expected, dict) else ""
+        selected_output = str(selected_figure.get("output") or "")
+        try:
+            selected_output_parent = cls._project_relative_path(selected_output, "figures[].output").parent
+        except ValueError:
+            return {"passed": True, "family": family_pattern, "siblings": [], "warnings": []}
+        family = family_pattern or cls._figure_family_key(
+            str(selected_figure.get("id") or ""),
+            output_parent=selected_output_parent.as_posix(),
+        )
+        if not family or project_path is None:
+            return {"passed": True, "family": family, "siblings": [], "warnings": []}
+
+        siblings: list[dict[str, Any]] = []
+        tolerance = int(metadata.get("canonical_check", {}).get("expected", {}).get("family_dimension_tolerance_px", 8))
+        width_px = metadata.get("width_px")
+        height_px = metadata.get("height_px")
+        for figure in figures:
+            if figure is selected_figure:
+                continue
+            sibling_id = str(figure.get("id") or "")
+            try:
+                sibling_rel = cls._project_relative_path(figure.get("output"), "figures[].output")
+            except ValueError:
+                continue
+            sibling_matches = (
+                fnmatch.fnmatch(sibling_id, family_pattern)
+                if family_pattern
+                else cls._figure_family_key(sibling_id, output_parent=sibling_rel.parent.as_posix()) == family
+            )
+            if not sibling_matches:
+                continue
+            if sibling_rel.parent != selected_output_parent:
+                continue
+            sibling_width, sibling_height = cls._image_dimensions(project_path / sibling_rel)
+            if sibling_width is None or sibling_height is None:
+                continue
+            siblings.append(
+                {
+                    "id": sibling_id,
+                    "output": sibling_rel.as_posix(),
+                    "width_px": sibling_width,
+                    "height_px": sibling_height,
+                    "layout_type": str(figure.get("layout_type") or figure.get("layout") or "").strip(),
+                }
+            )
+
+        warnings: list[str] = []
+        for sibling in siblings:
+            if isinstance(width_px, int) and abs(width_px - int(sibling["width_px"])) > tolerance:
+                warnings.append(
+                    f"figure family sibling mismatch: {selected_figure.get('id')} width_px {width_px} "
+                    f"differs from sibling {sibling['id']} width_px {sibling['width_px']}"
+                )
+            if isinstance(height_px, int) and abs(height_px - int(sibling["height_px"])) > tolerance:
+                warnings.append(
+                    f"figure family sibling mismatch: {selected_figure.get('id')} height_px {height_px} "
+                    f"differs from sibling {sibling['id']} height_px {sibling['height_px']}"
+                )
+            actual_layout = str(metadata.get("layout_type") or "")
+            sibling_layout = str(sibling.get("layout_type") or "")
+            if actual_layout and sibling_layout and actual_layout != sibling_layout:
+                warnings.append(
+                    f"figure family sibling mismatch: {selected_figure.get('id')} layout_type {actual_layout!r} "
+                    f"differs from sibling {sibling['id']} layout_type {sibling_layout!r}"
+                )
+        return {
+            "passed": len(warnings) == 0,
+            "family": family,
+            "siblings": siblings,
+            "warnings": warnings,
+        }
+
+    @staticmethod
+    def _figure_family_key(figure_id: str, *, output_parent: str = "") -> str:
+        text = figure_id.strip()
+        if "_" not in text:
+            return f"dir:{output_parent}" if output_parent else ""
+        parts = [part for part in text.split("_") if part]
+        if len(parts) < 3:
+            return ""
+        return "_".join(parts[1:])
 
     @staticmethod
     def _validate_render_data_contract(

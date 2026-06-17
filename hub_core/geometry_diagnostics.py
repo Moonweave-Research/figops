@@ -275,13 +275,27 @@ def _axis_crowding(labels: list[Any], ax: Axes, renderer: Any, axis: str) -> flo
     span = axes_bb.width if axis == "x" else axes_bb.height
     if span <= 0:
         return 0.0
-    total = 0.0
+    intervals: list[tuple[float, float]] = []
     for label in labels:
         bb = _extent(label, renderer)
         if bb is None:
             continue
-        total += bb.width if axis == "x" else bb.height
-    return float(total / span)
+        start = float(bb.x0 if axis == "x" else bb.y0)
+        end = float(bb.x1 if axis == "x" else bb.y1)
+        intervals.append((start, end))
+    if not intervals:
+        return 0.0
+    intervals.sort()
+    covered = 0.0
+    current_start, current_end = intervals[0]
+    for start, end in intervals[1:]:
+        if start <= current_end:
+            current_end = max(current_end, end)
+            continue
+        covered += max(0.0, current_end - current_start)
+        current_start, current_end = start, end
+    covered += max(0.0, current_end - current_start)
+    return float(covered / span)
 
 
 def _visible_data_lim(ax: Axes) -> Bbox | None:
@@ -338,8 +352,6 @@ def _artists_outside_axes(ax: Axes, renderer: Any, axis_index: int) -> dict[str,
     if (
         data_lim is None
         or not np.all(np.isfinite(data_lim.get_points()))
-        or data_lim.width <= 0
-        or data_lim.height <= 0
     ):
         return {
             "name": name,
@@ -358,19 +370,47 @@ def _artists_outside_axes(ax: Axes, renderer: Any, axis_index: int) -> dict[str,
     axes_bb = ax.get_window_extent(renderer)
     data_area = _box_area(data_bb)
     if data_area <= 0:
-        return {
-            "name": name,
-            "passed": True,
-            "detail": "skipped: degenerate data extent",
-            "data": {"axis_index": int(axis_index)},
-        }
-    outside_frac = float(1 - _inter_area(data_bb, axes_bb) / data_area)
+        outside_frac = _degenerate_outside_fraction(data_bb, axes_bb)
+    else:
+        outside_frac = float(1 - _inter_area(data_bb, axes_bb) / data_area)
     return {
         "name": name,
         "passed": bool(outside_frac <= DATA_OUTSIDE_AXES_WARN),
         "detail": f"data extent exceeds axes by {outside_frac * 100:.1f}% (axis {axis_index})",
         "data": {"axis_index": int(axis_index), "outside_fraction": outside_frac},
     }
+
+
+def _overlap_fraction_1d(start_a: float, end_a: float, start_b: float, end_b: float) -> float:
+    length = max(0.0, end_a - start_a)
+    if length <= 0:
+        return 0.0
+    overlap = max(0.0, min(end_a, end_b) - max(start_a, start_b))
+    return float(overlap / length)
+
+
+def _degenerate_outside_fraction(data_bb: Bbox, axes_bb: Bbox) -> float:
+    width = float(abs(data_bb.width))
+    height = float(abs(data_bb.height))
+    if width <= GEOM_EPS_PX and height <= GEOM_EPS_PX:
+        inside = (
+            axes_bb.x0 - GEOM_EPS_PX <= data_bb.x0 <= axes_bb.x1 + GEOM_EPS_PX
+            and axes_bb.y0 - GEOM_EPS_PX <= data_bb.y0 <= axes_bb.y1 + GEOM_EPS_PX
+        )
+        return 0.0 if inside else 1.0
+    if width <= GEOM_EPS_PX:
+        x_inside = axes_bb.x0 - GEOM_EPS_PX <= data_bb.x0 <= axes_bb.x1 + GEOM_EPS_PX
+        if not x_inside:
+            return 1.0
+        inside_fraction = _overlap_fraction_1d(data_bb.y0, data_bb.y1, axes_bb.y0, axes_bb.y1)
+        return float(1.0 - inside_fraction)
+    if height <= GEOM_EPS_PX:
+        y_inside = axes_bb.y0 - GEOM_EPS_PX <= data_bb.y0 <= axes_bb.y1 + GEOM_EPS_PX
+        if not y_inside:
+            return 1.0
+        inside_fraction = _overlap_fraction_1d(data_bb.x0, data_bb.x1, axes_bb.x0, axes_bb.x1)
+        return float(1.0 - inside_fraction)
+    return 1.0
 
 
 def _chrome_artists(ax: Axes) -> list[Any]:
@@ -641,6 +681,8 @@ def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox
         if not np.all(np.isfinite(display)):
             continue
         for point_index, (x_px, y_px) in enumerate(display):
+            if not _collection_marker_is_paintable(collection, point_index):
+                continue
             if sizes is not None and len(sizes) > 0:
                 size = float(sizes[min(point_index, len(sizes) - 1)])
                 diameter_pt = float(np.sqrt(size))
@@ -658,7 +700,67 @@ def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox
                     ),
                 )
             )
+    for line_index, line in enumerate(ax.get_lines()):
+        if not _line_marker_is_paintable(line):
+            continue
+        xy = np.asarray(line.get_xydata(), dtype=float)
+        if xy.size == 0:
+            continue
+        finite = xy[np.all(np.isfinite(xy), axis=1)]
+        if len(finite) == 0:
+            continue
+        display = ax.transData.transform(finite)
+        if not np.all(np.isfinite(display)):
+            continue
+        radius_px = max(GEOM_EPS_PX, float(line.get_markersize()) / 2 * px_per_point)
+        for point_index, (x_px, y_px) in enumerate(display):
+            boxes.append(
+                (
+                    f"marker:line{line_index}[{point_index}]",
+                    Bbox.from_extents(
+                        float(x_px) - radius_px,
+                        float(y_px) - radius_px,
+                        float(x_px) + radius_px,
+                        float(y_px) + radius_px,
+                    ),
+                )
+            )
     return boxes
+
+
+def _alpha_from_rgba_value(value: Any) -> float | None:
+    rgba = _rgba_tuple(value)
+    if rgba is None:
+        return None
+    return float(rgba[3])
+
+
+def _sequence_entry_alpha(values: Any, index: int) -> float | None:
+    if values is None or len(values) == 0:
+        return None
+    value = values[min(index, len(values) - 1)]
+    return _alpha_from_rgba_value(value)
+
+
+def _collection_marker_is_paintable(collection: Any, point_index: int) -> bool:
+    face_alpha = _sequence_entry_alpha(collection.get_facecolors(), point_index)
+    edge_alpha = _sequence_entry_alpha(collection.get_edgecolors(), point_index)
+    if face_alpha is None and edge_alpha is None:
+        return True
+    return max(face_alpha or 0.0, edge_alpha or 0.0) > ALPHA_EPS
+
+
+def _line_marker_is_paintable(line: Any) -> bool:
+    marker = line.get_marker()
+    if marker in {None, "", "None", "none", " "}:
+        return False
+    if float(line.get_markersize()) <= 0:
+        return False
+    face_alpha = _alpha_from_rgba_value(line.get_markerfacecolor())
+    edge_alpha = _alpha_from_rgba_value(line.get_markeredgecolor())
+    if face_alpha is None and edge_alpha is None:
+        return True
+    return max(face_alpha or 0.0, edge_alpha or 0.0) > ALPHA_EPS
 
 
 def _marker_marker_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
@@ -800,8 +902,21 @@ def _line_marker_style(artist: Any) -> dict[str, Any] | None:
     from matplotlib.markers import MarkerStyle
 
     marker = artist.get_marker()
+    style = {
+        "line_color": _style_color(artist.get_color()),
+        "linestyle": str(artist.get_linestyle()),
+        "linewidth": round(float(artist.get_linewidth()), 3),
+    }
     if marker in {None, "", "None", "none", " "}:
-        return None
+        return {
+            **style,
+            "marker": "none",
+            "marker_shape": "none",
+            "facecolor": "none",
+            "edgecolor": "none",
+            "fill": False,
+            "size": 0.0,
+        }
     try:
         marker_style = MarkerStyle(marker)
         marker_shape = _path_signature(marker_style.get_path().transformed(marker_style.get_transform()))
@@ -810,6 +925,7 @@ def _line_marker_style(artist: Any) -> dict[str, Any] | None:
     facecolor = artist.get_markerfacecolor()
     fill = not _is_none_color(facecolor) and artist.get_fillstyle() != "none"
     return {
+        **style,
         "marker": str(marker),
         "marker_shape": marker_shape,
         "facecolor": _style_color(facecolor),
@@ -831,18 +947,19 @@ def _collection_marker_style(artist: Any) -> dict[str, Any] | None:
     face_values = {_style_color(color) for color in facecolors} if len(facecolors) else {"none"}
     edge_values = {_style_color(color) for color in edgecolors} if len(edgecolors) else {"none"}
     size_values = {round(float(np.sqrt(size)), 3) for size in sizes} if len(sizes) else {0.0}
-    if len(face_values) > 1 or len(edge_values) > 1 or len(size_values) > 1:
-        return None
     paths = artist.get_paths() if hasattr(artist, "get_paths") else []
     marker_shape = _path_signature(paths[0]) if paths else "collection"
-    facecolor = next(iter(face_values))
+    facecolor = "mixed" if len(face_values) > 1 else next(iter(face_values))
+    edgecolor = "mixed" if len(edge_values) > 1 else next(iter(edge_values))
+    size: float | str = "mixed" if len(size_values) > 1 else next(iter(size_values))
     return {
         "marker": "collection",
         "marker_shape": marker_shape,
         "facecolor": facecolor,
-        "edgecolor": next(iter(edge_values)),
-        "fill": bool(facecolor != "none"),
-        "size": next(iter(size_values)),
+        "edgecolor": edgecolor,
+        "fill": bool(facecolor not in {"none", "mixed"}),
+        "size": size,
+        "variable_style": bool(len(face_values) > 1 or len(edge_values) > 1 or len(size_values) > 1),
     }
 
 
@@ -856,12 +973,22 @@ def _marker_style(artist: Any) -> dict[str, Any] | None:
 
 def _style_diff(legend_style: dict[str, Any], data_style: dict[str, Any]) -> list[str]:
     diff: list[str] = []
-    for key in ("marker", "facecolor", "edgecolor", "size", "fill"):
+    for key in ("marker", "facecolor", "edgecolor", "size", "fill", "line_color", "linestyle", "linewidth"):
+        if key not in legend_style or key not in data_style:
+            continue
         if key == "marker":
             if legend_style.get("marker_shape") != data_style.get("marker_shape"):
                 diff.append(key)
         elif key == "size":
-            if abs(float(legend_style.get(key, 0.0)) - float(data_style.get(key, 0.0))) > 0.5:
+            legend_size = legend_style.get(key, 0.0)
+            data_size = data_style.get(key, 0.0)
+            if isinstance(legend_size, str) or isinstance(data_size, str):
+                if legend_size != data_size:
+                    diff.append(key)
+            elif abs(float(legend_size) - float(data_size)) > 0.5:
+                diff.append(key)
+        elif key == "linewidth":
+            if abs(float(legend_style.get(key, 0.0)) - float(data_style.get(key, 0.0))) > 0.05:
                 diff.append(key)
         elif legend_style.get(key) != data_style.get(key):
             diff.append(key)
@@ -947,14 +1074,16 @@ def _box_center(box: Bbox) -> tuple[float, float]:
     return (float((box.x0 + box.x1) / 2), float((box.y0 + box.y1) / 2))
 
 
-def _box_vector_away(source: Bbox, obstacle: Bbox, *, step_px: float) -> tuple[float, float]:
+def _box_vector_away(source: Bbox, obstacle: Bbox, *, step_px: float, seed: Any = None) -> tuple[float, float]:
     sx, sy = _box_center(source)
     ox, oy = _box_center(obstacle)
     vx = sx - ox
     vy = sy - oy
     norm = float(np.hypot(vx, vy))
     if norm <= GEOM_EPS_PX:
-        return (step_px, step_px)
+        angle_seed = seed if seed is not None else (round(sx, 3), round(sy, 3), round(ox, 3), round(oy, 3), round(step_px, 3))
+        angle = (hash(angle_seed) % 360) * np.pi / 180.0
+        return (float(np.cos(angle) * step_px), float(np.sin(angle) * step_px))
     return (float(vx / norm * step_px), float(vy / norm * step_px))
 
 
@@ -1046,11 +1175,42 @@ def _artist_overlap_candidate_items(ax: Axes, renderer: Any) -> list[tuple[str, 
     add_artist(ax.title, "title")
     for index, text in enumerate(ax.texts):
         add_artist(text, f"text:{index}")
+    for index, line in enumerate(ax.get_lines()):
+        if not _is_paintable(line):
+            continue
+        for segment_index, segment_box in enumerate(_line_overlap_boxes(ax, line)):
+            if _box_area(segment_box) > 0:
+                candidates.append((f"line:{index}[{segment_index}]", segment_box, None))
+    for index, patch in enumerate(ax.patches):
+        if getattr(patch, "_graph_hub_leader_patch", False):
+            continue
+        add_artist(patch, f"patch:{index}")
 
     for label, marker_box in _marker_footprint_box_entries(ax, ax.figure):
         if _box_area(marker_box) > 0:
             candidates.append((label, marker_box, None))
     return candidates
+
+
+def _line_overlap_boxes(ax: Axes, line: Any) -> list[Bbox]:
+    xy = np.asarray(line.get_xydata(), dtype=float)
+    if xy.size == 0:
+        return []
+    finite = xy[np.all(np.isfinite(xy), axis=1)]
+    if len(finite) < 2:
+        return []
+    display = ax.transData.transform(finite)
+    if not np.all(np.isfinite(display)):
+        return []
+    half_width = max(GEOM_EPS_PX, float(line.get_linewidth()) / 2)
+    boxes: list[Bbox] = []
+    for start, end in zip(display, display[1:]):
+        x0 = min(float(start[0]), float(end[0])) - half_width
+        x1 = max(float(start[0]), float(end[0])) + half_width
+        y0 = min(float(start[1]), float(end[1])) - half_width
+        y1 = max(float(start[1]), float(end[1])) + half_width
+        boxes.append(Bbox.from_extents(x0, y0, x1, y1))
+    return boxes
 
 
 def _artist_overlap_candidates(ax: Axes, renderer: Any) -> list[tuple[str, Bbox]]:
@@ -1213,6 +1373,8 @@ def _default_font_token_sizes(data_axes: list[Axes]) -> list[float]:
         for artist in (ax.xaxis.label, ax.yaxis.label):
             if artist is not None and _is_paintable(artist):
                 sizes.add(round(float(artist.get_fontsize()), 2))
+        for text in [*_visible_tick_labels(list(ax.get_xticklabels())), *_visible_tick_labels(list(ax.get_yticklabels()))]:
+            sizes.add(round(float(text.get_fontsize()), 2))
         legend = ax.get_legend()
         if legend is not None and _is_paintable(legend):
             for text in legend.get_texts():
@@ -1239,7 +1401,7 @@ def _font_size_token_drift(data_axes: list[Axes], font_token_sizes: list[float] 
         }
 
     offenders: list[dict[str, Any]] = []
-    role_sizes: dict[str, set[float]] = {"text": set(), "axis": set(), "legend": set()}
+    role_sizes: dict[str, set[float]] = {"text": set(), "axis": set(), "legend": set(), "tick": set()}
     for axis_index, ax in enumerate(data_axes):
         for text in ax.texts:
             if not text.get_text() or not _is_paintable(text):
@@ -1255,6 +1417,11 @@ def _font_size_token_drift(data_axes: list[Axes], font_token_sizes: list[float] 
             role_sizes[role].add(size)
             if not _font_size_matches_token(size, token_sizes):
                 offenders.append({"axes": int(axis_index), "role": role, "text": artist.get_text(), "fontsize": size})
+        for text in [*_visible_tick_labels(list(ax.get_xticklabels())), *_visible_tick_labels(list(ax.get_yticklabels()))]:
+            size = round(float(text.get_fontsize()), 2)
+            role_sizes["tick"].add(size)
+            if not _font_size_matches_token(size, token_sizes):
+                offenders.append({"axes": int(axis_index), "role": "tick", "text": text.get_text(), "fontsize": size})
         legend = ax.get_legend()
         if legend is not None and _is_paintable(legend):
             for text in legend.get_texts():
@@ -1266,6 +1433,7 @@ def _font_size_token_drift(data_axes: list[Axes], font_token_sizes: list[float] 
                     offenders.append({"axes": int(axis_index), "role": "legend", "text": text.get_text(), "fontsize": size})
 
     role_size_counts = {role: len(sizes) for role, sizes in role_sizes.items() if sizes}
+    divergent_roles = sorted(role for role, count in role_size_counts.items() if count > 1)
     if len(offenders) > _MAX_REPORTED_PAIRS:
         offenders = offenders[:_MAX_REPORTED_PAIRS]
         truncated = True
@@ -1273,12 +1441,13 @@ def _font_size_token_drift(data_axes: list[Axes], font_token_sizes: list[float] 
         truncated = False
     return {
         "name": name,
-        "passed": len(offenders) == 0,
-        "detail": f"{len(offenders)} text artists use non-token font sizes",
+        "passed": len(offenders) == 0 and not divergent_roles,
+        "detail": f"{len(offenders)} text artists use non-token font sizes; divergent roles: {', '.join(divergent_roles) or 'none'}",
         "data": {
             "token_sizes": token_sizes,
             "offenders": offenders,
             "offenders_truncated": bool(truncated),
             "role_size_counts": role_size_counts,
+            "divergent_roles": divergent_roles,
         },
     }

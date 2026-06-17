@@ -135,7 +135,7 @@ def check_golden_regression(
                 RegressionFailure(
                     path=relative,
                     reason="Scientific drift detected.",
-                    diff_summary=_build_diff_summary(current_path, golden_path, str(exc)),
+                    diff_summary=_build_diff_summary(current_path, golden_path, str(exc), atol=target_spec["atol"]),
                 )
             )
         except Exception as exc:
@@ -227,7 +227,14 @@ def _load_table(path: Path) -> pd.DataFrame:
     raise ValueError(f"Unsupported golden dataset type: {path.suffix}")
 
 
-def _build_diff_summary(current_path: Path, golden_path: Path, assertion_message: str) -> str:
+def _value_at_label(df: pd.DataFrame, row_label: object, col: str) -> object:
+    value = df.loc[row_label, col]
+    if isinstance(value, pd.Series):
+        return value.iloc[0]
+    return value
+
+
+def _build_diff_summary(current_path: Path, golden_path: Path, assertion_message: str, *, atol: float) -> str:
     try:
         current = _load_table(current_path)
         golden = _load_table(golden_path)
@@ -242,18 +249,21 @@ def _build_diff_summary(current_path: Path, golden_path: Path, assertion_message
     for col in current.columns:
         if pd.api.types.is_numeric_dtype(current[col]) and pd.api.types.is_numeric_dtype(golden[col]):
             diff = (current[col] - golden[col]).abs()
-            if diff.notna().any() and float(diff.max()) > DEFAULT_ATOL:
-                row = int(diff.fillna(0).idxmax())
+            if diff.notna().any() and float(diff.max()) > atol:
+                row = diff.fillna(0).idxmax()
                 return (
                     f"First numeric drift at row={row}, column='{col}', "
-                    f"current={current.iloc[row][col]!r}, golden={golden.iloc[row][col]!r}"
+                    f"current={_value_at_label(current, row, col)!r}, "
+                    f"golden={_value_at_label(golden, row, col)!r}"
                 )
+            continue
         mismatch = current[col].astype(str) != golden[col].astype(str)
         if mismatch.any():
-            row = int(mismatch.idxmax())
+            row = mismatch.idxmax()
             return (
                 f"First value drift at row={row}, column='{col}', "
-                f"current={current.iloc[row][col]!r}, golden={golden.iloc[row][col]!r}"
+                f"current={_value_at_label(current, row, col)!r}, "
+                f"golden={_value_at_label(golden, row, col)!r}"
             )
 
     first_line = assertion_message.splitlines()[0] if assertion_message else "Unknown regression diff"

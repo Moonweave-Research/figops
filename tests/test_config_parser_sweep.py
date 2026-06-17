@@ -1,8 +1,8 @@
-"""Unit tests for parse_sweep_config() and _validate_sweep() in hub_core.config_parser."""
+"""Unit tests for parse_sweep_config(), _validate_sweep(), and targeted config validation."""
 
 import unittest
 
-from hub_core.config_parser import _validate_sweep, parse_sweep_config
+from hub_core.config_parser import _validate_sweep, parse_sweep_config, validate_config
 
 
 class TestParseSweepConfigValues(unittest.TestCase):
@@ -126,6 +126,26 @@ class TestValidateSweepMissingParameter(unittest.TestCase):
             any("parameter" in e for e in errors),
             f"Expected parameter error for empty string, got: {errors}",
         )
+
+
+class TestDataContractConfigValidation(unittest.TestCase):
+    def test_reversed_range_bounds_are_rejected(self):
+        config = {
+            "project": {"name": "Bad Range"},
+            "visual_style": {"target_format": "nature"},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "results/data/summary.csv",
+                        "semantic_checks": {"temperature": {"range": [5, 1]}},
+                    }
+                ]
+            },
+        }
+
+        errors = validate_config(config)
+
+        self.assertTrue(any("range" in error and "<=" in error for error in errors))
 
 
 if __name__ == "__main__":

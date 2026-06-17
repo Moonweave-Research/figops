@@ -65,6 +65,30 @@ def normalize_lang(lang):
     return key
 
 
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    pass
+
+
+def _construct_mapping_no_duplicates(loader, node, deep=False):
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise yaml.YAMLError(f"Duplicate key '{key}' at line {key_node.start_mark.line + 1}")
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_UniqueKeySafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_mapping_no_duplicates,
+)
+
+
+def _load_yaml_with_unique_keys(raw_text: str):
+    return yaml.load(raw_text, Loader=_UniqueKeySafeLoader)
+
+
 def _validate_grouped_check_config(errors, *, column: str, check_name: str, raw_check: object) -> None:
     if not isinstance(raw_check, dict):
         errors.append(f"Semantic {check_name} for '{column}' must be a mapping.")
@@ -285,7 +309,7 @@ def _load_project_metadata(config_path, fallback_name):
 
     try:
         with open(config_path, "r", encoding="utf-8") as f:
-            conf_data = yaml.safe_load(f)
+            conf_data = _load_yaml_with_unique_keys(f.read())
     except Exception as exc:
         metadata["errors"] = [f"Failed to read config: {exc}"]
         return metadata
@@ -556,6 +580,10 @@ def validate_config(config):
                             r = constraints["range"]
                             if not isinstance(r, list) or len(r) != 2:
                                 errors.append(f"Semantic range for '{col}' must be a list of 2 numbers.")
+                            elif any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in r):
+                                errors.append(f"Semantic range for '{col}' must contain only numeric bounds.")
+                            elif r[0] > r[1]:
+                                errors.append(f"Semantic range for '{col}' min must be <= max.")
                         if "allow_null" in constraints and not isinstance(constraints["allow_null"], bool):
                             errors.append(f"Semantic allow_null for '{col}' must be a boolean.")
                         if "unique" in constraints and not isinstance(constraints["unique"], bool):
@@ -993,7 +1021,7 @@ def load_config(project_dir):
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             raw_text = f.read()
-            config = yaml.safe_load(raw_text)
+            config = _load_yaml_with_unique_keys(raw_text)
     except yaml.YAMLError as e:
         print(f"❌ Error: Invalid YAML in {config_path}\n   └─ {e}")
         print("   └─ Fix the YAML syntax in project_config.yaml and rerun.")
@@ -1066,7 +1094,7 @@ def list_projects(root_dir, recursive=True, max_depth=4):
             try:
                 with open(project["config_path"], "r", encoding="utf-8") as f:
                     raw_text = f.read()
-                    config = yaml.safe_load(raw_text)
+                    config = _load_yaml_with_unique_keys(raw_text)
                 config_hash = hashlib.sha256(raw_text.replace("\r\n", "\n").encode("utf-8")).hexdigest()
                 status_text = check_project_status(os.path.join(root_dir, project["path"]), config, config_hash)
             except Exception:

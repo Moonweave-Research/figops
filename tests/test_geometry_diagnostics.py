@@ -157,6 +157,19 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertTrue(check_c["passed"])
         self.assertTrue(check_c["detail"].startswith("skipped: no data artists"))
 
+    def test_outside_axes_reports_degenerate_line_extent(self):
+        fig, ax = plt.subplots()
+        ax.plot([2.0, 2.0], [0.0, 1.0])
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_autoscalex_on(True)
+        ax.set_autoscaley_on(True)
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "artists_outside_axes")
+
+        self.assertFalse(check["passed"])
+        self.assertGreater(check["data"]["outside_fraction"], 0.99)
+
     def test_visibility_alpha_filter(self):
         # A hidden/transparent artist far outside the view must NOT inflate the data
         # extent: with the view pinned to the visible data, the outside fraction stays 0.
@@ -231,6 +244,24 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertTrue(check["passed"])
         self.assertEqual(check["data"]["overlaps"], [])
 
+    def test_artist_overlaps_reports_text_line_pairs(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.plot([0.1, 0.9], [0.5, 0.5], linewidth=4.0)
+        ax.text(0.5, 0.5, "on line", ha="center", va="center")
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "artist_overlaps")
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(any("line:" in item["a"] or "line:" in item["b"] for item in check["data"]["overlaps"]))
+
+    def test_artist_overlaps_reports_text_patch_pairs(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.bar([0], [1], width=0.6)
+        ax.text(0.0, 0.5, "on bar", ha="center", va="center")
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "artist_overlaps")
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(any("patch:" in item["a"] or "patch:" in item["b"] for item in check["data"]["overlaps"]))
+
     def test_legend_internal_overlaps_reports_packed_handles(self):
         fig, ax = plt.subplots(figsize=(2, 2))
         handles = [
@@ -266,6 +297,47 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertTrue(check["data"]["overlaps"])
         self.assertIn(check["data"]["overlaps"][0]["severity"], {"low", "medium", "high"})
         self.assertGreater(check["data"]["overlaps"][0]["iou"], 0)
+
+    def test_marker_marker_overlaps_pass_for_separated_markers(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.scatter([0.2, 0.8], [0.2, 0.8], s=900)
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "marker_marker_overlaps")
+
+        self.assertTrue(check["passed"])
+        self.assertEqual(check["data"]["overlaps"], [])
+
+    def test_marker_marker_overlaps_skip_when_marker_count_exceeds_cap(self):
+        fig, ax = plt.subplots(figsize=(4, 4))
+        xs = np.linspace(0.0, 1.0, MAX_TEXT_ARTISTS + 1)
+        ys = np.zeros(MAX_TEXT_ARTISTS + 1)
+        ax.scatter(xs, ys, s=40)
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "marker_marker_overlaps")
+
+        self.assertTrue(check["passed"])
+        self.assertTrue(check["detail"].startswith("skipped: marker count"))
+
+    def test_axis_label_title_overlap_reports_collision(self):
+        fig, ax = plt.subplots(figsize=(2.0, 1.6))
+        ax.set_ylabel("very long ylabel")
+        ax.set_title("very long title")
+        ax.yaxis.set_label_coords(0.5, 1.03)
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "axis_label_title_overlap")
+
+        self.assertFalse(check["passed"])
+        self.assertGreaterEqual(check["data"]["overlap_count"], 1)
+
+    def test_axis_label_title_overlap_passes_for_normal_layout(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.set_ylabel("y")
+        ax.set_title("title")
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "axis_label_title_overlap")
+
+        self.assertTrue(check["passed"])
+        self.assertEqual(check["data"]["overlap_count"], 0)
 
     def test_legend_marker_consistency_reports_open_marker_against_filled_key(self):
         fig, ax = plt.subplots(figsize=(3, 3))
@@ -320,6 +392,52 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertTrue(check["passed"])
         self.assertEqual(check["data"]["mismatches"], [])
 
+    def test_legend_marker_consistency_reports_variable_scatter_style_against_single_key(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        label = "composition"
+        ax.scatter(
+            [0.4, 0.6],
+            [0.5, 0.5],
+            marker="o",
+            c=["red", "blue"],
+            edgecolors=["black", "black"],
+            s=[64, 64],
+            label=label,
+        )
+        legend_handle = Line2D(
+            [],
+            [],
+            marker="o",
+            linestyle="none",
+            markerfacecolor="red",
+            markeredgecolor="black",
+            markersize=8,
+            label=label,
+        )
+        ax.legend(handles=[legend_handle])
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "legend_marker_consistency")
+
+        self.assertFalse(check["passed"])
+        mismatch = check["data"]["mismatches"][0]
+        self.assertEqual(mismatch["legend_label"], label)
+        self.assertIn("facecolor", mismatch["diff"])
+        self.assertTrue(mismatch["data_style"]["variable_style"])
+
+    def test_legend_marker_consistency_reports_markerless_line_style_drift(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        label = "series A"
+        ax.plot([0.0, 1.0], [0.0, 1.0], color="red", linestyle="-", linewidth=2.0, label=label)
+        legend_handle = Line2D([], [], color="blue", linestyle="--", linewidth=0.5, label=label)
+        ax.legend(handles=[legend_handle])
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "legend_marker_consistency")
+
+        self.assertFalse(check["passed"])
+        mismatch = check["data"]["mismatches"][0]
+        self.assertEqual(mismatch["legend_label"], label)
+        self.assertEqual(set(mismatch["diff"]), {"line_color", "linestyle", "linewidth"})
+
     def test_label_offset_consistency_warns_for_repeated_label_direction_change(self):
         fig, axes = plt.subplots(1, 3, figsize=(6, 2))
         for ax in axes:
@@ -360,6 +478,34 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertFalse(check["passed"])
         self.assertEqual(check["data"]["offenders"][0]["text"], "drift")
         self.assertEqual(check["data"]["offenders"][0]["fontsize"], 5.5)
+
+    def test_font_size_token_drift_reports_tick_label_sizes(self):
+        fig, ax = plt.subplots()
+        ax.set_xticks([0, 1, 2])
+        ax.set_xticklabels(["A", "B", "C"], fontsize=30)
+
+        check = _check(
+            diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False, font_token_sizes=[6, 7, 8]),
+            "font_size_token_drift",
+        )
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(any(item["role"] == "tick" and item["fontsize"] == 30.0 for item in check["data"]["offenders"]))
+
+    def test_font_size_token_drift_reports_role_divergence_across_axes(self):
+        fig, axes = plt.subplots(1, 2, figsize=(5, 2))
+        axes[0].set_xlabel("left")
+        axes[1].set_xlabel("right")
+        axes[0].xaxis.label.set_fontsize(7.0)
+        axes[1].xaxis.label.set_fontsize(8.0)
+
+        check = _check(
+            diagnose_figure_geometry(_drawn(fig), list(axes), layout_locked=False, font_token_sizes=[7.0, 8.0]),
+            "font_size_token_drift",
+        )
+
+        self.assertFalse(check["passed"])
+        self.assertEqual(check["data"]["role_size_counts"]["axis"], 2)
 
     def test_annotation_cap(self):
         fig, ax = plt.subplots()
