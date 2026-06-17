@@ -533,6 +533,35 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(_snapshot_tree(project), before)
             self.assertFalse((runtime_root / "mcp_project_jobs").exists())
 
+    def test_render_project_figure_dry_run_uses_same_runtime_paths_as_real_render(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            runtime_root = Path(tmpdir) / "env-runtime"
+            with patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime_root)}):
+                dry_server = GraphHubMCPServer(research_root=root)
+                dry_result = self._call(
+                    dry_server,
+                    "graphhub.render_project_figure",
+                    {"project_path": str(project), "figure_id": "Fig1", "job_id": "path-parity", "dry_run": True},
+                )
+                render_server = GraphHubMCPServer(research_root=root)
+                render_result = self._call(
+                    render_server,
+                    "graphhub.render_project_figure",
+                    {"project_path": str(project), "figure_id": "Fig1", "job_id": "path-parity-real"},
+                )
+
+            expected_dry_root = runtime_root / "mcp_project_jobs" / "path-parity"
+            expected_render_root = runtime_root / "mcp_project_jobs" / "path-parity-real"
+            self.assertEqual(Path(dry_result["job_root"]).resolve(), expected_dry_root.resolve())
+            self.assertEqual(Path(dry_result["snapshot_project_path"]).resolve(), (expected_dry_root / "project").resolve())
+            self.assertEqual(Path(render_result["job_root"]).resolve(), expected_render_root.resolve())
+            self.assertEqual(
+                Path(render_result["snapshot_project_path"]).resolve(),
+                (expected_render_root / "project").resolve(),
+            )
+
     def test_render_project_figure_runs_selected_figure_in_runtime_snapshot(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
@@ -669,6 +698,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(collected["provenance"]["source_project_path"], "01_Project")
             self.assertEqual(len(collected["figures"]), 1)
             self.assertTrue(Path(collected["figures"][0]["path"]).is_file())
+            self.assertIn("figure_metadata", collected)
 
     def test_render_project_figure_requires_unambiguous_selector_without_writing(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -1330,6 +1360,28 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(collected["status_path"], result["status_path"])
             self.assertEqual(collected["latest_alias"], result["latest_alias"])
 
+    def test_render_csv_graph_rejects_symlinked_data_path_component(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_symlink_data_") as tmpdir:
+            root = Path(tmpdir) / "root"
+            real_dir = root / "real"
+            link_dir = root / "link"
+            data_path = _write_csv(real_dir / "data.csv")
+            try:
+                link_dir.symlink_to(real_dir, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+
+            result = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {"data_path": str(link_dir / data_path.name), "x_column": "x", "y_column": "y"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertTrue(any("symlinked path components" in error for error in result["errors"]))
+
     def test_render_csv_graph_failure_manifest_preserves_requested_baseline_state(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
@@ -1765,6 +1817,237 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             snapshot = Path(result["snapshot_project_path"])
             self.assertFalse((snapshot / "geometry_diagnostics.json").exists())
 
+    def test_project_render_warns_when_declared_canonical_format_mismatches_rendered_figure(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_canonical_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_save_journal_fixture(root)
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["figures"][0]["layout_type"] = "solo"
+            config["figures"][0]["canonical"] = {
+                "layout_type": "triplet",
+                "width_px": 1,
+                "height_px": 1,
+                "dimension_tolerance_px": 0,
+            }
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "canonical-mismatch"},
+            )
+
+            self.assertEqual(result["status"], "warning")
+            self.assertTrue(result["manual_review_needed"])
+            metadata = result["figure_metadata"]
+            self.assertEqual(metadata["layout_type"], "solo")
+            self.assertGreater(metadata["width_px"], 1)
+            self.assertGreater(metadata["height_px"], 1)
+            self.assertFalse(metadata["canonical_check"]["passed"])
+            self.assertIn("canonical", metadata["canonical_check"]["warnings"][0])
+            self.assertTrue(any("canonical" in warning for warning in result["warnings"]))
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["figure_metadata"], metadata)
+            status_payload = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(status_payload["figure_metadata"], metadata)
+            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "canonical-mismatch"})
+            self.assertEqual(collected["figure_metadata"], metadata)
+            self.assertTrue(any("canonical" in warning for warning in collected["warnings"]))
+
+    def test_project_render_warns_when_declared_canonical_config_is_malformed(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_canonical_bad_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_save_journal_fixture(root)
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["figures"][0]["canonical"] = {
+                "width_px": "wide",
+                "height_px": None,
+                "dimension_tolerance_px": "loose",
+                "widht_px": 300,
+            }
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "canonical-config-warning"},
+            )
+
+            self.assertEqual(result["status"], "warning")
+            warnings = result["figure_metadata"]["canonical_check"]["warnings"]
+            self.assertTrue(any("width_px must be an integer" in warning for warning in warnings))
+            self.assertTrue(any("dimension_tolerance_px must be an integer" in warning for warning in warnings))
+            self.assertTrue(any("unknown key 'widht_px'" in warning for warning in warnings))
+            self.assertTrue(any("canonical config warning" in warning for warning in result["warnings"]))
+
+    def test_project_render_extracts_svg_dimensions_for_canonical_check(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_svg_meta_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            (project / "hub_scripts" / "plot.py").write_text(
+                "from pathlib import Path\n"
+                "Path('results/figures').mkdir(parents=True, exist_ok=True)\n"
+                "Path('results/figures/Fig1.svg').write_text("
+                "'<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 320 180\"></svg>', encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["figures"][0]["output"] = "results/figures/Fig1.svg"
+            config["figures"][0]["canonical"] = {"width_px": 320, "height_px": 180, "dimension_tolerance_px": 0}
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "svg-metadata"},
+            )
+
+            metadata = result["figure_metadata"]
+            self.assertEqual(metadata["width_px"], 320)
+            self.assertEqual(metadata["height_px"], 180)
+            self.assertTrue(metadata["canonical_check"]["passed"])
+
+    def test_project_render_warns_when_rendered_figure_deviates_from_existing_family_sibling(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_family_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_save_journal_fixture(root)
+            (project / "hub_scripts" / "plot.py").write_text(
+                "from pathlib import Path\n"
+                "from PIL import Image\n"
+                "Path('results/figures/fig_cvs_fits').mkdir(parents=True, exist_ok=True)\n"
+                "Image.new('RGB', (120, 60), 'white').save('results/figures/fig_cvs_fits/FigPI_CvS_Fits.png')\n"
+                "Image.new('RGB', (40, 40), 'white').save('results/figures/fig_cvs_fits/FigPTFE_CvS_Fits.png')\n",
+                encoding="utf-8",
+            )
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["figures"] = [
+                {
+                    "id": "FigPI_CvS_Fits",
+                    "script": "hub_scripts/plot.py",
+                    "inputs": ["results/data/summary.csv"],
+                    "output": "results/figures/fig_cvs_fits/FigPI_CvS_Fits.png",
+                },
+                {
+                    "id": "FigPTFE_CvS_Fits",
+                    "script": "hub_scripts/plot.py",
+                    "inputs": ["results/data/summary.csv"],
+                    "output": "results/figures/fig_cvs_fits/FigPTFE_CvS_Fits.png",
+                },
+            ]
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "FigPTFE_CvS_Fits", "job_id": "family-mismatch"},
+            )
+
+            self.assertEqual(result["status"], "warning")
+            metadata = result["figure_metadata"]
+            self.assertEqual(metadata["width_px"], 40)
+            self.assertEqual(metadata["height_px"], 40)
+            self.assertFalse(metadata["family_check"]["passed"])
+            self.assertEqual(metadata["family_check"]["family"], "CvS_Fits")
+            self.assertTrue(any("sibling" in warning for warning in metadata["family_check"]["warnings"]))
+            self.assertTrue(any("sibling" in warning for warning in result["warnings"]))
+
+    def test_project_render_family_check_uses_snapshot_artifacts_not_source_tree(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_family_snapshot_") as tmpdir:
+            from PIL import Image
+
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_save_journal_fixture(root)
+            source_figure_dir = project / "results" / "figures" / "fig_cvs_fits"
+            source_figure_dir.mkdir(parents=True, exist_ok=True)
+            Image.new("RGB", (500, 40), "white").save(source_figure_dir / "FigPI_CvS_Fits.png")
+            (project / "hub_scripts" / "plot.py").write_text(
+                "from pathlib import Path\n"
+                "from PIL import Image\n"
+                "Path('results/figures/fig_cvs_fits').mkdir(parents=True, exist_ok=True)\n"
+                "Image.new('RGB', (40, 40), 'white').save('results/figures/fig_cvs_fits/FigPI_CvS_Fits.png')\n"
+                "Image.new('RGB', (40, 40), 'white').save('results/figures/fig_cvs_fits/FigPTFE_CvS_Fits.png')\n",
+                encoding="utf-8",
+            )
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["figures"] = [
+                {
+                    "id": "FigPI_CvS_Fits",
+                    "script": "hub_scripts/plot.py",
+                    "inputs": ["results/data/summary.csv"],
+                    "output": "results/figures/fig_cvs_fits/FigPI_CvS_Fits.png",
+                },
+                {
+                    "id": "FigPTFE_CvS_Fits",
+                    "script": "hub_scripts/plot.py",
+                    "inputs": ["results/data/summary.csv"],
+                    "output": "results/figures/fig_cvs_fits/FigPTFE_CvS_Fits.png",
+                },
+            ]
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "FigPTFE_CvS_Fits", "job_id": "family-snapshot"},
+            )
+
+            metadata = result["figure_metadata"]
+            self.assertTrue(metadata["family_check"]["passed"])
+            self.assertEqual(metadata["family_check"]["siblings"][0]["width_px"], 40)
+            self.assertFalse(any("sibling" in warning for warning in result["warnings"]))
+
+    def test_project_render_family_check_does_not_group_unrelated_two_part_ids(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_family_false_positive_") as tmpdir:
+            from PIL import Image
+
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_save_journal_fixture(root)
+            (project / "hub_scripts" / "plot.py").write_text(
+                "from pathlib import Path\n"
+                "from PIL import Image\n"
+                "Path('results/figures').mkdir(parents=True, exist_ok=True)\n"
+                "Image.new('RGB', (120, 60), 'white').save('results/figures/Setup_A.png')\n"
+                "Image.new('RGB', (40, 40), 'white').save('results/figures/Result_A.png')\n",
+                encoding="utf-8",
+            )
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["figures"] = [
+                {
+                    "id": "Setup_A",
+                    "script": "hub_scripts/plot.py",
+                    "inputs": ["results/data/summary.csv"],
+                    "output": "results/figures/Setup_A.png",
+                },
+                {
+                    "id": "Result_A",
+                    "script": "hub_scripts/plot.py",
+                    "inputs": ["results/data/summary.csv"],
+                    "output": "results/figures/Result_A.png",
+                },
+            ]
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+            result = self._call(
+                server,
+                "graphhub.render_project_figure",
+                {"project_path": str(project), "figure_id": "Result_A", "job_id": "family-false-positive"},
+            )
+
+            self.assertTrue(result["figure_metadata"]["family_check"]["passed"])
+            self.assertEqual(result["figure_metadata"]["family_check"]["siblings"], [])
+
     def test_project_render_surfaces_artist_overlaps_in_visual_preflight_status(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
@@ -1988,6 +2271,8 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             properties = definitions[tool_name]["outputSchema"]["properties"]
             self.assertIn("geometry_diagnostics", properties)
             self.assertIn("layout_report", properties)
+            if tool_name == "graphhub.render_project_figure":
+                self.assertIn("figure_metadata", properties)
             geom_schema = properties["geometry_diagnostics"]
             self.assertEqual(set(geom_schema["required"]), {"schema_version", "passed", "checks", "warnings"})
             metric_enum = geom_schema["properties"]["checks"]["items"]["properties"]["name"]["enum"]

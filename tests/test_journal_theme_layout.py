@@ -13,6 +13,7 @@ from hub_core.scaffold import DEFAULT_DIAGRAM_PY, DEFAULT_PLOT_PY, DEFAULT_PROJE
 from hub_core.geometry_diagnostics import diagnose_figure_geometry
 from themes.journal_theme import (
     TIFF_AUTO_PRESETS,
+    _active_font_token_sizes,
     apply_journal_theme,
     apply_publication_layout,
     font_tokens,
@@ -102,10 +103,17 @@ class JournalThemeLayoutTest(unittest.TestCase):
     def test_font_tokens_apply_profile_font_overrides(self):
         tokens = font_tokens("nature_surfur", profile_name="resistance_premium")
 
-        self.assertEqual(tokens.label, 5.0)
+        self.assertEqual(tokens.tag, 8.5)
+        self.assertEqual(tokens.label, 7.5)
+        self.assertEqual(tokens.annot, 7.5)
         self.assertEqual(tokens.axis, 7.5)
         self.assertEqual(tokens.legend, 6.5)
         self.assertEqual(tokens.tick, 6.5)
+
+    def test_active_font_token_sizes_do_not_leak_default_font_size(self):
+        apply_journal_theme("ppt")
+
+        self.assertNotIn(10.0, _active_font_token_sizes())
 
     def test_apply_journal_theme_passes_active_tokens_to_diagnostics(self):
         apply_journal_theme("nature_surfur")
@@ -142,11 +150,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 fig,
                 [ax],
                 layout_locked=False,
-                font_token_sizes=[
-                    *font_tokens("nature_surfur").as_dict().values(),
-                    plt.rcParams["axes.labelsize"],
-                    plt.rcParams["legend.fontsize"],
-                ],
+                font_token_sizes=list(font_tokens("nature_surfur", profile_name="resistance_premium").as_dict().values()),
             )
             drift = next(check for check in result["checks"] if check["name"] == "font_size_token_drift")
             self.assertTrue(drift["passed"])
@@ -314,6 +318,43 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 c
                 for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"]
                 if c["name"] == "text_axis_edge_proximity"
+            )
+            self.assertTrue(check["passed"])
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_auto_declutter_nudges_text_off_line(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.plot([0.1, 0.9], [0.5, 0.5], linewidth=4.0)
+        text = ax.text(0.5, 0.5, "line label", ha="center", va="center")
+        try:
+            before = text.get_position()
+            with tempfile.TemporaryDirectory(prefix="journal_declutter_line_") as tmpdir:
+                save_journal_fig(fig, Path(tmpdir) / "declutter.png", auto_declutter=True, dpi=150)
+
+            self.assertNotEqual(before, text.get_position())
+            fig.canvas.draw()
+            check = next(
+                c for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"] if c["name"] == "artist_overlaps"
+            )
+            self.assertTrue(check["passed"])
+        finally:
+            plt.close(fig)
+
+    def test_save_journal_fig_auto_declutter_separates_coincident_text_labels(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        first = ax.text(0.5, 0.5, "A", ha="center", va="center")
+        second = ax.text(0.5, 0.5, "B", ha="center", va="center")
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_declutter_coincident_") as tmpdir:
+                save_journal_fig(fig, Path(tmpdir) / "declutter.png", auto_declutter=True, dpi=150)
+
+            self.assertNotEqual(first.get_position(), second.get_position())
+            fig.canvas.draw()
+            check = next(
+                c for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"] if c["name"] == "artist_overlaps"
             )
             self.assertTrue(check["passed"])
         finally:

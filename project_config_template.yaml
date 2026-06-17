@@ -119,6 +119,13 @@ figures:
     # expand: batch (default) | each (one plot per file)
     # When expand: each, output must contain {stem}: "results/figures/{stem}_plot.png"
     # preset: journal_svg           # reference a named preset
+    # layout_type: triplet          # optional: surfaced in MCP figure_metadata
+    # canonical:                   # optional: diagnostic-only MCP consistency warning
+    #   layout_type: triplet
+    #   width_px: 2796
+    #   height_px: 1338
+    #   dimension_tolerance_px: 8
+    #   match_family: "*_CvS_Fits"
 
 diagrams:
   - id: "DeviceCrossSection"

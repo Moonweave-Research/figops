@@ -7,9 +7,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 
-from hub_core.config_parser import validate_config
+from hub_core.config_parser import load_config, validate_config
 from hub_core.data_contract import (
     _read_data_safe,
     _validate_semantic_constraints,
@@ -234,6 +235,117 @@ class TestSemanticMonotonicContract(unittest.TestCase):
             }
 
             self.assertFalse(validate_data_contract(tmpdir, config))
+
+
+class TestSemanticRangeAndUniqueContracts(unittest.TestCase):
+    def test_range_violation_reports_non_range_index_rows(self):
+        df = pd.DataFrame({"value": [1, 8, 5]}, index=[10, 13, 14])
+
+        errors, row_violations = _validate_semantic_constraints(
+            df,
+            {"value": {"range": [0, 6]}},
+            {"value": "value"},
+        )
+
+        self.assertTrue(any("out of range" in error for error in errors))
+        self.assertEqual(row_violations[0]["row"], "13")
+        self.assertEqual(row_violations[0]["value"], "8")
+
+    def test_unique_violation_reports_non_range_index_rows(self):
+        df = pd.DataFrame({"sample": ["A", "B", "B"]}, index=["r0", "r1", "r2"])
+
+        errors, row_violations = _validate_semantic_constraints(
+            df,
+            {"sample": {"unique": True}},
+            {"sample": "sample"},
+        )
+
+        self.assertTrue(any("duplicate value" in error for error in errors))
+        self.assertEqual([item["row"] for item in row_violations], ["r1", "r2"])
+        self.assertEqual([item["value"] for item in row_violations], ["B", "B"])
+
+    def test_range_check_rejects_non_numeric_series_before_comparison(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_range_non_numeric_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text("temperature\n1.5\nerror\n", encoding="utf-8")
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["temperature"],
+                            "semantic_checks": {"temperature": {"range": [0, 100]}},
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_validate_config_rejects_reversed_range_bounds(self):
+        config = {
+            "project": {"name": "Range Demo"},
+            "visual_style": {"target_format": "nature"},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "results/data/summary.csv",
+                        "semantic_checks": {"temperature": {"range": [100, 0]}},
+                    }
+                ]
+            },
+        }
+
+        errors = validate_config(config)
+
+        self.assertTrue(any("range" in error and "<=" in error for error in errors))
+
+    def test_log_scale_positive_rejects_infinite_values(self):
+        df = pd.DataFrame({"mean": [1.0, np.inf]})
+        calculation_checks = []
+
+        errors, row_violations = _validate_semantic_constraints(
+            df,
+            {"mean": {"log_scale_positive": True}},
+            {"mean": "mean"},
+            calculation_checks=calculation_checks,
+            csv_rel_path="results/data/summary.csv",
+            source_config_path="project_config.yaml",
+        )
+
+        self.assertTrue(any("log scale" in error for error in errors))
+        self.assertEqual(row_violations[0]["value"], "inf")
+        self.assertEqual(calculation_checks[0]["status"], "failed")
+
+
+class TestConfigDuplicateKeys(unittest.TestCase):
+    def test_load_config_rejects_duplicate_yaml_keys(self):
+        with tempfile.TemporaryDirectory(prefix="config_dupe_") as tmpdir:
+            config_path = Path(tmpdir) / "project_config.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "project:",
+                        "  name: Duplicate Demo",
+                        "visual_style:",
+                        "  target_format: nature",
+                        "data_contract:",
+                        "  csv_checks:",
+                        "    - path: results/data/summary.csv",
+                        "      min_rows: 1",
+                        "      min_rows: 2",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            config, loaded_path, config_hash = load_config(tmpdir)
+
+            self.assertIsNone(config)
+            self.assertIsNone(loaded_path)
+            self.assertIsNone(config_hash)
 
 
 class TestGroupedCalculationChecks(unittest.TestCase):

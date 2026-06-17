@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 
-from hub_core.batch_reformat import patch_target_format
+from hub_core.batch_reformat import batch_reformat_figures, patch_target_format
 from hub_core.config_parser import ALLOWED_TARGET_FORMATS
 
 
@@ -56,3 +59,51 @@ class TestPatchTargetFormat:
         for fmt in ("acs", "rsc", "elsevier"):
             patched = patch_target_format(self._base_config(), fmt)
             assert patched["visual_style"]["target_format"] == fmt
+
+    def test_overrides_diagram_theme(self):
+        config = self._base_config()
+        config["diagrams"] = [
+            {"id": "D1", "script": "diagram.py", "output": "results/diagrams/D1.png", "theme": "nature"}
+        ]
+
+        patched = patch_target_format(config, "science")
+
+        assert patched["diagrams"][0]["theme"] == "science"
+
+
+def test_batch_reformat_rerenders_figures_and_diagrams(tmp_path):
+    project_dir = tmp_path / "project"
+    (project_dir / "results" / "figures").mkdir(parents=True)
+    (project_dir / "results" / "diagrams").mkdir(parents=True)
+    figure_output = project_dir / "results" / "figures" / "Fig1.png"
+    diagram_output = project_dir / "results" / "diagrams" / "Diagram1.png"
+
+    config = {
+        "visual_style": {"target_format": "nature"},
+        "figures": [{"id": "Fig1", "script": "plot.py", "output": "results/figures/Fig1.png", "theme": "nature"}],
+        "diagrams": [
+            {"id": "Diagram1", "script": "diagram.py", "output": "results/diagrams/Diagram1.png", "theme": "nature"}
+        ],
+    }
+
+    def fake_run_plots(*args, **kwargs):
+        figure_output.write_text("figure\n", encoding="utf-8")
+        return True
+
+    def fake_run_diagrams(*args, **kwargs):
+        diagram_output.write_text("diagram\n", encoding="utf-8")
+        return True
+
+    with (
+        patch("hub_core.cache_manager.load_build_state", return_value={}),
+        patch("hub_core.process_runner.run_plots", side_effect=fake_run_plots) as run_plots,
+        patch("hub_core.process_runner.run_diagrams", side_effect=fake_run_diagrams) as run_diagrams,
+    ):
+        result = batch_reformat_figures(str(project_dir), "science", config, hub_path=str(Path.cwd()))
+
+    assert result.success is True
+    assert result.figures_regenerated == 2
+    assert str(figure_output) in result.output_paths
+    assert str(diagram_output) in result.output_paths
+    run_plots.assert_called_once()
+    run_diagrams.assert_called_once()

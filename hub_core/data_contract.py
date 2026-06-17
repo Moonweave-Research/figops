@@ -390,9 +390,22 @@ def _validate_semantic_constraints(
         # 2. Range check
         val_range = constraints.get('range')
         if val_range and len(val_range) == 2:
+            try:
+                from pandas.api.types import is_numeric_dtype
+            except Exception:
+                is_numeric_dtype = None
             min_val, max_val = val_range
             if not (isinstance(min_val, (int, float)) and isinstance(max_val, (int, float))):
                 errors.append(f"Column '{col}': range bounds must be numeric, got {val_range}")
+                continue
+            if min_val > max_val:
+                errors.append(f"Column '{col}': range min must be <= max (got [{min_val}, {max_val}])")
+                continue
+            if is_numeric_dtype is not None and not is_numeric_dtype(series):
+                errors.append(
+                    f"Column '{col}': range target column must be numeric "
+                    "(possible locale/decimal parsing issue)"
+                )
                 continue
             mask = (series < min_val) | (series > max_val)
             if mask.any():
@@ -409,7 +422,7 @@ def _validate_semantic_constraints(
                     row_violations.append({
                         "row": str(idx),
                         "column": col,
-                        "value": str(series.iloc[idx]),
+                        "value": str(series.loc[idx]),
                         "expected": f"range [{min_val}, {max_val}]",
                         "violation_type": "out_of_range",
                     })
@@ -426,7 +439,7 @@ def _validate_semantic_constraints(
                 row_violations.append({
                     "row": str(idx),
                     "column": col,
-                    "value": str(series.iloc[idx]),
+                    "value": str(series.loc[idx]),
                     "expected": "unique",
                     "violation_type": "duplicate",
                 })
@@ -1008,7 +1021,8 @@ def _check_log_scale_positive_constraint(
         )
         return [message], []
 
-    mask = series.notna() & (series <= 0)
+    finite_mask = series.map(lambda value: math.isfinite(float(value)) if not _is_nullish(value) else True)
+    mask = series.notna() & (~finite_mask | (series <= 0))
     if not mask.any():
         _append_calculation_check(
             calculation_checks,
@@ -1025,18 +1039,18 @@ def _check_log_scale_positive_constraint(
         return [], []
 
     bad_rows = series[mask].index[:max_row_detail]
-    violations = [{"row": str(idx), "value": _json_safe_value(series.loc[idx]), "expected": "> 0"} for idx in bad_rows]
+    violations = [{"row": str(idx), "value": _json_safe_value(series.loc[idx]), "expected": "> 0 and finite"} for idx in bad_rows]
     row_violations = [
         {
             "row": str(idx),
             "column": col,
             "value": str(series.loc[idx]),
-            "expected": "> 0 for log scale",
+            "expected": "> 0 and finite for log scale",
             "violation_type": "log_scale_non_positive",
         }
         for idx in bad_rows
     ]
-    message = f"Column '{col}': {int(mask.sum())} non-positive value(s) invalid for log scale"
+    message = f"Column '{col}': {int(mask.sum())} non-positive or non-finite value(s) invalid for log scale"
     _append_calculation_check(
         calculation_checks,
         csv_rel_path=csv_rel_path,

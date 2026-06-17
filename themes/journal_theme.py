@@ -148,13 +148,17 @@ def font_tokens(target: str = "nature", font_scale: float = 1.0, profile_name=No
     if profile_name is None:
         return scaled
     profile_rc, _ = get_profile_rc_overrides(resolve_profile_name(profile_name))
+    resolved_axis = float(profile_rc.get("axes.labelsize", scaled.axis))
+    resolved_tick = float(profile_rc.get("xtick.labelsize", profile_rc.get("ytick.labelsize", scaled.tick)))
+    resolved_legend = float(profile_rc.get("legend.fontsize", scaled.legend))
+    resolved_tag = float(profile_rc.get("axes.titlesize", scaled.tag))
     return FontTokens(
-        tag=scaled.tag,
-        label=scaled.label,
-        annot=scaled.annot,
-        legend=float(profile_rc.get("legend.fontsize", scaled.legend)),
-        axis=float(profile_rc.get("axes.labelsize", scaled.axis)),
-        tick=float(profile_rc.get("xtick.labelsize", profile_rc.get("ytick.labelsize", scaled.tick))),
+        tag=resolved_tag,
+        label=resolved_axis,
+        annot=resolved_axis,
+        legend=resolved_legend,
+        axis=resolved_axis,
+        tick=resolved_tick,
     )
 
 
@@ -545,12 +549,7 @@ def _safe_geometry_diagnostics_inline(fig) -> dict:
 
 
 def _active_font_token_sizes() -> list[float]:
-    sizes = list(_ACTIVE_FONT_TOKENS.as_dict().values())
-    for key in ("font.size", "axes.labelsize", "legend.fontsize", "xtick.labelsize", "ytick.labelsize"):
-        value = plt.rcParams.get(key)
-        if isinstance(value, (int, float)):
-            sizes.append(float(value))
-    return sizes
+    return list(_ACTIVE_FONT_TOKENS.as_dict().values())
 
 
 def _env_truthy(name: str) -> bool:
@@ -572,6 +571,7 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
     axes = [axis for axis in fig.axes if axis.get_visible() and getattr(axis, "_graph_hub_role", None) != "colorbar"]
     moved = 0
     iterations = 0
+    residual_overlap_pairs = 0
     for iterations in range(1, max_iter + 1):
         fig.canvas.draw()
         renderer = fig.canvas.get_renderer()
@@ -651,11 +651,11 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
                     if inter is None or inter.width <= 0 or inter.height <= 0:
                         continue
                     if isinstance(artist_a, Text) and artist_a.get_transform() is ax.transData:
-                        dx, dy = _box_vector_away(box_a, box_b, step_px=step_px)
+                        dx, dy = _box_vector_away(box_a, box_b, step_px=step_px, seed=id(artist_a))
                         old_dx, old_dy = displacements.get(artist_a, (0.0, 0.0))
                         displacements[artist_a] = (old_dx + dx, old_dy + dy)
                     if isinstance(artist_b, Text) and artist_b.get_transform() is ax.transData:
-                        dx, dy = _box_vector_away(box_b, box_a, step_px=step_px)
+                        dx, dy = _box_vector_away(box_b, box_a, step_px=step_px, seed=id(artist_b))
                         old_dx, old_dy = displacements.get(artist_b, (0.0, 0.0))
                         displacements[artist_b] = (old_dx + dx, old_dy + dy)
             margin_px = 6.0
@@ -693,11 +693,24 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
                 changed = True
         if not changed:
             break
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    for ax in axes:
+        candidates = _artist_overlap_candidate_items(ax, renderer)
+        for index_a in range(len(candidates)):
+            _label_a, box_a, _artist_a = candidates[index_a]
+            for index_b in range(index_a + 1, len(candidates)):
+                _label_b, box_b, _artist_b = candidates[index_b]
+                inter = Bbox.intersection(box_a, box_b)
+                if inter is not None and inter.width > 0 and inter.height > 0:
+                    residual_overlap_pairs += 1
     return {
         "enabled": True,
         "applied": moved > 0,
         "iterations": int(iterations if moved else 0),
         "moved_text_artists": int(moved),
+        "converged": residual_overlap_pairs == 0,
+        "residual_overlap_pairs": int(residual_overlap_pairs),
     }
 
 
