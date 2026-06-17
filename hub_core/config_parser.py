@@ -318,7 +318,10 @@ def _load_project_metadata(config_path, fallback_name):
         metadata["errors"] = validate_config(conf_data)
         return metadata
 
-    metadata["name"] = conf_data.get("project", {}).get("name", fallback_name)
+    project_section = conf_data.get("project")
+    if not isinstance(project_section, dict):
+        project_section = {}
+    metadata["name"] = project_section.get("name", fallback_name)
     metadata["errors"] = validate_config(conf_data)
     metadata["valid"] = len(metadata["errors"]) == 0
     return metadata
@@ -593,8 +596,7 @@ def validate_config(config):
                             if not isinstance(monotonic_mode, str) or monotonic_mode not in ALLOWED_MONOTONIC_MODES:
                                 allowed = ", ".join(sorted(ALLOWED_MONOTONIC_MODES))
                                 errors.append(
-                                    f"Semantic monotonic for '{col}' must be one of: {allowed}. "
-                                    f"Got '{monotonic_mode}'."
+                                    f"Semantic monotonic for '{col}' must be one of: {allowed}. Got '{monotonic_mode}'."
                                 )
                         if "min_replicates" in constraints:
                             _validate_grouped_check_config(

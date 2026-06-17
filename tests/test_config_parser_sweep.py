@@ -1,12 +1,39 @@
 """Unit tests for parse_sweep_config(), _validate_sweep(), and targeted config validation."""
 
+import tempfile
 import unittest
+from pathlib import Path
 
-from hub_core.config_parser import _validate_sweep, parse_sweep_config, validate_config
+from hub_core.config_parser import (
+    _load_project_metadata,
+    _validate_sweep,
+    parse_sweep_config,
+    validate_config,
+)
+
+
+class TestLoadProjectMetadataNonDictProject(unittest.TestCase):
+    """Regression: a config whose `project` key is not a mapping must not crash discovery."""
+
+    def _metadata_for(self, config_text: str):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "project_config.yaml"
+            config_path.write_text(config_text, encoding="utf-8")
+            return _load_project_metadata(str(config_path), "fallback_name")
+
+    def test_string_project_key_does_not_raise_and_marks_invalid(self):
+        metadata = self._metadata_for('project: "just a string"\n')
+        self.assertEqual(metadata["name"], "fallback_name")
+        self.assertFalse(metadata["valid"])
+        self.assertTrue(metadata["errors"])
+
+    def test_list_project_key_does_not_raise(self):
+        metadata = self._metadata_for("project:\n  - a\n  - b\n")
+        self.assertEqual(metadata["name"], "fallback_name")
+        self.assertFalse(metadata["valid"])
 
 
 class TestParseSweepConfigValues(unittest.TestCase):
-
     def test_values_mode_produces_correct_run_count(self):
         sweep = {"enabled": True, "parameter": "lr", "values": [0.01, 0.001, 0.0001]}
         result = parse_sweep_config(sweep)
@@ -31,7 +58,6 @@ class TestParseSweepConfigValues(unittest.TestCase):
 
 
 class TestParseSweepConfigGrid(unittest.TestCase):
-
     def test_grid_mode_cartesian_product_count(self):
         sweep = {
             "enabled": True,
@@ -82,7 +108,6 @@ class TestParseSweepConfigGrid(unittest.TestCase):
 
 
 class TestValidateSweepMutualExclusion(unittest.TestCase):
-
     def test_values_and_grid_together_returns_error(self):
         sweep = {
             "enabled": True,
@@ -110,7 +135,6 @@ class TestValidateSweepMutualExclusion(unittest.TestCase):
 
 
 class TestValidateSweepMissingParameter(unittest.TestCase):
-
     def test_values_without_parameter_returns_error(self):
         sweep = {"enabled": True, "values": [0.1, 0.01, 0.001]}
         errors = _validate_sweep(sweep)
