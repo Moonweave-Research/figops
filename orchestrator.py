@@ -58,6 +58,8 @@ from hub_core import (
 )
 from hub_core.cache_manager import collect_signatures
 
+SUBPROCESS_TIMEOUT = 60  # seconds; guards athena health hook and draft bridge
+
 
 def run_athena_health_hook(root_dir: str, hub_path: str) -> None:
     health_script = os.path.join(root_dir, "scripts", "athena_health.py")
@@ -70,8 +72,12 @@ def run_athena_health_hook(root_dir: str, hub_path: str) -> None:
             text=True,
             cwd=hub_path,
             check=True,
+            timeout=SUBPROCESS_TIMEOUT,
         )
 
+    except subprocess.TimeoutExpired:
+        print("\n⚠️  Athena Health hook 시간 초과 (파이프라인 결과에는 영향 없음)")
+        return
     except subprocess.CalledProcessError as exc:
         print("\n⚠️  Athena Health hook 실행 실패 (파이프라인 결과에는 영향 없음)")
         stderr_preview = (exc.stderr or exc.stdout or "").strip()
@@ -753,6 +759,7 @@ def main():
                     capture_output=True,
                     text=True,
                     cwd=hub_path,
+                    timeout=SUBPROCESS_TIMEOUT,
                 )
                 if result.returncode == 0:
                     print("\n📋 Draft Bridge: manifest 업데이트 완료")
@@ -761,6 +768,8 @@ def main():
                     print("\n⚠️  Draft Bridge 실행 실패 (파이프라인 결과에는 영향 없음)")
                     if result.stderr:
                         print(f"   {result.stderr.strip()[:200]}")
+        except subprocess.TimeoutExpired:
+            print("\n⚠️  Draft Bridge 시간 초과 (파이프라인 결과에는 영향 없음)")
         except Exception as e:
             print(f"\n⚠️  Draft Bridge 오류: {e} (파이프라인 결과에는 영향 없음)")
 

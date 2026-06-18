@@ -383,8 +383,8 @@ def _run_visual_artifacts(
         try:
             script_full_path = _sanitize_script_path(script_full_path, project_dir)
         except ValueError as exc:
-            print(f"      ❌ {exc} — skipping {artifact_id}")
-            continue
+            print(f"      ❌ {exc}")
+            return False
         if not os.path.exists(script_full_path):
             print(f"      ❌ {run_label.capitalize()} script not found: {script_full_path}")
             return False

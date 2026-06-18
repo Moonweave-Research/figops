@@ -38,7 +38,7 @@ Plans or applies migration of an existing graph folder into the standard Hub str
 Inputs:
 
 - `project_path`
-- `plan_only`: default `true`
+- `dry_run`: default `true`
 - `move_policy`: `copy | move | symlink`
 - `include_raw`: default `false`
 - `overwrite`: default `false`
@@ -100,7 +100,7 @@ Manifest files:
 
 No-write tests:
 
-- `plan_only=true` does not change git status,
+- `dry_run=true` does not change git status,
 - plan mode does not create files,
 - plan mode does not touch raw data.
 

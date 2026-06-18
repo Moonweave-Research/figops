@@ -294,7 +294,7 @@ Arguments:
 The prompt must instruct the client to:
 
 1. call `graphhub.inspect_project`,
-2. call `graphhub.normalize_project_structure` with `plan_only=true`,
+2. call `graphhub.normalize_project_structure` with `dry_run=true`,
 3. show the manifest and preserve project style choices,
 4. apply only after user approval,
 5. call `graphhub.validate_project` after apply.
