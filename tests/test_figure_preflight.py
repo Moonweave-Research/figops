@@ -1,10 +1,12 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pytest  # noqa: E402
+from PIL import Image  # noqa: E402
 
 from hub_core.figure_preflight import validate_figure_preflight  # noqa: E402
 
@@ -62,10 +64,11 @@ def test_jpeg_format_fails_for_nature(tmp_path: Path):
 
 def test_pdf_skips_dpi_check(tmp_path: Path):
     pdf = tmp_path / "fig.pdf"
-    fig, ax = plt.subplots(figsize=(3.5, 2.8))
-    ax.plot([1, 2, 3])
-    fig.savefig(pdf, format="pdf")
-    plt.close(fig)
+    with plt.rc_context({"pdf.fonttype": 42}):
+        fig, ax = plt.subplots(figsize=(3.5, 2.8))
+        ax.plot([1, 2, 3])
+        fig.savefig(pdf, format="pdf")
+        plt.close(fig)
 
     result = validate_figure_preflight(pdf, "nature")
     assert result["passed"] is True
@@ -84,8 +87,11 @@ def test_pdf_font_check_warns_on_type3_fonts(tmp_path: Path):
 
     result = validate_figure_preflight(pdf, "nature")
 
-    assert result["passed"] is True
+    assert result["passed"] is False
     assert any("Type3" in warning for warning in result["warnings"])
+    font_check = next(c for c in result["checks"] if c["name"] == "font_settings")
+    assert font_check["passed"] is False
+    assert "Type3" in font_check["detail"]
 
 
 def test_pdf_font_check_accepts_truetype_fonts(tmp_path: Path):
@@ -102,3 +108,62 @@ def test_pdf_font_check_accepts_truetype_fonts(tmp_path: Path):
     assert not any("Type3" in warning for warning in result["warnings"])
     font_check = next(c for c in result["checks"] if c["name"] == "font_settings")
     assert "No Type3" in font_check["detail"]
+
+
+def test_over_width_raster_fails(tmp_path: Path):
+    png = tmp_path / "fig_wide.png"
+    # nature max width is 183mm; at 600 DPI that is ~4322px. Exceed it.
+    img = Image.new("RGB", (5000, 1000), color="white")
+    img.save(png, format="png", dpi=(600, 600))
+
+    result = validate_figure_preflight(png, "nature")
+    assert result["passed"] is False
+    dims_check = next(c for c in result["checks"] if c["name"] == "dimensions")
+    assert dims_check["passed"] is False
+    assert any("exceeds journal max" in warning for warning in result["warnings"])
+
+
+def test_cmyk_raster_fails(tmp_path: Path):
+    tiff = tmp_path / "fig_cmyk.tiff"
+    img = Image.new("CMYK", (800, 600), color=(0, 0, 0, 0))
+    img.save(tiff, format="tiff", dpi=(600, 600))
+
+    result = validate_figure_preflight(tiff, "nature")
+    assert result["passed"] is False
+    color_check = next(c for c in result["checks"] if c["name"] == "color_mode")
+    assert color_check["passed"] is False
+    assert color_check["detail"] == "Mode: CMYK"
+
+
+def test_oversized_raster_file_size_warns_not_fails(tmp_path: Path):
+    png = tmp_path / "fig_tiny.png"
+    # 2x2 RGB -> expected_bytes = 2*2*3/3*1.5 = 6 bytes; any real PNG far exceeds this.
+    img = Image.new("RGB", (2, 2), color="white")
+    img.save(png, format="png", dpi=(600, 600))
+    assert png.stat().st_size > 6
+
+    result = validate_figure_preflight(png, "nature")
+    size_check = next(c for c in result["checks"] if c["name"] == "file_size")
+    # Dense/photographic rasters can legitimately exceed the 0.5x raw bound,
+    # so this is a warning, not a hard gate.
+    assert size_check["passed"] is True
+    assert any("exceeds expected" in warning for warning in result["warnings"])
+
+
+def test_oversized_vector_file_size_fails(tmp_path: Path):
+    pdf = tmp_path / "fig.pdf"
+    with plt.rc_context({"pdf.fonttype": 42}):
+        _save_dummy_figure(pdf, fmt="pdf")
+
+    class _BigStat:
+        st_size = 51 * 1024 * 1024
+
+    def fake_stat(self, *args, **kwargs):
+        return _BigStat()
+
+    with patch.object(Path, "stat", fake_stat):
+        result = validate_figure_preflight(pdf, "nature")
+
+    size_check = next(c for c in result["checks"] if c["name"] == "file_size")
+    assert size_check["passed"] is False
+    assert any("exceeds 50MB limit" in warning for warning in result["warnings"])

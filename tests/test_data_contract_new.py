@@ -12,6 +12,7 @@ import pandas as pd
 
 from hub_core.config_parser import load_config, validate_config
 from hub_core.data_contract import (
+    _dtype_matches,
     _read_data_safe,
     _validate_semantic_constraints,
     validate_data_contract,
@@ -124,15 +125,13 @@ class TestReadDataSafe(unittest.TestCase):
         self.assertFalse(result)
 
     # ------------------------------------------------------------------
-    # 4. .hdf5 with missing key -> fallback to first available key
+    # 4. .hdf5 with missing key -> raise (no silent fallback to a different dataset)
     # ------------------------------------------------------------------
-    def test_hdf5_missing_key_falls_back_to_first_key(self):
-        fallback_df = pd.DataFrame({"a": [1, 2, 3]})
-
+    def test_hdf5_missing_key_raises_instead_of_silent_fallback(self):
         mock_h5py_file = MagicMock()
         mock_h5py_file.__enter__ = lambda s: s
         mock_h5py_file.__exit__ = MagicMock(return_value=False)
-        mock_h5py_file.keys.return_value = iter(["first_key"])
+        mock_h5py_file.keys.return_value = ["first_key"]
 
         mock_h5py = MagicMock()
         mock_h5py.File.return_value = mock_h5py_file
@@ -145,7 +144,7 @@ class TestReadDataSafe(unittest.TestCase):
             read_hdf_calls.append((path, key))
             if key == "/data":
                 raise KeyError("/data")
-            return fallback_df
+            return pd.DataFrame({"a": [1, 2, 3]})
 
         with (
             patch.dict(sys.modules, {"h5py": mock_h5py, "tables": mock_tables}),
@@ -155,11 +154,51 @@ class TestReadDataSafe(unittest.TestCase):
                 hdf_file = Path(tmpdir) / "data.hdf5"
                 hdf_file.write_bytes(b"")
 
-                result = _read_data_safe(str(hdf_file), pd, hdf_key="/data")
+                with self.assertRaises(KeyError) as ctx:
+                    _read_data_safe(str(hdf_file), pd, hdf_key="/data")
 
-        self.assertEqual(len(read_hdf_calls), 2)
-        self.assertEqual(read_hdf_calls[1][1], "first_key")
-        self.assertIs(result, fallback_df)
+        # Only the requested key was attempted; no silent read of a different dataset.
+        self.assertEqual(read_hdf_calls, [(str(hdf_file), "/data")])
+        message = str(ctx.exception)
+        self.assertIn("/data", message)
+        self.assertIn("/first_key", message)
+
+
+class TestDtypeMatches(unittest.TestCase):
+    def test_supported_aliases_match_their_series(self):
+        cases = [
+            ("int", pd.Series([1, 2, 3])),
+            ("integer", pd.Series([1, 2, 3])),
+            ("int64", pd.Series([1, 2, 3])),
+            ("int32", pd.Series(np.array([1, 2, 3], dtype="int32"))),
+            ("float", pd.Series([1.0, 2.0])),
+            ("float64", pd.Series([1.0, 2.0])),
+            ("float32", pd.Series(np.array([1.0, 2.0], dtype="float32"))),
+            ("number", pd.Series([1, 2.0])),
+            ("numeric", pd.Series([1, 2.0])),
+            ("str", pd.Series(["a", "b"])),
+            ("string", pd.Series(["a", "b"])),
+            ("object", pd.Series(["a", "b"])),
+            ("bool", pd.Series([True, False])),
+            ("boolean", pd.Series([True, False])),
+            ("datetime", pd.Series(pd.to_datetime(["2020-01-01", "2020-01-02"]))),
+            ("datetime64", pd.Series(pd.to_datetime(["2020-01-01", "2020-01-02"]))),
+        ]
+        for alias, series in cases:
+            with self.subTest(alias=alias):
+                self.assertTrue(_dtype_matches(series, alias, pd))
+
+    def test_unknown_alias_raises_value_error(self):
+        with self.assertRaises(ValueError) as ctx:
+            _dtype_matches(pd.Series([1, 2, 3]), "timestamp", pd)
+        self.assertIn("unknown dtype alias", str(ctx.exception))
+        self.assertIn("timestamp", str(ctx.exception))
+
+    def test_typo_alias_raises_value_error(self):
+        with self.assertRaises(ValueError) as ctx:
+            _dtype_matches(pd.Series([1.0, 2.0]), "flaot", pd)
+        self.assertIn("unknown dtype alias", str(ctx.exception))
+        self.assertIn("flaot", str(ctx.exception))
 
 
 class TestSemanticMonotonicContract(unittest.TestCase):

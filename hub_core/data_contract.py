@@ -101,21 +101,22 @@ def _read_data_safe(data_path, pd, hdf_key: str = "/data"):
         try:
             return pd.read_hdf(data_path, key=hdf_key)
         except KeyError:
-            # hdf_key 미존재 시 첫 번째 키로 재시도
+            # Do NOT silently fall back to a different dataset: rendering the wrong
+            # data with no signal is worse than failing. Report the available keys.
             import h5py
 
             with h5py.File(data_path, "r") as hf:
-                first_key = next(iter(hf.keys()), None)
-            if first_key is None:
+                available_keys = list(hf.keys())
+            if not available_keys:
                 raise KeyError(f"HDF5 file has no datasets: {data_path}")
             from pathlib import Path
 
-            print(
-                f"      ⚠️  HDF5 key '{hdf_key}' not found in {Path(data_path).name}"
-                f" — using first available key '/{first_key}'."
-                " Verify this is the correct dataset."
+            available = ", ".join(f"/{key}" for key in available_keys)
+            raise KeyError(
+                f"HDF5 key '{hdf_key}' not found in {Path(data_path).name}. "
+                f"Available keys: {available}. Set the correct key explicitly "
+                "instead of relying on a fallback (the wrong dataset would render silently)."
             )
-            return pd.read_hdf(data_path, key=first_key)
 
     if suffix == ".feather":
         try:
@@ -148,8 +149,12 @@ def _dtype_matches(series, expected, pd):
     if exp in {"datetime", "datetime64"}:
         return pd.api.types.is_datetime64_any_dtype(series)
 
-    # Unknown alias: strict compare with dtype name
-    return str(series.dtype).lower() == exp
+    # Unknown alias is a config error, not a silently-failing dtype check.
+    raise ValueError(
+        f"unknown dtype alias: '{expected}'. Supported aliases: "
+        "int/integer/int64/int32, float/float64/float32, number/numeric, "
+        "str/string/object, bool/boolean, datetime/datetime64."
+    )
 
 
 def get_data_contract_paths(config):
@@ -283,7 +288,12 @@ def validate_data_contract(project_dir, config):
             if actual_col is None:
                 print(f"      ❌ Dtype check failed: column '{col}' not found.")
                 return False
-            if not _dtype_matches(df[actual_col], expected, pd):
+            try:
+                dtype_ok = _dtype_matches(df[actual_col], expected, pd)
+            except ValueError as e:
+                print(f"      ❌ Dtype check failed for '{col}': {e}")
+                return False
+            if not dtype_ok:
                 print(f"      ❌ Dtype mismatch for '{col}': expected '{expected}', got '{df[actual_col].dtype}'.")
                 return False
 

@@ -39,10 +39,7 @@ def validate_figure_preflight(
 
     spec = JOURNAL_SPECS.get(target_journal.lower())
     if spec is None:
-        raise ValueError(
-            f"Unknown journal '{target_journal}'. "
-            f"Supported: {', '.join(sorted(JOURNAL_SPECS))}"
-        )
+        raise ValueError(f"Unknown journal '{target_journal}'. Supported: {', '.join(sorted(JOURNAL_SPECS))}")
 
     suffix = figure_path.suffix.lower()
     is_raster = suffix in _RASTER_EXTENSIONS
@@ -57,23 +54,29 @@ def validate_figure_preflight(
     if fmt_ext in ("tif",):
         fmt_ext = "tiff"
     if fmt_ext in ("jpg", "jpeg"):
-        checks.append({
-            "name": "format",
-            "passed": False,
-            "detail": f"JPEG format not accepted for scientific figures ({target_journal})",
-        })
+        checks.append(
+            {
+                "name": "format",
+                "passed": False,
+                "detail": f"JPEG format not accepted for scientific figures ({target_journal})",
+            }
+        )
     elif fmt_ext not in accepted:
-        checks.append({
-            "name": "format",
-            "passed": False,
-            "detail": f"'.{fmt_ext}' not in accepted formats: {sorted(accepted)}",
-        })
+        checks.append(
+            {
+                "name": "format",
+                "passed": False,
+                "detail": f"'.{fmt_ext}' not in accepted formats: {sorted(accepted)}",
+            }
+        )
     else:
-        checks.append({
-            "name": "format",
-            "passed": True,
-            "detail": f"'.{fmt_ext}' accepted by {target_journal}",
-        })
+        checks.append(
+            {
+                "name": "format",
+                "passed": True,
+                "detail": f"'.{fmt_ext}' accepted by {target_journal}",
+            }
+        )
 
     # Open image for raster checks
     img: Image.Image | None = None
@@ -87,28 +90,34 @@ def validate_figure_preflight(
     # 2. DPI check (raster only)
     if is_raster:
         if dpi_tuple is None:
-            checks.append({
-                "name": "dpi",
-                "passed": True,
-                "detail": "DPI metadata not found (skipped)",
-            })
+            checks.append(
+                {
+                    "name": "dpi",
+                    "passed": True,
+                    "detail": "DPI metadata not found (skipped)",
+                }
+            )
             warnings.append("DPI metadata not found")
         else:
             min_observed = min(dpi_tuple)
             min_required = spec["min_dpi"]
             # Allow 1 DPI tolerance for floating-point rounding (e.g., 599.999 ≈ 600)
             dpi_pass = min_observed >= min_required - 1
-            checks.append({
-                "name": "dpi",
-                "passed": dpi_pass,
-                "detail": f"{dpi_tuple[0]:.0f}x{dpi_tuple[1]:.0f} DPI (min: {min_required})",
-            })
+            checks.append(
+                {
+                    "name": "dpi",
+                    "passed": dpi_pass,
+                    "detail": f"{dpi_tuple[0]:.0f}x{dpi_tuple[1]:.0f} DPI (min: {min_required})",
+                }
+            )
     else:
-        checks.append({
-            "name": "dpi",
-            "passed": True,
-            "detail": "Vector format — DPI check skipped",
-        })
+        checks.append(
+            {
+                "name": "dpi",
+                "passed": True,
+                "detail": "Vector format — DPI check skipped",
+            }
+        )
 
     # 3. Dimensions check (raster only)
     if is_raster and img is not None:
@@ -117,27 +126,32 @@ def validate_figure_preflight(
             width_mm = width_px / dpi_tuple[0] * 25.4
             height_mm = height_px / dpi_tuple[1] * 25.4
             max_w = spec["max_width_mm"]
-            if width_mm > max_w:
-                warnings.append(
-                    f"Width {width_mm:.1f}mm exceeds journal max {max_w}mm"
-                )
-            checks.append({
-                "name": "dimensions",
-                "passed": True,
-                "detail": f"{width_mm:.1f}mm x {height_mm:.1f}mm (max width: {max_w}mm)",
-            })
+            dims_pass = width_mm <= max_w
+            if not dims_pass:
+                warnings.append(f"Width {width_mm:.1f}mm exceeds journal max {max_w}mm")
+            checks.append(
+                {
+                    "name": "dimensions",
+                    "passed": dims_pass,
+                    "detail": f"{width_mm:.1f}mm x {height_mm:.1f}mm (max width: {max_w}mm)",
+                }
+            )
         else:
-            checks.append({
+            checks.append(
+                {
+                    "name": "dimensions",
+                    "passed": True,
+                    "detail": f"{width_px}x{height_px} px (DPI unknown, mm conversion skipped)",
+                }
+            )
+    else:
+        checks.append(
+            {
                 "name": "dimensions",
                 "passed": True,
-                "detail": f"{width_px}x{height_px} px (DPI unknown, mm conversion skipped)",
-            })
-    else:
-        checks.append({
-            "name": "dimensions",
-            "passed": True,
-            "detail": "Vector format — dimension check skipped",
-        })
+                "detail": "Vector format — dimension check skipped",
+            }
+        )
 
     # 4. Font settings check
     # For existing artifacts, parent-process matplotlib rcParams are not evidence:
@@ -147,37 +161,47 @@ def validate_figure_preflight(
         try:
             pdf_bytes = figure_path.read_bytes()
         except OSError as exc:
-            checks.append({
-                "name": "font_settings",
-                "passed": False,
-                "detail": f"PDF font check failed: {exc}",
-            })
+            checks.append(
+                {
+                    "name": "font_settings",
+                    "passed": False,
+                    "detail": f"PDF font check failed: {exc}",
+                }
+            )
         else:
             if b"/Subtype /Type3" in pdf_bytes or b"/Subtype/Type3" in pdf_bytes:
                 warnings.append("PDF contains Type3 fonts; use pdf.fonttype=42 for embedded TrueType fonts")
-                checks.append({
-                    "name": "font_settings",
-                    "passed": True,
-                    "detail": "Type3 fonts detected",
-                })
+                checks.append(
+                    {
+                        "name": "font_settings",
+                        "passed": False,
+                        "detail": "Type3 fonts detected",
+                    }
+                )
             else:
-                checks.append({
-                    "name": "font_settings",
-                    "passed": True,
-                    "detail": "No Type3 PDF fonts detected",
-                })
+                checks.append(
+                    {
+                        "name": "font_settings",
+                        "passed": True,
+                        "detail": "No Type3 PDF fonts detected",
+                    }
+                )
     elif is_vector:
-        checks.append({
-            "name": "font_settings",
-            "passed": True,
-            "detail": "Font embedding check skipped for non-PDF vector format",
-        })
+        checks.append(
+            {
+                "name": "font_settings",
+                "passed": True,
+                "detail": "Font embedding check skipped for non-PDF vector format",
+            }
+        )
     else:
-        checks.append({
-            "name": "font_settings",
-            "passed": True,
-            "detail": "Font embedding check skipped for raster format",
-        })
+        checks.append(
+            {
+                "name": "font_settings",
+                "passed": True,
+                "detail": "Font embedding check skipped for raster format",
+            }
+        )
 
     # 5. File size check
     file_bytes = figure_path.stat().st_size
@@ -185,51 +209,60 @@ def validate_figure_preflight(
         width_px, height_px = img.size
         channels = len(img.getbands())
         expected_bytes = width_px * height_px * channels / 3 * 1.5
+        # Dense/photographic rasters (e.g. SEM insets) can legitimately exceed
+        # 0.5x raw-uncompressed size, so this is a warning, not a hard gate.
         if file_bytes > expected_bytes:
             file_mb = file_bytes / (1024 * 1024)
             expected_mb = expected_bytes / (1024 * 1024)
-            warnings.append(
-                f"File size {file_mb:.1f}MB exceeds expected {expected_mb:.1f}MB"
-            )
-        checks.append({
-            "name": "file_size",
-            "passed": True,
-            "detail": f"{file_bytes / (1024 * 1024):.1f}MB (raster)",
-        })
+            warnings.append(f"File size {file_mb:.1f}MB exceeds expected {expected_mb:.1f}MB")
+        checks.append(
+            {
+                "name": "file_size",
+                "passed": True,
+                "detail": f"{file_bytes / (1024 * 1024):.1f}MB (raster)",
+            }
+        )
     elif is_vector:
         size_pass = file_bytes <= _VECTOR_MAX_BYTES
         if not size_pass:
-            warnings.append(
-                f"File size {file_bytes / (1024 * 1024):.1f}MB exceeds 50MB limit"
-            )
-        checks.append({
-            "name": "file_size",
-            "passed": True,
-            "detail": f"{file_bytes / (1024 * 1024):.1f}MB (vector, limit: 50MB)",
-        })
+            warnings.append(f"File size {file_bytes / (1024 * 1024):.1f}MB exceeds 50MB limit")
+        checks.append(
+            {
+                "name": "file_size",
+                "passed": size_pass,
+                "detail": f"{file_bytes / (1024 * 1024):.1f}MB (vector, limit: 50MB)",
+            }
+        )
     else:
-        checks.append({
-            "name": "file_size",
-            "passed": True,
-            "detail": f"{file_bytes / (1024 * 1024):.1f}MB",
-        })
+        checks.append(
+            {
+                "name": "file_size",
+                "passed": True,
+                "detail": f"{file_bytes / (1024 * 1024):.1f}MB",
+            }
+        )
 
     # 6. Color mode check (raster only)
     if is_raster and img is not None:
         mode = img.mode
-        if mode == "CMYK":
+        color_pass = mode != "CMYK"
+        if not color_pass:
             warnings.append("CMYK detected; most submission systems expect RGB")
-        checks.append({
-            "name": "color_mode",
-            "passed": True,
-            "detail": f"Mode: {mode}",
-        })
+        checks.append(
+            {
+                "name": "color_mode",
+                "passed": color_pass,
+                "detail": f"Mode: {mode}",
+            }
+        )
     else:
-        checks.append({
-            "name": "color_mode",
-            "passed": True,
-            "detail": "Vector format — color mode check skipped",
-        })
+        checks.append(
+            {
+                "name": "color_mode",
+                "passed": True,
+                "detail": "Vector format — color mode check skipped",
+            }
+        )
 
     passed = all(c["passed"] for c in checks)
 
