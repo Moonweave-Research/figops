@@ -806,6 +806,39 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(response["id"], 4)
         self.assertEqual(response["result"]["tools"][0]["name"], "graphhub.health")
 
+    def test_stdio_handler_stdout_does_not_leak_into_the_wire(self):
+        import contextlib
+        import io
+
+        server = GraphHubMCPServer()
+        original_call_tool = server.call_tool
+
+        def printing_call_tool(*args, **kwargs):
+            print("POISON_WIRE")  # a stray handler print must not reach fd1
+            return original_call_tool(*args, **kwargs)
+
+        request = {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {"name": "graphhub.health", "arguments": {}},
+        }
+        body = json.dumps(request).encode("utf-8")
+        input_stream = BytesIO(b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
+        output_stream = BytesIO()
+        process_stdout = io.StringIO()
+
+        with unittest.mock.patch.object(server, "call_tool", side_effect=printing_call_tool):
+            with contextlib.redirect_stdout(process_stdout):
+                rc = run_stdio_server(server, input_stream=input_stream, output_stream=output_stream)
+
+        self.assertEqual(rc, 0)
+        # The handler's print went to stderr, not the process stdout / framed response.
+        self.assertNotIn("POISON_WIRE", process_stdout.getvalue())
+        self.assertNotIn(b"POISON_WIRE", output_stream.getvalue())
+        _, payload = output_stream.getvalue().split(b"\r\n\r\n", 1)
+        self.assertEqual(json.loads(payload.decode("utf-8"))["id"], 7)
+
     def test_stdio_server_mirrors_newline_delimited_messages(self):
         request = {"jsonrpc": "2.0", "id": 5, "method": "tools/list"}
         input_stream = BytesIO(json.dumps(request).encode("utf-8") + b"\n")
