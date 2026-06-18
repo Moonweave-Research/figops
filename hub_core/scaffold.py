@@ -3,25 +3,58 @@ from pathlib import Path
 
 DEFAULT_CONFIG_TEMPLATE = "project_config_template.yaml"
 
+DEFAULT_RAW_CSV = """time,value,molarity
+0.0,1.0,0.1
+1.0,1.4,0.1
+2.0,1.9,0.2
+"""
+
 DEFAULT_ANALYZE_R = """suppressPackageStartupMessages({
   library(readr)
   library(dplyr)
 })
 
-raw_dir <- file.path(getwd(), "data", "raw")
 output_dir <- file.path(getwd(), "results", "data")
 output_path <- file.path(output_dir, "summary.csv")
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-csv_files <- list.files(raw_dir, pattern = "\\\\.csv$", full.names = TRUE)
+input_env <- Sys.getenv("GRAPH_HUB_INPUTS", unset = "")
+input_entries <- character()
+if (nzchar(input_env)) {
+  input_entries <- strsplit(input_env, .Platform$path.sep, fixed = TRUE)[[1]]
+  input_entries <- trimws(input_entries)
+  input_entries <- input_entries[nzchar(input_entries)]
+}
+
+csv_files <- character()
+if (length(input_entries) > 0) {
+  for (entry in input_entries) {
+    if (dir.exists(entry)) {
+      csv_files <- c(csv_files, list.files(entry, pattern = "\\\\.csv$", full.names = TRUE, recursive = TRUE))
+    } else if (file.exists(entry) && grepl("\\\\.csv$", entry, ignore.case = TRUE)) {
+      csv_files <- c(csv_files, entry)
+    }
+  }
+} else {
+  raw_dir <- file.path(getwd(), "raw")
+  if (dir.exists(raw_dir)) {
+    csv_files <- list.files(raw_dir, pattern = "\\\\.csv$", full.names = TRUE, recursive = TRUE)
+  }
+}
+csv_files <- unique(csv_files)
 
 if (length(csv_files) == 0) {
-  summary_df <- tibble(
-    time = c(0.0, 1.0, 2.0),
-    value = c(0.0, 0.0, 0.0),
-    molarity = c(0.0, 0.0, 0.0)
-  )
+  if (identical(Sys.getenv("GRAPH_HUB_ALLOW_EMPTY_ANALYSIS", unset = ""), "1")) {
+    warning("GRAPH_HUB_ALLOW_EMPTY_ANALYSIS=1 set; writing empty bootstrap scaffold data.")
+    summary_df <- tibble(
+      time = c(0.0, 1.0, 2.0),
+      value = c(0.0, 0.0, 0.0),
+      molarity = c(0.0, 0.0, 0.0)
+    )
+  } else {
+    stop("No analysis input CSV found. Set GRAPH_HUB_INPUTS or place CSV files under raw/.")
+  }
 } else {
   first_csv <- csv_files[[1]]
   summary_df <- read_csv(first_csv, show_col_types = FALSE)
@@ -97,7 +130,14 @@ if not hub_path:
 if hub_path not in sys.path:
     sys.path.insert(0, hub_path)
 
-from themes.journal_theme import apply_journal_theme, font_tokens, get_figsize, panel_label, SINGLE_COLUMN, save_journal_fig
+from themes.journal_theme import (
+    SINGLE_COLUMN,
+    apply_journal_theme,
+    font_tokens,
+    get_figsize,
+    panel_label,
+    save_journal_fig,
+)
 
 
 def main():
@@ -211,7 +251,7 @@ def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
     _ensure_dir(project_path, created_paths)
 
     required_dirs = [
-        project_path / "data" / "raw",
+        project_path / "raw",
         project_path / "results" / "data",
         project_path / "results" / "figures",
         project_path / "hub_scripts",
@@ -221,6 +261,7 @@ def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
         _ensure_dir(path, created_paths)
 
     _write_text(config_path, config_text)
+    _write_text(project_path / "raw" / "example_input.csv", DEFAULT_RAW_CSV)
     _write_text(project_path / "hub_scripts" / "analyze.R", DEFAULT_ANALYZE_R)
     _write_text(project_path / "hub_scripts" / "project_context.py", DEFAULT_PROJECT_CONTEXT_PY)
     _write_text(project_path / "hub_scripts" / "plot.py", DEFAULT_PLOT_PY)
@@ -233,6 +274,7 @@ def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
         "created_dirs": [str(path) for path in created_paths],
         "created_files": [
             str(config_path),
+            str(project_path / "raw" / "example_input.csv"),
             str(project_path / "hub_scripts" / "analyze.R"),
             str(project_path / "hub_scripts" / "project_context.py"),
             str(project_path / "hub_scripts" / "plot.py"),
@@ -244,17 +286,20 @@ def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
 
 def scaffold_wizard(hub_path):
     """대화형 위저드를 통해 프로젝트를 생성합니다."""
-    from .ui_utils import ui_prompt, ui_confirm, ui_panel, ui_print
+    from .ui_utils import ui_confirm, ui_panel, ui_print, ui_prompt
     from .utils import get_research_root
-    
+
     ui_panel("🏛️ [bold]Research Project Scaffolding Wizard[/bold]\nNew project configuration made easy.", title="Wizard")
-    
+
     project_name = ui_prompt("Enter Project Name", default="New Research Project")
-    folder_name = ui_prompt("Enter Target Directory Name (relative to research root)", default=project_name.replace(" ", "_").lower())
-    
+    folder_name = ui_prompt(
+        "Enter Target Directory Name (relative to research root)",
+        default=project_name.replace(" ", "_").lower(),
+    )
+
     research_root = get_research_root()
     target_dir = os.path.join(research_root, folder_name)
-    
+
     if os.path.exists(target_dir):
         if not ui_confirm(f"Directory '{folder_name}' already exists. Overwrite?"):
             ui_print("[yellow]Aborted.[/yellow]")
@@ -263,21 +308,21 @@ def scaffold_wizard(hub_path):
     # YAML 구성 자동화
     target_format = ui_prompt("Journal Target Format (nature/nature_surfur/science/ppt)", default="nature")
     font_scale = ui_prompt("Font Scale", default="1.0")
-    
+
     res = scaffold_project(target_dir, hub_path, project_name=project_name, overwrite=True)
-    
+
     # 생성된 config 수정
     import yaml
     with open(res["config_path"], 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
-    
+
     config['project']['name'] = project_name
     config['visual_style']['target_format'] = target_format
     config['visual_style']['font_scale'] = float(font_scale)
-    
+
     with open(res["config_path"], 'w', encoding='utf-8') as f:
         yaml.safe_dump(config, f, sort_keys=False, allow_unicode=True)
-        
+
     ui_print(f"\n✅ [bold green]Project '{project_name}' successfully initialized![/bold green]")
     ui_print(f"   Location: {target_dir}")
     return res

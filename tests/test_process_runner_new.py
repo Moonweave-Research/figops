@@ -1,13 +1,16 @@
 """Unit tests for _build_r_cmd and run_sweep in hub_core.process_runner."""
 
+import csv
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import hub_core.process_runner as pr
-from hub_core.process_runner import _build_r_cmd, run_comparison, run_plots, run_sweep
+from hub_core.process_runner import _build_r_cmd, run_analysis, run_comparison, run_plots, run_sweep
+from hub_core.scaffold import DEFAULT_ANALYZE_R, scaffold_project
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
 
@@ -88,6 +91,89 @@ class TestRunCommandRuntimeEnv(unittest.TestCase):
         )
         self.assertNotEqual(captured["env"]["UV_PROJECT_ENVIRONMENT"], str(HUB_ROOT / ".venv"))
         self.assertEqual(captured["env"]["UV_CACHE_DIR"], str(Path(runtime_root) / "uv_cache"))
+
+
+class TestScaffoldRAnalysisInputContract(unittest.TestCase):
+    def _skip_without_rscript(self):
+        if shutil.which("Rscript") is None:
+            self.skipTest("Rscript is not installed")
+
+    def _write_scaffold_analysis_project(self, project_dir: Path) -> dict:
+        script_path = project_dir / "hub_scripts" / "analyze.R"
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path.write_text(DEFAULT_ANALYZE_R, encoding="utf-8")
+        return {
+            "project": {"name": "scaffold_r_contract"},
+            "environment": {"r_strict": False},
+            "pipeline": {
+                "analysis": [
+                    {
+                        "script": "hub_scripts/analyze.R",
+                        "lang": "r",
+                        "inputs": ["raw/"],
+                        "outputs": ["results/data/summary.csv"],
+                    }
+                ]
+            },
+            "data_contract": {},
+        }
+
+    def test_scaffold_r_analysis_reads_real_data_from_normalized_raw_dir(self):
+        self._skip_without_rscript()
+
+        with tempfile.TemporaryDirectory(prefix="graph_hub_r_inputs_") as tmpdir:
+            project_dir = Path(tmpdir)
+            raw_dir = project_dir / "raw"
+            raw_dir.mkdir()
+            (raw_dir / "measurement.csv").write_text(
+                "time,value,molarity\n0,7.5,0.2\n1,8.5,0.3\n",
+                encoding="utf-8",
+            )
+            config = self._write_scaffold_analysis_project(project_dir)
+
+            result = run_analysis(
+                str(project_dir),
+                config,
+                {},
+                str(project_dir / ".build_state.json"),
+                "config-hash",
+                force=True,
+            )
+
+            self.assertTrue(result)
+            with (project_dir / "results" / "data" / "summary.csv").open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual([row["value"] for row in rows], ["7.5", "8.5"])
+
+    def test_scaffold_r_analysis_fails_when_no_input_csv_exists(self):
+        self._skip_without_rscript()
+
+        with tempfile.TemporaryDirectory(prefix="graph_hub_r_no_inputs_") as tmpdir:
+            project_dir = Path(tmpdir)
+            (project_dir / "raw").mkdir()
+            config = self._write_scaffold_analysis_project(project_dir)
+
+            result = run_analysis(
+                str(project_dir),
+                config,
+                {},
+                str(project_dir / ".build_state.json"),
+                "config-hash",
+                force=True,
+            )
+
+            self.assertFalse(result)
+            self.assertFalse((project_dir / "results" / "data" / "summary.csv").exists())
+
+    def test_scaffold_project_creates_normalized_raw_dir(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_scaffold_") as tmpdir:
+            project_dir = Path(tmpdir) / "project"
+
+            scaffold_project(project_dir, HUB_ROOT, project_name="raw_dir_contract")
+
+            self.assertTrue((project_dir / "raw").is_dir())
+            self.assertTrue((project_dir / "raw" / "example_input.csv").is_file())
+            self.assertFalse((project_dir / "data" / "raw").exists())
 
 
 class TestRunSweepMonkeyPatch(unittest.TestCase):
