@@ -29,6 +29,7 @@ from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profile
 from .config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS, find_config_path, validate_config
 from .data_contract import _read_data_safe, _validate_semantic_constraints
 from .figure_preflight import validate_figure_preflight
+from .mcp.security import McpSecurityMixin, is_write_tool_name
 from .project_discovery import ProjectDiscoveryService
 from .project_normalization import (
     apply_normalize_project,
@@ -36,8 +37,8 @@ from .project_normalization import (
     plan_normalize_project,
     plan_scaffold_project,
 )
-from .runtime_paths import preview_runtime_root, resolve_runtime_root, runtime_root_lookup_candidates
-from .utils import ensure_local_files, get_hub_path, get_research_root
+from .runtime_paths import runtime_root_lookup_candidates
+from .utils import ensure_local_files
 
 TOOL_NAMES = (
     "graphhub.health",
@@ -48,13 +49,6 @@ TOOL_NAMES = (
     "graphhub.render_csv_graph",
     "graphhub.render_project_figure",
     "graphhub.collect_artifacts",
-    "graphhub.scaffold_project",
-    "graphhub.normalize_project_structure",
-    "graphhub.batch_check",
-)
-WRITE_TOOL_NAMES = (
-    "graphhub.render_csv_graph",
-    "graphhub.render_project_figure",
     "graphhub.scaffold_project",
     "graphhub.normalize_project_structure",
     "graphhub.batch_check",
@@ -903,7 +897,7 @@ def list_prompt_definitions() -> list[dict[str, Any]]:
     ]
 
 
-class GraphHubMCPServer:
+class GraphHubMCPServer(McpSecurityMixin):
     """Dependency-free MCP surface over Graph Hub core contracts."""
 
     def __init__(
@@ -917,13 +911,12 @@ class GraphHubMCPServer:
     ) -> None:
         self.require_initialize = require_initialize
         self.initialized = False
-        self.hub_path = Path(hub_path or get_hub_path()).expanduser().resolve()
-        self.research_root = Path(research_root or get_research_root()).expanduser().resolve()
-        self._runtime_root_explicit = runtime_root is not None
-        self.runtime_root = self._resolve_runtime_root(runtime_root)
-        self.security_warnings: list[str] = []
-        self.allowed_data_roots = self._allowed_data_roots()
-        self.write_tools_enabled = self._resolve_write_tools_enabled(write_tools_enabled)
+        self._init_security_state(
+            hub_path=hub_path,
+            research_root=research_root,
+            runtime_root=runtime_root,
+            write_tools_enabled=write_tools_enabled,
+        )
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
             "graphhub.health": self.health,
             "graphhub.list_styles": self.list_styles,
@@ -954,129 +947,12 @@ class GraphHubMCPServer:
     def list_prompt_definitions() -> list[dict[str, Any]]:
         return list_prompt_definitions()
 
-    @staticmethod
-    def _resolve_runtime_root(runtime_root: str | os.PathLike | None = None) -> Path:
-        if runtime_root:
-            return Path(runtime_root).expanduser().resolve()
-        return Path(preview_runtime_root()).expanduser().resolve()
-
-    @staticmethod
-    def _resolve_write_tools_enabled(write_tools_enabled: bool | None) -> bool:
-        if write_tools_enabled is not None:
-            return bool(write_tools_enabled)
-        raw = os.environ.get("GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED")
-        if raw is None:
-            # Fail closed: write/exec tools require explicit opt-in via constructor arg or env var.
-            return False
-        return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-    def _allowed_data_roots(self) -> tuple[Path, ...]:
-        roots = [self.research_root, self.runtime_root]
-        raw_extra = os.environ.get("GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS", "")
-        strict_roots = os.environ.get("GRAPH_HUB_MCP_STRICT_ROOTS", "").strip().lower() in {"1", "true", "yes", "on"}
-        for item in raw_extra.split(os.pathsep):
-            stripped = item.strip()
-            if not stripped:
-                continue
-            extra = Path(stripped).expanduser()
-            if not extra.is_absolute():
-                self.security_warnings.append(
-                    f"Skipped GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS entry because it is not absolute: {stripped}"
-                )
-                continue
-            resolved = extra.resolve()
-            if not resolved.is_dir():
-                self.security_warnings.append(
-                    "Skipped GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS entry because it does not exist as a directory: "
-                    f"{resolved}"
-                )
-                continue
-            broad_warning = self._broad_data_root_warning(resolved)
-            if broad_warning:
-                if strict_roots:
-                    self.security_warnings.append(
-                        f"refused broad data root from GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS: {resolved}"
-                    )
-                    continue
-                self.security_warnings.append(broad_warning)
-            roots.append(resolved)
-        deduped: list[Path] = []
-        seen: set[str] = set()
-        for root in roots:
-            key = str(root)
-            if key not in seen:
-                seen.add(key)
-                deduped.append(root)
-        return tuple(deduped)
-
-    @staticmethod
-    def _broad_data_root_warning(root: Path) -> str:
-        if root == Path(root.anchor):
-            return f"Configured broad data root allows the filesystem root: {root}"
-        home = Path.home().resolve()
-        if root == home:
-            return f"Configured broad data root allows the current user's home directory: {root}"
-        if os.name == "nt" and root.anchor and root == Path(root.anchor).resolve():
-            return f"Configured broad data root allows the drive root: {root}"
-        return ""
-
-    @staticmethod
-    def _is_relative_to(path: Path, root: Path) -> bool:
-        try:
-            path.relative_to(root)
-        except ValueError:
-            return False
-        return True
-
-    def _resolve_under_root(self, raw_path: Any, *, field_name: str, root: Path | None = None) -> Path:
-        if not isinstance(raw_path, str) or not raw_path.strip():
-            raise ValueError(f"{field_name} is required.")
-        raw = Path(raw_path).expanduser()
-        trusted_root_raw = Path(root or self.research_root).expanduser()
-        if not trusted_root_raw.is_absolute():
-            trusted_root_raw = trusted_root_raw.resolve()
-        raw_absolute = raw if raw.is_absolute() else trusted_root_raw / raw
-        trusted_root = trusted_root_raw.resolve()
-        path = raw_absolute.resolve()
-        if not self._is_relative_to(path, trusted_root):
-            raise ValueError(f"{field_name} must stay under {trusted_root}.")
-        current = Path(raw_absolute.anchor)
-        for part in raw_absolute.parts[1:]:
-            current = current / part
-            if current.is_symlink():
-                target = current.resolve()
-                if target == trusted_root or self._is_relative_to(target, trusted_root):
-                    raise ValueError(f"{field_name} must not include symlinked path components.")
-                if not self._is_relative_to(trusted_root, target):
-                    raise ValueError(f"{field_name} must not include symlinked path components.")
-        return path
-
-    def _resolve_allowed_data_path(self, raw_path: Any, *, field_name: str) -> Path:
-        if not isinstance(raw_path, str) or not raw_path.strip():
-            raise ValueError(f"{field_name} is required.")
-        raw = Path(raw_path).expanduser()
-        raw_absolute = raw if raw.is_absolute() else self.research_root / raw
-        path = raw_absolute.resolve()
-        if not any(self._is_relative_to(path, root) for root in self.allowed_data_roots):
-            allowed = ", ".join(str(root) for root in self.allowed_data_roots)
-            raise ValueError(f"{field_name} must stay under an allowed data root: {allowed}.")
-        current = Path(raw_absolute.anchor)
-        for part in raw_absolute.parts[1:]:
-            current = current / part
-            if current.is_symlink():
-                target = current.resolve()
-                parent = current.parent.resolve()
-                for root in self.allowed_data_roots:
-                    if self._is_relative_to(parent, root) and self._is_relative_to(target, root):
-                        raise ValueError(f"{field_name} must not include symlinked path components.")
-        return path
-
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = dict(arguments or {})
         handler = self._handlers.get(name)
         if handler is None:
             raise ValueError(f"Unknown Graph Hub MCP tool: {name}")
-        if name in WRITE_TOOL_NAMES and not self.write_tools_enabled:
+        if is_write_tool_name(name) and not self.write_tools_enabled:
             structured = self._envelope(
                 name,
                 arguments,
@@ -2077,11 +1953,6 @@ class GraphHubMCPServer:
             failure_stage="",
             resolution_hint="",
         )
-
-    def _activate_runtime_root_for_runtime_access(self) -> None:
-        if not self._runtime_root_explicit:
-            self.runtime_root = Path(resolve_runtime_root()).expanduser().resolve()
-            self.allowed_data_roots = self._allowed_data_roots()
 
     @staticmethod
     def _render_status_payload(
@@ -3814,12 +3685,6 @@ class GraphHubMCPServer:
         digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
         return f"{tool_name}:{digest}"
 
-    def _scan_root(self, arguments: dict[str, Any]) -> Path:
-        root = arguments.get("root")
-        if root:
-            return self._resolve_under_root(root, field_name="root")
-        return self.research_root
-
     @staticmethod
     def _max_depth(value: Any) -> int:
         # RPC input is already range-validated against minimum:1/maximum:12 before
@@ -3993,26 +3858,6 @@ class GraphHubMCPServer:
         if project.classification in {"legacy", "ephemeral"}:
             return project.classification
         return "valid"
-
-    def _resolve_project_path(self, arguments: dict[str, Any]) -> Path:
-        project_path = arguments.get("project_path")
-        if project_path:
-            return self._resolve_under_root(project_path, field_name="project_path")
-
-        project_id = arguments.get("project_id")
-        if not project_id:
-            raise ValueError("project_id or project_path is required.")
-
-        root = self._scan_root(arguments)
-        service = ProjectDiscoveryService(
-            root,
-            include_worktrees=bool(arguments.get("include_worktrees", False)),
-            include_ephemeral=bool(arguments.get("include_ephemeral", False)),
-        )
-        for project in service.discover(max_depth=self._max_depth(arguments.get("max_depth", 4))):
-            if project.project_id == project_id:
-                return (root / project.path).resolve()
-        raise ValueError(f"Project id not found: {project_id}")
 
     @staticmethod
     def _load_project_config(

@@ -287,7 +287,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             runtime_root = Path(tmpdir) / "runtime"
 
-            with patch("hub_core.mcp_surface.preview_runtime_root", return_value=str(runtime_root)):
+            with patch("hub_core.mcp.security.preview_runtime_root", return_value=str(runtime_root)):
                 server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             self.assertEqual(server.runtime_root, runtime_root.resolve())
@@ -300,8 +300,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             runtime_root = Path(tmpdir) / "runtime"
 
             with (
-                patch("hub_core.mcp_surface.preview_runtime_root", return_value=str(preview_root)),
-                patch("hub_core.mcp_surface.resolve_runtime_root", return_value=str(runtime_root)),
+                patch("hub_core.mcp.security.preview_runtime_root", return_value=str(preview_root)),
+                patch("hub_core.mcp.security.resolve_runtime_root", return_value=str(runtime_root)),
             ):
                 server = GraphHubMCPServer(research_root=Path(tmpdir))
                 result = self._call(
@@ -325,7 +325,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 print("prefetch stdout would corrupt MCP framing")
 
             with (
-                patch("hub_core.mcp_surface.resolve_runtime_root", return_value=str(runtime_root)),
+                patch("hub_core.mcp.security.resolve_runtime_root", return_value=str(runtime_root)),
                 patch("hub_core.mcp_surface.ensure_local_files", side_effect=noisy_prefetch),
                 contextlib.redirect_stdout(stdout),
                 contextlib.redirect_stderr(stderr),
@@ -348,8 +348,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             runtime_root = Path(tmpdir) / "runtime"
 
             with (
-                patch("hub_core.mcp_surface.preview_runtime_root", return_value=str(preview_root)),
-                patch("hub_core.mcp_surface.resolve_runtime_root", return_value=str(runtime_root)),
+                patch("hub_core.mcp.security.preview_runtime_root", return_value=str(preview_root)),
+                patch("hub_core.mcp.security.resolve_runtime_root", return_value=str(runtime_root)),
                 patch("hub_core.mcp_surface.runtime_root_lookup_candidates", return_value=[str(runtime_root)]),
             ):
                 render_server = GraphHubMCPServer(research_root=Path(tmpdir))
