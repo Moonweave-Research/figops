@@ -7,13 +7,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import hub_core.process_runner as pr
-from hub_core.process_runner import _build_r_cmd, run_comparison, run_sweep
+from hub_core.process_runner import _build_r_cmd, run_comparison, run_plots, run_sweep
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
 
 
 class TestBuildRCmd(unittest.TestCase):
-
     def _config(self, r_strict: bool = False, include_environment: bool = True) -> dict:
         base: dict = {"project": {"name": "test"}}
         if include_environment:
@@ -313,6 +312,29 @@ class TestRunSweepMonkeyPatch(unittest.TestCase):
         self.assertEqual(failure_context["stage"], "VALIDATE")
         self.assertIn("Comparison preflight failed", failure_context["message"])
         run_analysis.assert_not_called()
+
+
+class TestSanitizerRejectedScriptFailsRun(unittest.TestCase):
+    def test_rejected_plot_script_makes_run_fail(self):
+        config = {
+            "project": {"name": "sanitizer_reject_test"},
+            "environment": {},
+            "figures": [
+                {"id": "Fig1", "script": "../../../etc/passwd.py", "output": "fig1.pdf"},
+            ],
+            "diagrams": [],
+        }
+
+        with tempfile.TemporaryDirectory() as project_dir:
+            result = run_plots(
+                project_dir=project_dir,
+                config=config,
+                build_state={},
+                build_state_path=os.path.join(project_dir, ".build_state.json"),
+                config_hash="abc123",
+            )
+
+        self.assertFalse(result)
 
 
 if __name__ == "__main__":

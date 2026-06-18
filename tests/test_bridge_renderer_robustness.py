@@ -69,8 +69,10 @@ class TestYBreakRangeRejectsUnsupportedFields(unittest.TestCase):
                 overlay_baselines=({"label": "ref", "y": 5.0},),
                 y_break_range=(100.0, 800.0),
             )
-            with self.assertRaises(ValueError):
+            with self.assertRaises(ValueError) as ctx:
                 render_bridge_figure(spec)
+            self.assertIn("y_break_range", str(ctx.exception))
+            self.assertIn("overlay_baselines", str(ctx.exception))
 
     def test_y_break_without_unsupported_fields_still_renders(self):
         with tempfile.TemporaryDirectory() as td:
