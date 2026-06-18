@@ -8,7 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from hub_core.mcp_surface import GraphHubMCPServer, list_tool_definitions
+from hub_core.mcp.schemas import list_tool_definitions
+from hub_core.mcp_surface import GraphHubMCPServer
 
 
 def _sleeping_batch_discovery_worker(_root, _max_depth, _result_queue):
