@@ -309,7 +309,7 @@ class BatchQualityMCPTest(unittest.TestCase):
                 self._write_project(root, f"{index:02d}_Valid")
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
-            with patch("hub_core.mcp_surface.MCP_BATCH_TIMEOUT_SECONDS", 0):
+            with patch("hub_core.mcp.render_orchestration.MCP_BATCH_TIMEOUT_SECONDS", 0):
                 result = self._call(
                     server,
                     "graphhub.batch_check",
@@ -329,8 +329,8 @@ class BatchQualityMCPTest(unittest.TestCase):
 
             started_at = time.monotonic()
             with (
-                patch("hub_core.mcp_surface.MCP_BATCH_TIMEOUT_SECONDS", 0.05),
-                patch("hub_core.mcp_surface._batch_discovery_worker", _sleeping_batch_discovery_worker),
+                patch("hub_core.mcp.render_orchestration.MCP_BATCH_TIMEOUT_SECONDS", 0.05),
+                patch("hub_core.mcp.render_orchestration._batch_discovery_worker", _sleeping_batch_discovery_worker),
             ):
                 result = self._call(
                     server,
