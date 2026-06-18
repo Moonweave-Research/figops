@@ -99,7 +99,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             with patch(
-                "hub_core.mcp_surface.validate_figure_preflight",
+                "hub_core.mcp.tools.render_support.validate_figure_preflight",
                 return_value={"passed": True, "checks": [{"name": "format", "passed": True}], "warnings": []},
             ):
                 result = self._call(
@@ -119,7 +119,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             with patch(
-                "hub_core.mcp_surface.validate_figure_preflight",
+                "hub_core.mcp.tools.render_support.validate_figure_preflight",
                 return_value={"passed": True, "checks": [], "warnings": ["width exceeds journal max"]},
             ):
                 rendered = self._call(
