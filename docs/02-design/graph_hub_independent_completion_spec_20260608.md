@@ -109,7 +109,6 @@ Non-goal:
 Current source files:
 
 - `hub_core/data_contract.py`
-- `hub_core/regression_runner.py`
 - `hub_core/visual_regression.py`
 - `plotting/utils.py`
 - `project_config_template.yaml`
