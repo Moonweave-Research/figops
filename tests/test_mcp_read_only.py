@@ -10,7 +10,9 @@ from pathlib import Path
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
 from hub_core.mcp_surface import (
+    JSONRPC_INVALID_REQUEST,
     GraphHubMCPServer,
+    _dispatch_json_rpc,
     _handle_json_rpc,
     _matches_json_schema_type,
     _validate_tool_arguments,
@@ -861,6 +863,176 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["tool_surface"], "graphhub_mcp")
         self.assertGreater(payload["style_format_count"], 0)
+
+
+class JsonRpcProtocolTest(unittest.TestCase):
+    def test_batch_request_returns_array_of_responses_with_matching_ids(self):
+        server = GraphHubMCPServer()
+
+        batch = [
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "graphhub.list_styles", "arguments": {}},
+            },
+        ]
+        responses = _dispatch_json_rpc(server, batch)
+
+        self.assertIsInstance(responses, list)
+        self.assertEqual([response["id"] for response in responses], [1, 2])
+        self.assertGreater(len(responses[0]["result"]["tools"]), 0)
+        self.assertIn("structuredContent", responses[1]["result"])
+
+    def test_batch_of_only_notifications_returns_nothing(self):
+        server = GraphHubMCPServer()
+
+        batch = [
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "method": "notifications/cancelled"},
+        ]
+        self.assertIsNone(_dispatch_json_rpc(server, batch))
+
+    def test_empty_batch_is_invalid_request(self):
+        server = GraphHubMCPServer()
+
+        response = _dispatch_json_rpc(server, [])
+
+        self.assertEqual(response["error"]["code"], JSONRPC_INVALID_REQUEST)
+
+    def test_stdio_server_reads_newline_framed_batch_as_one_message(self):
+        batch = [
+            {"jsonrpc": "2.0", "id": 7, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 8, "method": "resources/list"},
+        ]
+        input_stream = BytesIO(json.dumps(batch).encode("utf-8") + b"\n")
+        output_stream = BytesIO()
+
+        rc = run_stdio_server(GraphHubMCPServer(), input_stream=input_stream, output_stream=output_stream)
+
+        self.assertEqual(rc, 0)
+        responses = json.loads(output_stream.getvalue().decode("utf-8"))
+        self.assertEqual([response["id"] for response in responses], [7, 8])
+
+    def test_fractional_id_is_invalid_request(self):
+        server = GraphHubMCPServer()
+
+        response = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 1.5, "method": "tools/list"})
+
+        self.assertEqual(response["error"]["code"], JSONRPC_INVALID_REQUEST)
+        self.assertIsNone(response["id"])
+
+    def test_wrong_jsonrpc_version_is_invalid_request(self):
+        server = GraphHubMCPServer()
+
+        response = _handle_json_rpc(server, {"jsonrpc": "1.0", "id": 3, "method": "tools/list"})
+
+        self.assertEqual(response["error"]["code"], JSONRPC_INVALID_REQUEST)
+        self.assertEqual(response["id"], 3)
+
+    def test_missing_jsonrpc_field_is_invalid_request(self):
+        server = GraphHubMCPServer()
+
+        response = _handle_json_rpc(server, {"id": 1, "method": "tools/list"})
+
+        self.assertEqual(response["error"]["code"], JSONRPC_INVALID_REQUEST)
+
+    def test_valid_integer_and_string_ids_still_work(self):
+        server = GraphHubMCPServer()
+
+        int_id = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 42, "method": "tools/list"})
+        str_id = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": "abc", "method": "tools/list"})
+
+        self.assertEqual(int_id["id"], 42)
+        self.assertEqual(str_id["id"], "abc")
+
+    def test_bool_id_is_invalid_request(self):
+        server = GraphHubMCPServer()
+
+        response = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": True, "method": "tools/list"})
+
+        self.assertEqual(response["error"]["code"], JSONRPC_INVALID_REQUEST)
+        self.assertIsNone(response["id"])
+
+    def test_ping_before_initialize_returns_empty_result(self):
+        server = GraphHubMCPServer(require_initialize=True)
+
+        response = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 1, "method": "ping"})
+
+        self.assertNotIn("error", response)
+        self.assertEqual(response["result"], {})
+        self.assertEqual(response["id"], 1)
+
+    def test_require_initialize_rejects_pre_initialize_call_then_succeeds(self):
+        server = GraphHubMCPServer(require_initialize=True)
+
+        rejected = _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "graphhub.list_styles", "arguments": {}},
+            },
+        )
+        self.assertEqual(rejected["error"]["code"], JSONRPC_INVALID_REQUEST)
+        self.assertEqual(rejected["id"], 1)
+
+        init = _handle_json_rpc(
+            server, {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "2025-03-26"}}
+        )
+        self.assertEqual(init["result"]["protocolVersion"], "2025-03-26")
+        self.assertTrue(server.initialized)
+
+        accepted = _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {"name": "graphhub.list_styles", "arguments": {}},
+            },
+        )
+        self.assertIn("structuredContent", accepted["result"])
+
+    def test_lenient_server_allows_pre_initialize_calls(self):
+        server = GraphHubMCPServer()
+        self.assertFalse(server.require_initialize)
+
+        response = _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "graphhub.list_styles", "arguments": {}},
+            },
+        )
+        self.assertIn("structuredContent", response["result"])
+
+    def test_stdio_server_require_initialize_rejects_then_accepts_tools_list(self):
+        messages = [
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/list"},
+        ]
+        input_bytes = b"".join(json.dumps(message).encode("utf-8") + b"\n" for message in messages)
+        input_stream = BytesIO(input_bytes)
+        output_stream = BytesIO()
+
+        rc = run_stdio_server(
+            GraphHubMCPServer(require_initialize=True),
+            input_stream=input_stream,
+            output_stream=output_stream,
+        )
+
+        self.assertEqual(rc, 0)
+        responses = [json.loads(line) for line in output_stream.getvalue().decode("utf-8").splitlines() if line]
+        by_id = {response["id"]: response for response in responses}
+        self.assertEqual(by_id[1]["error"]["code"], JSONRPC_INVALID_REQUEST)
+        self.assertEqual(by_id[2]["result"]["protocolVersion"], "2025-06-18")
+        self.assertGreater(len(by_id[3]["result"]["tools"]), 0)
 
 
 if __name__ == "__main__":

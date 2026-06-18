@@ -27,7 +27,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.smoke:
         return _run_smoke()
-    return run_stdio_server()
+    return run_stdio_server(GraphHubMCPServer(require_initialize=True))
 
 
 if __name__ == "__main__":

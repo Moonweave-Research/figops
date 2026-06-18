@@ -67,11 +67,16 @@ MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS = 5.0
 MCP_BATCH_MAX_PROJECTS = 50
 MCP_BATCH_TIMEOUT_SECONDS = 30.0
 
+JSONRPC_INVALID_REQUEST = -32600
 JSONRPC_INVALID_PARAMS = -32602
 JSONRPC_INTERNAL_ERROR = -32603
 JSONRPC_METHOD_NOT_FOUND = -32601
 JSONRPC_PARSE_ERROR = -32700
 JSONRPC_RESOURCE_NOT_FOUND = -32002
+
+DEFAULT_PROTOCOL_VERSION = "2025-06-18"
+SUPPORTED_PROTOCOL_VERSIONS = frozenset({"2024-11-05", "2025-03-26", DEFAULT_PROTOCOL_VERSION})
+
 _STRICT_JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
 GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION = "geometry_diagnostics/1"
@@ -919,7 +924,10 @@ class GraphHubMCPServer:
         research_root: str | os.PathLike | None = None,
         runtime_root: str | os.PathLike | None = None,
         write_tools_enabled: bool | None = None,
+        require_initialize: bool = False,
     ) -> None:
+        self.require_initialize = require_initialize
+        self.initialized = False
         self.hub_path = Path(hub_path or get_hub_path()).expanduser().resolve()
         self.research_root = Path(research_root or get_research_root()).expanduser().resolve()
         self._runtime_root_explicit = runtime_root is not None
@@ -4629,7 +4637,7 @@ def run_stdio_server(
             request, framing = _read_stdio_message(in_stream)
             if request is None:
                 break
-            response = _handle_json_rpc(active_server, request)
+            response = _dispatch_json_rpc(active_server, request)
         except _StdioParseError as exc:
             framing = exc.framing
             response = _json_rpc_error(None, JSONRPC_PARSE_ERROR, f"Parse error: {exc.error}")
@@ -4642,10 +4650,32 @@ def run_stdio_server(
     return 0
 
 
+def _dispatch_json_rpc(
+    server: GraphHubMCPServer, request: dict[str, Any] | list[Any]
+) -> dict[str, Any] | list[dict[str, Any]] | None:
+    if isinstance(request, list):
+        if not request:
+            return _json_rpc_error(None, JSONRPC_INVALID_REQUEST, "JSON-RPC batch must not be empty.")
+        responses = [response for entry in request if (response := _handle_json_rpc(server, entry)) is not None]
+        return responses or None
+    return _handle_json_rpc(server, request)
+
+
 def _handle_json_rpc(server: GraphHubMCPServer, request: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(request, dict):
+        return _json_rpc_error(None, JSONRPC_INVALID_REQUEST, "JSON-RPC request must be an object.")
     method = request.get("method")
     request_id = request.get("id")
-    if "id" not in request:
+    is_notification = "id" not in request
+    if request.get("jsonrpc") != "2.0":
+        if is_notification:
+            return None
+        return _json_rpc_error(request_id, JSONRPC_INVALID_REQUEST, 'JSON-RPC "jsonrpc" must equal "2.0".')
+    if not is_notification and not isinstance(request_id, (str, int, type(None))):
+        return _json_rpc_error(None, JSONRPC_INVALID_REQUEST, "JSON-RPC id must be a string, integer, or null.")
+    if not is_notification and isinstance(request_id, bool):
+        return _json_rpc_error(None, JSONRPC_INVALID_REQUEST, "JSON-RPC id must be a string, integer, or null.")
+    if is_notification:
         return None
     raw_params = request.get("params")
     if raw_params is None:
@@ -4656,17 +4686,24 @@ def _handle_json_rpc(server: GraphHubMCPServer, request: dict[str, Any]) -> dict
         return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "JSON-RPC params must be an object when provided.")
 
     if method == "initialize":
+        server.initialized = True
+        client_protocol = params.get("protocolVersion")
+        protocol_version = (
+            client_protocol if client_protocol in SUPPORTED_PROTOCOL_VERSIONS else DEFAULT_PROTOCOL_VERSION
+        )
         return {
             "jsonrpc": "2.0",
             "id": request_id,
             "result": {
-                "protocolVersion": "2025-06-18",
+                "protocolVersion": protocol_version,
                 "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
                 "serverInfo": {"name": "graph-making-hub", "version": server._read_version()},
             },
         }
-    if method == "notifications/initialized":
-        return None
+    if method == "ping":
+        return {"jsonrpc": "2.0", "id": request_id, "result": {}}
+    if server.require_initialize and not server.initialized:
+        return _json_rpc_error(request_id, JSONRPC_INVALID_REQUEST, "Server not initialized: call initialize first.")
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": list_tool_definitions()}}
     if method == "tools/call":
@@ -4834,14 +4871,14 @@ class _StdioParseError(Exception):
         self.framing = framing
 
 
-def _read_stdio_message(stream: Any) -> tuple[dict[str, Any] | None, str]:
+def _read_stdio_message(stream: Any) -> tuple[dict[str, Any] | list[Any] | None, str]:
     first_line = stream.readline()
     if first_line == b"" or first_line == "":
         return None, "content-length"
     if isinstance(first_line, str):
         first_line = first_line.encode("utf-8")
 
-    if first_line.lstrip().startswith(b"{"):
+    if first_line.lstrip().startswith((b"{", b"[")):
         try:
             return json.loads(first_line.decode("utf-8")), "newline"
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -4881,7 +4918,9 @@ def _read_headers(stream: Any, first_line: bytes) -> dict[str, str]:
     return headers
 
 
-def _write_stdio_message(stream: Any, response: dict[str, Any], framing: str = "content-length") -> None:
+def _write_stdio_message(
+    stream: Any, response: dict[str, Any] | list[dict[str, Any]], framing: str = "content-length"
+) -> None:
     body = json.dumps(response, ensure_ascii=False).encode("utf-8")
     if framing == "newline":
         payload = body + b"\n"
