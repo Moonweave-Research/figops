@@ -61,6 +61,7 @@ WRITE_TOOL_NAMES = (
 )
 SUPPORTED_RENDER_PLOT_TYPES = {"bar", "line", "scatter", "xy", "heatmap"}
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
+MCP_MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0
 MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS = 5.0
 MCP_BATCH_MAX_PROJECTS = 50
@@ -266,9 +267,10 @@ def _layout_report_from_geometry(
             detail = check.get("detail")
             if detail:
                 report["warnings"].append(str(detail))
-        elif name in {"point_annotation_overlaps", "artists_outside_axes", "artists_outside_figure"} and check.get(
-            "passed"
-        ) is False:
+        elif (
+            name in {"point_annotation_overlaps", "artists_outside_axes", "artists_outside_figure"}
+            and check.get("passed") is False
+        ):
             detail = check.get("detail")
             if detail:
                 report["warnings"].append(str(detail))
@@ -901,7 +903,8 @@ class GraphHubMCPServer:
             return bool(write_tools_enabled)
         raw = os.environ.get("GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED")
         if raw is None:
-            return True
+            # Fail closed: write/exec tools require explicit opt-in via constructor arg or env var.
+            return False
         return raw.strip().lower() in {"1", "true", "yes", "on"}
 
     def _allowed_data_roots(self) -> tuple[Path, ...]:
@@ -3715,8 +3718,10 @@ class GraphHubMCPServer:
         return f"{tool_name}:{digest}"
 
     def _scan_root(self, arguments: dict[str, Any]) -> Path:
-        root = arguments.get("root") or self.research_root
-        return Path(root).expanduser().resolve()
+        root = arguments.get("root")
+        if root:
+            return self._resolve_under_root(root, field_name="root")
+        return self.research_root
 
     @staticmethod
     def _max_depth(value: Any) -> int:
@@ -3892,7 +3897,7 @@ class GraphHubMCPServer:
     def _resolve_project_path(self, arguments: dict[str, Any]) -> Path:
         project_path = arguments.get("project_path")
         if project_path:
-            return Path(project_path).expanduser().resolve()
+            return self._resolve_under_root(project_path, field_name="project_path")
 
         project_id = arguments.get("project_id")
         if not project_id:
@@ -4225,13 +4230,10 @@ class GraphHubMCPServer:
         actual_layout = str(metadata.get("layout_type") or "").strip()
 
         if expected_layout and actual_layout and actual_layout != expected_layout:
-            warnings.append(
-                f"figure canonical mismatch: layout_type {actual_layout!r} != expected {expected_layout!r}"
-            )
+            warnings.append(f"figure canonical mismatch: layout_type {actual_layout!r} != expected {expected_layout!r}")
         if isinstance(width_px, int) and isinstance(expected_width, int) and abs(width_px - expected_width) > tolerance:
             warnings.append(
-                f"figure canonical mismatch: width_px {width_px} != expected {expected_width} "
-                f"(tolerance {tolerance}px)"
+                f"figure canonical mismatch: width_px {width_px} != expected {expected_width} (tolerance {tolerance}px)"
             )
         if (
             isinstance(height_px, int)
@@ -4751,6 +4753,10 @@ def _read_stdio_message(stream: Any) -> tuple[dict[str, Any] | None, str]:
         expected_size = int(content_length)
     except ValueError as exc:
         raise ValueError(f"Invalid Content-Length header: {content_length}") from exc
+    # Reject before reading: a negative size makes stream.read(-1) buffer the whole stream,
+    # and an oversized size invites a single huge allocation — both memory-exhaustion DoS.
+    if expected_size < 0 or expected_size > MCP_MAX_MESSAGE_BYTES:
+        raise ValueError(f"Content-Length out of range: {expected_size} (allowed 0..{MCP_MAX_MESSAGE_BYTES}).")
     body = stream.read(expected_size)
     if isinstance(body, str):
         body = body.encode("utf-8")

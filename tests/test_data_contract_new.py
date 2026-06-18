@@ -20,7 +20,6 @@ from hub_core.data_contract import (
 
 
 class TestReadDataSafe(unittest.TestCase):
-
     # ------------------------------------------------------------------
     # 1. .csv -> DataFrame via _read_csv_safe path
     # ------------------------------------------------------------------
@@ -596,9 +595,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
                         {
                             "path": "results/data/fit.csv",
                             "required_columns": ["x", "y"],
-                            "semantic_checks": {
-                                "y": {"linear_fit": {"x_column": "x", "slope": 2.0, "intercept": 1.0}}
-                            },
+                            "semantic_checks": {"y": {"linear_fit": {"x_column": "x", "slope": 2.0, "intercept": 1.0}}},
                         }
                     ]
                 }
@@ -617,9 +614,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
                         {
                             "path": "results/data/fit.csv",
                             "required_columns": ["x", "y"],
-                            "semantic_checks": {
-                                "y": {"linear_fit": {"x_column": "x", "slope": 2.0, "intercept": 1.0}}
-                            },
+                            "semantic_checks": {"y": {"linear_fit": {"x_column": "x", "slope": 2.0, "intercept": 1.0}}},
                         }
                     ]
                 }
@@ -674,9 +669,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
                         {
                             "path": "results/data/fit.csv",
                             "required_columns": ["x", "y"],
-                            "semantic_checks": {
-                                "y": {"linear_fit": {"x_column": "x", "slope": 2.0, "intercept": 1.0}}
-                            },
+                            "semantic_checks": {"y": {"linear_fit": {"x_column": "x", "slope": 2.0, "intercept": 1.0}}},
                         }
                     ]
                 }
@@ -695,9 +688,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
                         {
                             "path": "results/data/flags.csv",
                             "required_columns": ["y", "outlier"],
-                            "semantic_checks": {
-                                "y": {"outlier_flag": {"column": "outlier", "max_fraction": 0.25}}
-                            },
+                            "semantic_checks": {"y": {"outlier_flag": {"column": "outlier", "max_fraction": 0.25}}},
                         }
                     ]
                 }
@@ -716,9 +707,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
                         {
                             "path": "results/data/flags.csv",
                             "required_columns": ["y", "outlier"],
-                            "semantic_checks": {
-                                "y": {"outlier_flag": {"column": "outlier", "max_fraction": 0.25}}
-                            },
+                            "semantic_checks": {"y": {"outlier_flag": {"column": "outlier", "max_fraction": 0.25}}},
                         }
                     ]
                 }
@@ -829,6 +818,27 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
         self.assertEqual(calculation_checks[0]["status"], "passed")
         self.assertEqual(calculation_checks[0]["violations"][0]["conversion_factor"], 0.001)
 
+    def test_unit_actual_unit_convertible_hard_fails_instead_of_silent_conversion(self):
+        # Regression: a convertible-but-different unit/actual_unit used to "pass" while
+        # mutating only a discarded local DataFrame (the renderer reads raw CSV), so the
+        # figure showed unconverted values. It must hard-fail and tell the author to fix
+        # the source, not silently succeed.
+        df = pd.DataFrame({"y": [1.0, 2.0]})
+
+        with patch("hub_core.data_contract._check_unit_compatibility", return_value=(0.001, "mm", "m")):
+            errors, rows = _validate_semantic_constraints(
+                df,
+                {"y": {"unit": "m", "actual_unit": "mm"}},
+                {"y": "y"},
+                calculation_checks=[],
+                csv_rel_path="results/data/axis.csv",
+                source_config_path="project_config.yaml",
+            )
+
+        self.assertTrue(errors)
+        self.assertEqual(df["y"].tolist(), [1.0, 2.0])
+        self.assertTrue(any(r.get("violation_type") == "unit_requires_source_conversion" for r in rows))
+
     def test_error_bar_source_fails_negative_values(self):
         with tempfile.TemporaryDirectory(prefix="dcp_errorbar_") as tmpdir:
             data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
@@ -840,9 +850,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
                         {
                             "path": "results/data/summary.csv",
                             "required_columns": ["mean", "sem"],
-                            "semantic_checks": {
-                                "mean": {"error_bar_source": {"column": "sem", "source": "sem"}}
-                            },
+                            "semantic_checks": {"mean": {"error_bar_source": {"column": "sem", "source": "sem"}}},
                         }
                     ]
                 }
@@ -862,9 +870,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
                             "path": "results/data/summary.csv",
                             "required_columns": ["mean", "std", "sem", "n"],
                             "semantic_checks": {
-                                "mean": {
-                                    "mean_sem": {"sem_column": "sem", "std_column": "std", "n_column": "n"}
-                                }
+                                "mean": {"mean_sem": {"sem_column": "sem", "std_column": "std", "n_column": "n"}}
                             },
                         }
                     ]
@@ -885,9 +891,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
                             "path": "results/data/summary.csv",
                             "required_columns": ["mean", "std", "sem", "n"],
                             "semantic_checks": {
-                                "mean": {
-                                    "mean_sem": {"sem_column": "sem", "std_column": "std", "n_column": "n"}
-                                }
+                                "mean": {"mean_sem": {"sem_column": "sem", "std_column": "std", "n_column": "n"}}
                             },
                         }
                     ]
@@ -912,9 +916,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
                             "path": "results/data/summary.csv",
                             "required_columns": ["mean", "std", "sem", "n"],
                             "semantic_checks": {
-                                "mean": {
-                                    "mean_sem": {"sem_column": "sem", "std_column": "std", "n_column": "n"}
-                                }
+                                "mean": {"mean_sem": {"sem_column": "sem", "std_column": "std", "n_column": "n"}}
                             },
                         }
                     ]
@@ -966,9 +968,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
                         {
                             "path": "results/data/summary.csv",
                             "required_columns": ["mean"],
-                            "semantic_checks": {
-                                "mean": {"error_bar_source": {"column": "sem", "source": "sem"}}
-                            },
+                            "semantic_checks": {"mean": {"error_bar_source": {"column": "sem", "source": "sem"}}},
                         }
                     ]
                 }

@@ -94,8 +94,7 @@ def batch_reformat_figures(
     from hub_core.process_runner import run_diagrams, run_plots
 
     project_path = Path(project_dir).resolve()
-    build_state_path = project_path / ".build_state.json"
-    build_state = load_build_state(build_state_path)
+    build_state, build_state_path = load_build_state(str(project_path))
     config_hash = hashlib.sha256(
         json.dumps(patched_config, sort_keys=True, ensure_ascii=False).encode("utf-8")
     ).hexdigest()

@@ -95,7 +95,10 @@ def test_batch_reformat_rerenders_figures_and_diagrams(tmp_path):
         return True
 
     with (
-        patch("hub_core.cache_manager.load_build_state", return_value={}),
+        patch(
+            "hub_core.cache_manager.load_build_state",
+            return_value=({}, str(project_dir / ".build_state.json")),
+        ),
         patch("hub_core.process_runner.run_plots", side_effect=fake_run_plots) as run_plots,
         patch("hub_core.process_runner.run_diagrams", side_effect=fake_run_diagrams) as run_diagrams,
     ):
@@ -107,3 +110,35 @@ def test_batch_reformat_rerenders_figures_and_diagrams(tmp_path):
     assert str(diagram_output) in result.output_paths
     run_plots.assert_called_once()
     run_diagrams.assert_called_once()
+
+
+def test_batch_reformat_passes_dict_build_state_not_tuple(tmp_path):
+    """Regression: load_build_state returns (state, path). batch_reformat must unpack it
+    and pass a dict build_state to the runners; passing the raw tuple crashes
+    record_step_state after figures are already written. load_build_state is NOT mocked
+    here so the real tuple return shape is exercised."""
+    from hub_core.cache_manager import record_step_state
+
+    project_dir = tmp_path / "project"
+    (project_dir / "results" / "figures").mkdir(parents=True)
+    figure_output = project_dir / "results" / "figures" / "Fig1.png"
+
+    config = {
+        "visual_style": {"target_format": "nature"},
+        "figures": [{"id": "Fig1", "script": "plot.py", "output": "results/figures/Fig1.png"}],
+    }
+
+    captured: dict = {}
+
+    def fake_run_plots(*args, **kwargs):
+        captured["build_state"] = kwargs["build_state"]
+        figure_output.write_text("figure\n", encoding="utf-8")
+        # Mimic what the real runner does: a tuple build_state crashes here.
+        record_step_state(kwargs["build_state"], "figures", "Fig1", "sig", [], kwargs["config_hash"])
+        return True
+
+    with patch("hub_core.process_runner.run_plots", side_effect=fake_run_plots):
+        result = batch_reformat_figures(str(project_dir), "science", config, hub_path=str(Path.cwd()))
+
+    assert result.success is True
+    assert isinstance(captured["build_state"], dict)

@@ -11,6 +11,7 @@ from .utils import ensure_local_files, resolve_path
 # ---------------------------------------------------------------------------
 try:
     import pint as _pint
+
     _ureg = _pint.UnitRegistry()
     _PINT_AVAILABLE = True
 except ImportError:
@@ -86,8 +87,7 @@ def _read_data_safe(data_path, pd, hdf_key: str = "/data"):
             import pyarrow  # noqa: F401
         except ImportError as exc:
             raise ImportError(
-                "pyarrow is required to read Parquet files. "
-                "Install with: uv pip install 'graph-making-hub[io]'"
+                "pyarrow is required to read Parquet files. Install with: uv pip install 'graph-making-hub[io]'"
             ) from exc
         return pd.read_parquet(data_path)
 
@@ -96,19 +96,20 @@ def _read_data_safe(data_path, pd, hdf_key: str = "/data"):
             import tables  # noqa: F401
         except ImportError as exc:
             raise ImportError(
-                "PyTables (tables) is required to read HDF5 files. "
-                "Install with: uv pip install 'graph-making-hub[io]'"
+                "PyTables (tables) is required to read HDF5 files. Install with: uv pip install 'graph-making-hub[io]'"
             ) from exc
         try:
             return pd.read_hdf(data_path, key=hdf_key)
         except KeyError:
             # hdf_key 미존재 시 첫 번째 키로 재시도
             import h5py
+
             with h5py.File(data_path, "r") as hf:
                 first_key = next(iter(hf.keys()), None)
             if first_key is None:
                 raise KeyError(f"HDF5 file has no datasets: {data_path}")
             from pathlib import Path
+
             print(
                 f"      ⚠️  HDF5 key '{hdf_key}' not found in {Path(data_path).name}"
                 f" — using first available key '/{first_key}'."
@@ -121,8 +122,7 @@ def _read_data_safe(data_path, pd, hdf_key: str = "/data"):
             import pyarrow  # noqa: F401
         except ImportError as exc:
             raise ImportError(
-                "pyarrow is required to read Feather files. "
-                "Install with: uv pip install 'graph-making-hub[io]'"
+                "pyarrow is required to read Feather files. Install with: uv pip install 'graph-making-hub[io]'"
             ) from exc
         return pd.read_feather(data_path)
 
@@ -135,21 +135,22 @@ def _read_data_safe(data_path, pd, hdf_key: str = "/data"):
 def _dtype_matches(series, expected, pd):
     exp = str(expected).strip().lower()
 
-    if exp in {'int', 'integer', 'int64', 'int32'}:
+    if exp in {"int", "integer", "int64", "int32"}:
         return pd.api.types.is_integer_dtype(series)
-    if exp in {'float', 'float64', 'float32'}:
+    if exp in {"float", "float64", "float32"}:
         return pd.api.types.is_float_dtype(series)
-    if exp in {'number', 'numeric'}:
+    if exp in {"number", "numeric"}:
         return pd.api.types.is_numeric_dtype(series)
-    if exp in {'str', 'string', 'object'}:
+    if exp in {"str", "string", "object"}:
         return pd.api.types.is_string_dtype(series) or pd.api.types.is_object_dtype(series)
-    if exp in {'bool', 'boolean'}:
+    if exp in {"bool", "boolean"}:
         return pd.api.types.is_bool_dtype(series)
-    if exp in {'datetime', 'datetime64'}:
+    if exp in {"datetime", "datetime64"}:
         return pd.api.types.is_datetime64_any_dtype(series)
 
     # Unknown alias: strict compare with dtype name
     return str(series.dtype).lower() == exp
+
 
 def get_data_contract_paths(config):
     contract = config.get("data_contract", {})
@@ -191,20 +192,14 @@ def validate_data_contract_preflight(project_dir, config, require_existing: bool
 
         if suffix not in _SUPPORTED_DATA_CONTRACT_SUFFIXES:
             supported = ", ".join(sorted(_SUPPORTED_DATA_CONTRACT_SUFFIXES))
-            print(
-                f"      ❌ Unsupported data_contract format '{suffix or '<none>'}'. "
-                f"Supported: {supported}"
-            )
+            print(f"      ❌ Unsupported data_contract format '{suffix or '<none>'}'. Supported: {supported}")
             return False
 
         dependency = _OPTIONAL_IO_DEPENDENCIES.get(suffix)
         if dependency is not None:
             module_name, display_name = dependency
             if not _module_available(module_name):
-                print(
-                    f"      ❌ {display_name} is required for '{suffix}' files. "
-                    "Install with: uv sync --extra io"
-                )
+                print(f"      ❌ {display_name} is required for '{suffix}' files. Install with: uv sync --extra io")
                 return False
 
         if require_existing:
@@ -218,9 +213,10 @@ def validate_data_contract_preflight(project_dir, config, require_existing: bool
     print("   ✅ Data contract preflight completed.")
     return True
 
+
 def validate_data_contract(project_dir, config):
-    contract = config.get('data_contract', {})
-    checks = contract.get('csv_checks', []) if isinstance(contract, dict) else []
+    contract = config.get("data_contract", {})
+    checks = contract.get("csv_checks", []) if isinstance(contract, dict) else []
 
     if not checks:
         _write_calculation_checks_sidecar(project_dir, [])
@@ -237,10 +233,10 @@ def validate_data_contract(project_dir, config):
     calculation_checks = []
     contract_failed = False
     for i, check in enumerate(checks, 1):
-        csv_path = resolve_path(project_dir, check['path'])
-        required_cols = check.get('required_columns', []) or []
-        dtypes = check.get('dtypes', {}) or {}
-        min_rows = check.get('min_rows', None)
+        csv_path = resolve_path(project_dir, check["path"])
+        required_cols = check.get("required_columns", []) or []
+        dtypes = check.get("dtypes", {}) or {}
+        min_rows = check.get("min_rows", None)
 
         print(f"   ➤ Check {i}: {check['path']}")
         if not os.path.exists(csv_path):
@@ -288,14 +284,11 @@ def validate_data_contract(project_dir, config):
                 print(f"      ❌ Dtype check failed: column '{col}' not found.")
                 return False
             if not _dtype_matches(df[actual_col], expected, pd):
-                print(
-                    f"      ❌ Dtype mismatch for '{col}': expected '{expected}', "
-                    f"got '{df[actual_col].dtype}'."
-                )
+                print(f"      ❌ Dtype mismatch for '{col}': expected '{expected}', got '{df[actual_col].dtype}'.")
                 return False
 
         # --- Semantic Validation Layer ---
-        semantic_checks = check.get('semantic_checks', {})
+        semantic_checks = check.get("semantic_checks", {})
         if semantic_checks:
             semantic_errors, row_violations = _validate_semantic_constraints(
                 df,
@@ -314,8 +307,11 @@ def validate_data_contract(project_dir, config):
                 if row_violations:
                     try:
                         from .error_dumper import dump_contract_report
+
                         rpt = dump_contract_report(
-                            project_dir, check['path'], row_violations,
+                            project_dir,
+                            check["path"],
+                            row_violations,
                         )
                         if rpt:
                             print(f"      📄 Report: {rpt}")
@@ -325,8 +321,8 @@ def validate_data_contract(project_dir, config):
                 continue
 
         # --- Statistical Quality Score ---
-        cv_threshold = contract.get('cv_threshold', 0.10)
-        quality_result = _check_statistical_quality(df, check['path'], cv_threshold, project_dir)
+        cv_threshold = contract.get("cv_threshold", 0.10)
+        quality_result = _check_statistical_quality(df, check["path"], cv_threshold, project_dir)
         if not quality_result["quality_passed"]:
             print(f"      🟠 quality_passed=False for '{check['path']}' (CV threshold: {cv_threshold:.0%})")
 
@@ -357,7 +353,6 @@ def _validate_semantic_constraints(
     """
     errors = []
     row_violations = []
-    conversions = []
     max_row_detail = 50  # 리포트에 포함할 최대 행 수
 
     for col, constraints in semantic_checks.items():
@@ -371,24 +366,24 @@ def _validate_semantic_constraints(
         series = df[actual_col]
 
         # 1. Null check
-        allow_null = constraints.get('allow_null', True)
+        allow_null = constraints.get("allow_null", True)
         if not allow_null and series.isnull().any():
             null_count = int(series.isnull().sum())
-            errors.append(
-                f"Column '{col}': found {null_count} null value(s) (allow_null=false)"
-            )
+            errors.append(f"Column '{col}': found {null_count} null value(s) (allow_null=false)")
             null_rows = series[series.isnull()].index[:max_row_detail]
             for idx in null_rows:
-                row_violations.append({
-                    "row": str(idx),
-                    "column": col,
-                    "value": "NaN",
-                    "expected": "non-null",
-                    "violation_type": "null_found",
-                })
+                row_violations.append(
+                    {
+                        "row": str(idx),
+                        "column": col,
+                        "value": "NaN",
+                        "expected": "non-null",
+                        "violation_type": "null_found",
+                    }
+                )
 
         # 2. Range check
-        val_range = constraints.get('range')
+        val_range = constraints.get("range")
         if val_range and len(val_range) == 2:
             try:
                 from pandas.api.types import is_numeric_dtype
@@ -403,8 +398,7 @@ def _validate_semantic_constraints(
                 continue
             if is_numeric_dtype is not None and not is_numeric_dtype(series):
                 errors.append(
-                    f"Column '{col}': range target column must be numeric "
-                    "(possible locale/decimal parsing issue)"
+                    f"Column '{col}': range target column must be numeric (possible locale/decimal parsing issue)"
                 )
                 continue
             mask = (series < min_val) | (series > max_val)
@@ -419,30 +413,32 @@ def _validate_semantic_constraints(
                 )
                 bad_rows = series[mask].index[:max_row_detail]
                 for idx in bad_rows:
-                    row_violations.append({
+                    row_violations.append(
+                        {
+                            "row": str(idx),
+                            "column": col,
+                            "value": str(series.loc[idx]),
+                            "expected": f"range [{min_val}, {max_val}]",
+                            "violation_type": "out_of_range",
+                        }
+                    )
+
+        # 3. Unique check
+        is_unique_req = constraints.get("unique", False)
+        if is_unique_req and not series.is_unique:
+            dup_count = int(series.duplicated().sum())
+            errors.append(f"Column '{col}': found {dup_count} duplicate value(s) (unique=true)")
+            dup_rows = series[series.duplicated(keep=False)].index[:max_row_detail]
+            for idx in dup_rows:
+                row_violations.append(
+                    {
                         "row": str(idx),
                         "column": col,
                         "value": str(series.loc[idx]),
-                        "expected": f"range [{min_val}, {max_val}]",
-                        "violation_type": "out_of_range",
-                    })
-
-        # 3. Unique check
-        is_unique_req = constraints.get('unique', False)
-        if is_unique_req and not series.is_unique:
-            dup_count = int(series.duplicated().sum())
-            errors.append(
-                f"Column '{col}': found {dup_count} duplicate value(s) (unique=true)"
-            )
-            dup_rows = series[series.duplicated(keep=False)].index[:max_row_detail]
-            for idx in dup_rows:
-                row_violations.append({
-                    "row": str(idx),
-                    "column": col,
-                    "value": str(series.loc[idx]),
-                    "expected": "unique",
-                    "violation_type": "duplicate",
-                })
+                        "expected": "unique",
+                        "violation_type": "duplicate",
+                    }
+                )
 
         # 4. Monotonic check
         if "monotonic" in constraints:
@@ -583,33 +579,41 @@ def _validate_semantic_constraints(
             row_violations.extend(axis_rows)
 
         # 6. Unit check (requires pint)
-        expected_unit = constraints.get('unit')
-        actual_unit = constraints.get('actual_unit')
+        expected_unit = constraints.get("unit")
+        actual_unit = constraints.get("actual_unit")
         if expected_unit and actual_unit:
             result = _check_unit_compatibility(col, actual_unit, expected_unit)
             if result == "incompatible":
-                errors.append(
-                    f"Column '{col}': unit '{actual_unit}' is incompatible "
-                    f"with expected '{expected_unit}'"
+                errors.append(f"Column '{col}': unit '{actual_unit}' is incompatible with expected '{expected_unit}'")
+                row_violations.append(
+                    {
+                        "row": "*",
+                        "column": col,
+                        "value": actual_unit,
+                        "expected": expected_unit,
+                        "violation_type": "unit_incompatible",
+                    }
                 )
-                row_violations.append({
-                    "row": "*",
-                    "column": col,
-                    "value": actual_unit,
-                    "expected": expected_unit,
-                    "violation_type": "unit_incompatible",
-                })
             elif isinstance(result, tuple):
-                conversions.append((col, actual_col, result))
-
-    # Apply auto-conversions after all checks pass
-    if not errors and conversions:
-        for col, actual_col, (factor, from_u, to_u) in conversions:
-            df[actual_col] = df[actual_col] * factor
-            print(
-                f"      ⚠️  Column '{col}': auto-converted "
-                f"{from_u} -> {to_u} (x{factor})"
-            )
+                # Convertible but different units. The validator does not rewrite the
+                # rendered data (the renderer re-reads the raw CSV), so auto-converting a
+                # discarded local copy would silently render unconverted values. Fail fast.
+                errors.append(
+                    f"Column '{col}': data unit '{actual_unit}' differs from the expected "
+                    f"'{expected_unit}'. The contract does not rewrite rendered data, so the "
+                    f"figure would show unconverted values. Convert the source data to "
+                    f"'{expected_unit}', or use an axis_unit (data_unit/display_unit) check for "
+                    f"label-only display scaling."
+                )
+                row_violations.append(
+                    {
+                        "row": "*",
+                        "column": col,
+                        "value": actual_unit,
+                        "expected": expected_unit,
+                        "violation_type": "unit_requires_source_conversion",
+                    }
+                )
 
     return errors, row_violations
 
@@ -1039,7 +1043,9 @@ def _check_log_scale_positive_constraint(
         return [], []
 
     bad_rows = series[mask].index[:max_row_detail]
-    violations = [{"row": str(idx), "value": _json_safe_value(series.loc[idx]), "expected": "> 0 and finite"} for idx in bad_rows]
+    violations = [
+        {"row": str(idx), "value": _json_safe_value(series.loc[idx]), "expected": "> 0 and finite"} for idx in bad_rows
+    ]
     row_violations = [
         {
             "row": str(idx),
@@ -1919,10 +1925,7 @@ def _check_unit_compatibility(col_name, actual_unit_str, expected_unit_str):
         expected = _ureg.parse_expression(expected_unit_str)
         actual = _ureg.parse_expression(actual_unit_str)
     except Exception:
-        print(
-            f"      ⚠️  Column '{col_name}': could not parse units "
-            f"('{actual_unit_str}' or '{expected_unit_str}')"
-        )
+        print(f"      ⚠️  Column '{col_name}': could not parse units ('{actual_unit_str}' or '{expected_unit_str}')")
         return "skip"
 
     if actual.units == expected.units:
