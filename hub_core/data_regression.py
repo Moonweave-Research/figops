@@ -14,8 +14,8 @@ from pathlib import Path
 import pandas as pd
 from pandas.testing import assert_frame_equal
 
-
 DEFAULT_ATOL = 1e-6
+DEFAULT_RTOL = 1e-5
 SUPPORTED_SUFFIXES = {".csv", ".tsv", ".parquet"}
 
 
@@ -104,6 +104,24 @@ def check_golden_regression(
             golden_dir=str(golden_dir),
         )
 
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for entry in manifest.get("files", []):
+        recorded_path = entry.get("path", "")
+        recorded_hash = entry.get("sha256", "")
+        baseline_path = golden_dir / recorded_path
+        if not baseline_path.exists() or _sha256(baseline_path) != recorded_hash:
+            return RegressionResult(
+                success=False,
+                failures=[
+                    RegressionFailure(
+                        path=recorded_path,
+                        reason=f"Golden baseline integrity check failed: {recorded_path}",
+                    )
+                ],
+                manifest_path=str(manifest_path),
+                golden_dir=str(golden_dir),
+            )
+
     failures: list[RegressionFailure] = []
     compared_files: list[str] = []
     for target_spec in _collect_golden_specs(project_path, config):
@@ -129,13 +147,19 @@ def check_golden_regression(
             continue
 
         try:
-            _compare_tables(current_path, golden_path, atol=target_spec["atol"])
+            _compare_tables(current_path, golden_path, atol=target_spec["atol"], rtol=target_spec["rtol"])
         except AssertionError as exc:
             failures.append(
                 RegressionFailure(
                     path=relative,
                     reason="Scientific drift detected.",
-                    diff_summary=_build_diff_summary(current_path, golden_path, str(exc), atol=target_spec["atol"]),
+                    diff_summary=_build_diff_summary(
+                        current_path,
+                        golden_path,
+                        str(exc),
+                        atol=target_spec["atol"],
+                        rtol=target_spec["rtol"],
+                    ),
                 )
             )
         except Exception as exc:
@@ -179,6 +203,7 @@ def _collect_golden_specs(project_path: Path, config: dict) -> list[dict]:
                 {
                     "path": raw_path,
                     "atol": float(item.get("atol", DEFAULT_ATOL)),
+                    "rtol": float(item.get("rtol", DEFAULT_RTOL)),
                 }
             )
         return specs
@@ -198,12 +223,13 @@ def _collect_golden_specs(project_path: Path, config: dict) -> list[dict]:
             {
                 "path": str(path.relative_to(project_path)).replace("\\", "/"),
                 "atol": DEFAULT_ATOL,
+                "rtol": DEFAULT_RTOL,
             }
         )
     return specs
 
 
-def _compare_tables(current_path: Path, golden_path: Path, *, atol: float) -> None:
+def _compare_tables(current_path: Path, golden_path: Path, *, atol: float, rtol: float) -> None:
     current = _load_table(current_path)
     golden = _load_table(golden_path)
     assert_frame_equal(
@@ -212,7 +238,7 @@ def _compare_tables(current_path: Path, golden_path: Path, *, atol: float) -> No
         check_dtype=False,
         check_exact=False,
         atol=atol,
-        rtol=0.0,
+        rtol=rtol,
     )
 
 
@@ -234,7 +260,14 @@ def _value_at_label(df: pd.DataFrame, row_label: object, col: str) -> object:
     return value
 
 
-def _build_diff_summary(current_path: Path, golden_path: Path, assertion_message: str, *, atol: float) -> str:
+def _build_diff_summary(
+    current_path: Path,
+    golden_path: Path,
+    assertion_message: str,
+    *,
+    atol: float,
+    rtol: float = DEFAULT_RTOL,
+) -> str:
     try:
         current = _load_table(current_path)
         golden = _load_table(golden_path)
@@ -249,8 +282,10 @@ def _build_diff_summary(current_path: Path, golden_path: Path, assertion_message
     for col in current.columns:
         if pd.api.types.is_numeric_dtype(current[col]) and pd.api.types.is_numeric_dtype(golden[col]):
             diff = (current[col] - golden[col]).abs()
-            if diff.notna().any() and float(diff.max()) > atol:
-                row = diff.fillna(0).idxmax()
+            threshold = atol + rtol * golden[col].abs()
+            exceed = diff > threshold
+            if exceed.fillna(False).any():
+                row = diff.where(exceed).fillna(0).idxmax()
                 return (
                     f"First numeric drift at row={row}, column='{col}', "
                     f"current={_value_at_label(current, row, col)!r}, "
