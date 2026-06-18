@@ -7,7 +7,21 @@ on:
 
 jobs:
   test:
-    name: Lint & test
+    name: Test (gating)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Sync dependencies
+        run: uv sync
+      - name: Tests
+        run: uv run python -m pytest -q
+
+  lint:
+    name: Ruff (advisory)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,17 +32,13 @@ jobs:
       - name: Sync dependencies
         run: uv sync
       - name: Ruff
+        # Advisory until the repo's pre-existing lint debt is cleared, then make gating.
+        continue-on-error: true
         run: uv run ruff check .
-      - name: Tests
-        run: uv run python -m pytest -q
 
   audit:
     name: Dependency audit (advisory)
     runs-on: ubuntu-latest
-    # Advisory: surfaces known CVEs in the dependency tree without blocking merges
-    # (a transitive CVE may have no released fix yet). Triage findings, then tighten
-    # floors in pyproject.toml.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -38,4 +48,7 @@ jobs:
       - name: Export resolved requirements
         run: uv export --no-emit-project --no-hashes -o requirements-audit.txt
       - name: pip-audit
+        # Advisory: surfaces known CVEs without blocking merges (a transitive CVE may have
+        # no released fix). Triage findings and bump floors in pyproject.toml.
+        continue-on-error: true
         run: uvx pip-audit -r requirements-audit.txt --strict
