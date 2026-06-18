@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import time
@@ -16,7 +17,9 @@ from hub_core.geometry_diagnostics import (  # noqa: E402
     MAX_TEXT_ARTISTS,
     SCHEMA_VERSION,
     _box_area,
+    _box_vector_away,
     _inter_area,
+    _marker_footprint_box_entries,
     diagnose_figure_geometry,
 )
 from themes.journal_theme import _safe_geometry_diagnostics_inline  # noqa: E402
@@ -200,7 +203,9 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "artist_overlaps")
 
         self.assertFalse(check["passed"])
-        self.assertTrue(any(item["a"].startswith("text:") or item["b"].startswith("text:") for item in check["data"]["overlaps"]))
+        self.assertTrue(
+            any(item["a"].startswith("text:") or item["b"].startswith("text:") for item in check["data"]["overlaps"])
+        )
         self.assertTrue(any("marker:" in item["a"] or "marker:" in item["b"] for item in check["data"]["overlaps"]))
 
     def test_artist_overlaps_reports_stale_leader_metadata_label_on_marker_pair(self):
@@ -313,10 +318,13 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         ys = np.zeros(MAX_TEXT_ARTISTS + 1)
         ax.scatter(xs, ys, s=40)
 
-        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "marker_marker_overlaps")
+        result = diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False)
+        check = _check(result, "marker_marker_overlaps")
 
-        self.assertTrue(check["passed"])
+        # Over-cap skip is informational, NOT a pass, and must not be counted as a pass.
+        self.assertIsNone(check["passed"])
         self.assertTrue(check["detail"].startswith("skipped: marker count"))
+        self.assertIsInstance(result["passed"], bool)
 
     def test_axis_label_title_overlap_reports_collision(self):
         fig, ax = plt.subplots(figsize=(2.0, 1.6))
@@ -447,7 +455,9 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         axes[0].text(0.62, 0.5, "PDMS", ha="left", va="center")
         axes[1].text(0.62, 0.5, "PDMS", ha="left", va="center")
         axes[2].text(0.5, 0.38, "PDMS", ha="center", va="top")
-        check = _check(diagnose_figure_geometry(_drawn(fig), list(axes), layout_locked=False), "label_offset_consistency")
+        check = _check(
+            diagnose_figure_geometry(_drawn(fig), list(axes), layout_locked=False), "label_offset_consistency"
+        )
 
         self.assertFalse(check["passed"])
         inconsistency = check["data"]["inconsistencies"][0]
@@ -512,9 +522,11 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         ax.plot([0, 1], [0, 1])
         for index in range(MAX_TEXT_ARTISTS + 1):
             ax.annotate(str(index), (index / 500, index / 500))
-        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "point_annotation_overlaps")
-        self.assertTrue(check["passed"])
+        result = diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False)
+        check = _check(result, "point_annotation_overlaps")
+        self.assertIsNone(check["passed"])
         self.assertTrue(check["detail"].startswith("skipped: annotation count"))
+        self.assertIsInstance(result["passed"], bool)
 
     def test_mode_sensitivity_outside_figure(self):
         fig, ax = plt.subplots(figsize=(2, 2))
@@ -628,6 +640,52 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
                 os.environ["GEOMETRY_DIAGNOSTICS_DEADLINE"] = prior
             if prior_timeout is not None:
                 os.environ["MCP_RENDER_TIMEOUT_SECONDS"] = prior_timeout
+
+    def test_scatter_marker_footprint_diameter_uses_area_formula(self):
+        # matplotlib scatter `s` is area in pt^2; diameter = 2*sqrt(s/pi), not sqrt(s).
+        fig, ax = plt.subplots(figsize=(3, 3), dpi=100)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        size = 400.0  # sqrt -> 20pt (wrong); 2*sqrt(s/pi) -> ~22.57pt (correct)
+        ax.scatter([0.5], [0.5], s=size)
+        _drawn(fig)
+        ((_label, box),) = _marker_footprint_box_entries(ax, fig)
+        px_per_point = fig.dpi / 72.0
+        expected_diameter_px = 2.0 * float(np.sqrt(size / np.pi)) * px_per_point
+        self.assertAlmostEqual(box.width, expected_diameter_px, places=4)
+        self.assertAlmostEqual(box.height, expected_diameter_px, places=4)
+
+    def test_artist_overlaps_over_cap_skip_is_not_a_pass(self):
+        fig, ax = plt.subplots(figsize=(4, 4))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        xs = np.linspace(0.0, 1.0, MAX_TEXT_ARTISTS + 1)
+        ys = np.zeros(MAX_TEXT_ARTISTS + 1)
+        ax.scatter(xs, ys, s=40)
+        result = diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False)
+        check = _check(result, "artist_overlaps")
+        self.assertIsNone(check["passed"])
+        self.assertTrue(check["detail"].startswith("skipped: artist count"))
+        self.assertIsInstance(result["passed"], bool)
+
+    def test_box_vector_away_tie_break_is_deterministic(self):
+        # Coincident centers force the seeded tie-break branch.
+        source = Bbox.from_extents(0.0, 0.0, 2.0, 2.0)
+        obstacle = Bbox.from_extents(0.0, 0.0, 2.0, 2.0)
+        # In-process hash() is stable, so this set-size check only confirms intra-run
+        # consistency, not cross-run reproducibility. Per-run reproducibility (stable
+        # across PYTHONHASHSEED values) is proven by the value equality assertion below,
+        # which pins the result to a hashlib-derived (seed-independent) angle.
+        vectors = {_box_vector_away(source, obstacle, step_px=5.0) for _ in range(8)}
+        self.assertEqual(len(vectors), 1)
+        angle_seed = (round(1.0, 3), round(1.0, 3), round(1.0, 3), round(1.0, 3), round(5.0, 3))
+        angle = (int(hashlib.sha256(repr(angle_seed).encode()).hexdigest(), 16) % 360) * np.pi / 180.0
+        expected = (float(np.cos(angle) * 5.0), float(np.sin(angle) * 5.0))
+        self.assertEqual(vectors.pop(), expected)
+        # Witness that the formula uses hashlib, not Python's PYTHONHASHSEED-dependent hash().
+        hash_angle = (hash(angle_seed) % 360) * np.pi / 180.0
+        hash_vector = (float(np.cos(hash_angle) * 5.0), float(np.sin(hash_angle) * 5.0))
+        self.assertNotEqual(expected, hash_vector)
 
 
 if __name__ == "__main__":

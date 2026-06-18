@@ -13,6 +13,7 @@ Import constraint: matplotlib only. Nothing from themes/ or hub_core/
 
 from __future__ import annotations
 
+import hashlib
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -96,7 +97,8 @@ def diagnose_figure_geometry(
     checks.append(_label_offset_consistency(fig, data_axes, renderer))
     checks.append(_font_size_token_drift(data_axes, font_token_sizes))
 
-    passed = all(c["passed"] for c in checks if c["name"] in _WARNING_ELIGIBLE)
+    # passed is None marks an informational skip (e.g. over-cap); never count it as a pass.
+    passed = all(c["passed"] for c in checks if c["name"] in _WARNING_ELIGIBLE and c["passed"] is not None)
     return {
         "schema_version": SCHEMA_VERSION,
         "passed": bool(passed),
@@ -193,7 +195,7 @@ def _tick_label_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, 
     if x_pairs is None or y_pairs is None:
         return {
             "name": name,
-            "passed": True,
+            "passed": None,
             "detail": f"skipped: text artist count exceeds cap {MAX_TEXT_ARTISTS}",
             "data": {"axis_index": int(axis_index)},
         }
@@ -249,7 +251,7 @@ def _tick_label_crowding(ax: Axes, renderer: Any, axis_index: int) -> dict[str, 
     if x_ratio is None or y_ratio is None:
         return {
             "name": name,
-            "passed": True,
+            "passed": None,
             "detail": f"skipped: text artist count exceeds cap {MAX_TEXT_ARTISTS}",
             "data": {"axis_index": int(axis_index)},
         }
@@ -349,10 +351,7 @@ def _artists_outside_axes(ax: Axes, renderer: Any, axis_index: int) -> dict[str,
     name = "artists_outside_axes"
     visible = _visible_data_artists(ax)
     data_lim = _visible_data_lim(ax) if visible else None
-    if (
-        data_lim is None
-        or not np.all(np.isfinite(data_lim.get_points()))
-    ):
+    if data_lim is None or not np.all(np.isfinite(data_lim.get_points())):
         return {
             "name": name,
             "passed": True,
@@ -685,7 +684,8 @@ def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox
                 continue
             if sizes is not None and len(sizes) > 0:
                 size = float(sizes[min(point_index, len(sizes) - 1)])
-                diameter_pt = float(np.sqrt(size))
+                # scatter `s` is marker area in pt^2, so diameter = 2*sqrt(s/pi)
+                diameter_pt = 2.0 * float(np.sqrt(size / np.pi))
             else:
                 diameter_pt = 6.0
             radius_px = max(GEOM_EPS_PX, diameter_pt / 2 * px_per_point)
@@ -769,7 +769,7 @@ def _marker_marker_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[st
     if len(markers) > MAX_TEXT_ARTISTS:
         return {
             "name": name,
-            "passed": True,
+            "passed": None,
             "detail": f"skipped: marker count {len(markers)} exceeds cap {MAX_TEXT_ARTISTS}",
             "data": {"axis_index": int(axis_index)},
         }
@@ -1081,8 +1081,12 @@ def _box_vector_away(source: Bbox, obstacle: Bbox, *, step_px: float, seed: Any 
     vy = sy - oy
     norm = float(np.hypot(vx, vy))
     if norm <= GEOM_EPS_PX:
-        angle_seed = seed if seed is not None else (round(sx, 3), round(sy, 3), round(ox, 3), round(oy, 3), round(step_px, 3))
-        angle = (hash(angle_seed) % 360) * np.pi / 180.0
+        angle_seed = (
+            seed if seed is not None else (round(sx, 3), round(sy, 3), round(ox, 3), round(oy, 3), round(step_px, 3))
+        )
+        # Deterministic seed: Python's hash() varies with PYTHONHASHSEED across runs.
+        seed_int = int(hashlib.sha256(repr(angle_seed).encode()).hexdigest(), 16)
+        angle = (seed_int % 360) * np.pi / 180.0
         return (float(np.cos(angle) * step_px), float(np.sin(angle) * step_px))
     return (float(vx / norm * step_px), float(vy / norm * step_px))
 
@@ -1095,7 +1099,7 @@ def _point_annotation_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict
     if len(annotations) > MAX_TEXT_ARTISTS:
         return {
             "name": name,
-            "passed": True,
+            "passed": None,
             "detail": f"skipped: annotation count {len(annotations)} exceeds cap {MAX_TEXT_ARTISTS}",
             "data": {"axis_index": int(axis_index)},
         }
@@ -1223,7 +1227,7 @@ def _artist_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]
     if len(candidates) > MAX_TEXT_ARTISTS:
         return {
             "name": name,
-            "passed": True,
+            "passed": None,
             "detail": f"skipped: artist count {len(candidates)} exceeds cap {MAX_TEXT_ARTISTS}",
             "data": {"axis_index": int(axis_index)},
         }
@@ -1312,7 +1316,9 @@ def _nearest_marker_direction(ax: Axes, text: Any, renderer: Any) -> str | None:
     marker_boxes = _marker_footprint_box_entries(ax, ax.figure)
     if not marker_boxes:
         return None
-    nearest_box = min(marker_boxes, key=lambda item: (tx - _box_center(item[1])[0]) ** 2 + (ty - _box_center(item[1])[1]) ** 2)[1]
+    nearest_box = min(
+        marker_boxes, key=lambda item: (tx - _box_center(item[1])[0]) ** 2 + (ty - _box_center(item[1])[1]) ** 2
+    )[1]
     mx, my = _box_center(nearest_box)
     dx = tx - mx
     dy = ty - my
@@ -1333,9 +1339,7 @@ def _label_offset_consistency(fig: Figure, data_axes: list[Axes], renderer: Any)
             direction = _nearest_marker_direction(ax, text, renderer)
             if direction is None:
                 continue
-            labels.setdefault(text.get_text(), []).append(
-                {"axis_index": int(axis_index), "direction": direction}
-            )
+            labels.setdefault(text.get_text(), []).append({"axis_index": int(axis_index), "direction": direction})
 
     inconsistencies: list[dict[str, Any]] = []
     for label, placements in labels.items():
@@ -1373,7 +1377,10 @@ def _default_font_token_sizes(data_axes: list[Axes]) -> list[float]:
         for artist in (ax.xaxis.label, ax.yaxis.label):
             if artist is not None and _is_paintable(artist):
                 sizes.add(round(float(artist.get_fontsize()), 2))
-        for text in [*_visible_tick_labels(list(ax.get_xticklabels())), *_visible_tick_labels(list(ax.get_yticklabels()))]:
+        for text in [
+            *_visible_tick_labels(list(ax.get_xticklabels())),
+            *_visible_tick_labels(list(ax.get_yticklabels())),
+        ]:
             sizes.add(round(float(text.get_fontsize()), 2))
         legend = ax.get_legend()
         if legend is not None and _is_paintable(legend):
@@ -1417,7 +1424,10 @@ def _font_size_token_drift(data_axes: list[Axes], font_token_sizes: list[float] 
             role_sizes[role].add(size)
             if not _font_size_matches_token(size, token_sizes):
                 offenders.append({"axes": int(axis_index), "role": role, "text": artist.get_text(), "fontsize": size})
-        for text in [*_visible_tick_labels(list(ax.get_xticklabels())), *_visible_tick_labels(list(ax.get_yticklabels()))]:
+        for text in [
+            *_visible_tick_labels(list(ax.get_xticklabels())),
+            *_visible_tick_labels(list(ax.get_yticklabels())),
+        ]:
             size = round(float(text.get_fontsize()), 2)
             role_sizes["tick"].add(size)
             if not _font_size_matches_token(size, token_sizes):
@@ -1430,7 +1440,9 @@ def _font_size_token_drift(data_axes: list[Axes], font_token_sizes: list[float] 
                 size = round(float(text.get_fontsize()), 2)
                 role_sizes["legend"].add(size)
                 if not _font_size_matches_token(size, token_sizes):
-                    offenders.append({"axes": int(axis_index), "role": "legend", "text": text.get_text(), "fontsize": size})
+                    offenders.append(
+                        {"axes": int(axis_index), "role": "legend", "text": text.get_text(), "fontsize": size}
+                    )
 
     role_size_counts = {role: len(sizes) for role, sizes in role_sizes.items() if sizes}
     divergent_roles = sorted(role for role, count in role_size_counts.items() if count > 1)
