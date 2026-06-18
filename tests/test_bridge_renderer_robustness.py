@@ -69,8 +69,10 @@ class TestYBreakRangeRejectsUnsupportedFields(unittest.TestCase):
                 overlay_baselines=({"label": "ref", "y": 5.0},),
                 y_break_range=(100.0, 800.0),
             )
-            with self.assertRaises(ValueError):
+            with self.assertRaises(ValueError) as ctx:
                 render_bridge_figure(spec)
+            self.assertIn("overlay_baselines", str(ctx.exception))
+            self.assertIn("y_break_range", str(ctx.exception))
 
     def test_y_break_without_unsupported_fields_still_renders(self):
         with tempfile.TemporaryDirectory() as td:
@@ -126,6 +128,8 @@ class TestLoadPointsNanFiltering(unittest.TestCase):
                 points = _load_points(p, spec)
                 self.assertEqual(len(points), 1)
                 self.assertEqual(points[0]["y"], 5.0)
+                self.assertGreater(len(w), 0)
+                self.assertIn("NaN/inf", str(w[0].message))
 
     def test_clean_data_no_warning(self):
         with tempfile.TemporaryDirectory() as td:
@@ -177,6 +181,115 @@ class TestEmptyDatasetGuard(unittest.TestCase):
             _render_plot(ax, [], spec)
             self.assertTrue(any("blank" in str(x.message) for x in w))
         plt.close(fig)
+
+
+class TestAsymmetricLowerErrorNotDropped(unittest.TestCase):
+    """Regression: a spec with only yerr_minus_column used to draw NO error bars."""
+
+    def test_only_yerr_minus_produces_errorbars(self):
+        import numpy as np
+
+        from plotting.bridge_renderer import _yerr_values
+
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "data.csv"
+            _write_csv(
+                p,
+                [
+                    {"x": "0", "y": "1.0", "err_minus": "0.1"},
+                    {"x": "1", "y": "2.0", "err_minus": "0.2"},
+                ],
+            )
+            spec = _make_spec(str(p), yerr_minus_column="err_minus")
+            points = _load_points(p, spec)
+            self.assertEqual(len(points), 2)
+            yerr = _yerr_values(points, spec)
+            self.assertIsNotNone(yerr)
+            yerr_arr = np.asarray(yerr)
+            self.assertEqual(yerr_arr.shape, (2, 2))
+            np.testing.assert_array_almost_equal(yerr_arr[0], [0.1, 0.2])
+
+    def test_only_yerr_minus_draws_errorbar_artist(self):
+        import matplotlib.pyplot as plt
+
+        from plotting.bridge_renderer import _render_xy_plot
+
+        spec = _make_spec("unused.csv", yerr_minus_column="err_minus")
+        points = [
+            {"x": 0.0, "y": 1.0, "z": None, "label": "", "series": "", "yerr": None, "yerr_minus": 0.1},
+            {"x": 1.0, "y": 2.0, "z": None, "label": "", "series": "", "yerr": None, "yerr_minus": 0.2},
+        ]
+        fig, ax = plt.subplots()
+        try:
+            _render_xy_plot(ax, points, spec, line=False)
+            # errorbar adds LineCollection(s) for the bars; plain scatter would not.
+            self.assertTrue(len(ax.collections) > 1 or len(ax.lines) > 0)
+        finally:
+            plt.close(fig)
+
+
+class TestHeatmapZColumnGuard(unittest.TestCase):
+    """Regression: heatmap with empty z_column rendered an all-NaN blank figure silently."""
+
+    def test_empty_z_column_raises(self):
+        import matplotlib.pyplot as plt
+
+        from plotting.bridge_renderer import _render_plot
+
+        spec = _make_spec("unused.csv", plot_type="heatmap", z_column="")
+        points = [
+            {"x": 0.0, "y": 0.0, "z": None, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+        ]
+        fig, ax = plt.subplots()
+        try:
+            with self.assertRaises(ValueError):
+                _render_plot(ax, points, spec)
+        finally:
+            plt.close(fig)
+
+    def test_duplicate_cells_warn(self):
+        import matplotlib.pyplot as plt
+
+        from plotting.bridge_renderer import _render_heatmap_plot
+
+        spec = _make_spec("unused.csv", plot_type="heatmap", z_column="z")
+        points = [
+            {"x": 0.0, "y": 0.0, "z": 1.0, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+            {"x": 0.0, "y": 0.0, "z": 5.0, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+            {"x": 1.0, "y": 1.0, "z": 3.0, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+        ]
+        fig, ax = plt.subplots()
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                _render_heatmap_plot(ax, points, spec)
+                self.assertTrue(any("duplicate" in str(x.message).lower() for x in w))
+        finally:
+            plt.close(fig)
+
+
+class TestSingleSeriesBarDuplicateCategories(unittest.TestCase):
+    """Regression: single-series bar with duplicate categories silently overplots."""
+
+    def test_duplicate_category_warns(self):
+        import matplotlib.pyplot as plt
+
+        from plotting.bridge_renderer import _render_bar_plot
+
+        spec = _make_spec("unused.csv", plot_type="bar")
+        points = [
+            {"x": "A", "y": 1.0, "z": None, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+            {"x": "A", "y": 3.0, "z": None, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+            {"x": "B", "y": 2.0, "z": None, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+        ]
+        fig, ax = plt.subplots()
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                _render_bar_plot(ax, points, spec)
+                self.assertTrue(any("duplicate" in str(x.message).lower() for x in w))
+        finally:
+            plt.close(fig)
 
 
 class TestDeterministicTimestamp(unittest.TestCase):
