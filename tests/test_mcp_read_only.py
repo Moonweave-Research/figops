@@ -9,15 +9,17 @@ from io import BytesIO
 from pathlib import Path
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
-from hub_core.mcp_surface import (
+from hub_core.mcp.transport import (
     JSONRPC_INVALID_REQUEST,
-    GraphHubMCPServer,
     _dispatch_json_rpc,
     _handle_json_rpc,
     _matches_json_schema_type,
     _validate_tool_arguments,
-    list_tool_definitions,
     run_stdio_server,
+)
+from hub_core.mcp_surface import (
+    GraphHubMCPServer,
+    list_tool_definitions,
 )
 from hub_core.project_discovery import ProjectDiscoveryService
 from themes.style_profiles import PROFILE_ALIASES, list_profiles
@@ -838,7 +840,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             self.assertIn("does not exist", health["warnings"][0])
 
     def test_read_stdio_message_rejects_negative_content_length_without_draining(self):
-        from hub_core.mcp_surface import _read_stdio_message
+        from hub_core.mcp.transport import _read_stdio_message
 
         body = b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
         stream = BytesIO(b"Content-Length: -1\r\n\r\n" + body)
@@ -848,7 +850,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(stream.read(), body)
 
     def test_read_stdio_message_rejects_oversized_content_length_without_draining(self):
-        from hub_core.mcp_surface import MCP_MAX_MESSAGE_BYTES, _read_stdio_message
+        from hub_core.mcp.transport import MCP_MAX_MESSAGE_BYTES, _read_stdio_message
 
         oversize = MCP_MAX_MESSAGE_BYTES + 1
         stream = BytesIO(b"Content-Length: " + str(oversize).encode("ascii") + b"\r\n\r\nshort")

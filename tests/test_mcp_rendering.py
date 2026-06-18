@@ -12,7 +12,8 @@ from unittest.mock import patch
 
 import yaml
 
-from hub_core.mcp_surface import GraphHubMCPServer, _handle_json_rpc, list_tool_definitions
+from hub_core.mcp.transport import _handle_json_rpc
+from hub_core.mcp_surface import GraphHubMCPServer, list_tool_definitions
 
 
 class _CompletedRenderProcess:
@@ -555,7 +556,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             expected_dry_root = runtime_root / "mcp_project_jobs" / "path-parity"
             expected_render_root = runtime_root / "mcp_project_jobs" / "path-parity-real"
             self.assertEqual(Path(dry_result["job_root"]).resolve(), expected_dry_root.resolve())
-            self.assertEqual(Path(dry_result["snapshot_project_path"]).resolve(), (expected_dry_root / "project").resolve())
+            self.assertEqual(
+                Path(dry_result["snapshot_project_path"]).resolve(),
+                (expected_dry_root / "project").resolve(),
+            )
             self.assertEqual(Path(render_result["job_root"]).resolve(), expected_render_root.resolve())
             self.assertEqual(
                 Path(render_result["snapshot_project_path"]).resolve(),
@@ -868,7 +872,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(any("Unknown layout_type duo" in line for line in result["script_output"]))
             self.assertEqual(result["layout_report"]["render_errors"][0]["stage"], "EXPORT")
             self.assertTrue(
-                any("Unknown layout_type duo" in line for line in result["layout_report"]["render_errors"][0]["script_output_tail"])
+                any(
+                    "Unknown layout_type duo" in line
+                    for line in result["layout_report"]["render_errors"][0]["script_output_tail"]
+                )
             )
             manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
             self.assertTrue(any("KeyError" in line for line in manifest["script_output"]))
@@ -2008,8 +2015,6 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
 
     def test_project_render_family_check_does_not_group_unrelated_two_part_ids(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_family_false_positive_") as tmpdir:
-            from PIL import Image
-
             root = Path(tmpdir) / "ResearchOS"
             project = _write_project_save_journal_fixture(root)
             (project / "hub_scripts" / "plot.py").write_text(
