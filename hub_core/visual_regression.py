@@ -33,6 +33,11 @@ VALID_REGRESSION_BASELINE_MODES = {"ignore", "check", "update"}
 SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif"}
 SUPPORTED_PDF_EXTENSIONS = {".pdf"}
 PDF_PREVIEW_SIZE = 1024
+# Visual regression tolerances. Defaults are strict (0.0) so byte-identical
+# images pass and any visible pixel difference fails. Override per project via
+# the config `regression` section: {"pixel_diff_ratio_tol": float, "pixel_rms_tol": float}.
+DEFAULT_PIXEL_DIFF_RATIO_TOL = 0.0
+DEFAULT_PIXEL_RMS_TOL = 0.0
 
 
 def run_check_all(
@@ -204,15 +209,17 @@ def _run_single_project(
 
     finished_at = datetime.now()
     config, config_path, config_hash = load_config(project_dir)
+    tolerances = _resolve_regression_tolerances(config)
     figure_outputs = _collect_figure_outputs(
         project_dir,
         config,
         baseline_state=baseline_state,
         project_name=_resolve_project_name(project_dir, config),
         regression_baseline=regression_baseline,
+        tolerances=tolerances,
     )
     project_name = _resolve_project_name(project_dir, config)
-    baseline_failed = any(not output.get("regression_ok", True) for output in figure_outputs)
+    baseline_failed = any(not output.get("regression_ok", False) for output in figure_outputs)
     pipeline_success = exit_code == 0
     project_success = pipeline_success and not baseline_failed
     status = "success"
@@ -249,9 +256,11 @@ def _resolve_project_name(project_dir, config):
     return os.path.basename(project_dir)
 
 
-def _collect_figure_outputs(project_dir, config, *, baseline_state, project_name, regression_baseline):
+def _collect_figure_outputs(project_dir, config, *, baseline_state, project_name, regression_baseline, tolerances=None):
     if not isinstance(config, dict):
         return []
+    if tolerances is None:
+        tolerances = _resolve_regression_tolerances(config)
     outputs = []
     outputs.extend(
         _collect_declared_outputs(
@@ -260,6 +269,7 @@ def _collect_figure_outputs(project_dir, config, *, baseline_state, project_name
             baseline_state=baseline_state,
             project_name=project_name,
             regression_baseline=regression_baseline,
+            tolerances=tolerances,
             id_prefix="Fig",
         )
     )
@@ -270,6 +280,7 @@ def _collect_figure_outputs(project_dir, config, *, baseline_state, project_name
             baseline_state=baseline_state,
             project_name=project_name,
             regression_baseline=regression_baseline,
+            tolerances=tolerances,
             id_prefix="Diagram",
         )
     )
@@ -283,6 +294,7 @@ def _collect_declared_outputs(
     baseline_state,
     project_name,
     regression_baseline,
+    tolerances,
     id_prefix,
 ):
     if not isinstance(items, list):
@@ -305,6 +317,7 @@ def _collect_declared_outputs(
                 figure_id=figure_id,
                 output_path=output_path,
                 regression_baseline=regression_baseline,
+                tolerances=tolerances,
                 artifact_kind="declared",
             )
         )
@@ -318,6 +331,7 @@ def _collect_declared_outputs(
                     figure_id=f"{figure_id}.pdf",
                     output_path=sidecar_pdf,
                     regression_baseline=regression_baseline,
+                    tolerances=tolerances,
                     artifact_kind="sidecar_pdf",
                 )
             )
@@ -332,6 +346,7 @@ def _build_output_record(
     figure_id,
     output_path,
     regression_baseline,
+    tolerances,
     artifact_kind,
 ):
     baseline_result = _resolve_figure_baseline(
@@ -341,6 +356,7 @@ def _build_output_record(
         figure_id=figure_id,
         output_path=output_path,
         regression_baseline=regression_baseline,
+        tolerances=tolerances,
     )
     return {
         "figure_id": figure_id,
@@ -351,7 +367,7 @@ def _build_output_record(
         "size": _file_size(output_path),
         "dimensions": _artifact_dimensions(output_path),
         "baseline": baseline_result,
-        "regression_ok": baseline_result.get("regression_ok", True),
+        "regression_ok": baseline_result.get("regression_ok", False),
     }
 
 
@@ -438,7 +454,10 @@ def _resolve_figure_baseline(
     figure_id,
     output_path,
     regression_baseline,
+    tolerances=None,
 ):
+    if tolerances is None:
+        tolerances = _resolve_regression_tolerances(None)
     current_exists = os.path.exists(output_path)
     current_hash = _hash_file(output_path)
     current_size = _file_size(output_path)
@@ -522,16 +541,101 @@ def _resolve_figure_baseline(
             "diff": None,
         }
 
-    matched = bool(baseline_hash) and baseline_hash == current_hash
-    return {
+    if bool(baseline_hash) and baseline_hash == current_hash:
+        return {
+            "mode": "check",
+            "status": "matched",
+            "regression_ok": True,
+            "baseline_path": baseline_path,
+            "baseline_sha256": baseline_hash,
+            "current_sha256": current_hash,
+            "diff": None,
+        }
+
+    # Hashes differ: do not decide on the hash alone. Compute pixel metrics and
+    # gate on tolerances. A size mismatch fails outright (no silent cropping).
+    diff = _build_visual_diff_metrics(baseline_path, output_path)
+    regression_ok, status, reason = _evaluate_pixel_verdict(diff, tolerances)
+    result = {
         "mode": "check",
-        "status": "matched" if matched else "mismatch",
-        "regression_ok": matched,
+        "status": status,
+        "regression_ok": regression_ok,
         "baseline_path": baseline_path,
         "baseline_sha256": baseline_hash,
         "current_sha256": current_hash,
-        "diff": None if matched else _build_visual_diff_metrics(baseline_path, output_path),
+        "diff": diff,
     }
+    if reason:
+        result["reason"] = reason
+    return result
+
+
+def _resolve_regression_tolerances(config):
+    pixel_diff_ratio_tol = DEFAULT_PIXEL_DIFF_RATIO_TOL
+    pixel_rms_tol = DEFAULT_PIXEL_RMS_TOL
+    if isinstance(config, dict):
+        section = config.get("regression")
+        if isinstance(section, dict):
+            raw_ratio = section.get("pixel_diff_ratio_tol")
+            if _is_finite_number(raw_ratio) and float(raw_ratio) >= 0:
+                pixel_diff_ratio_tol = float(raw_ratio)
+            raw_rms = section.get("pixel_rms_tol")
+            if _is_finite_number(raw_rms) and float(raw_rms) >= 0:
+                pixel_rms_tol = float(raw_rms)
+    return {
+        "pixel_diff_ratio_tol": pixel_diff_ratio_tol,
+        "pixel_rms_tol": pixel_rms_tol,
+    }
+
+
+def _is_finite_number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return value == value and value not in (float("inf"), float("-inf"))
+
+
+def _evaluate_pixel_verdict(diff, tolerances):
+    """Map diff metrics + tolerances to (regression_ok, status, reason).
+
+    - No usable metrics (renderer/PIL unavailable, unsupported artifact): the
+      content genuinely differs (hashes mismatched) and cannot be quantified,
+      so fail closed.
+    - Size mismatch: fail outright.
+    - Otherwise: pass only when pixel_diff_ratio <= tol AND pixel_rms <= rms_tol.
+    """
+    if not isinstance(diff, dict):
+        return False, "mismatch", "visual diff metrics unavailable; cannot verify within tolerance"
+
+    if diff.get("size_mismatch"):
+        baseline_dims = diff.get("baseline_dimensions")
+        current_dims = diff.get("current_dimensions")
+        return (
+            False,
+            "size_mismatch",
+            f"dimensions differ: baseline={baseline_dims} current={current_dims}",
+        )
+
+    pixel_diff_ratio = diff.get("pixel_diff_ratio")
+    pixel_rms = diff.get("pixel_rms")
+    if not _is_finite_number(pixel_diff_ratio) or not _is_finite_number(pixel_rms):
+        return False, "mismatch", "pixel metrics missing; cannot verify within tolerance"
+
+    # Gate the verdict on the unrounded metrics so a genuinely-different image
+    # whose rounded metrics collapse to 0.0 does not pass-open against a strict
+    # tolerance; the rounded values stay only for reporting.
+    ratio_for_verdict = diff.get("pixel_diff_ratio_raw", pixel_diff_ratio)
+    rms_for_verdict = diff.get("pixel_rms_raw", pixel_rms)
+
+    ratio_tol = tolerances["pixel_diff_ratio_tol"]
+    rms_tol = tolerances["pixel_rms_tol"]
+    within_tol = float(ratio_for_verdict) <= ratio_tol and float(rms_for_verdict) <= rms_tol
+    if within_tol:
+        return True, "within_tolerance", None
+    reason = (
+        f"pixel diff exceeds tolerance: pixel_diff_ratio={pixel_diff_ratio} (tol={ratio_tol}), "
+        f"pixel_rms={pixel_rms} (tol={rms_tol})"
+    )
+    return False, "mismatch", reason
 
 
 def _upsert_baseline_entry(
@@ -584,7 +688,9 @@ def _build_baseline_summary(results, baseline_state, regression_baseline):
         "updated": bool(baseline_state.get("was_updated")),
         "figure_count": 0,
         "matched_count": 0,
+        "within_tolerance_count": 0,
         "mismatch_count": 0,
+        "size_mismatch_count": 0,
         "missing_baseline_count": 0,
         "missing_output_count": 0,
         "updated_count": 0,
@@ -597,8 +703,12 @@ def _build_baseline_summary(results, baseline_state, regression_baseline):
             status = baseline.get("status", "skipped")
             if status == "matched":
                 summary["matched_count"] += 1
+            elif status == "within_tolerance":
+                summary["within_tolerance_count"] += 1
             elif status == "mismatch":
                 summary["mismatch_count"] += 1
+            elif status == "size_mismatch":
+                summary["size_mismatch_count"] += 1
             elif status == "missing_baseline":
                 summary["missing_baseline_count"] += 1
             elif status == "missing_output":
@@ -638,14 +748,11 @@ def _build_image_diff_metrics(baseline_path, current_path):
                 "current_dimensions": [current_rgba.width, current_rgba.height],
             }
             if baseline_rgba.size != current_rgba.size:
+                # 크기 불일치는 크롭으로 숨기지 않는다: 정량 지표 없이 플래그만 반환하고
+                # 판정은 _evaluate_pixel_verdict 에서 outright fail 로 처리한다.
                 metrics["size_mismatch"] = True
-                # 공통 영역으로 크롭 후 diff 계산 (크기 불일치에도 정량 지표 제공)
-                common_w = min(baseline_rgba.width, current_rgba.width)
-                common_h = min(baseline_rgba.height, current_rgba.height)
-                baseline_rgba = baseline_rgba.crop((0, 0, common_w, common_h))
-                current_rgba = current_rgba.crop((0, 0, common_w, common_h))
-            else:
-                metrics["size_mismatch"] = False
+                return metrics
+            metrics["size_mismatch"] = False
 
             diff = ImageChops.difference(baseline_rgba, current_rgba)
             diff_gray = diff.convert("L")
@@ -653,8 +760,12 @@ def _build_image_diff_metrics(baseline_path, current_path):
             total_pixels = sum(histogram) or 1
             zero_pixels = histogram[0] if histogram else 0
             stat = ImageStat.Stat(diff)
-            metrics["pixel_diff_ratio"] = round(1 - (zero_pixels / total_pixels), 6)
-            metrics["pixel_rms"] = round(sum(stat.rms) / len(stat.rms), 4)
+            raw_pixel_diff_ratio = 1 - (zero_pixels / total_pixels)
+            raw_pixel_rms = sum(stat.rms) / len(stat.rms)
+            metrics["pixel_diff_ratio_raw"] = raw_pixel_diff_ratio
+            metrics["pixel_rms_raw"] = raw_pixel_rms
+            metrics["pixel_diff_ratio"] = round(raw_pixel_diff_ratio, 6)
+            metrics["pixel_rms"] = round(raw_pixel_rms, 4)
             return metrics
     except Exception:
         return None
