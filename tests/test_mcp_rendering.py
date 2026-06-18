@@ -992,7 +992,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             runtime_root = Path(tmpdir) / "runtime"
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
-            with patch("hub_core.mcp_surface.MCP_RENDER_CSV_MAX_BYTES", 4):
+            with patch("hub_core.mcp.render_orchestration.MCP_RENDER_CSV_MAX_BYTES", 4):
                 result = self._call(
                     server,
                     "graphhub.render_csv_graph",
@@ -1304,8 +1304,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with (
-                patch("hub_core.mcp_surface.MCP_RENDER_TIMEOUT_SECONDS", 0.05),
-                patch("hub_core.mcp_surface._render_bridge_figure_worker", _sleeping_render_worker),
+                patch("hub_core.mcp.render_orchestration.MCP_RENDER_TIMEOUT_SECONDS", 0.05),
+                patch("hub_core.mcp.render_orchestration._render_bridge_figure_worker", _sleeping_render_worker),
             ):
                 result = self._call(
                     server,
@@ -1330,7 +1330,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             runtime_root = Path(tmpdir) / "runtime"
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
-            with patch("hub_core.mcp_surface._render_bridge_figure_worker", _path_leaking_render_worker):
+            with patch("hub_core.mcp.render_orchestration._render_bridge_figure_worker", _path_leaking_render_worker):
                 result = self._call(
                     server,
                     "graphhub.render_csv_graph",
@@ -1399,7 +1399,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             baseline_path.write_bytes(b"not-a-real-png")
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
-            with patch("hub_core.mcp_surface._render_bridge_figure_worker", _path_leaking_render_worker):
+            with patch("hub_core.mcp.render_orchestration._render_bridge_figure_worker", _path_leaking_render_worker):
                 result = self._call(
                     server,
                     "graphhub.render_csv_graph",
@@ -2187,7 +2187,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             with (
                 patch.object(GraphHubMCPServer, "_safe_preflight", return_value=clean_preflight),
-                patch("hub_core.mcp_surface._read_geometry_sidecar", return_value=finding),
+                patch("hub_core.mcp.render_orchestration._read_geometry_sidecar", return_value=finding),
             ):
                 _, result = self._render_csv(tmpdir, job_id="geom-flip")
             self.assertEqual(result["status"], "warning")
@@ -2198,7 +2198,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             with (
                 patch.object(GraphHubMCPServer, "_safe_preflight", return_value=clean_preflight),
-                patch("hub_core.mcp_surface._read_geometry_sidecar", return_value=clean),
+                patch("hub_core.mcp.render_orchestration._read_geometry_sidecar", return_value=clean),
             ):
                 _, result = self._render_csv(tmpdir, job_id="geom-ok")
             self.assertEqual(result["status"], "ok")
@@ -2248,7 +2248,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
     def test_no_sidecar_marker(self):
         # A render whose save_journal_fig never wrote a sidecar (env var stripped) must
         # carry the distinct no_sidecar stub, not a silent null.
-        from hub_core.mcp_surface import _read_geometry_sidecar
+        from hub_core.mcp.render_orchestration import _read_geometry_sidecar
 
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             diag = _read_geometry_sidecar(Path(tmpdir))
