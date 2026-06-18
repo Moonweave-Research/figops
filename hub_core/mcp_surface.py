@@ -504,9 +504,28 @@ def _standard_output_schema(extra_properties: dict[str, Any] | None = None) -> d
 
 def list_tool_definitions() -> list[dict[str, Any]]:
     root_arg = {"type": "string", "description": "Project scan root. Defaults to Graph Hub research root."}
+    project_id_arg = {
+        "type": "string",
+        "description": "Discovered project ID; mutually exclusive with project_path, supply exactly one.",
+    }
+    project_path_arg = {
+        "type": "string",
+        "description": "Project path; mutually exclusive with project_id, supply exactly one.",
+    }
+    data_path_arg = {"type": "string", "description": "CSV input path under an allowed data root."}
+    semantic_checks_arg = {
+        "type": "object",
+        "description": "Optional per-column semantic constraints keyed by CSV column name.",
+    }
+    baseline_path_arg = {
+        "type": "string",
+        "description": "Optional baseline figure path to compare the rendered output against.",
+    }
+    job_id_arg = {"type": "string", "description": "Stable render job ID; auto-generated when omitted."}
+    selector_one_of = [{"required": ["project_id"]}, {"required": ["project_path"]}]
     project_selector = {
-        "project_id": {"type": "string"},
-        "project_path": {"type": "string"},
+        "project_id": project_id_arg,
+        "project_path": project_path_arg,
         "root": root_arg,
         "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
     }
@@ -565,7 +584,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ToolDefinition(
             "graphhub.inspect_project",
             "Summarize one project config without running analysis, plotting, or report writers.",
-            _object_schema(project_selector),
+            {**_object_schema(project_selector), "oneOf": selector_one_of},
             _standard_output_schema(
                 {
                     "project_metadata": {"type": "object"},
@@ -584,7 +603,10 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ToolDefinition(
             "graphhub.validate_project",
             "Run read-only config, data contract, style, and lockfile checks without executing scripts.",
-            _object_schema({**project_selector, "strict_lock": {"type": "boolean", "default": False}}),
+            {
+                **_object_schema({**project_selector, "strict_lock": {"type": "boolean", "default": False}}),
+                "oneOf": selector_one_of,
+            },
             _standard_output_schema(
                 {
                     "valid": {"type": "boolean"},
@@ -601,22 +623,26 @@ def list_tool_definitions() -> list[dict[str, Any]]:
             "Render a CSV-backed graph in an isolated runtime-root MCP job workspace.",
             _object_schema(
                 {
-                    "data_path": {"type": "string"},
+                    "data_path": data_path_arg,
                     "x_column": {"type": "string"},
                     "y_column": {"type": "string"},
                     "z_column": {"type": "string"},
                     "plot_type": {"type": "string", "enum": sorted(SUPPORTED_RENDER_PLOT_TYPES), "default": "scatter"},
-                    "target_format": {"type": "string", "default": "nature"},
-                    "profile": {"type": "string", "default": DEFAULT_PROFILE},
-                    "output_format": {"type": "string", "default": "png"},
-                    "semantic_checks": {"type": "object"},
+                    "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
+                    "profile": {
+                        "type": "string",
+                        "enum": sorted(set(list_profiles()) | set(PROFILE_ALIASES)),
+                        "default": DEFAULT_PROFILE,
+                    },
+                    "output_format": {"type": "string", "enum": sorted(ALLOWED_OUTPUT_FORMATS), "default": "png"},
+                    "semantic_checks": semantic_checks_arg,
                     "dry_run": {"type": "boolean", "default": False},
                     "overwrite": {"type": "boolean", "default": False},
-                    "job_id": {"type": "string"},
+                    "job_id": job_id_arg,
                     "title": {"type": "string"},
                     "x_axis_label": {"type": "string"},
                     "y_axis_label": {"type": "string"},
-                    "baseline_path": {"type": "string"},
+                    "baseline_path": baseline_path_arg,
                 },
                 required=["data_path", "x_column", "y_column"],
             ),
@@ -639,23 +665,26 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ToolDefinition(
             "graphhub.render_project_figure",
             "Render one configured project figure in an isolated runtime-root MCP job workspace.",
-            _object_schema(
-                {
-                    "project_id": {"type": "string"},
-                    "project_path": {"type": "string"},
-                    "root": root_arg,
-                    "figure_id": {"type": "string"},
-                    "figure_output": {"type": "string"},
-                    "target_format": {"type": "string"},
-                    "profile": {"type": "string"},
-                    "output_format": {"type": "string"},
-                    "dry_run": {"type": "boolean", "default": False},
-                    "overwrite": {"type": "boolean", "default": False},
-                    "job_id": {"type": "string"},
-                    "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
-                    "baseline_path": {"type": "string"},
-                }
-            ),
+            {
+                **_object_schema(
+                    {
+                        "project_id": project_id_arg,
+                        "project_path": project_path_arg,
+                        "root": root_arg,
+                        "figure_id": {"type": "string"},
+                        "figure_output": {"type": "string"},
+                        "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS)},
+                        "profile": {"type": "string", "enum": sorted(set(list_profiles()) | set(PROFILE_ALIASES))},
+                        "output_format": {"type": "string", "enum": sorted(ALLOWED_OUTPUT_FORMATS)},
+                        "dry_run": {"type": "boolean", "default": False},
+                        "overwrite": {"type": "boolean", "default": False},
+                        "job_id": job_id_arg,
+                        "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
+                        "baseline_path": baseline_path_arg,
+                    }
+                ),
+                "oneOf": selector_one_of,
+            },
             _standard_output_schema(
                 {
                     "job_id": {"type": "string"},
@@ -680,7 +709,13 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ToolDefinition(
             "graphhub.collect_artifacts",
             "Return artifact metadata for a completed MCP render job.",
-            _object_schema({"job_id": {"type": "string"}, "baseline_path": {"type": "string"}}, required=["job_id"]),
+            _object_schema(
+                {
+                    "job_id": {"type": "string", "description": "Render job ID returned by a prior render call."},
+                    "baseline_path": baseline_path_arg,
+                },
+                required=["job_id"],
+            ),
             _standard_output_schema(
                 {
                     "figures": {"type": "array", "items": {"type": "object"}},
@@ -703,9 +738,16 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                 {
                     "project_name": {"type": "string"},
                     "project_root": {"type": "string"},
-                    "target_format": {"type": "string", "default": "nature"},
+                    "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
                     "template": {"type": "string", "enum": ["standard", "researchos"], "default": "standard"},
-                    "dry_run": {"type": "boolean", "default": True},
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": (
+                            "Preview without writing files. Defaults True like normalize_project_structure and "
+                            "batch_check; the two render tools default dry_run False."
+                        ),
+                    },
                     "overwrite": {"type": "boolean", "default": False},
                 },
                 required=["project_name", "project_root"],
@@ -728,7 +770,14 @@ def list_tool_definitions() -> list[dict[str, Any]]:
             _object_schema(
                 {
                     "project_path": {"type": "string"},
-                    "plan_only": {"type": "boolean", "default": True},
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": (
+                            "Preview without writing files. Defaults True like scaffold_project and "
+                            "batch_check; the two render tools default dry_run False."
+                        ),
+                    },
                     "move_policy": {"type": "string", "enum": ["copy", "move", "symlink"], "default": "copy"},
                     "include_raw": {"type": "boolean", "default": False},
                     "overwrite": {"type": "boolean", "default": False},
@@ -1026,10 +1075,17 @@ class GraphHubMCPServer:
         else:
             warnings.append(f"Discovery root does not exist: {self._display_path(root)}")
 
+        status = "warning" if warnings else "ok"
+        summary = (
+            "Graph Hub MCP surface is available with discovery warnings."
+            if warnings
+            else "Graph Hub MCP surface is available."
+        )
         return self._envelope(
             "graphhub.health",
             arguments,
-            summary="Graph Hub MCP surface is available.",
+            status=status,
+            summary=summary,
             warnings=warnings,
             hub_path=str(self.hub_path),
             version=self._read_version(),
@@ -2197,18 +2253,10 @@ class GraphHubMCPServer:
         )
 
     def _resolve_project_render_path(self, arguments: dict[str, Any]) -> Path:
-        project_path_value = arguments.get("project_path")
-        project_id_value = arguments.get("project_id")
-        if project_path_value and project_id_value:
-            project_path = self._resolve_under_root(project_path_value, field_name="project_path")
-            id_project_path = self._resolve_project_path(
-                {key: value for key, value in arguments.items() if key != "project_path"}
-            )
-            if project_path != id_project_path:
-                raise ValueError("project_id and project_path resolve to different projects.")
-            return project_path
-        if project_path_value:
-            return self._resolve_under_root(project_path_value, field_name="project_path")
+        # tools/call validation enforces exactly one of project_id/project_path,
+        # so only the single-selector path-or-id resolution is reachable here.
+        if arguments.get("project_path"):
+            return self._resolve_under_root(arguments["project_path"], field_name="project_path")
         return self._resolve_project_path(arguments)
 
     @staticmethod
@@ -2870,7 +2918,7 @@ class GraphHubMCPServer:
                 f"- move_policy: {move_policy}\n\n"
                 "Workflow:\n"
                 "1. Call graphhub.inspect_project.\n"
-                "2. Call graphhub.normalize_project_structure with plan_only=true.\n"
+                "2. Call graphhub.normalize_project_structure with dry_run=true.\n"
                 "3. Show the manifest and preserve project style choices.\n"
                 "4. Apply only after user approval.\n"
                 "5. Call graphhub.validate_project after apply."
@@ -2979,7 +3027,7 @@ class GraphHubMCPServer:
 
     def normalize_project_structure(self, arguments: dict[str, Any]) -> dict[str, Any]:
         project_path = self._resolve_under_root(arguments.get("project_path"), field_name="project_path")
-        plan_only = bool(arguments.get("plan_only", True))
+        dry_run = bool(arguments.get("dry_run", True))
         move_policy = str(arguments.get("move_policy") or "copy").strip().lower()
         include_raw = bool(arguments.get("include_raw", False))
         overwrite = bool(arguments.get("overwrite", False))
@@ -2989,7 +3037,7 @@ class GraphHubMCPServer:
         project_root = Path(str(manifest["project_root"]))
         config_path = project_root / "project_config.yaml"
         validation = self._validation_summary(config_path)
-        if plan_only:
+        if dry_run:
             return self._envelope(
                 "graphhub.normalize_project_structure",
                 arguments,
@@ -3725,6 +3773,9 @@ class GraphHubMCPServer:
 
     @staticmethod
     def _max_depth(value: Any) -> int:
+        # RPC input is already range-validated against minimum:1/maximum:12 before
+        # reaching the handler; this clamp only backstops non-RPC/internal callers
+        # and default-fill, so the out-of-range branch is dead for tools/call.
         try:
             depth = int(value)
         except (TypeError, ValueError):
@@ -4691,14 +4742,65 @@ def _validate_tool_arguments(tool_name: str, arguments: dict[str, Any]) -> list[
             unknown = sorted(set(arguments) - set(properties))
             if unknown:
                 errors.append(f"Unknown tool argument(s): {', '.join(unknown)}")
+        one_of = schema.get("oneOf")
+        if isinstance(one_of, list) and one_of:
+            branches = [branch for branch in one_of if isinstance(branch, dict)]
+            satisfied_count = sum(
+                1
+                for branch in branches
+                if all(
+                    branch_key in arguments
+                    and isinstance(arguments.get(branch_key), str)
+                    and arguments.get(branch_key).strip()
+                    for branch_key in branch.get("required", [])
+                )
+            )
+            if satisfied_count != 1:
+                branch_options = " or ".join(", ".join(branch.get("required", [])) for branch in branches)
+                errors.append(f"Must supply exactly one of: {branch_options}.")
         for key, value in arguments.items():
             prop_schema = properties.get(key)
             if isinstance(prop_schema, dict):
                 expected_type = prop_schema.get("type")
                 if not _matches_json_schema_type(value, expected_type):
                     errors.append(f"Tool argument '{key}' must be {expected_type}.")
+                    continue
+                errors.extend(_validate_tool_argument_constraints(key, value, prop_schema))
         return errors
     return []
+
+
+def _enum_contains(value: Any, enum: list[Any]) -> bool:
+    # Case-normalized fields (profile, target_format, output_format, plot_type) are
+    # lowercased by the handler before use, so match the enum case-insensitively for
+    # strings to avoid rejecting mixed-case input the handler would accept.
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        return any(isinstance(option, str) and option.lower() == normalized for option in enum)
+    return value in enum
+
+
+def _validate_tool_argument_constraints(key: str, value: Any, prop_schema: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    enum = prop_schema.get("enum")
+    if isinstance(enum, list) and not _enum_contains(value, enum):
+        allowed = ", ".join(json.dumps(option, ensure_ascii=False) for option in enum)
+        errors.append(f"Tool argument '{key}' must be one of: {allowed}.")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        minimum = prop_schema.get("minimum")
+        if isinstance(minimum, (int, float)) and not isinstance(minimum, bool) and value < minimum:
+            errors.append(f"Tool argument '{key}' must be >= {minimum}.")
+        maximum = prop_schema.get("maximum")
+        if isinstance(maximum, (int, float)) and not isinstance(maximum, bool) and value > maximum:
+            errors.append(f"Tool argument '{key}' must be <= {maximum}.")
+    if isinstance(value, str):
+        min_length = prop_schema.get("minLength")
+        if isinstance(min_length, int) and not isinstance(min_length, bool) and len(value) < min_length:
+            errors.append(f"Tool argument '{key}' must have length >= {min_length}.")
+        max_length = prop_schema.get("maxLength")
+        if isinstance(max_length, int) and not isinstance(max_length, bool) and len(value) > max_length:
+            errors.append(f"Tool argument '{key}' must have length <= {max_length}.")
+    return errors
 
 
 def _matches_json_schema_type(value: Any, expected_type: Any) -> bool:

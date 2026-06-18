@@ -39,6 +39,15 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
         self.assertIn("project_name", definitions["graphhub.scaffold_project"]["inputSchema"]["required"])
         self.assertIn("project_path", definitions["graphhub.normalize_project_structure"]["inputSchema"]["required"])
 
+    def test_normalize_uses_dry_run_flag_matching_other_write_tools(self):
+        definitions = {tool["name"]: tool for tool in list_tool_definitions()}
+        normalize_props = definitions["graphhub.normalize_project_structure"]["inputSchema"]["properties"]
+
+        self.assertIn("dry_run", normalize_props)
+        self.assertNotIn("plan_only", normalize_props)
+        self.assertTrue(normalize_props["dry_run"]["default"])
+        self.assertIn("default", normalize_props["dry_run"]["description"].lower())
+
     def test_scaffold_project_dry_run_is_side_effect_free(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project_root = Path(tmpdir) / "ResearchOS" / "New_Project"
@@ -362,7 +371,7 @@ figures:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": True, "include_raw": True, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "ok")
@@ -391,7 +400,7 @@ figures:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False},
+                {"project_path": str(project), "dry_run": False},
             )
 
             self.assertEqual(result["status"], "error")
@@ -409,7 +418,7 @@ figures:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "include_raw": True, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": False, "include_raw": True, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "ok")
@@ -452,12 +461,12 @@ figures:
             planned = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": True, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": True, "move_policy": "copy"},
             )
             applied = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
             self.assertEqual(planned["style_summary"]["target_format"], "nature_surfur")
@@ -483,7 +492,7 @@ figures:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": True, "include_raw": True, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "copy"},
             )
 
             destinations = {entry["destination"] for entry in result["manifest"]["entries"]}
@@ -507,7 +516,7 @@ figures:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": True, "include_raw": True, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "copy"},
             )
 
             destinations = {entry["destination"] for entry in result["manifest"]["entries"]}
@@ -526,7 +535,7 @@ figures:
             planned = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": True, "include_raw": False, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": True, "include_raw": False, "move_policy": "copy"},
             )
 
             entries = {entry["source"]: entry for entry in planned["manifest"]["entries"]}
@@ -546,7 +555,7 @@ figures:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "error")
@@ -567,7 +576,7 @@ figures:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "move", "overwrite": True},
+                {"project_path": str(project), "dry_run": False, "move_policy": "move", "overwrite": True},
             )
 
             self.assertEqual(result["status"], "error")
@@ -589,7 +598,7 @@ figures:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy", "overwrite": True},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy", "overwrite": True},
             )
 
             self.assertEqual(result["status"], "error")
@@ -609,12 +618,12 @@ figures:
             planned = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": True, "include_raw": True, "move_policy": "move"},
+                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "move"},
             )
             applied = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "include_raw": True, "move_policy": "move"},
+                {"project_path": str(project), "dry_run": False, "include_raw": True, "move_policy": "move"},
             )
 
             raw_entry = next(
@@ -637,7 +646,7 @@ figures:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "symlink", "overwrite": True},
+                {"project_path": str(project), "dry_run": False, "move_policy": "symlink", "overwrite": True},
             )
 
             self.assertIn(result["status"], {"ok", "warning"})
@@ -655,7 +664,7 @@ figures:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy", "overwrite": True},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy", "overwrite": True},
             )
 
             destination = project / "hub_scripts" / "plot.py"
@@ -681,7 +690,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "warning")
@@ -701,7 +710,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "warning")
@@ -722,7 +731,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "error")
@@ -742,7 +751,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "error")
@@ -764,7 +773,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy", "overwrite": True},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy", "overwrite": True},
             )
 
             self.assertEqual(result["status"], "error")
@@ -786,7 +795,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "error")
@@ -809,7 +818,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy", "overwrite": True},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy", "overwrite": True},
             )
 
             self.assertEqual(result["status"], "error")
@@ -831,7 +840,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "copy", "overwrite": True},
+                {"project_path": str(project), "dry_run": False, "move_policy": "copy", "overwrite": True},
             )
 
             self.assertEqual(result["status"], "error")
@@ -853,7 +862,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(symlink_root), "plan_only": False, "move_policy": "copy"},
+                {"project_path": str(symlink_root), "dry_run": False, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "error")
@@ -876,7 +885,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(symlink_parent / "LegacyGraph"), "plan_only": False, "move_policy": "copy"},
+                {"project_path": str(symlink_parent / "LegacyGraph"), "dry_run": False, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "error")
@@ -899,7 +908,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(alias / "LegacyGraph"), "plan_only": False},
+                {"project_path": str(alias / "LegacyGraph"), "dry_run": False},
             )
 
             self.assertEqual(result["status"], "error")
@@ -919,7 +928,7 @@ visual_style:
             result = self._call(
                 server,
                 "graphhub.normalize_project_structure",
-                {"project_path": str(project), "plan_only": False, "move_policy": "symlink"},
+                {"project_path": str(project), "dry_run": False, "move_policy": "symlink"},
             )
 
             self.assertEqual(result["status"], "error")

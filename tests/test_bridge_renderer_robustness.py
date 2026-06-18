@@ -71,8 +71,8 @@ class TestYBreakRangeRejectsUnsupportedFields(unittest.TestCase):
             )
             with self.assertRaises(ValueError) as ctx:
                 render_bridge_figure(spec)
-            self.assertIn("overlay_baselines", str(ctx.exception))
             self.assertIn("y_break_range", str(ctx.exception))
+            self.assertIn("overlay_baselines", str(ctx.exception))
 
     def test_y_break_without_unsupported_fields_still_renders(self):
         with tempfile.TemporaryDirectory() as td:

@@ -13,6 +13,7 @@ from hub_core.mcp_surface import (
     GraphHubMCPServer,
     _handle_json_rpc,
     _matches_json_schema_type,
+    _validate_tool_arguments,
     list_tool_definitions,
     run_stdio_server,
 )
@@ -172,7 +173,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             runtime_root = Path(tmpdir) / "runtime"
             before = _snapshot_files(root)
 
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root, write_tools_enabled=False)
             health = self._call(server, "graphhub.health", {"root": str(root)})
             projects = self._call(server, "graphhub.list_projects", {"root": str(root), "max_depth": 3})
 
@@ -183,7 +184,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             self.assertFalse((runtime_root / "mcp_jobs").exists())
 
             self.assertEqual(health["status"], "ok")
-            self.assertEqual(health["write_tools_enabled"], server.write_tools_enabled)
+            self.assertFalse(health["write_tools_enabled"])
             self.assertEqual(health["discovery_status"]["project_count"], 2)
             self.assertEqual(health["discovery_status"]["invalid_count"], 1)
 
@@ -224,9 +225,21 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertTrue(blocked["isError"])
 
     def test_write_tools_enabled_via_env_opt_in(self):
-        with unittest.mock.patch.dict(os.environ, {"GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED": "1"}):
+        with (
+            unittest.mock.patch.dict(os.environ, {"GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED": "1"}),
+            tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir,
+        ):
             server = GraphHubMCPServer()
             self.assertTrue(server.write_tools_enabled)
+            # Witness that the write guard does not block a write tool when enabled.
+            result = server.call_tool(
+                "graphhub.scaffold_project",
+                {"project_name": "Allowed", "project_root": str(Path(tmpdir) / "Allowed"), "dry_run": True},
+            )
+        self.assertNotIn(
+            "Write tools are disabled",
+            " ".join(result["structuredContent"].get("errors", [])),
+        )
 
     def test_scan_root_rejects_root_outside_research_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
@@ -638,6 +651,123 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertFalse(_matches_json_schema_type(True, "number"))
         self.assertFalse(_matches_json_schema_type("1", "number"))
         self.assertFalse(_matches_json_schema_type("x", "unknown"))
+
+    def _call_rpc(self, server: GraphHubMCPServer, tool_name: str, arguments: dict) -> dict:
+        return _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 99,
+                "method": "tools/call",
+                "params": {"name": tool_name, "arguments": arguments},
+            },
+        )
+
+    def test_rpc_rejects_max_depth_above_advertised_maximum(self):
+        server = GraphHubMCPServer()
+
+        response = self._call_rpc(server, "graphhub.health", {"max_depth": 999})
+
+        self.assertEqual(response["error"]["code"], -32602)
+        self.assertIn("max_depth", response["error"]["message"])
+        self.assertIn("<= 12", response["error"]["message"])
+
+    def test_rpc_rejects_max_depth_below_advertised_minimum(self):
+        server = GraphHubMCPServer()
+
+        response = self._call_rpc(server, "graphhub.health", {"max_depth": 0})
+
+        self.assertEqual(response["error"]["code"], -32602)
+        self.assertIn(">= 1", response["error"]["message"])
+
+    def test_rpc_rejects_max_projects_above_advertised_maximum(self):
+        server = GraphHubMCPServer()
+
+        response = self._call_rpc(server, "graphhub.batch_check", {"max_projects": 99})
+
+        self.assertEqual(response["error"]["code"], -32602)
+        self.assertIn("max_projects", response["error"]["message"])
+
+    def test_rpc_accepts_in_range_numeric_bounds(self):
+        server = GraphHubMCPServer()
+
+        response = self._call_rpc(server, "graphhub.health", {"max_depth": 12})
+
+        self.assertNotIn("error", response)
+        self.assertIn("result", response)
+
+    def test_rpc_rejects_out_of_enum_target_format(self):
+        server = GraphHubMCPServer()
+
+        response = self._call_rpc(
+            server,
+            "graphhub.render_csv_graph",
+            {"data_path": "a.csv", "x_column": "x", "y_column": "y", "target_format": "made_up_format"},
+        )
+
+        self.assertEqual(response["error"]["code"], -32602)
+        self.assertIn("target_format", response["error"]["message"])
+
+    def test_rpc_accepts_in_enum_profile_alias(self):
+        argument_errors = _validate_tool_arguments(
+            "graphhub.render_csv_graph",
+            {"data_path": "a.csv", "x_column": "x", "y_column": "y", "profile": "premium"},
+        )
+
+        self.assertEqual(argument_errors, [])
+
+    def test_validate_accepts_mixed_case_case_normalized_enums(self):
+        # Handler lowercases profile/target_format/output_format, so the enum check
+        # must accept mixed-case input it would normalize rather than reject it.
+        argument_errors = _validate_tool_arguments(
+            "graphhub.render_csv_graph",
+            {
+                "data_path": "a.csv",
+                "x_column": "x",
+                "y_column": "y",
+                "profile": "Premium",
+                "target_format": "Nature",
+                "output_format": "PNG",
+            },
+        )
+
+        self.assertEqual(argument_errors, [])
+
+    def test_validate_rejects_render_project_figure_without_selector(self):
+        argument_errors = _validate_tool_arguments(
+            "graphhub.render_project_figure",
+            {"figure_id": "Fig1"},
+        )
+
+        self.assertTrue(any("exactly one" in error for error in argument_errors))
+
+    def test_validate_rejects_render_project_figure_with_both_selectors(self):
+        argument_errors = _validate_tool_arguments(
+            "graphhub.render_project_figure",
+            {"project_id": "01_Demo", "project_path": "/tmp/demo", "figure_id": "Fig1"},
+        )
+
+        self.assertTrue(any("exactly one" in error for error in argument_errors))
+
+    def test_validate_accepts_render_project_figure_with_single_selector(self):
+        argument_errors = _validate_tool_arguments(
+            "graphhub.render_project_figure",
+            {"project_id": "01_Demo", "figure_id": "Fig1"},
+        )
+
+        self.assertEqual(argument_errors, [])
+
+    def test_health_status_is_warning_when_discovery_root_missing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            missing = Path(tmpdir) / "ResearchOS"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
+
+            health = self._call(server, "graphhub.health", {"root": str(missing)})
+
+            self.assertEqual(health["status"], "warning")
+            self.assertTrue(health["warnings"])
+            self.assertIn("warning", health["summary"].lower())
+            self.assertIn("does not exist", health["warnings"][0])
 
     def test_read_stdio_message_rejects_negative_content_length_without_draining(self):
         from hub_core.mcp_surface import _read_stdio_message
