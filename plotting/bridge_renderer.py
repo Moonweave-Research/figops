@@ -572,13 +572,16 @@ def _group_points(points: list[dict], spec: BridgeFigureSpec) -> dict[str, list[
 
 
 def _yerr_values(points: list[dict], spec: BridgeFigureSpec):
-    if not spec.yerr_column:
+    if not spec.yerr_column and not spec.yerr_minus_column:
         return None
     if spec.yerr_minus_column:
         import numpy as np
 
         minus = [float(point["yerr_minus"]) for point in points]
-        plus = [float(point["yerr"]) for point in points]
+        # When only the lower (minus) column is configured, mirror it onto the upper
+        # bound so the configured error data is never silently dropped (symmetric from
+        # the minus values). With both columns present, use them as asymmetric bounds.
+        plus = [float(point["yerr"]) for point in points] if spec.yerr_column else minus
         return np.array([minus, plus])
     return [float(point["yerr"]) for point in points]
 
@@ -673,8 +676,18 @@ def _render_heatmap_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None
     x_index = {value: column for column, value in enumerate(xs)}
     y_index = {value: row for row, value in enumerate(ys)}
     grid = np.full((len(ys), len(xs)), np.nan)
+    duplicate_cells = 0
     for point in points:
-        grid[y_index[point["y"]], x_index[point["x"]]] = point["z"]
+        row = y_index[point["y"]]
+        column = x_index[point["x"]]
+        if not math.isnan(grid[row, column]):
+            duplicate_cells += 1
+        grid[row, column] = point["z"]
+    if duplicate_cells:
+        warnings.warn(
+            f"bridge_renderer: {duplicate_cells} duplicate (x,y) heatmap cell(s) overwritten (last value wins)",
+            stacklevel=2,
+        )
 
     cmap = resolve_colormap(spec.physics_type)
     mesh = ax.pcolormesh(xs, ys, grid, cmap=cmap, shading="auto")
@@ -726,6 +739,14 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
                 )
         ax.legend(**_legend_kwargs(ax, spec, n_series=len(series_names)))
     else:
+        if len(points) > len(categories):
+            # Duplicate categories overplot bars at the same x (last visually wins).
+            # Surface it rather than silently aggregating, which could mask intent.
+            warnings.warn(
+                f"bridge_renderer: single-series bar has {len(points) - len(categories)} "
+                "duplicate category value(s); bars overplot at the same x position",
+                stacklevel=2,
+            )
         row_positions = [category_to_position[point["x"]] for point in points]
         ys = [point["y"] for point in points]
         yerr = _yerr_values(points, spec)
@@ -763,6 +784,8 @@ def _render_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         )
         return
     if spec.plot_type == "heatmap":
+        if not spec.z_column:
+            raise ValueError("heatmap requires z_column")
         _render_heatmap_plot(ax, points, spec)
         return
     if spec.plot_type == "bar":
