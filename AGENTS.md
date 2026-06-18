@@ -101,6 +101,29 @@ python orchestrator.py --check-all --step all --force --strict-lock
 
 Before adding plot-specific utility code, check `plotting/utils.py` for an existing shared helper. Reuse and extend shared helpers such as `compress_sample_label` instead of re-implementing ad-hoc formatting logic inside project plots.
 
+## 10) MCP Env Trust Model
+
+The MCP launcher is trusted. Environment variables that define runtime paths or
+data roots are operator policy, not untrusted user input. The server still
+validates boundary-widening values before use and reports warnings through
+`graphhub.health`.
+
+- `GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS`: widens read access for MCP data inputs
+  beyond the research root and runtime root. Entries must be non-empty,
+  absolute, and existing directories. Bad entries are skipped with warnings.
+  Broad roots such as `/`, a drive root, or the current user's home directory
+  warn by default. Set `GRAPH_HUB_MCP_STRICT_ROOTS=1` to refuse broad roots.
+- `GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED`: enables MCP tools that write files or
+  execute render jobs. It defaults closed when unset.
+- `RESEARCH_HUB_RUNTIME_ROOT` / `RESEARCH_HUB_RUNTIME_HOME`: select where MCP
+  jobs, manifests, logs, and generated artifacts are stored. Runtime access
+  must stay under the resolved runtime root.
+- `RESEARCH_HUB_PATH`: tells project scripts where to import Graph Hub helpers.
+  The launcher must point it at this repository, not at a user-controlled path.
+- `PROJECT_ROOT`: points project scripts at the active project or runtime
+  snapshot. Render code must use resolved project/snapshot paths and fail if
+  the selected script or output path escapes that tree.
+
 ---
 
 **Last Update**: 2026-06-07 (independent repo cleanup, uv/Docker alignment, retired DVC wording)

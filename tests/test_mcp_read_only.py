@@ -243,6 +243,72 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             " ".join(result["structuredContent"].get("errors", [])),
         )
 
+    def test_allowed_data_roots_drop_bad_env_entries_and_warn(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_roots_") as tmpdir:
+            root = Path(tmpdir)
+            valid_extra = root / "extra"
+            valid_extra.mkdir()
+            missing = root / "missing"
+            runtime_root = root / "runtime"
+            raw_roots = os.pathsep.join(["relative-root", str(missing), str(valid_extra)])
+
+            with unittest.mock.patch.dict(
+                os.environ,
+                {"GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS": raw_roots},
+                clear=False,
+            ):
+                server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+                health = self._call(server, "graphhub.health")
+
+            self.assertIn(valid_extra.resolve(), server.allowed_data_roots)
+            self.assertNotIn(Path("relative-root").resolve(), server.allowed_data_roots)
+            self.assertNotIn(missing.resolve(), server.allowed_data_roots)
+            self.assertEqual(health["status"], "warning")
+            self.assertTrue(any("not absolute" in warning for warning in health["warnings"]))
+            self.assertTrue(any("does not exist" in warning for warning in health["warnings"]))
+
+    def test_allowed_data_roots_warn_for_broad_root_and_refuse_in_strict_mode(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_broad_") as tmpdir:
+            root = Path(tmpdir)
+            runtime_root = root / "runtime"
+
+            with unittest.mock.patch.dict(
+                os.environ,
+                {"GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS": os.path.abspath(os.sep)},
+                clear=False,
+            ):
+                server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+                health = self._call(server, "graphhub.health")
+
+            broad_root = Path(os.path.abspath(os.sep)).resolve()
+            self.assertIn(broad_root, server.allowed_data_roots)
+            self.assertTrue(any("broad data root" in warning for warning in health["warnings"]))
+
+            with unittest.mock.patch.dict(
+                os.environ,
+                {
+                    "GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS": os.path.abspath(os.sep),
+                    "GRAPH_HUB_MCP_STRICT_ROOTS": "1",
+                },
+                clear=False,
+            ):
+                strict_server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+                strict_health = self._call(strict_server, "graphhub.health")
+
+            self.assertNotIn(broad_root, strict_server.allowed_data_roots)
+            self.assertTrue(any("refused broad data root" in warning for warning in strict_health["warnings"]))
+
+    def test_default_allowed_data_roots_keep_data_paths_contained(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_containment_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            root.mkdir()
+            outside = Path(tmpdir) / "outside.csv"
+            outside.write_text("x,y\n1,2\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+
+            with self.assertRaises(ValueError):
+                server._resolve_allowed_data_path(str(outside), field_name="data_path")
+
     def test_scan_root_rejects_root_outside_research_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
             research_root = Path(tmpdir) / "research"

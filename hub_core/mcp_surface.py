@@ -932,6 +932,7 @@ class GraphHubMCPServer:
         self.research_root = Path(research_root or get_research_root()).expanduser().resolve()
         self._runtime_root_explicit = runtime_root is not None
         self.runtime_root = self._resolve_runtime_root(runtime_root)
+        self.security_warnings: list[str] = []
         self.allowed_data_roots = self._allowed_data_roots()
         self.write_tools_enabled = self._resolve_write_tools_enabled(write_tools_enabled)
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
@@ -967,9 +968,33 @@ class GraphHubMCPServer:
     def _allowed_data_roots(self) -> tuple[Path, ...]:
         roots = [self.research_root, self.runtime_root]
         raw_extra = os.environ.get("GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS", "")
+        strict_roots = os.environ.get("GRAPH_HUB_MCP_STRICT_ROOTS", "").strip().lower() in {"1", "true", "yes", "on"}
         for item in raw_extra.split(os.pathsep):
-            if item.strip():
-                roots.append(Path(item).expanduser().resolve())
+            stripped = item.strip()
+            if not stripped:
+                continue
+            extra = Path(stripped).expanduser()
+            if not extra.is_absolute():
+                self.security_warnings.append(
+                    f"Skipped GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS entry because it is not absolute: {stripped}"
+                )
+                continue
+            resolved = extra.resolve()
+            if not resolved.is_dir():
+                self.security_warnings.append(
+                    "Skipped GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS entry because it does not exist as a directory: "
+                    f"{resolved}"
+                )
+                continue
+            broad_warning = self._broad_data_root_warning(resolved)
+            if broad_warning:
+                if strict_roots:
+                    self.security_warnings.append(
+                        f"refused broad data root from GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS: {resolved}"
+                    )
+                    continue
+                self.security_warnings.append(broad_warning)
+            roots.append(resolved)
         deduped: list[Path] = []
         seen: set[str] = set()
         for root in roots:
@@ -978,6 +1003,17 @@ class GraphHubMCPServer:
                 seen.add(key)
                 deduped.append(root)
         return tuple(deduped)
+
+    @staticmethod
+    def _broad_data_root_warning(root: Path) -> str:
+        if root == Path(root.anchor):
+            return f"Configured broad data root allows the filesystem root: {root}"
+        home = Path.home().resolve()
+        if root == home:
+            return f"Configured broad data root allows the current user's home directory: {root}"
+        if os.name == "nt" and root.anchor and root == Path(root.anchor).resolve():
+            return f"Configured broad data root allows the drive root: {root}"
+        return ""
 
     @staticmethod
     def _is_relative_to(path: Path, root: Path) -> bool:
@@ -1073,7 +1109,7 @@ class GraphHubMCPServer:
     def health(self, arguments: dict[str, Any]) -> dict[str, Any]:
         root = self._scan_root(arguments)
         max_depth = self._max_depth(arguments.get("max_depth", 4))
-        warnings: list[str] = []
+        warnings: list[str] = list(self.security_warnings)
         discovery = {"project_count": 0, "valid_count": 0, "invalid_count": 0, "root": self._display_path(root)}
         if root.exists():
             projects = ProjectDiscoveryService(root).discover(max_depth=max_depth)
