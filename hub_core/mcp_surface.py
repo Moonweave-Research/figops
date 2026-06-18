@@ -4637,7 +4637,10 @@ def run_stdio_server(
             request, framing = _read_stdio_message(in_stream)
             if request is None:
                 break
-            response = _dispatch_json_rpc(active_server, request)
+            # Keep fd1 pure for framed JSON-RPC: any stray print() inside a handler or a
+            # library it calls goes to stderr, never interleaved into the wire response.
+            with redirect_stdout(sys.stderr):
+                response = _dispatch_json_rpc(active_server, request)
         except _StdioParseError as exc:
             framing = exc.framing
             response = _json_rpc_error(None, JSONRPC_PARSE_ERROR, f"Parse error: {exc.error}")
