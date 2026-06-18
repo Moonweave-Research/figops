@@ -22,6 +22,12 @@ def find_empty_quadrant(x, y, x_lim=None, y_lim=None):
     x = np.array(x)
     y = np.array(y)
 
+    # 가시 범위가 주어지면 범위 밖 점은 집계에서 제외 (범례 배치 편향 방지)
+    if x_lim is not None and y_lim is not None:
+        visible = (x >= x_lim[0]) & (x <= x_lim[1]) & (y >= y_lim[0]) & (y <= y_lim[1])
+        if visible.any():
+            x, y = x[visible], y[visible]
+
     x_mid = (np.min(x) + np.max(x)) / 2 if x_lim is None else (x_lim[0] + x_lim[1]) / 2
     y_mid = (np.min(y) + np.max(y)) / 2 if y_lim is None else (y_lim[0] + y_lim[1]) / 2
 
@@ -38,6 +44,7 @@ def find_empty_quadrant(x, y, x_lim=None, y_lim=None):
             quadrants[3] += 1
 
     return np.argmin(quadrants)
+
 
 def stagger_labels_2d(y_positions, min_gap=0.05):
     """
@@ -56,19 +63,22 @@ def stagger_labels_2d(y_positions, min_gap=0.05):
         if ys[k] - ys[k - 1] < min_gap:
             ys[k] = ys[k - 1] + min_gap
 
-    # 역방향 스윕: 상단 초과분 보정 (1.0 넘어간 경우 아래로 당기기)
+    # 하향 보정: 상단(1.0) 초과 시 배열 전체를 동일량 아래로 평행이동 (간격 유지)
     if ys[-1] > 1.0:
-        overflow = ys[-1] - 1.0
-        for k in range(n - 1, -1, -1):
-            ys[k] = ys[k] - overflow
-            if k > 0 and ys[k] < ys[k - 1] + min_gap:
-                ys[k] = ys[k - 1] + min_gap
+        shift = ys[-1] - 1.0
+        ys = [y - shift for y in ys]
+        # 평행이동이 하단(0.0) 아래로 밀면 min_gap 으로는 안 들어가는 것이므로
+        # 간격을 1/(n-1)로 압축해 [0,1]에 균등 배치
+        if ys[0] < 0.0:
+            gap = 1.0 / (n - 1)
+            ys = [i * gap for i in range(n)]
 
     # 결과 복원 (축 범위 [0, 1]로 클램프)
     result = [0.0] * n
     for (orig_idx, _), new_y in zip(pairs, ys):
         result[orig_idx] = max(0.0, min(1.0, new_y))
     return result
+
 
 def find_optimal_legend_position(ax, grid_resolution: int = 10) -> tuple[str, tuple[float, float]] | tuple[str, None]:
     """
@@ -138,14 +148,14 @@ def find_optimal_legend_position(ax, grid_resolution: int = 10) -> tuple[str, tu
     return ("center", (target_x, target_y))
 
 
-def add_leader_line(ax, start_pos, end_pos, style='elbow', **kwargs):
+def add_leader_line(ax, start_pos, end_pos, style="elbow", **kwargs):
     """
     데이터 포인트와 라벨을 잇는 지시선을 그립니다.
     """
     sx, sy = start_pos
     ex, ey = end_pos
 
-    if style == 'elbow':
+    if style == "elbow":
         # 꺾임선 (L-path)
         mid_x = (sx + ex) / 2
         xs = [sx, mid_x, mid_x, ex]
