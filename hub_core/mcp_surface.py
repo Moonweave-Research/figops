@@ -14,7 +14,6 @@ import time
 import traceback
 import uuid
 from contextlib import contextmanager, redirect_stdout
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -29,6 +28,23 @@ from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profile
 from .config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS, find_config_path, validate_config
 from .data_contract import _read_data_safe, _validate_semantic_constraints
 from .figure_preflight import validate_figure_preflight
+from .mcp.schemas import (
+    MCP_BATCH_MAX_PROJECTS,
+    SUPPORTED_RENDER_PLOT_TYPES,
+    get_tool_handlers,
+)
+from .mcp.schemas import (
+    list_prompt_definitions as schema_list_prompt_definitions,
+)
+from .mcp.schemas import (
+    list_resource_definitions as schema_list_resource_definitions,
+)
+from .mcp.schemas import (
+    list_resource_templates as schema_list_resource_templates,
+)
+from .mcp.schemas import (
+    list_tool_definitions as schema_list_tool_definitions,
+)
 from .mcp.security import McpSecurityMixin, is_write_tool_name
 from .project_discovery import ProjectDiscoveryService
 from .project_normalization import (
@@ -40,48 +56,15 @@ from .project_normalization import (
 from .runtime_paths import runtime_root_lookup_candidates
 from .utils import ensure_local_files
 
-TOOL_NAMES = (
-    "graphhub.health",
-    "graphhub.list_styles",
-    "graphhub.list_projects",
-    "graphhub.inspect_project",
-    "graphhub.validate_project",
-    "graphhub.render_csv_graph",
-    "graphhub.render_project_figure",
-    "graphhub.collect_artifacts",
-    "graphhub.scaffold_project",
-    "graphhub.normalize_project_structure",
-    "graphhub.batch_check",
-)
-SUPPORTED_RENDER_PLOT_TYPES = {"bar", "line", "scatter", "xy", "heatmap"}
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0
 MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS = 5.0
-MCP_BATCH_MAX_PROJECTS = 50
 MCP_BATCH_TIMEOUT_SECONDS = 30.0
 
 _STRICT_JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
 GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION = "geometry_diagnostics/1"
 LAYOUT_REPORT_SCHEMA_VERSION = "layout_report/1"
-_GEOMETRY_METRIC_NAMES = (
-    "tick_label_overlaps",
-    "tick_label_crowding",
-    "artists_outside_axes",
-    "artists_outside_figure",
-    "legend_data_collision",
-    "axis_label_title_overlap",
-    "colorbar_overlap",
-    "blank_area_ratio",
-    "point_annotation_overlaps",
-    "artist_overlaps",
-    "legend_internal_overlaps",
-    "marker_marker_overlaps",
-    "text_axis_edge_proximity",
-    "legend_marker_consistency",
-    "label_offset_consistency",
-    "font_size_token_drift",
-)
 _GEOMETRY_WARNING_ELIGIBLE = frozenset(
     {
         "tick_label_overlaps",
@@ -101,56 +84,6 @@ _GEOMETRY_WARNING_ELIGIBLE = frozenset(
     }
 )
 SCRIPT_OUTPUT_TAIL_LINES = 40
-
-
-_GEOMETRY_DIAGNOSTICS_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "schema_version": {"type": "string"},
-        "passed": {"type": ["boolean", "null"]},
-        "checks": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "enum": list(_GEOMETRY_METRIC_NAMES)},
-                    "passed": {"type": ["boolean", "null"]},
-                    "detail": {"type": "string"},
-                    "data": {"type": "object"},
-                },
-                "required": ["name", "passed", "detail"],
-            },
-        },
-        "warnings": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["schema_version", "passed", "checks", "warnings"],
-}
-
-_LAYOUT_REPORT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "schema_version": {"type": "string"},
-        "passed": {"type": ["boolean", "null"]},
-        "overlaps": {"type": "array", "items": {"type": "object"}},
-        "clipped": {"type": "array", "items": {"type": "object"}},
-        "font_roles": {"type": "object"},
-        "placement_consistency": {"type": "array", "items": {"type": "object"}},
-        "density": {"type": "object"},
-        "render_errors": {"type": "array", "items": {"type": "object"}},
-        "warnings": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": [
-        "schema_version",
-        "passed",
-        "overlaps",
-        "clipped",
-        "font_roles",
-        "placement_consistency",
-        "density",
-        "render_errors",
-        "warnings",
-    ],
-}
 
 
 def _geometry_stub(reason: str, *, data: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -438,465 +371,6 @@ def _batch_discovery_worker(root: str, max_depth: int, result_queue: multiproces
         result_queue.put({"status": "error", "error": str(exc), "traceback": traceback.format_exc().splitlines()})
 
 
-@dataclass(frozen=True)
-class ToolDefinition:
-    name: str
-    description: str
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "inputSchema": self.input_schema,
-            "outputSchema": self.output_schema,
-        }
-
-
-def _object_schema(properties: dict[str, Any] | None = None, required: list[str] | None = None) -> dict[str, Any]:
-    schema: dict[str, Any] = {
-        "type": "object",
-        "properties": properties or {},
-        "additionalProperties": False,
-    }
-    if required:
-        schema["required"] = required
-    return schema
-
-
-def _standard_output_schema(extra_properties: dict[str, Any] | None = None) -> dict[str, Any]:
-    properties: dict[str, Any] = {
-        "status": {"type": "string", "enum": ["ok", "warning", "error"]},
-        "operation_id": {"type": "string"},
-        "is_dry_run": {"type": "boolean"},
-        "summary": {"type": "string"},
-        "created_paths": {"type": "array", "items": {"type": "string"}},
-        "modified_paths": {"type": "array", "items": {"type": "string"}},
-        "skipped_paths": {"type": "array", "items": {"type": "string"}},
-        "artifact_resources": {"type": "array", "items": {"type": "string"}},
-        "warnings": {"type": "array", "items": {"type": "string"}},
-        "errors": {"type": "array", "items": {"type": "string"}},
-        "script_output": {"type": "array", "items": {"type": "string"}},
-        "manual_review_needed": {"type": "boolean"},
-        "failure_stage": {"type": "string"},
-        "resolution_hint": {"type": "string"},
-        "manifest_path": {"type": "string"},
-        "status_path": {"type": "string"},
-        "latest_alias": {"type": "string"},
-        "latest_dir": {"type": "string"},
-    }
-    properties.update(extra_properties or {})
-    return _object_schema(properties)
-
-
-def list_tool_definitions() -> list[dict[str, Any]]:
-    root_arg = {"type": "string", "description": "Project scan root. Defaults to Graph Hub research root."}
-    project_id_arg = {
-        "type": "string",
-        "description": "Discovered project ID; mutually exclusive with project_path, supply exactly one.",
-    }
-    project_path_arg = {
-        "type": "string",
-        "description": "Project path; mutually exclusive with project_id, supply exactly one.",
-    }
-    data_path_arg = {"type": "string", "description": "CSV input path under an allowed data root."}
-    semantic_checks_arg = {
-        "type": "object",
-        "description": "Optional per-column semantic constraints keyed by CSV column name.",
-    }
-    baseline_path_arg = {
-        "type": "string",
-        "description": "Optional baseline figure path to compare the rendered output against.",
-    }
-    job_id_arg = {"type": "string", "description": "Stable render job ID; auto-generated when omitted."}
-    selector_one_of = [{"required": ["project_id"]}, {"required": ["project_path"]}]
-    project_selector = {
-        "project_id": project_id_arg,
-        "project_path": project_path_arg,
-        "root": root_arg,
-        "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
-    }
-    definitions = [
-        ToolDefinition(
-            "graphhub.health",
-            "Return Graph Hub server health and discovery status.",
-            _object_schema(
-                {
-                    "root": root_arg,
-                    "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
-                }
-            ),
-            _standard_output_schema(
-                {
-                    "hub_path": {"type": "string"},
-                    "version": {"type": "string"},
-                    "python_executable": {"type": "string"},
-                    "runtime_root": {"type": "string"},
-                    "style_format_count": {"type": "integer"},
-                    "discovery_status": {"type": "object"},
-                    "write_tools_enabled": {"type": "boolean"},
-                }
-            ),
-        ),
-        ToolDefinition(
-            "graphhub.list_styles",
-            "Return canonical Graph Hub target formats, output formats, profiles, and aliases.",
-            _object_schema(),
-            _standard_output_schema(
-                {
-                    "target_formats": {"type": "array", "items": {"type": "string"}},
-                    "output_formats": {"type": "array", "items": {"type": "string"}},
-                    "profiles": {"type": "array", "items": {"type": "string"}},
-                    "profile_aliases": {"type": "object"},
-                    "style_packs": {"type": "array", "items": {"type": "object"}},
-                    "default_target_format": {"type": "string"},
-                    "default_profile": {"type": "string"},
-                }
-            ),
-        ),
-        ToolDefinition(
-            "graphhub.list_projects",
-            "Discover Graph Hub project configs without executing scripts or writing files.",
-            _object_schema(
-                {
-                    "root": root_arg,
-                    "include_invalid": {"type": "boolean", "default": True},
-                    "include_worktrees": {"type": "boolean", "default": False},
-                    "include_ephemeral": {"type": "boolean", "default": False},
-                    "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
-                }
-            ),
-            _standard_output_schema({"projects": {"type": "array", "items": {"type": "object"}}}),
-        ),
-        ToolDefinition(
-            "graphhub.inspect_project",
-            "Summarize one project config without running analysis, plotting, or report writers.",
-            {**_object_schema(project_selector), "oneOf": selector_one_of},
-            _standard_output_schema(
-                {
-                    "project_metadata": {"type": "object"},
-                    "folder_structure_status": {"type": "object"},
-                    "data_contract_summary": {"type": "object"},
-                    "pipeline_steps": {"type": "object"},
-                    "figure_outputs": {"type": "array", "items": {"type": "string"}},
-                    "diagram_outputs": {"type": "array", "items": {"type": "string"}},
-                    "missing_inputs": {"type": "array", "items": {"type": "string"}},
-                    "missing_outputs": {"type": "array", "items": {"type": "string"}},
-                    "style_summary": {"type": "object"},
-                    "normalization_needed": {"type": "boolean"},
-                }
-            ),
-        ),
-        ToolDefinition(
-            "graphhub.validate_project",
-            "Run read-only config, data contract, style, and lockfile checks without executing scripts.",
-            {
-                **_object_schema({**project_selector, "strict_lock": {"type": "boolean", "default": False}}),
-                "oneOf": selector_one_of,
-            },
-            _standard_output_schema(
-                {
-                    "valid": {"type": "boolean"},
-                    "config_errors": {"type": "array", "items": {"type": "string"}},
-                    "data_contract_errors": {"type": "array", "items": {"type": "string"}},
-                    "lockfile_status": {"type": "object"},
-                    "style_errors": {"type": "array", "items": {"type": "string"}},
-                    "recommended_next_action": {"type": "string"},
-                }
-            ),
-        ),
-        ToolDefinition(
-            "graphhub.render_csv_graph",
-            "Render a CSV-backed graph in an isolated runtime-root MCP job workspace.",
-            _object_schema(
-                {
-                    "data_path": data_path_arg,
-                    "x_column": {"type": "string"},
-                    "y_column": {"type": "string"},
-                    "z_column": {"type": "string"},
-                    "plot_type": {"type": "string", "enum": sorted(SUPPORTED_RENDER_PLOT_TYPES), "default": "scatter"},
-                    "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
-                    "profile": {
-                        "type": "string",
-                        "enum": sorted(set(list_profiles()) | set(PROFILE_ALIASES)),
-                        "default": DEFAULT_PROFILE,
-                    },
-                    "output_format": {"type": "string", "enum": sorted(ALLOWED_OUTPUT_FORMATS), "default": "png"},
-                    "semantic_checks": semantic_checks_arg,
-                    "dry_run": {"type": "boolean", "default": False},
-                    "overwrite": {"type": "boolean", "default": False},
-                    "job_id": job_id_arg,
-                    "title": {"type": "string"},
-                    "x_axis_label": {"type": "string"},
-                    "y_axis_label": {"type": "string"},
-                    "baseline_path": baseline_path_arg,
-                },
-                required=["data_path", "x_column", "y_column"],
-            ),
-            _standard_output_schema(
-                {
-                    "job_id": {"type": "string"},
-                    "job_root": {"type": "string"},
-                    "output_path": {"type": "string"},
-                    "config_path": {"type": "string"},
-                    "style_summary": {"type": "object"},
-                    "visual_preflight_status": {"type": "object"},
-                    "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
-                    "layout_report": _LAYOUT_REPORT_SCHEMA,
-                    "calculation_checks": {"type": "object"},
-                    "artifact_status": {"type": "string"},
-                    "baseline_comparison": {"type": "object"},
-                }
-            ),
-        ),
-        ToolDefinition(
-            "graphhub.render_project_figure",
-            "Render one configured project figure in an isolated runtime-root MCP job workspace.",
-            {
-                **_object_schema(
-                    {
-                        "project_id": project_id_arg,
-                        "project_path": project_path_arg,
-                        "root": root_arg,
-                        "figure_id": {"type": "string"},
-                        "figure_output": {"type": "string"},
-                        "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS)},
-                        "profile": {"type": "string", "enum": sorted(set(list_profiles()) | set(PROFILE_ALIASES))},
-                        "output_format": {"type": "string", "enum": sorted(ALLOWED_OUTPUT_FORMATS)},
-                        "dry_run": {"type": "boolean", "default": False},
-                        "overwrite": {"type": "boolean", "default": False},
-                        "job_id": job_id_arg,
-                        "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
-                        "baseline_path": baseline_path_arg,
-                    }
-                ),
-                "oneOf": selector_one_of,
-            },
-            _standard_output_schema(
-                {
-                    "job_id": {"type": "string"},
-                    "project_id": {"type": "string"},
-                    "source_project_path": {"type": "string"},
-                    "job_root": {"type": "string"},
-                    "snapshot_project_path": {"type": "string"},
-                    "selected_figure": {"type": "object"},
-                    "output_path": {"type": "string"},
-                    "config_path": {"type": "string"},
-                    "style_summary": {"type": "object"},
-                    "visual_preflight_status": {"type": "object"},
-                    "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
-                    "layout_report": _LAYOUT_REPORT_SCHEMA,
-                    "figure_metadata": {"type": "object"},
-                    "artifact_status": {"type": "string"},
-                    "baseline_comparison": {"type": "object"},
-                    "provenance": {"type": "object"},
-                }
-            ),
-        ),
-        ToolDefinition(
-            "graphhub.collect_artifacts",
-            "Return artifact metadata for a completed MCP render job.",
-            _object_schema(
-                {
-                    "job_id": {"type": "string", "description": "Render job ID returned by a prior render call."},
-                    "baseline_path": baseline_path_arg,
-                },
-                required=["job_id"],
-            ),
-            _standard_output_schema(
-                {
-                    "figures": {"type": "array", "items": {"type": "object"}},
-                    "diagrams": {"type": "array", "items": {"type": "object"}},
-                    "assemblies": {"type": "array", "items": {"type": "object"}},
-                    "logs": {"type": "array", "items": {"type": "object"}},
-                    "provenance": {"type": "object"},
-                    "visual_preflight_status": {"type": "object"},
-                    "layout_report": _LAYOUT_REPORT_SCHEMA,
-                    "figure_metadata": {"type": "object"},
-                    "artifact_status": {"type": "string"},
-                    "baseline_comparison": {"type": "object"},
-                }
-            ),
-        ),
-        ToolDefinition(
-            "graphhub.scaffold_project",
-            "Plan or create a standard Graph Hub project scaffold.",
-            _object_schema(
-                {
-                    "project_name": {"type": "string"},
-                    "project_root": {"type": "string"},
-                    "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
-                    "template": {"type": "string", "enum": ["standard", "researchos"], "default": "standard"},
-                    "dry_run": {
-                        "type": "boolean",
-                        "default": True,
-                        "description": (
-                            "Preview without writing files. Defaults True like normalize_project_structure and "
-                            "batch_check; the two render tools default dry_run False."
-                        ),
-                    },
-                    "overwrite": {"type": "boolean", "default": False},
-                },
-                required=["project_name", "project_root"],
-            ),
-            _standard_output_schema(
-                {
-                    "project_root": {"type": "string"},
-                    "project_name": {"type": "string"},
-                    "planned_paths": {"type": "array", "items": {"type": "string"}},
-                    "manifest": {"type": "object"},
-                    "config_path": {"type": "string"},
-                    "style_summary": {"type": "object"},
-                    "validation": {"type": "object"},
-                }
-            ),
-        ),
-        ToolDefinition(
-            "graphhub.normalize_project_structure",
-            "Plan or apply migration of an existing graph folder into standard Graph Hub structure.",
-            _object_schema(
-                {
-                    "project_path": {"type": "string"},
-                    "dry_run": {
-                        "type": "boolean",
-                        "default": True,
-                        "description": (
-                            "Preview without writing files. Defaults True like scaffold_project and "
-                            "batch_check; the two render tools default dry_run False."
-                        ),
-                    },
-                    "move_policy": {"type": "string", "enum": ["copy", "move", "symlink"], "default": "copy"},
-                    "include_raw": {"type": "boolean", "default": False},
-                    "overwrite": {"type": "boolean", "default": False},
-                },
-                required=["project_path"],
-            ),
-            _standard_output_schema(
-                {
-                    "project_root": {"type": "string"},
-                    "planned_paths": {"type": "array", "items": {"type": "string"}},
-                    "manifest": {"type": "object"},
-                    "config_path": {"type": "string"},
-                    "style_summary": {"type": "object"},
-                    "validation": {"type": "object"},
-                }
-            ),
-        ),
-        ToolDefinition(
-            "graphhub.batch_check",
-            "Run a bounded project discovery and validation batch check with optional runtime manifest logging.",
-            _object_schema(
-                {
-                    "root": root_arg,
-                    "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
-                    "max_projects": {"type": "integer", "minimum": 1, "maximum": MCP_BATCH_MAX_PROJECTS, "default": 20},
-                    "include_invalid": {"type": "boolean", "default": False},
-                    "include_legacy": {"type": "boolean", "default": False},
-                    "include_worktrees": {"type": "boolean", "default": False},
-                    "include_ephemeral": {"type": "boolean", "default": False},
-                    "dry_run": {"type": "boolean", "default": True},
-                    "batch_id": {"type": "string"},
-                    "resume_manifest_path": {"type": "string"},
-                }
-            ),
-            _standard_output_schema(
-                {
-                    "batch_id": {"type": "string"},
-                    "batch_root": {"type": "string"},
-                    "checked_projects": {"type": "array", "items": {"type": "object"}},
-                    "skipped_projects": {"type": "array", "items": {"type": "object"}},
-                    "resumed_from": {"type": "string"},
-                    "log_paths": {"type": "array", "items": {"type": "string"}},
-                }
-            ),
-        ),
-    ]
-    return [definition.to_dict() for definition in definitions]
-
-
-def list_resource_definitions() -> list[dict[str, str]]:
-    return [
-        {
-            "uri": "graphhub://styles",
-            "name": "Graph Hub Styles",
-            "description": "Canonical target formats, output formats, profiles, and aliases.",
-            "mimeType": "application/json",
-        },
-        {
-            "uri": "graphhub://profiles",
-            "name": "Graph Hub Style Profiles",
-            "description": "Available style profiles and profile aliases.",
-            "mimeType": "application/json",
-        },
-        {
-            "uri": "graphhub://projects",
-            "name": "Graph Hub Projects",
-            "description": "Discovered Graph Hub project metadata using default discovery rules.",
-            "mimeType": "application/json",
-        },
-    ]
-
-
-def list_resource_templates() -> list[dict[str, str]]:
-    return [
-        {
-            "uriTemplate": "graphhub://projects/{project_id}/config",
-            "name": "Graph Hub Project Config",
-            "description": "Project configuration YAML resolved by discovered project ID.",
-            "mimeType": "application/x-yaml",
-        },
-        {
-            "uriTemplate": "graphhub://jobs/{job_id}/manifest",
-            "name": "Graph Hub Render Job Manifest",
-            "description": "Sanitized render job manifest resolved by job ID.",
-            "mimeType": "application/json",
-        },
-    ]
-
-
-def list_prompt_definitions() -> list[dict[str, Any]]:
-    return [
-        {
-            "name": "make_publication_graph_from_csv",
-            "description": "Workflow for rendering a publication-style graph from structured CSV data.",
-            "arguments": [
-                {"name": "data_path", "description": "CSV input path.", "required": True},
-                {"name": "x_column", "description": "CSV x-axis column.", "required": True},
-                {"name": "y_column", "description": "CSV y-axis column.", "required": True},
-                {"name": "target_format", "description": "Graph Hub target format.", "required": False},
-                {"name": "plot_type", "description": "bar, line, scatter, xy, or heatmap.", "required": False},
-            ],
-        },
-        {
-            "name": "inspect_graph_project_quality",
-            "description": "Workflow for inspecting a graph project without executing scripts.",
-            "arguments": [
-                {"name": "project_id", "description": "Discovered Graph Hub project ID.", "required": False},
-                {"name": "project_path", "description": "Project path.", "required": False},
-            ],
-        },
-        {
-            "name": "standardize_existing_graph_project",
-            "description": "Workflow for planning safe Graph Hub project normalization.",
-            "arguments": [
-                {"name": "project_path", "description": "Existing graph project path.", "required": True},
-                {"name": "move_policy", "description": "copy, move, or symlink.", "required": False},
-            ],
-        },
-        {
-            "name": "render_project_figure",
-            "description": "Workflow for rendering one configured project figure through Graph Hub MCP.",
-            "arguments": [
-                {"name": "project_id", "description": "Discovered Graph Hub project ID.", "required": False},
-                {"name": "project_path", "description": "Project path.", "required": False},
-                {"name": "figure_id", "description": "Configured figures[].id.", "required": False},
-                {"name": "figure_output", "description": "Configured figures[].output.", "required": False},
-            ],
-        },
-    ]
-
-
 class GraphHubMCPServer(McpSecurityMixin):
     """Dependency-free MCP surface over Graph Hub core contracts."""
 
@@ -917,35 +391,23 @@ class GraphHubMCPServer(McpSecurityMixin):
             runtime_root=runtime_root,
             write_tools_enabled=write_tools_enabled,
         )
-        self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
-            "graphhub.health": self.health,
-            "graphhub.list_styles": self.list_styles,
-            "graphhub.list_projects": self.list_projects,
-            "graphhub.inspect_project": self.inspect_project,
-            "graphhub.validate_project": self.validate_project,
-            "graphhub.render_csv_graph": self.render_csv_graph,
-            "graphhub.render_project_figure": self.render_project_figure,
-            "graphhub.collect_artifacts": self.collect_artifacts,
-            "graphhub.scaffold_project": self.scaffold_project,
-            "graphhub.normalize_project_structure": self.normalize_project_structure,
-            "graphhub.batch_check": self.batch_check,
-        }
+        self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = get_tool_handlers(self)
 
     @staticmethod
     def list_tool_definitions() -> list[dict[str, Any]]:
-        return list_tool_definitions()
+        return schema_list_tool_definitions()
 
     @staticmethod
     def list_resource_definitions() -> list[dict[str, str]]:
-        return list_resource_definitions()
+        return schema_list_resource_definitions()
 
     @staticmethod
     def list_resource_templates() -> list[dict[str, str]]:
-        return list_resource_templates()
+        return schema_list_resource_templates()
 
     @staticmethod
     def list_prompt_definitions() -> list[dict[str, Any]]:
-        return list_prompt_definitions()
+        return schema_list_prompt_definitions()
 
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = dict(arguments or {})

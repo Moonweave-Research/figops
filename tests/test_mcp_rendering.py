@@ -12,8 +12,9 @@ from unittest.mock import patch
 
 import yaml
 
+from hub_core.mcp.schemas import list_tool_definitions
 from hub_core.mcp.transport import _handle_json_rpc
-from hub_core.mcp_surface import GraphHubMCPServer, list_tool_definitions
+from hub_core.mcp_surface import GraphHubMCPServer
 
 
 class _CompletedRenderProcess:

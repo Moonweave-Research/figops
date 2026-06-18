@@ -174,7 +174,7 @@ def _tool_definitions_for(server: Any) -> list[dict[str, Any]]:
     provider = getattr(server, "list_tool_definitions", None)
     if callable(provider):
         return provider()
-    from hub_core.mcp_surface import list_tool_definitions
+    from hub_core.mcp.schemas import list_tool_definitions
 
     return list_tool_definitions()
 
@@ -183,7 +183,7 @@ def _resource_definitions_for(server: Any) -> list[dict[str, str]]:
     provider = getattr(server, "list_resource_definitions", None)
     if callable(provider):
         return provider()
-    from hub_core.mcp_surface import list_resource_definitions
+    from hub_core.mcp.schemas import list_resource_definitions
 
     return list_resource_definitions()
 
@@ -192,7 +192,7 @@ def _resource_templates_for(server: Any) -> list[dict[str, str]]:
     provider = getattr(server, "list_resource_templates", None)
     if callable(provider):
         return provider()
-    from hub_core.mcp_surface import list_resource_templates
+    from hub_core.mcp.schemas import list_resource_templates
 
     return list_resource_templates()
 
@@ -201,7 +201,7 @@ def _prompt_definitions_for(server: Any) -> list[dict[str, Any]]:
     provider = getattr(server, "list_prompt_definitions", None)
     if callable(provider):
         return provider()
-    from hub_core.mcp_surface import list_prompt_definitions
+    from hub_core.mcp.schemas import list_prompt_definitions
 
     return list_prompt_definitions()
 
