@@ -327,7 +327,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             with (
                 patch("hub_core.mcp.security.resolve_runtime_root", return_value=str(runtime_root)),
-                patch("hub_core.mcp_surface.ensure_local_files", side_effect=noisy_prefetch),
+                patch("hub_core.mcp.tools.render_tools.ensure_local_files", side_effect=noisy_prefetch),
                 contextlib.redirect_stdout(stdout),
                 contextlib.redirect_stderr(stderr),
             ):
@@ -351,7 +351,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             with (
                 patch("hub_core.mcp.security.preview_runtime_root", return_value=str(preview_root)),
                 patch("hub_core.mcp.security.resolve_runtime_root", return_value=str(runtime_root)),
-                patch("hub_core.mcp_surface.runtime_root_lookup_candidates", return_value=[str(runtime_root)]),
+                patch(
+                    "hub_core.mcp.tools.batch_tools.runtime_root_lookup_candidates",
+                    return_value=[str(runtime_root)],
+                ),
             ):
                 render_server = GraphHubMCPServer(research_root=Path(tmpdir))
                 rendered = self._call(
@@ -1089,7 +1092,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
             with patch(
-                "hub_core.mcp_surface.validate_figure_preflight",
+                "hub_core.mcp.tools.render_support.validate_figure_preflight",
                 return_value={"passed": True, "checks": [], "warnings": ["width exceeds journal max"]},
             ):
                 result = self._call(
@@ -1121,7 +1124,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with patch(
-                "hub_core.mcp_surface.validate_figure_preflight",
+                "hub_core.mcp.tools.render_support.validate_figure_preflight",
                 return_value={"passed": True, "checks": [], "warnings": []},
             ):
                 result = self._call(
@@ -1255,7 +1258,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             with (
                 patch("hub_core.data_contract._PINT_AVAILABLE", False),
                 patch(
-                    "hub_core.mcp_surface.validate_figure_preflight",
+                    "hub_core.mcp.tools.render_support.validate_figure_preflight",
                     return_value={"passed": True, "checks": [], "warnings": []},
                 ),
             ):
@@ -1287,7 +1290,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
-            with patch("hub_core.mcp_surface.ensure_local_files") as ensure_local:
+            with patch("hub_core.mcp.tools.render_tools.ensure_local_files") as ensure_local:
                 result = self._call(
                     server,
                     "graphhub.render_csv_graph",
@@ -1423,8 +1426,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         delayed_queue = _DelayedRenderQueue()
 
         with (
-            patch("hub_core.mcp_surface.multiprocessing.Queue", return_value=delayed_queue),
-            patch("hub_core.mcp_surface.multiprocessing.Process", _CompletedRenderProcess),
+            patch("hub_core.mcp.render_orchestration.multiprocessing.Queue", return_value=delayed_queue),
+            patch("hub_core.mcp.render_orchestration.multiprocessing.Process", _CompletedRenderProcess),
         ):
             GraphHubMCPServer._run_render_bridge_figure({"csv_path": "input.csv", "output_path": "graph.png"})
 
@@ -1436,8 +1439,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         delayed_queue = _DelayedRenderQueue()
 
         with (
-            patch("hub_core.mcp_surface.multiprocessing.Queue", return_value=delayed_queue),
-            patch("hub_core.mcp_surface.multiprocessing.Process", _CompletedRenderProcess),
+            patch("hub_core.mcp.render_orchestration.multiprocessing.Queue", return_value=delayed_queue),
+            patch("hub_core.mcp.render_orchestration.multiprocessing.Process", _CompletedRenderProcess),
         ):
             projects, timed_out, warnings = GraphHubMCPServer._discover_batch_projects(
                 Path("/tmp"),
@@ -1513,7 +1516,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
 
             with patch(
-                "hub_core.mcp_surface._read_data_safe",
+                "hub_core.mcp.tools.render_support._read_data_safe",
                 side_effect=OSError(f"cannot read {data_path.resolve()}"),
             ):
                 result = self._call(
