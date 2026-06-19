@@ -15,6 +15,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from hub_core.rendering import PLOT_TYPES, render_plot
 from plotting.axis_break import render_broken_y_axis
 from plotting.utils import (
     apply_density_alpha,
@@ -783,23 +784,13 @@ def _render_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
             stacklevel=2,
         )
         return
-    if spec.plot_type == "heatmap":
-        if not spec.z_column:
-            raise ValueError("heatmap requires z_column")
-        _render_heatmap_plot(ax, points, spec)
-        return
-    if spec.plot_type == "bar":
-        _render_bar_plot(ax, points, spec)
-        return
-    if spec.plot_type == "scatter":
-        _render_xy_plot(ax, points, spec, line=False)
-        return
-    if spec.plot_type not in ("line", "xy"):
+    if spec.plot_type not in PLOT_TYPES:
         warnings.warn(
             f"bridge_renderer: unknown plot_type {spec.plot_type!r}, falling back to line plot",
             stacklevel=2,
         )
-    _render_xy_plot(ax, points, spec, line=True)
+        spec = BridgeFigureSpec(**{**spec.__dict__, "plot_type": "line"})
+    render_plot(ax, points, spec)
 
 
 def _draw_overlay_baselines(ax, baselines: tuple[dict, ...]) -> None:

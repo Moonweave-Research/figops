@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
+from hub_core.rendering import PLOT_TYPES
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
 
 TOOL_NAMES = (
@@ -19,7 +20,6 @@ TOOL_NAMES = (
     "graphhub.normalize_project_structure",
     "graphhub.batch_check",
 )
-SUPPORTED_RENDER_PLOT_TYPES = {"bar", "line", "scatter", "xy", "heatmap"}
 MCP_BATCH_MAX_PROJECTS = 50
 _GEOMETRY_METRIC_NAMES = (
     "tick_label_overlaps",
@@ -163,7 +163,12 @@ def _standard_output_schema(extra_properties: dict[str, Any] | None = None) -> d
     return _object_schema(properties)
 
 
+def _supported_render_plot_types() -> list[str]:
+    return sorted(PLOT_TYPES)
+
+
 def list_tool_definitions() -> list[dict[str, Any]]:
+    supported_render_plot_types = _supported_render_plot_types()
     root_arg = {"type": "string", "description": "Project scan root. Defaults to Graph Hub research root."}
     project_id_arg = {
         "type": "string",
@@ -288,7 +293,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "x_column": {"type": "string"},
                     "y_column": {"type": "string"},
                     "z_column": {"type": "string"},
-                    "plot_type": {"type": "string", "enum": sorted(SUPPORTED_RENDER_PLOT_TYPES), "default": "scatter"},
+                    "plot_type": {"type": "string", "enum": supported_render_plot_types, "default": "scatter"},
                     "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
                     "profile": {
                         "type": "string",
@@ -529,6 +534,7 @@ def list_resource_templates() -> list[dict[str, str]]:
 
 
 def list_prompt_definitions() -> list[dict[str, Any]]:
+    supported_render_plot_types = _supported_render_plot_types()
     return [
         {
             "name": "make_publication_graph_from_csv",
@@ -538,7 +544,7 @@ def list_prompt_definitions() -> list[dict[str, Any]]:
                 {"name": "x_column", "description": "CSV x-axis column.", "required": True},
                 {"name": "y_column", "description": "CSV y-axis column.", "required": True},
                 {"name": "target_format", "description": "Graph Hub target format.", "required": False},
-                {"name": "plot_type", "description": "bar, line, scatter, xy, or heatmap.", "required": False},
+                {"name": "plot_type", "description": ", ".join(supported_render_plot_types), "required": False},
             ],
         },
         {

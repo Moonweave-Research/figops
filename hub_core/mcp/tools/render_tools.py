@@ -11,8 +11,8 @@ import yaml
 from hub_core.adapters import select_adapters
 from hub_core.config_parser import validate_config
 from hub_core.mcp import render_orchestration as render_helpers
-from hub_core.mcp.schemas import SUPPORTED_RENDER_PLOT_TYPES
 from hub_core.mcp.tools.render_support import McpRenderToolSupportMixin
+from hub_core.rendering import PLOT_TYPES
 from themes.style_profiles import DEFAULT_PROFILE
 
 
@@ -51,14 +51,14 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
         output_format = str(arguments.get("output_format") or "png").strip().lower().lstrip(".")
         raw_semantic_checks = arguments.get("semantic_checks", {})
         semantic_checks = {} if raw_semantic_checks is None else raw_semantic_checks
-        if plot_type not in SUPPORTED_RENDER_PLOT_TYPES:
+        if plot_type not in PLOT_TYPES:
             return self._envelope(
                 "graphhub.render_csv_graph",
                 arguments,
                 status="error",
                 summary="Render request has invalid plot settings.",
                 errors=[
-                    f"Invalid plot_type '{plot_type}'. Supported: {', '.join(sorted(SUPPORTED_RENDER_PLOT_TYPES))}."
+                    f"Invalid plot_type '{plot_type}'. Supported: {', '.join(sorted(PLOT_TYPES))}."
                 ],
                 manual_review_needed=True,
                 is_dry_run=dry_run,
