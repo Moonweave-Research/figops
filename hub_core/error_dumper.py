@@ -10,7 +10,10 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .logging import get_logger
 from .runtime_paths import resolve_execution_artifacts_dir, resolve_latest_publish_dir
+
+logger = get_logger(__name__)
 
 
 def dump_exception_failure(
@@ -152,14 +155,14 @@ def dump_contract_report(
         if sys.stdout.isatty():
             from rich.console import Console
             from rich.markdown import Markdown
-            console = Console()
+            console = Console(stderr=True)
             console.print("\n")
             console.print(Markdown(md_content))
             console.print(f"📄 Report saved: [bold cyan]{report_path}[/bold cyan]\n")
         else:
-            print(f"\n[Contract Violations] Report saved: {report_path}")
+            logger.info("\n[Contract Violations] Report saved: %s", report_path)
     except ImportError:
-        print(f"\n[Contract Violations] Report saved: {report_path}")
+        logger.info("\n[Contract Violations] Report saved: %s", report_path)
 
     return str(report_path)
 
