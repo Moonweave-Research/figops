@@ -488,27 +488,29 @@ def main():
                 force=True,
             )
             if result.success:
-                print(
-                    f"\n   Batch reformat -> {result.target_journal}: "
-                    f"{result.figures_regenerated} figures in {result.elapsed_seconds}s"
+                logger.info(
+                    "\n   Batch reformat -> %s: %s figures in %ss",
+                    result.target_journal,
+                    result.figures_regenerated,
+                    result.elapsed_seconds,
                 )
                 for p in result.output_paths:
-                    print(f"   - {p}")
+                    logger.info("   - %s", p)
             else:
-                print(f"\n   Batch reformat failed: {result.error}")
+                logger.error("\n   Batch reformat failed: %s", result.error)
             return 0 if result.success else 1
 
-        print("\n🧠 [Smart Build]")
+        logger.info("\n🧠 [Smart Build]")
         if args.force:
-            print("   - mode: force (all steps rerun)")
+            logger.info("   - mode: force (all steps rerun)")
         elif build_state.get("config_hash") and build_state.get("config_hash") != config_hash:
-            print("   - cache invalidated: project_config.yaml changed since last run")
+            logger.info("   - cache invalidated: project_config.yaml changed since last run")
         else:
-            print("   - mode: incremental (mtime+size signature cache)")
-        print(f"   - state_file: {build_state_path}")
+            logger.info("   - mode: incremental (mtime+size signature cache)")
+        logger.info("   - state_file: %s", build_state_path)
 
         start_time = datetime.now(timezone.utc)
-        print(f"\n{'=' * 60}\n📡 RC-Arch Pipeline Start: {config['project']['name']}\n{'=' * 60}")
+        logger.info("\n%s\n📡 RC-Arch Pipeline Start: %s\n%s", "=" * 60, config["project"]["name"], "=" * 60)
 
         # --- Mutual exclusion: sweep + comparison cannot both be active ---
         sweep_cfg = config.get("sweep")
@@ -517,15 +519,15 @@ def main():
         comparison_active = bool(args.comparison or (comparison_cfg and comparison_cfg.get("enabled", False)))
 
         if sweep_active and comparison_active:
-            print("❌ sweep and comparison cannot both be active at the same time.")
-            print("   Set only one of sweep.enabled or comparison.enabled to true.")
+            logger.error("❌ sweep and comparison cannot both be active at the same time.")
+            logger.error("   Set only one of sweep.enabled or comparison.enabled to true.")
             success = False
             failure_stage = "CONFIG"
             status_message = "sweep and comparison cannot both be active."
         # --- Parameter Sweep ---
         elif sweep_active:
             if not sweep_cfg:
-                print("❌ --sweep flag used but no 'sweep:' section found in project_config.yaml.")
+                logger.error("❌ --sweep flag used but no 'sweep:' section found in project_config.yaml.")
                 success = False
                 failure_stage = "CONFIG"
                 status_message = "Sweep requested but no sweep configuration was found."
@@ -533,7 +535,7 @@ def main():
                 sweep_failure = {}
                 parsed_sweep = parse_sweep_config(sweep_cfg)
                 sweep_label = "enabled in config" if sweep_cfg.get("enabled") else "forced via --sweep"
-                print(f"   - sweep: {sweep_label}, {len(parsed_sweep['runs'])} run(s)")
+                logger.info("   - sweep: %s, %s run(s)", sweep_label, len(parsed_sweep["runs"]))
                 success = run_sweep(
                     project_dir=project_path,
                     config=config,
@@ -551,7 +553,7 @@ def main():
         # --- Comparison Mode ---
         elif comparison_active:
             if not comparison_cfg:
-                print("❌ --comparison flag used but no 'comparison:' section found in project_config.yaml.")
+                logger.error("❌ --comparison flag used but no 'comparison:' section found in project_config.yaml.")
                 success = False
                 failure_stage = "CONFIG"
                 status_message = "Comparison requested but no comparison configuration was found."
@@ -559,7 +561,11 @@ def main():
                 comparison_failure = {}
                 parsed_comparison = parse_comparison_config(comparison_cfg)
                 comparison_label = "enabled in config" if comparison_cfg.get("enabled") else "forced via --comparison"
-                print(f"   - comparison: {comparison_label}, {len(parsed_comparison['conditions'])} condition(s)")
+                logger.info(
+                    "   - comparison: %s, %s condition(s)",
+                    comparison_label,
+                    len(parsed_comparison["conditions"]),
+                )
                 success = run_comparison(
                     project_dir=project_path,
                     config=config,
@@ -601,17 +607,17 @@ def main():
 
             if success and args.step in ["analysis", "all"] and args.check_regression:
                 regression_result = check_golden_regression(project_path, config)
-                print("\n🧪 [Golden Regression Check]")
-                print(f"   - manifest: {regression_result.manifest_path}")
-                print(f"   - compared: {len(regression_result.compared_files)}")
+                logger.info("\n🧪 [Golden Regression Check]")
+                logger.info("   - manifest: %s", regression_result.manifest_path)
+                logger.info("   - compared: %s", len(regression_result.compared_files))
                 if regression_result.success:
-                    print("   - status: matched")
+                    logger.info("   - status: matched")
                 else:
-                    print("   - status: failed")
+                    logger.error("   - status: failed")
                     for failure in regression_result.failures[:5]:
-                        print(f"   - {failure.path}: {failure.reason}")
+                        logger.error("   - %s: %s", failure.path, failure.reason)
                         if failure.diff_summary:
-                            print(f"     diff: {failure.diff_summary}")
+                            logger.error("     diff: %s", failure.diff_summary)
                     success = False
                     failure_stage = "VALIDATE"
                     status_message = "Golden regression check failed."
@@ -665,10 +671,10 @@ def main():
 
         if success and args.freeze_golden:
             freeze_result = freeze_golden_dataset(project_path, config)
-            print("\n📦 [Golden Dataset Frozen]")
-            print(f"   - golden_dir: {freeze_result.golden_dir}")
-            print(f"   - file_count: {len(freeze_result.frozen_files)}")
-            print(f"   - manifest: {freeze_result.manifest_path}")
+            logger.info("\n📦 [Golden Dataset Frozen]")
+            logger.info("   - golden_dir: %s", freeze_result.golden_dir)
+            logger.info("   - file_count: %s", len(freeze_result.frozen_files))
+            logger.info("   - manifest: %s", freeze_result.manifest_path)
 
         if success:
             build_state["version"] = BUILD_STATE_SCHEMA_VERSION
@@ -700,9 +706,9 @@ def main():
                 _refresh_visual_output_signatures(project_path, config, build_state)
                 save_build_state(build_state_path, build_state)
             except Exception as _fp_exc:
-                print(f"\n⚠️  Digital Fingerprint 임베딩 실패 (결과에는 영향 없음): {_fp_exc}")
+                logger.warning("\n⚠️  Digital Fingerprint 임베딩 실패 (결과에는 영향 없음): %s", _fp_exc)
     except KeyboardInterrupt:
-        print("\n⚠️  Pipeline interrupted by user (Ctrl+C). Exiting.")
+        logger.warning("\n⚠️  Pipeline interrupted by user (Ctrl+C). Exiting.")
         return 130
     except Exception as exc:
         end_time = datetime.now(timezone.utc)
@@ -722,9 +728,9 @@ def main():
                 "failure_stage": failure_stage,
             },
         )
-        print(f"\n❌ Unexpected orchestrator exception: {type(exc).__name__}: {exc}")
-        print(f"   - failure_dump: {failure_dump_path}")
-        print(f"   - hint: /heal {os.path.relpath(project_path, root_dir)}")
+        logger.error("\n❌ Unexpected orchestrator exception: %s: %s", type(exc).__name__, exc)
+        logger.error("   - failure_dump: %s", failure_dump_path)
+        logger.error("   - hint: /heal %s", os.path.relpath(project_path, root_dir))
         success = False
 
     end_time = datetime.now(timezone.utc)
@@ -767,20 +773,20 @@ def main():
                     timeout=SUBPROCESS_TIMEOUT,
                 )
                 if result.returncode == 0:
-                    print("\n📋 Draft Bridge: manifest 업데이트 완료")
-                    print("   /draft show-candidates <alias> 로 결과 확인")
+                    logger.info("\n📋 Draft Bridge: manifest 업데이트 완료")
+                    logger.info("   /draft show-candidates <alias> 로 결과 확인")
                 else:
-                    print("\n⚠️  Draft Bridge 실행 실패 (파이프라인 결과에는 영향 없음)")
+                    logger.warning("\n⚠️  Draft Bridge 실행 실패 (파이프라인 결과에는 영향 없음)")
                     if result.stderr:
-                        print(f"   {result.stderr.strip()[:200]}")
+                        logger.warning("   %s", result.stderr.strip()[:200])
         except subprocess.TimeoutExpired:
-            print("\n⚠️  Draft Bridge 시간 초과 (파이프라인 결과에는 영향 없음)")
+            logger.warning("\n⚠️  Draft Bridge 시간 초과 (파이프라인 결과에는 영향 없음)")
         except Exception as e:
-            print(f"\n⚠️  Draft Bridge 오류: {e} (파이프라인 결과에는 영향 없음)")
+            logger.warning("\n⚠️  Draft Bridge 오류: %s (파이프라인 결과에는 영향 없음)", e)
 
-    print(f"\n{'=' * 60}")
+    logger.info("\n%s", "=" * 60)
     if success:
-        print(f"✅ Pipeline Successfully Finished. (Time: {duration.total_seconds():.1f}s)")
+        logger.info("✅ Pipeline Successfully Finished. (Time: %.1fs)", duration.total_seconds())
     else:
         if project_path and failure_dump_path is None:
             failure_dump_path = dump_pipeline_failure(
@@ -797,14 +803,14 @@ def main():
                     "failure_stage": failure_stage or "EXECUTE",
                 },
             )
-        print("❌ Pipeline Failed midway. Check errors above.")
-        print("   └─ Fix the first failing step above, then rerun the same command.")
+        logger.error("❌ Pipeline Failed midway. Check errors above.")
+        logger.error("   └─ Fix the first failing step above, then rerun the same command.")
         if failure_dump_path:
-            print(f"   └─ Failure snapshot: {failure_dump_path}")
-            print(f"   └─ Auto-heal hint: /heal {os.path.relpath(project_path, root_dir)}")
+            logger.error("   └─ Failure snapshot: %s", failure_dump_path)
+            logger.error("   └─ Auto-heal hint: /heal %s", os.path.relpath(project_path, root_dir))
     if logging_failed:
-        print("⚠️  Execution history was not persisted to the primary hub_logs path.")
-    print(f"{'=' * 60}")
+        logger.warning("⚠️  Execution history was not persisted to the primary hub_logs path.")
+    logger.info("%s", "=" * 60)
     return 0 if success else 1
 
 
