@@ -3,12 +3,15 @@ import math
 import os
 import re
 import sys
-import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, TypedDict
 
 import matplotlib.pyplot as plt
+
+from .logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class RenderManifest(TypedDict, total=False):
@@ -56,12 +59,12 @@ class AthenaBridge:
 
         athena_root = self._find_athena_root()
         if not athena_root:
-            print("❌ [Athena Bridge V2] Athena root not found. Check ATHENA_PATH.")
+            logger.error("❌ [Athena Bridge V2] Athena root not found. Check ATHENA_PATH.")
             return False
 
         if athena_root not in sys.path:
             sys.path.insert(0, athena_root)
-            print(f"🔗 [Athena Bridge V2] Linked to engine at: {athena_root}")
+            logger.info("🔗 [Athena Bridge V2] Linked to engine at: %s", athena_root)
 
         try:
             from visualizers.engine.builder import build_device_figure
@@ -81,7 +84,7 @@ class AthenaBridge:
             }
             return True
         except ImportError as e:
-            print(f"❌ [Athena Bridge V2] Failed to import engine components: {e}")
+            logger.error("❌ [Athena Bridge V2] Failed to import engine components: %s", e)
             return False
 
     def _resolve_binding(self, val: Any, data_context: Dict[str, Any]) -> Any:
@@ -120,7 +123,7 @@ class AthenaBridge:
         except Exception as exc:
             # Zenith 마감: NaN/Inf 등의 데이터 결함을 0.0으로 뭉개지 않고 에러를 전파하거나 로그를 남깁니다.
             if "invalid numeric" in str(exc).lower():
-                print(f"⚠️ [Athena Bridge V2] Data Quality Issue: {exc}")
+                logger.warning("⚠️ [Athena Bridge V2] Data Quality Issue: %s", exc)
             return _safe_float(data_context.get(expr.replace("csv.", ""), val), strict=False)
 
     def _resolve_solve_param(self, param_name: str) -> str:
@@ -306,8 +309,11 @@ class AthenaBridge:
             quality_info = self._read_quality_sidecar(output_path)
             if quality_info and not quality_info.get("quality_passed", True):
                 self._apply_quality_overlay(fig, quality_info)
-                print(f"⚠️ [Athena Bridge V2] Quality overlay applied — "
-                      f"{len(quality_info.get('cv_warnings', []))} column(s) exceeded CV threshold")
+                logger.warning(
+                    "⚠️ [Athena Bridge V2] Quality overlay applied — "
+                    "%s column(s) exceeded CV threshold",
+                    len(quality_info.get("cv_warnings", [])),
+                )
 
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             if save_func:
@@ -333,13 +339,19 @@ class AthenaBridge:
             manifest_path = self._write_manifest(output_path, manifest)
 
             manifest_name = os.path.basename(manifest_path)
-            print(f"✅ [Athena Bridge V2] Rendered: {os.path.basename(output_path)} "
-                  f"(Layers: {len(layers)}, context: {context}, dpi: {dpi}, manifest: {manifest_name})")
+            logger.info(
+                "✅ [Athena Bridge V2] Rendered: %s "
+                "(Layers: %s, context: %s, dpi: %s, manifest: %s)",
+                os.path.basename(output_path),
+                len(layers),
+                context,
+                dpi,
+                manifest_name,
+            )
             return True
 
         except Exception as e:
-            print(f"❌ [Athena Bridge V2] Render failed: {e}")
-            traceback.print_exc()
+            logger.exception("❌ [Athena Bridge V2] Render failed: %s", e)
             return False
         finally:
             if fig is not None:
