@@ -2,7 +2,10 @@ import os
 import shutil
 import subprocess
 
+from .logging import get_logger
+
 DEFAULT_DOCKER_IMAGE = "graph-making-hub:latest"
+logger = get_logger(__name__)
 
 
 def rerun_in_docker(hub_path, root_dir, argv, *, image=DEFAULT_DOCKER_IMAGE, build=False):
@@ -37,21 +40,21 @@ def rerun_in_docker(hub_path, root_dir, argv, *, image=DEFAULT_DOCKER_IMAGE, bui
         *filtered_args,
     ]
 
-    print("\n🐳 [Docker Mode]")
-    print(f"   - image: {image}")
-    print(f"   - root_mount: {root_dir}")
+    logger.info("\n🐳 [Docker Mode]")
+    logger.info("   - image: %s", image)
+    logger.info("   - root_mount: %s", root_dir)
 
     try:
         proc = subprocess.run(command, check=False, timeout=3600)
     except subprocess.TimeoutExpired:
-        print("   ❌ Docker run timed out (3600s limit)")
+        logger.error("   ❌ Docker run timed out (3600s limit)")
         return 1
     return proc.returncode
 
 
 def _build_docker_image(docker_bin, hub_path, image):
-    print("\n🐳 [Docker Build]")
-    print(f"   - image: {image}")
+    logger.info("\n🐳 [Docker Build]")
+    logger.info("   - image: %s", image)
     build_cmd = [
         docker_bin,
         "build",
