@@ -1,4 +1,5 @@
 """Tests for glob input expansion."""
+import logging
 import sys
 from pathlib import Path
 
@@ -51,12 +52,12 @@ def test_expand_glob_matches_files(tmp_path):
     assert paths == sorted(paths)
 
 
-def test_expand_glob_zero_matches(tmp_path, capsys):
+def test_expand_glob_zero_matches(tmp_path, caplog):
+    caplog.set_level(logging.WARNING, logger="hub_core.utils")
     result = expand_glob_inputs(str(tmp_path), ["*.csv"])
     pattern, paths = result[0]
     assert paths == []
-    captured = capsys.readouterr()
-    assert "WARN" in captured.out or "warn" in captured.out.lower()
+    assert "WARN" in caplog.text or "warn" in caplog.text.lower()
 
 
 def test_expand_glob_ignores_directories(tmp_path):

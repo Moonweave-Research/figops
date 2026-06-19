@@ -1,9 +1,10 @@
 import io
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
+from hub_core.logging import configure_logging
 from hub_core.utils import scan_csv_export_anomalies
 
 
@@ -18,14 +19,17 @@ class TestInputExportAnomalies(unittest.TestCase):
             )
 
             stdout = io.StringIO()
-            with redirect_stdout(stdout):
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                configure_logging("INFO")
                 warnings = scan_csv_export_anomalies(str(root), ["bad.csv"])
 
         self.assertEqual(len(warnings), 1)
         self.assertEqual(warnings[0]["path"], "bad.csv")
         self.assertEqual(warnings[0]["blank_headers"], 1)
         self.assertEqual(warnings[0]["duplicate_headers"], ["ThetaTotal(deg)"])
-        self.assertIn("[Input Export Anomaly]", stdout.getvalue())
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("[Input Export Anomaly]", stderr.getvalue())
 
     def test_ignores_clean_csv_and_non_csv_inputs(self):
         with tempfile.TemporaryDirectory(prefix="input_clean_") as tmpdir:
