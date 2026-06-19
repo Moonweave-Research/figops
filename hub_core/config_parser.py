@@ -5,6 +5,8 @@ import unicodedata
 
 import yaml
 
+from .logging import get_logger
+
 ALLOWED_TARGET_FORMATS = {
     "nature",
     "nature_surfur",
@@ -34,6 +36,7 @@ CONFIG_FILE_CANDIDATES = (
     "project_config.yaml",
     os.path.join("scripts", "project_config.yaml"),
 )
+logger = get_logger(__name__)
 
 try:
     from themes.style_profiles import PROFILE_ALIASES, list_profiles, resolve_profile_name
@@ -1015,9 +1018,9 @@ def load_config(project_dir):
     config_path = find_config_path(project_dir)
 
     if not config_path:
-        print(f"❌ Error: project_config.yaml not found in {project_dir}")
-        print('   ├─ Run `python orchestrator.py --init --project "<project>"` to scaffold one.')
-        print("   └─ Or place project_config.yaml at the project root.")
+        logger.error("❌ Error: project_config.yaml not found in %s", project_dir)
+        logger.error('   ├─ Run `python orchestrator.py --init --project "<project>"` to scaffold one.')
+        logger.error("   └─ Or place project_config.yaml at the project root.")
         return None, None, None
 
     try:
@@ -1025,20 +1028,20 @@ def load_config(project_dir):
             raw_text = f.read()
             config = _load_yaml_with_unique_keys(raw_text)
     except yaml.YAMLError as e:
-        print(f"❌ Error: Invalid YAML in {config_path}\n   └─ {e}")
-        print("   └─ Fix the YAML syntax in project_config.yaml and rerun.")
+        logger.error("❌ Error: Invalid YAML in %s\n   └─ %s", config_path, e)
+        logger.error("   └─ Fix the YAML syntax in project_config.yaml and rerun.")
         return None, None, None
     except OSError as e:
-        print(f"❌ Error: Failed to read config {config_path}\n   └─ {e}")
-        print("   └─ Check file permissions and Google Drive sync state.")
+        logger.error("❌ Error: Failed to read config %s\n   └─ %s", config_path, e)
+        logger.error("   └─ Check file permissions and Google Drive sync state.")
         return None, None, None
 
     errors = validate_config(config)
     if errors:
-        print(f"❌ Error: Invalid config schema in {config_path}")
+        logger.error("❌ Error: Invalid config schema in %s", config_path)
         for err in errors:
-            print(f"   - {err}")
-        print("   └─ Compare with the scaffold template or fix the listed fields and rerun.")
+            logger.error("   - %s", err)
+        logger.error("   └─ Compare with the scaffold template or fix the listed fields and rerun.")
         return None, None, None
 
     # CRLF/LF 차이로 인한 불필요한 캐시 무효화 방지
