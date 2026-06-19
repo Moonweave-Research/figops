@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import re
 from pathlib import Path
 
 from .adapters import select_adapters
@@ -78,10 +79,34 @@ SEMANTIC_CHECK_DEFINITIONS = {
         "schema": {"type": "string", "enum": sorted(_MONOTONIC_MODES)},
         "example": {"time": {"monotonic": "increasing"}},
     },
+    "monotonic_within_group": {
+        "purpose": "Require ordered values in the target column within each configured group.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "group_by": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "mode": {"type": "string", "enum": sorted(_MONOTONIC_MODES)},
+            },
+            "required": ["group_by", "mode"],
+        },
+        "example": {"time": {"monotonic_within_group": {"group_by": ["sample"], "mode": "increasing"}}},
+    },
     "min_replicates": {
         "purpose": "Require a minimum replicate count within groups.",
         "schema": {"type": "object"},
         "example": {"mean": {"min_replicates": {"group_by": ["condition"], "n": 3}}},
+    },
+    "expected_sample_count": {
+        "purpose": "Require each configured group to have exactly the expected number of non-null target values.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "group_by": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "count": {"type": "integer", "minimum": 1},
+            },
+            "required": ["group_by", "count"],
+        },
+        "example": {"value": {"expected_sample_count": {"group_by": ["condition"], "count": 3}}},
     },
     "grouped_cv": {
         "purpose": "Check coefficient of variation within configured groups.",
@@ -122,6 +147,41 @@ SEMANTIC_CHECK_DEFINITIONS = {
         "purpose": "Validate actual_unit compatibility with an expected unit when Pint is installed.",
         "schema": {"type": "string"},
         "example": {"current": {"unit": "A", "actual_unit": "mA"}},
+    },
+    "unit_coherence": {
+        "purpose": "Validate that declared related-column units combine to the target column's expected unit.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "expected_unit": {"type": "string"},
+                "terms": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "column": {"type": "string"},
+                            "unit": {"type": "string"},
+                            "exponent": {"type": "integer", "default": 1},
+                        },
+                        "required": ["column", "unit"],
+                    },
+                    "minItems": 1,
+                },
+            },
+            "required": ["expected_unit", "terms"],
+        },
+        "example": {
+            "resistivity": {
+                "unit_coherence": {
+                    "expected_unit": "ohm*cm",
+                    "terms": [
+                        {"column": "resistance", "unit": "ohm"},
+                        {"column": "area", "unit": "cm^2"},
+                        {"column": "thickness", "unit": "cm", "exponent": -1},
+                    ],
+                }
+            }
+        },
     },
 }
 
@@ -557,6 +617,21 @@ def _validate_semantic_constraints(
                 errors.append(monotonic_error)
                 row_violations.extend(monotonic_rows)
 
+        if "monotonic_within_group" in constraints:
+            grouped_errors, grouped_rows = _check_monotonic_within_group_constraint(
+                df,
+                series,
+                col,
+                constraints["monotonic_within_group"],
+                stripped_to_actual,
+                max_row_detail,
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(grouped_errors)
+            row_violations.extend(grouped_rows)
+
         # 5. Grouped calculation checks
         if "min_replicates" in constraints:
             grouped_errors, grouped_rows = _check_min_replicates_constraint(
@@ -564,6 +639,21 @@ def _validate_semantic_constraints(
                 series,
                 col,
                 constraints["min_replicates"],
+                stripped_to_actual,
+                max_row_detail,
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(grouped_errors)
+            row_violations.extend(grouped_rows)
+
+        if "expected_sample_count" in constraints:
+            grouped_errors, grouped_rows = _check_expected_sample_count_constraint(
+                df,
+                series,
+                col,
+                constraints["expected_sample_count"],
                 stripped_to_actual,
                 max_row_detail,
                 calculation_checks=calculation_checks,
@@ -681,6 +771,18 @@ def _validate_semantic_constraints(
             )
             errors.extend(axis_errors)
             row_violations.extend(axis_rows)
+
+        if "unit_coherence" in constraints:
+            unit_coherence_errors, unit_coherence_rows = _check_unit_coherence_constraint(
+                col,
+                constraints["unit_coherence"],
+                stripped_to_actual,
+                calculation_checks=calculation_checks,
+                csv_rel_path=csv_rel_path,
+                source_config_path=source_config_path,
+            )
+            errors.extend(unit_coherence_errors)
+            row_violations.extend(unit_coherence_rows)
 
         # 6. Unit check (requires pint)
         expected_unit = constraints.get("unit")
@@ -847,6 +949,96 @@ def _group_dict(group_by: list[str], group_key) -> dict:
     return {column: _json_safe_value(value) for column, value in zip(group_by, values, strict=False)}
 
 
+def _check_monotonic_within_group_constraint(
+    df,
+    series,
+    col,
+    raw_check,
+    stripped_to_actual,
+    max_row_detail: int,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    if not isinstance(raw_check, dict):
+        message = f"Column '{col}': monotonic_within_group must be a mapping"
+        return [message], []
+
+    group_by, actual_group_by, missing = _resolve_group_columns(raw_check.get("group_by"), stripped_to_actual)
+    if missing:
+        message = f"Column '{col}': monotonic_within_group group column(s) not found: {missing}"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="monotonic_within_group",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    mode = raw_check.get("mode")
+    if not isinstance(mode, str) or mode not in _MONOTONIC_MODES:
+        allowed = ", ".join(sorted(_MONOTONIC_MODES))
+        message = f"Column '{col}': monotonic_within_group.mode must be one of: {allowed}"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="monotonic_within_group",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    violations = []
+    row_violations = []
+    grouped = df.groupby(actual_group_by, dropna=False, sort=False)
+    for group_key, group_df in grouped:
+        group_payload = _group_dict(group_by, group_key)
+        group_series = series.loc[group_df.index]
+        group_error, group_rows = _check_monotonic_constraint(group_series, col, mode, max_row_detail)
+        if not group_error:
+            continue
+        violations.append({"group": group_payload, "message": group_error})
+        for row in group_rows:
+            row_with_group = dict(row)
+            row_with_group["expected"] = f"{row['expected']} within group {group_payload}"
+            row_with_group["violation_type"] = "monotonic_within_group"
+            row_violations.append(row_with_group)
+
+    if not violations:
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="monotonic_within_group",
+            target=col,
+            group_by=group_by,
+            source_config_path=source_config_path,
+            status="passed",
+            manual_review_needed=False,
+            message=f"All groups are monotonic {mode}",
+            violations=[],
+        )
+        return [], []
+
+    message = f"Column '{col}': {len(violations)} group(s) failed monotonic_within_group={mode}"
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="monotonic_within_group",
+        target=col,
+        group_by=group_by,
+        source_config_path=source_config_path,
+        status="failed",
+        manual_review_needed=False,
+        message=message,
+        violations=violations,
+    )
+    return [message], row_violations[:max_row_detail]
+
+
 def _check_min_replicates_constraint(
     df,
     series,
@@ -958,6 +1150,99 @@ def _check_min_replicates_constraint(
         violations=violations,
     )
     return [message], row_violations
+
+
+def _check_expected_sample_count_constraint(
+    df,
+    series,
+    col,
+    raw_check,
+    stripped_to_actual,
+    max_row_detail: int,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    if not isinstance(raw_check, dict):
+        message = f"Column '{col}': expected_sample_count must be a mapping"
+        return [message], []
+
+    group_by, actual_group_by, missing = _resolve_group_columns(raw_check.get("group_by"), stripped_to_actual)
+    if missing:
+        message = f"Column '{col}': expected_sample_count group column(s) not found: {missing}"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="expected_sample_count",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    count = raw_check.get("count")
+    if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+        message = f"Column '{col}': expected_sample_count.count must be a positive integer"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="expected_sample_count",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    violations = []
+    row_violations = []
+    grouped = df.groupby(actual_group_by, dropna=False, sort=False)
+    for group_key, group_df in grouped:
+        observed_count = int(series.loc[group_df.index].notna().sum())
+        if observed_count == count:
+            continue
+        group_payload = _group_dict(group_by, group_key)
+        violations.append({"group": group_payload, "count": observed_count, "expected": count})
+        for idx in group_df.index[:max_row_detail]:
+            row_violations.append(
+                {
+                    "row": str(idx),
+                    "column": col,
+                    "value": str(series.loc[idx]),
+                    "expected": f"expected_sample_count == {count} for group {group_payload}",
+                    "violation_type": "expected_sample_count",
+                }
+            )
+
+    if not violations:
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="expected_sample_count",
+            target=col,
+            group_by=group_by,
+            source_config_path=source_config_path,
+            status="passed",
+            manual_review_needed=False,
+            message=f"All groups have exactly count={count}",
+            violations=[],
+        )
+        return [], []
+
+    message = f"Column '{col}': {len(violations)} group(s) failed expected_sample_count={count}"
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="expected_sample_count",
+        target=col,
+        group_by=group_by,
+        source_config_path=source_config_path,
+        status="failed",
+        manual_review_needed=False,
+        message=message,
+        violations=violations,
+    )
+    return [message], row_violations[:max_row_detail]
 
 
 def _check_grouped_cv_constraint(
@@ -1769,6 +2054,223 @@ def _check_outlier_flag_constraint(
         violations=violations,
     )
     return [message], row_violations
+
+
+_UNIT_TOKEN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(?:\^(-?\d+))?$")
+
+
+def _parse_unit_signature(unit: str) -> dict[str, int]:
+    raw = str(unit).replace(" ", "")
+    if not raw:
+        raise ValueError("unit must be non-empty")
+
+    signature: dict[str, int] = {}
+    pending = ""
+    operator = 1
+    for char in raw + "*":
+        if char in "*/":
+            if not pending:
+                raise ValueError(f"malformed unit expression '{unit}'")
+            if pending != "1":
+                match = _UNIT_TOKEN_RE.match(pending)
+                if not match:
+                    raise ValueError(f"unsupported unit token '{pending}'")
+                base, exponent_text = match.groups()
+                exponent = int(exponent_text or "1") * operator
+                signature[base] = signature.get(base, 0) + exponent
+                if signature[base] == 0:
+                    del signature[base]
+            pending = ""
+            operator = 1 if char == "*" else -1
+        else:
+            pending += char
+    return signature
+
+
+def _format_unit_signature(signature: dict[str, int]) -> str:
+    if not signature:
+        return "1"
+    return "*".join(
+        f"{unit}^{exponent}" if exponent != 1 else unit
+        for unit, exponent in sorted(signature.items())
+    )
+
+
+def _check_unit_coherence_constraint(
+    col,
+    raw_check,
+    stripped_to_actual,
+    *,
+    calculation_checks=None,
+    csv_rel_path: str,
+    source_config_path: str,
+):
+    if not isinstance(raw_check, dict):
+        message = f"Column '{col}': unit_coherence must be a mapping"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="unit_coherence",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    expected_unit = raw_check.get("expected_unit")
+    terms = raw_check.get("terms")
+    if not isinstance(expected_unit, str) or not expected_unit.strip():
+        message = f"Column '{col}': unit_coherence.expected_unit must be a non-empty string"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="unit_coherence",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+    if not isinstance(terms, list) or not terms:
+        message = f"Column '{col}': unit_coherence.terms must be a non-empty list"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="unit_coherence",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    combined: dict[str, int] = {}
+    term_payloads = []
+    for idx, term in enumerate(terms, 1):
+        if not isinstance(term, dict):
+            message = f"Column '{col}': unit_coherence.terms[{idx}] must be a mapping"
+            _append_failed_calculation_check(
+                calculation_checks,
+                csv_rel_path=csv_rel_path,
+                name="unit_coherence",
+                target=col,
+                source_config_path=source_config_path,
+                message=message,
+            )
+            return [message], []
+        term_column = term.get("column")
+        term_unit = term.get("unit")
+        exponent = term.get("exponent", 1)
+        if not isinstance(term_column, str) or not term_column.strip() or term_column.strip() not in stripped_to_actual:
+            message = f"Column '{col}': unit_coherence term column not found: {term_column!r}"
+            _append_failed_calculation_check(
+                calculation_checks,
+                csv_rel_path=csv_rel_path,
+                name="unit_coherence",
+                target=col,
+                source_config_path=source_config_path,
+                message=message,
+            )
+            return [message], []
+        if not isinstance(term_unit, str) or not term_unit.strip():
+            message = f"Column '{col}': unit_coherence term unit must be a non-empty string"
+            _append_failed_calculation_check(
+                calculation_checks,
+                csv_rel_path=csv_rel_path,
+                name="unit_coherence",
+                target=col,
+                source_config_path=source_config_path,
+                message=message,
+            )
+            return [message], []
+        if isinstance(exponent, bool) or not isinstance(exponent, int) or exponent == 0:
+            message = f"Column '{col}': unit_coherence term exponent must be a non-zero integer"
+            _append_failed_calculation_check(
+                calculation_checks,
+                csv_rel_path=csv_rel_path,
+                name="unit_coherence",
+                target=col,
+                source_config_path=source_config_path,
+                message=message,
+            )
+            return [message], []
+        try:
+            term_signature = _parse_unit_signature(term_unit)
+        except ValueError as exc:
+            message = f"Column '{col}': unit_coherence term unit parse failed: {exc}"
+            _append_failed_calculation_check(
+                calculation_checks,
+                csv_rel_path=csv_rel_path,
+                name="unit_coherence",
+                target=col,
+                source_config_path=source_config_path,
+                message=message,
+            )
+            return [message], []
+        for unit, power in term_signature.items():
+            combined[unit] = combined.get(unit, 0) + power * exponent
+            if combined[unit] == 0:
+                del combined[unit]
+        term_payloads.append({"column": term_column.strip(), "unit": term_unit.strip(), "exponent": exponent})
+
+    try:
+        expected_signature = _parse_unit_signature(expected_unit)
+    except ValueError as exc:
+        message = f"Column '{col}': unit_coherence expected_unit parse failed: {exc}"
+        _append_failed_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="unit_coherence",
+            target=col,
+            source_config_path=source_config_path,
+            message=message,
+        )
+        return [message], []
+
+    observed = _format_unit_signature(combined)
+    expected = _format_unit_signature(expected_signature)
+    if combined == expected_signature:
+        _append_calculation_check(
+            calculation_checks,
+            csv_rel_path=csv_rel_path,
+            name="unit_coherence",
+            target=col,
+            group_by=[],
+            source_config_path=source_config_path,
+            status="passed",
+            manual_review_needed=False,
+            message=f"Related units combine to expected unit '{expected}'",
+            violations=[],
+        )
+        return [], []
+
+    message = f"Column '{col}': unit_coherence expected '{expected}', got '{observed}'"
+    violation = {
+        "column": col,
+        "value": observed,
+        "expected": expected,
+        "terms": term_payloads,
+        "violation_type": "unit_coherence",
+    }
+    _append_calculation_check(
+        calculation_checks,
+        csv_rel_path=csv_rel_path,
+        name="unit_coherence",
+        target=col,
+        group_by=[],
+        source_config_path=source_config_path,
+        status="failed",
+        manual_review_needed=False,
+        message=message,
+        violations=[violation],
+    )
+    return [message], [
+        {
+            "row": "*",
+            "column": col,
+            "value": observed,
+            "expected": expected,
+            "violation_type": "unit_coherence",
+        }
+    ]
 
 
 def _check_axis_unit_constraint(
