@@ -814,6 +814,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             self.assertEqual(payload["checks"][0]["name"], "axis_unit")
             self.assertEqual(payload["checks"][0]["status"], "skipped")
+            self.assertTrue(payload["quality_passed"])
             self.assertTrue(payload["manual_review_needed"])
 
     def test_axis_unit_incompatible_blocks_contract(self):

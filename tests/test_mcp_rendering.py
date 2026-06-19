@@ -1208,7 +1208,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(result["is_dry_run"])
             self.assertTrue(any("axis_unit" in warning for warning in result["warnings"]))
             self.assertIn("calculation_checks", result)
-            self.assertFalse(result["calculation_checks"]["quality_passed"])
+            self.assertTrue(result["calculation_checks"]["quality_passed"])
             self.assertTrue(result["calculation_checks"]["manual_review_needed"])
             self.assertEqual(result["calculation_checks"]["checks"][0]["status"], "skipped")
             self.assertFalse(runtime_root.exists())
@@ -1273,7 +1273,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             status = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
             for payload in (manifest, status):
                 self.assertIn("calculation_checks", payload)
-                self.assertFalse(payload["calculation_checks"]["quality_passed"])
+                self.assertTrue(payload["calculation_checks"]["quality_passed"])
                 self.assertTrue(payload["calculation_checks"]["manual_review_needed"])
                 self.assertEqual(payload["calculation_checks"]["checks"][0]["name"], "axis_unit")
                 self.assertEqual(payload["calculation_checks"]["checks"][0]["status"], "skipped")

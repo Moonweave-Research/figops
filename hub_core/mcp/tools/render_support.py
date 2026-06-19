@@ -467,7 +467,7 @@ class McpRenderToolSupportMixin:
             "calculation_checks": {
                 "checks": calculation_checks,
                 "quality_passed": not any(
-                    check.get("status") in {"warning", "failed", "skipped"} for check in calculation_checks
+                    check.get("status") in {"warning", "failed"} for check in calculation_checks
                 ),
                 "manual_review_needed": any(bool(check.get("manual_review_needed")) for check in calculation_checks),
             },

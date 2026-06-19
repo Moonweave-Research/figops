@@ -946,7 +946,7 @@ def _collection_marker_style(artist: Any) -> dict[str, Any] | None:
     sizes = artist.get_sizes()
     face_values = {_style_color(color) for color in facecolors} if len(facecolors) else {"none"}
     edge_values = {_style_color(color) for color in edgecolors} if len(edgecolors) else {"none"}
-    size_values = {round(float(np.sqrt(size)), 3) for size in sizes} if len(sizes) else {0.0}
+    size_values = {round(2.0 * float(np.sqrt(size / np.pi)), 3) for size in sizes} if len(sizes) else {0.0}
     paths = artist.get_paths() if hasattr(artist, "get_paths") else []
     marker_shape = _path_signature(paths[0]) if paths else "collection"
     facecolor = "mixed" if len(face_values) > 1 else next(iter(face_values))
