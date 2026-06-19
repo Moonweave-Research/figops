@@ -72,6 +72,28 @@ def _render_heatmap(ax: Axes, points: list[Point], spec: BridgeFigureSpec) -> No
     _render_heatmap_plot(ax, points, spec)
 
 
+def _render_box(ax: Axes, points: list[Point], spec: BridgeFigureSpec) -> None:
+    from plotting.bridge_renderer import _render_box_plot
+
+    _render_box_plot(ax, points, spec)
+
+
+def _render_violin(ax: Axes, points: list[Point], spec: BridgeFigureSpec) -> None:
+    from plotting.bridge_renderer import _render_violin_plot
+
+    _render_violin_plot(ax, points, spec)
+
+
+_DISTRIBUTION_ARG_SCHEMA = {
+    "type": "object",
+    "required": ["x_column", "y_column"],
+    "properties": {
+        "x_column": {"type": "string"},
+        "y_column": {"type": "string"},
+    },
+}
+
+
 PLOT_TYPES: dict[str, PlotType] = {
     "bar": PlotType(
         name="bar",
@@ -106,6 +128,31 @@ PLOT_TYPES: dict[str, PlotType] = {
             supports_yerr=False,
             supports_broken_axis=False,
             supports_z=True,
+        ),
+    ),
+    "box": PlotType(
+        name="box",
+        render=_render_box,
+        arg_schema=_DISTRIBUTION_ARG_SCHEMA,
+        capabilities=_common_capabilities(
+            supports_series=False,
+            supports_yerr=False,
+            supports_broken_axis=False,
+            shows_individual_points=True,
+            warns_small_n=True,
+        ),
+    ),
+    "violin": PlotType(
+        name="violin",
+        render=_render_violin,
+        arg_schema=_DISTRIBUTION_ARG_SCHEMA,
+        capabilities=_common_capabilities(
+            supports_series=False,
+            supports_yerr=False,
+            supports_broken_axis=False,
+            shows_individual_points=True,
+            warns_small_n=True,
+            falls_back_for_small_n=True,
         ),
     ),
 }

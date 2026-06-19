@@ -104,4 +104,31 @@ def test_described_tool_set_matches_live_tool_registry():
 
 
 def test_builtin_plot_types_registered():
-    assert {"bar", "line", "scatter", "xy", "heatmap"}.issubset(PLOT_TYPES)
+    assert {"bar", "line", "scatter", "xy", "heatmap", "box", "violin"}.issubset(PLOT_TYPES)
+
+
+def test_distribution_plot_types_publish_contracts():
+    assert PLOT_TYPES["box"].arg_schema == {
+        "type": "object",
+        "required": ["x_column", "y_column"],
+        "properties": {
+            "x_column": {"type": "string"},
+            "y_column": {"type": "string"},
+        },
+    }
+    assert PLOT_TYPES["box"].capabilities == {
+        "supports_series": False,
+        "supports_yerr": False,
+        "supports_broken_axis": False,
+        "shows_individual_points": True,
+        "warns_small_n": True,
+    }
+    assert PLOT_TYPES["violin"].arg_schema == PLOT_TYPES["box"].arg_schema
+    assert PLOT_TYPES["violin"].capabilities == {
+        "supports_series": False,
+        "supports_yerr": False,
+        "supports_broken_axis": False,
+        "shows_individual_points": True,
+        "warns_small_n": True,
+        "falls_back_for_small_n": True,
+    }
