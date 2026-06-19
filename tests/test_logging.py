@@ -8,7 +8,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import matplotlib.pyplot as plt
+
 import hub_core.process_runner as pr
+from hub_core.athena_bridge import AthenaBridge
 from hub_core.cache_manager import load_build_state
 from hub_core.config_parser import load_config
 from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
@@ -367,3 +370,71 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertIn("plain status", stderr_text)
         self.assertIn("panel body", stderr_text)
         self.assertIn("alpha", stderr_text)
+
+    def test_athena_bridge_engine_errors_log_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        bridge = AthenaBridge()
+        bridge._engine = None
+
+        with (
+            tempfile.TemporaryDirectory(prefix="graphhub_logging_missing_athena_") as tmpdir,
+            patch.dict(os.environ, {"ATHENA_PATH": str(Path(tmpdir) / "missing")}, clear=False),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            configure_logging("INFO")
+            loaded = bridge.load_engine()
+
+        self.assertFalse(loaded)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("Athena root not found", stderr.getvalue())
+
+    def test_athena_bridge_import_failure_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        bridge = AthenaBridge()
+        bridge._engine = None
+
+        with (
+            tempfile.TemporaryDirectory(prefix="graphhub_logging_bad_athena_") as tmpdir,
+            patch.dict(os.environ, {"ATHENA_PATH": tmpdir}, clear=False),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            configure_logging("INFO")
+            loaded = bridge.load_engine()
+
+        self.assertFalse(loaded)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("Linked to engine", stderr.getvalue())
+        self.assertIn("Failed to import engine components", stderr.getvalue())
+
+    def test_athena_bridge_render_success_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        bridge = AthenaBridge()
+        original_engine = bridge._engine
+        fig, ax = plt.subplots()
+
+        try:
+            bridge._engine = {
+                "build_device_figure": lambda **kwargs: (fig, ax, {}),
+            }
+            with tempfile.TemporaryDirectory(prefix="graphhub_logging_athena_render_") as tmpdir:
+                output_path = Path(tmpdir) / "fig.png"
+                with (
+                    patch.object(bridge, "load_engine", return_value=True),
+                    contextlib.redirect_stdout(stdout),
+                    contextlib.redirect_stderr(stderr),
+                ):
+                    configure_logging("INFO")
+                    rendered = bridge.render({"layers": []}, str(output_path))
+                self.assertTrue(output_path.exists())
+        finally:
+            bridge._engine = original_engine
+            plt.close(fig)
+
+        self.assertTrue(rendered)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("Rendered: fig.png", stderr.getvalue())
