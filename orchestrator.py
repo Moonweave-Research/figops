@@ -394,9 +394,9 @@ def main():
         # --- Interactive Mode 발동 ---
         projects = get_discoverable_projects(root_dir, max_depth=args.scan_depth)
         if not projects:
-            print("❌ No configured projects found in the research directory.")
-            print("   ├─ Try: python orchestrator.py --list-projects")
-            print('   └─ Or create one: python orchestrator.py --init --project "새_프로젝트_폴더"')
+            logger.error("❌ No configured projects found in the research directory.")
+            logger.error("   ├─ Try: python orchestrator.py --list-projects")
+            logger.error('   └─ Or create one: python orchestrator.py --init --project "새_프로젝트_폴더"')
             return 1
 
         # 선택 목록 구성 (이름 + 경로)
@@ -405,7 +405,7 @@ def main():
 
         # 선택된 프로젝트 경로 할당
         args.project = projects[selected_idx]["path"]
-        print(f"🚀 Selected Project: {projects[selected_idx]['name']}")
+        logger.info("🚀 Selected Project: %s", projects[selected_idx]["name"])
         # -----------------------------
 
     # 프로젝트 경로 정규화 (이름만 입력 시 루트에서 찾기)
@@ -415,9 +415,9 @@ def main():
     project_path = os.path.abspath(project_path)
 
     if not os.path.isdir(project_path):
-        print(f"❌ Error: Project directory not found: {project_path}")
-        print("   ├─ Check the path spelling or run `python orchestrator.py --list-projects`.")
-        print("   └─ Relative names are resolved from the research root folder.")
+        logger.error("❌ Error: Project directory not found: %s", project_path)
+        logger.error("   ├─ Check the path spelling or run `python orchestrator.py --list-projects`.")
+        logger.error("   └─ Relative names are resolved from the research root folder.")
         return 1
 
     raw_request = shlex.join(["python", "orchestrator.py", *sys.argv[1:]])
