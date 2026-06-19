@@ -110,6 +110,14 @@ _STATISTICAL_OVERLAY_ARG_SCHEMA = {
 }
 
 
+_BAR_ARG_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "aggregate": {"type": "string", "enum": ["mean", "median"]},
+    },
+}
+
+
 _FACET_ARG_SCHEMA = {
     "type": "object",
     "required": ["facet_column"],
@@ -123,8 +131,12 @@ PLOT_TYPES: dict[str, PlotType] = {
     "bar": PlotType(
         name="bar",
         render=_render_bar,
-        arg_schema={},
-        capabilities=_common_capabilities(supports_broken_axis=False),
+        arg_schema=_BAR_ARG_SCHEMA,
+        capabilities=_common_capabilities(
+            supports_broken_axis=False,
+            supports_replicate_aggregation=True,
+            aggregate_methods=["mean", "median"],
+        ),
     ),
     "line": PlotType(
         name="line",

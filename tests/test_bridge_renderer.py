@@ -77,6 +77,21 @@ class BridgeRendererUnitTest(unittest.TestCase):
             writer.writerows(rows)
         return csv_path
 
+    def _write_replicate_bar_csv(self, root: Path, name: str) -> Path:
+        csv_path = root / name
+        rows = [
+            {"condition": "control", "value": 1.0},
+            {"condition": "control", "value": 3.0},
+            {"condition": "treated", "value": 2.0},
+            {"condition": "treated", "value": 4.0},
+            {"condition": "treated", "value": 6.0},
+        ]
+        with csv_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = DictWriter(handle, fieldnames=["condition", "value"])
+            writer.writeheader()
+            writer.writerows(rows)
+        return csv_path
+
     def test_display_label_uses_shared_compression_rules(self):
         raw = "Coated Sample_Noa_None_Aligned"
         compressed = _display_label(raw)
@@ -109,6 +124,119 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertIn("Coated, B, Unaln.", labels)
         finally:
             plt.close(fig)
+
+    def test_bar_plot_aggregate_mean_collapses_duplicate_categories(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_bar_aggregate_mean_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_replicate_bar_csv(tmpdir_path, "bar.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "bar.png"),
+                plot_type="bar",
+                x_column="condition",
+                y_column="value",
+                title="bar",
+                aggregate="mean",
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                ax = fig.axes[0]
+                observed["heights"] = [bar.get_height() for bar in ax.patches]
+                observed["tick_labels"] = [label.get_text() for label in ax.get_xticklabels()]
+                Path(output_path).write_bytes(b"png")
+
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                    out = render_bridge_figure(spec)
+
+            self.assertTrue(Path(out).exists())
+            self.assertEqual(observed["tick_labels"], ["control", "treated"])
+            self.assertEqual(observed["heights"], [2.0, 4.0])
+            self.assertFalse(any("duplicate category" in str(item.message) for item in caught))
+
+    def test_bar_plot_aggregate_median_collapses_duplicate_categories(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_bar_aggregate_median_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = tmpdir_path / "bar.csv"
+            with csv_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = DictWriter(handle, fieldnames=["condition", "value"])
+                writer.writeheader()
+                writer.writerows(
+                    [
+                        {"condition": "control", "value": 1.0},
+                        {"condition": "control", "value": 3.0},
+                        {"condition": "control", "value": 100.0},
+                        {"condition": "treated", "value": 2.0},
+                        {"condition": "treated", "value": 4.0},
+                        {"condition": "treated", "value": 200.0},
+                    ]
+                )
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "bar.png"),
+                plot_type="bar",
+                x_column="condition",
+                y_column="value",
+                title="bar",
+                aggregate="median",
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                ax = fig.axes[0]
+                observed["heights"] = [bar.get_height() for bar in ax.patches]
+                observed["tick_labels"] = [label.get_text() for label in ax.get_xticklabels()]
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                out = render_bridge_figure(spec)
+
+            self.assertTrue(Path(out).exists())
+            self.assertEqual(observed["tick_labels"], ["control", "treated"])
+            self.assertEqual(observed["heights"], [3.0, 4.0])
+
+    def test_bar_plot_rejects_invalid_aggregate(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_bar_aggregate_invalid_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_replicate_bar_csv(tmpdir_path, "bar.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "bar.png"),
+                plot_type="bar",
+                x_column="condition",
+                y_column="value",
+                title="bar",
+                aggregate="mode",
+            )
+
+            with self.assertRaises(ValueError) as ctx:
+                render_bridge_figure(spec)
+
+            self.assertIn("aggregate", str(ctx.exception))
+            self.assertIn("mean", str(ctx.exception))
+
+    def test_bar_plot_aggregate_matches_visual_regression_baseline(self):
+        baseline = Path(__file__).parent / "fixtures" / "visual_regression" / "m4_2_grouped_bar_aggregate.png"
+        with tempfile.TemporaryDirectory(prefix="bridge_bar_aggregate_baseline_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_replicate_bar_csv(tmpdir_path, "bar.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "bar.png"),
+                plot_type="bar",
+                x_column="condition",
+                y_column="value",
+                title="Grouped-bar aggregate",
+                aggregate="mean",
+            )
+
+            with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):
+                out = render_bridge_figure(spec)
+
+            self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
+            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
 
     def test_heatmap_plot_renders_mesh_and_colorbar(self):
         spec = BridgeFigureSpec(

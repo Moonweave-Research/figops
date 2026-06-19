@@ -107,6 +107,55 @@ def test_builtin_plot_types_registered():
     assert {"bar", "line", "scatter", "xy", "heatmap", "box", "violin", "facet"}.issubset(PLOT_TYPES)
 
 
+def test_bar_plot_type_publishes_aggregate_contract():
+    assert PLOT_TYPES["bar"].arg_schema == {
+        "type": "object",
+        "properties": {
+            "aggregate": {"type": "string", "enum": ["mean", "median"]},
+        },
+    }
+    assert PLOT_TYPES["bar"].capabilities["supports_replicate_aggregation"] is True
+    assert PLOT_TYPES["bar"].capabilities["aggregate_methods"] == ["mean", "median"]
+
+
+def test_describe_surfaces_bar_aggregate_arg():
+    surface = describe_graphhub_surface()
+    described = {plot_type["name"]: plot_type for plot_type in surface["plot_types"]}
+
+    assert described["bar"]["arg_schema"]["properties"]["aggregate"] == {
+        "type": "string",
+        "enum": ["mean", "median"],
+    }
+    assert described["bar"]["capabilities"]["supports_replicate_aggregation"] is True
+    assert described["bar"]["worked_example"]["arguments"]["aggregate"] == "mean"
+
+
+def test_render_csv_schema_accepts_bar_aggregate_arg():
+    definitions = list_tool_definitions()
+    render_tool = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
+    assert render_tool["inputSchema"]["properties"]["aggregate"] == {
+        "type": "string",
+        "enum": ["mean", "median"],
+    }
+
+    with tempfile.TemporaryDirectory(prefix="graphhub_bar_aggregate_schema_") as tmpdir:
+        data_path = Path(tmpdir) / "bar.csv"
+        data_path.write_text("x,y\nA,1\nA,3\nB,2\nB,4\n", encoding="utf-8")
+        errors = _validate_tool_arguments(
+            "graphhub.render_csv_graph",
+            {
+                "data_path": str(data_path),
+                "x_column": "x",
+                "y_column": "y",
+                "plot_type": "bar",
+                "aggregate": "mean",
+            },
+            definitions,
+        )
+
+    assert errors == []
+
+
 def test_distribution_plot_types_publish_contracts():
     assert PLOT_TYPES["box"].arg_schema == {
         "type": "object",
