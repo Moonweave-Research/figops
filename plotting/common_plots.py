@@ -176,6 +176,51 @@ def plot_strip_with_mean(
     return fig, ax
 
 
+def plot_box_with_points(
+    df: pd.DataFrame,
+    x_col: str,
+    y_col: str,
+    ax: plt.Axes | None = None,
+    palette: dict | None = None,
+    seed: int = 42,
+) -> tuple:
+    """Box plot with individual data points overlaid for small-n transparency."""
+    rng = np.random.default_rng(seed)
+    fig, ax = _ensure_axes(ax)
+
+    categories = sorted(df[x_col].unique())
+    dataset = [df[df[x_col] == cat][y_col].dropna().values for cat in categories]
+    positions = list(range(len(categories)))
+    cycle_colors = _get_cycle_colors(len(categories))
+
+    box = ax.boxplot(
+        dataset,
+        positions=positions,
+        widths=0.5,
+        patch_artist=True,
+        showfliers=False,
+        medianprops={"color": "black", "linewidth": 1.0},
+        whiskerprops={"color": "black", "linewidth": 0.8},
+        capprops={"color": "black", "linewidth": 0.8},
+    )
+    for i, patch in enumerate(box["boxes"]):
+        color = _resolve_color(palette, categories[i], i, cycle_colors)
+        patch.set_facecolor(color)
+        patch.set_edgecolor("black")
+        patch.set_linewidth(0.6)
+        patch.set_alpha(0.35)
+
+    for i, (cat, vals) in enumerate(zip(categories, dataset)):
+        _warn_small_n(len(vals), str(cat))
+        color = _resolve_color(palette, cat, i, cycle_colors)
+        x_jitter = rng.uniform(i - _JITTER_HALF_WIDTH, i + _JITTER_HALF_WIDTH, size=len(vals))
+        ax.scatter(x_jitter, vals, s=18, fc=color, ec="black", lw=0.4, alpha=0.7, zorder=3)
+
+    ax.set_xticks(positions)
+    ax.set_xticklabels(categories)
+    return fig, ax
+
+
 def plot_violin_with_points(
     df: pd.DataFrame,
     x_col: str,

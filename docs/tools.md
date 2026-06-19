@@ -1021,9 +1021,11 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "default": "scatter",
       "enum": [
         "bar",
+        "box",
         "heatmap",
         "line",
         "scatter",
+        "violin",
         "xy"
       ],
       "type": "string"
@@ -2560,6 +2562,58 @@ Run a bounded project discovery and validation batch check with optional runtime
 }
 ```
 
+### `box`
+
+**Capabilities**
+
+```json
+{
+  "shows_individual_points": true,
+  "supports_broken_axis": false,
+  "supports_series": false,
+  "supports_yerr": false,
+  "warns_small_n": true
+}
+```
+
+**Argument schema**
+
+```json
+{
+  "properties": {
+    "x_column": {
+      "type": "string"
+    },
+    "y_column": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "x_column",
+    "y_column"
+  ],
+  "type": "object"
+}
+```
+
+**Worked example**
+
+```json
+{
+  "arguments": {
+    "data_path": "/path/to/data.csv",
+    "job_id": "example-box",
+    "output_format": "png",
+    "plot_type": "box",
+    "profile": "baseline",
+    "target_format": "nature",
+    "x_column": "x",
+    "y_column": "y"
+  },
+  "tool": "graphhub.render_csv_graph"
+}
+```
+
 ### `heatmap`
 
 **Capabilities**
@@ -2666,6 +2720,59 @@ Run a bounded project discovery and validation batch check with optional runtime
     "job_id": "example-scatter",
     "output_format": "png",
     "plot_type": "scatter",
+    "profile": "baseline",
+    "target_format": "nature",
+    "x_column": "x",
+    "y_column": "y"
+  },
+  "tool": "graphhub.render_csv_graph"
+}
+```
+
+### `violin`
+
+**Capabilities**
+
+```json
+{
+  "falls_back_for_small_n": true,
+  "shows_individual_points": true,
+  "supports_broken_axis": false,
+  "supports_series": false,
+  "supports_yerr": false,
+  "warns_small_n": true
+}
+```
+
+**Argument schema**
+
+```json
+{
+  "properties": {
+    "x_column": {
+      "type": "string"
+    },
+    "y_column": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "x_column",
+    "y_column"
+  ],
+  "type": "object"
+}
+```
+
+**Worked example**
+
+```json
+{
+  "arguments": {
+    "data_path": "/path/to/data.csv",
+    "job_id": "example-violin",
+    "output_format": "png",
+    "plot_type": "violin",
     "profile": "baseline",
     "target_format": "nature",
     "x_column": "x",

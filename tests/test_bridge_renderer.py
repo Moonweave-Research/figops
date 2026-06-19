@@ -1,5 +1,9 @@
+import hashlib
+import os
 import tempfile
 import unittest
+import warnings
+from csv import DictWriter
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,13 +23,30 @@ from plotting.bridge_renderer import (
     _render_heatmap_plot,
     _render_xy_plot,
     _resolved_legend_layout,
+    render_bridge_figure,
 )
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 class BridgeRendererUnitTest(unittest.TestCase):
     def _write_xy_csv(self, root: Path, name: str) -> Path:
         csv_path = root / name
         csv_path.write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
+        return csv_path
+
+    def _write_distribution_csv(self, root: Path, name: str, *, n_per_group: int = 12) -> Path:
+        csv_path = root / name
+        rows = []
+        for group_idx, group in enumerate(("control", "treated")):
+            for idx in range(n_per_group):
+                rows.append({"condition": group, "modulus": 1.0 + group_idx + idx * 0.03})
+        with csv_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = DictWriter(handle, fieldnames=["condition", "modulus"])
+            writer.writeheader()
+            writer.writerows(rows)
         return csv_path
 
     def test_display_label_uses_shared_compression_rules(self):
@@ -88,6 +109,115 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertEqual(fig.axes[1].get_ylabel(), "z")
         finally:
             plt.close(fig)
+
+    def test_box_plot_type_renders_csv_distribution_with_points(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_box_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_distribution_csv(tmpdir_path, "box.csv", n_per_group=4)
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "box.png"),
+                plot_type="box",
+                x_column="condition",
+                y_column="modulus",
+                title="box",
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                ax = fig.axes[0]
+                observed["xtick_labels"] = [item.get_text() for item in ax.get_xticklabels()]
+                observed["collections"] = len(ax.collections)
+                observed["lines"] = len(ax.lines)
+                Path(output_path).write_bytes(b"png")
+
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                    out = render_bridge_figure(spec)
+
+            self.assertTrue(Path(out).exists())
+            self.assertEqual(observed["xtick_labels"], ["control", "treated"])
+            self.assertGreaterEqual(observed["collections"], 2)
+            self.assertGreaterEqual(observed["lines"], 2)
+            self.assertTrue(any("Individual data points" in str(item.message) for item in caught))
+
+    def test_violin_plot_type_renders_csv_distribution_with_violin_bodies(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_violin_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_distribution_csv(tmpdir_path, "violin.csv", n_per_group=12)
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "violin.png"),
+                plot_type="violin",
+                x_column="condition",
+                y_column="modulus",
+                title="violin",
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                ax = fig.axes[0]
+                observed["xtick_labels"] = [item.get_text() for item in ax.get_xticklabels()]
+                observed["violin_bodies"] = [
+                    collection for collection in ax.collections if "PolyCollection" in type(collection).__name__
+                ]
+                observed["point_collections"] = [
+                    collection
+                    for collection in ax.collections
+                    if "PathCollection" in type(collection).__name__
+                    and hasattr(collection, "get_offsets")
+                    and len(collection.get_offsets()) > 0
+                ]
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                out = render_bridge_figure(spec)
+
+            self.assertTrue(Path(out).exists())
+            self.assertEqual(observed["xtick_labels"], ["control", "treated"])
+            self.assertGreaterEqual(len(observed["violin_bodies"]), 2)
+            self.assertEqual(sum(len(collection.get_offsets()) for collection in observed["point_collections"]), 24)
+
+    def test_box_plot_type_matches_visual_regression_baseline(self):
+        baseline = Path(__file__).parent / "fixtures" / "visual_regression" / "m4_2_box_plot.png"
+        with tempfile.TemporaryDirectory(prefix="bridge_box_baseline_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_distribution_csv(tmpdir_path, "box.csv", n_per_group=12)
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "box.png"),
+                plot_type="box",
+                x_column="condition",
+                y_column="modulus",
+                title="Box distribution",
+            )
+
+            with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):
+                out = render_bridge_figure(spec)
+
+            self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
+            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
+
+    def test_violin_plot_type_matches_visual_regression_baseline(self):
+        baseline = Path(__file__).parent / "fixtures" / "visual_regression" / "m4_2_violin_plot.png"
+        with tempfile.TemporaryDirectory(prefix="bridge_violin_baseline_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_distribution_csv(tmpdir_path, "violin.csv", n_per_group=12)
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "violin.png"),
+                plot_type="violin",
+                x_column="condition",
+                y_column="modulus",
+                title="Violin distribution",
+            )
+
+            with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):
+                out = render_bridge_figure(spec)
+
+            self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
+            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
 
     def test_multi_series_legend_uses_standard_props(self):
         spec = BridgeFigureSpec(
