@@ -2,6 +2,7 @@ import hashlib
 import math
 import os
 import unicodedata
+from copy import deepcopy
 
 import yaml
 
@@ -21,6 +22,7 @@ ALLOWED_TARGET_FORMATS = {
 }
 ALLOWED_FONT_STRATEGIES = {"compensate", "as_is"}
 CURRENT_CONFIG_SCHEMA_VERSION = "1.0"
+SUPPORTED_CONFIG_SCHEMA_VERSIONS = ("0.9", CURRENT_CONFIG_SCHEMA_VERSION)
 ALLOWED_PRESET_KEYS = {
     "target_format",
     "font_scale",
@@ -40,6 +42,14 @@ CONFIG_FILE_CANDIDATES = (
     os.path.join("scripts", "project_config.yaml"),
 )
 logger = get_logger(__name__)
+
+
+class ConfigMigrationError(ValueError):
+    """Raised when a config schema cannot be migrated by this runtime."""
+
+
+class ConfigVersionTooNewError(ConfigMigrationError):
+    """Raised when a config declares a schema newer than this runtime."""
 
 try:
     from themes.style_profiles import PROFILE_ALIASES, list_profiles, resolve_profile_name
@@ -93,6 +103,64 @@ _UniqueKeySafeLoader.add_constructor(
 
 def _load_yaml_with_unique_keys(raw_text: str):
     return yaml.load(raw_text, Loader=_UniqueKeySafeLoader)
+
+
+def _schema_version_key(version: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(part) for part in str(version).split("."))
+    except ValueError as exc:
+        raise ConfigMigrationError(f"schema_version '{version}' must use numeric dot-separated segments.") from exc
+
+
+def _schema_version(config: dict) -> str:
+    raw_version = config.get("schema_version", CURRENT_CONFIG_SCHEMA_VERSION)
+    if raw_version is None:
+        return CURRENT_CONFIG_SCHEMA_VERSION
+    return str(raw_version)
+
+
+def _migrate_0_9_to_1_0(config: dict) -> dict:
+    migrated = deepcopy(config)
+    migrated["schema_version"] = CURRENT_CONFIG_SCHEMA_VERSION
+    return migrated
+
+
+_CONFIG_MIGRATIONS = {
+    "0.9": _migrate_0_9_to_1_0,
+}
+
+
+def migrate_config(config):
+    """Return a config migrated to the current schema version."""
+    if not isinstance(config, dict):
+        return config
+
+    migrated = deepcopy(config)
+    version = _schema_version(migrated)
+    current_key = _schema_version_key(CURRENT_CONFIG_SCHEMA_VERSION)
+
+    if _schema_version_key(version) > current_key:
+        raise ConfigVersionTooNewError(
+            f"project_config.yaml schema_version '{version}' is newer than this Graph Hub runtime supports "
+            f"('{CURRENT_CONFIG_SCHEMA_VERSION}'). Upgrade Graph Hub before loading this config."
+        )
+
+    while version != CURRENT_CONFIG_SCHEMA_VERSION:
+        migration = _CONFIG_MIGRATIONS.get(version)
+        if migration is None:
+            supported = ", ".join(SUPPORTED_CONFIG_SCHEMA_VERSIONS)
+            raise ConfigMigrationError(
+                f"project_config.yaml schema_version '{version}' is not supported by this Graph Hub runtime. "
+                f"Supported versions: {supported}."
+            )
+        migrated = migration(migrated)
+        next_version = _schema_version(migrated)
+        if next_version == version:
+            raise ConfigMigrationError(f"Config migration for schema_version '{version}' did not advance.")
+        version = next_version
+
+    migrated["schema_version"] = CURRENT_CONFIG_SCHEMA_VERSION
+    return migrated
 
 
 def _validate_grouped_check_config(errors, *, column: str, check_name: str, raw_check: object) -> None:
@@ -342,6 +410,12 @@ def _load_project_metadata(config_path, fallback_name):
         metadata["errors"] = validate_config(conf_data)
         return metadata
 
+    try:
+        conf_data = migrate_config(conf_data)
+    except ConfigMigrationError as exc:
+        metadata["errors"] = [str(exc)]
+        return metadata
+
     project_section = conf_data.get("project")
     if not isinstance(project_section, dict):
         project_section = {}
@@ -364,12 +438,25 @@ def validate_config(config):
 
     schema_version = config.get("schema_version")
     if schema_version is not None:
-        if str(schema_version) != CURRENT_CONFIG_SCHEMA_VERSION:
-            errors.append(
-                f"schema_version '{schema_version}' does not match expected "
-                f"'{CURRENT_CONFIG_SCHEMA_VERSION}'. Update project_config.yaml or "
-                f"remove schema_version to suppress this check."
-            )
+        version = str(schema_version)
+        try:
+            version_key = _schema_version_key(version)
+            current_key = _schema_version_key(CURRENT_CONFIG_SCHEMA_VERSION)
+        except ConfigMigrationError as exc:
+            errors.append(str(exc))
+        else:
+            if version_key > current_key:
+                errors.append(
+                    f"schema_version '{schema_version}' is newer than this Graph Hub runtime supports "
+                    f"('{CURRENT_CONFIG_SCHEMA_VERSION}'). Upgrade Graph Hub before loading this config."
+                )
+            elif version != CURRENT_CONFIG_SCHEMA_VERSION:
+                supported = ", ".join(SUPPORTED_CONFIG_SCHEMA_VERSIONS)
+                errors.append(
+                    f"schema_version '{schema_version}' must be migrated to "
+                    f"'{CURRENT_CONFIG_SCHEMA_VERSION}' before validation. "
+                    f"Use migrate_config()/load_config(); supported versions: {supported}."
+                )
 
     project = config.get("project")
     if not isinstance(project, dict):
@@ -1064,6 +1151,14 @@ def load_config(project_dir):
     except OSError as e:
         logger.error("❌ Error: Failed to read config %s\n   └─ %s", config_path, e)
         logger.error("   └─ Check file permissions and local file availability.")
+        return None, None, None
+
+    try:
+        config = migrate_config(config)
+    except ConfigMigrationError as e:
+        logger.error("❌ Error: Invalid config schema in %s", config_path)
+        logger.error("   - %s", e)
+        logger.error("   └─ Compare with the scaffold template or fix the listed fields and rerun.")
         return None, None, None
 
     errors = validate_config(config)

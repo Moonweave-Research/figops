@@ -5,8 +5,12 @@ import unittest
 from pathlib import Path
 
 from hub_core.config_parser import (
+    CURRENT_CONFIG_SCHEMA_VERSION,
+    SUPPORTED_CONFIG_SCHEMA_VERSIONS,
     _load_project_metadata,
     _validate_sweep,
+    load_config,
+    migrate_config,
     parse_sweep_config,
     validate_config,
 )
@@ -31,6 +35,80 @@ class TestLoadProjectMetadataNonDictProject(unittest.TestCase):
         metadata = self._metadata_for("project:\n  - a\n  - b\n")
         self.assertEqual(metadata["name"], "fallback_name")
         self.assertFalse(metadata["valid"])
+
+
+class TestConfigSchemaMigration(unittest.TestCase):
+    def _minimal_config(self, schema_version: str | None = None) -> dict:
+        config = {
+            "project": {"name": "Migration Demo"},
+            "visual_style": {"target_format": "nature"},
+        }
+        if schema_version is not None:
+            config["schema_version"] = schema_version
+        return config
+
+    def test_old_version_loads_via_migration(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "project_config.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        'schema_version: "0.9"',
+                        "project:",
+                        "  name: Migration Demo",
+                        "visual_style:",
+                        "  target_format: nature",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            config, loaded_path, config_hash = load_config(tmpdir)
+
+        self.assertIsNotNone(config)
+        self.assertEqual(config["schema_version"], CURRENT_CONFIG_SCHEMA_VERSION)
+        self.assertEqual(loaded_path, str(config_path))
+        self.assertIsNotNone(config_hash)
+        self.assertEqual(validate_config(config), [])
+
+    def test_too_new_version_fails_with_upgrade_message(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "project_config.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        'schema_version: "9.9"',
+                        "project:",
+                        "  name: Future Demo",
+                        "visual_style:",
+                        "  target_format: nature",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            config, loaded_path, config_hash = load_config(tmpdir)
+
+        self.assertIsNone(config)
+        self.assertIsNone(loaded_path)
+        self.assertIsNone(config_hash)
+
+    def test_too_new_version_error_is_precise(self):
+        errors = validate_config(self._minimal_config("9.9"))
+
+        combined = " ".join(errors)
+        self.assertIn("newer than this Graph Hub runtime supports", combined)
+        self.assertIn("Upgrade Graph Hub", combined)
+
+    def test_supported_versions_round_trip_to_current(self):
+        for version in SUPPORTED_CONFIG_SCHEMA_VERSIONS:
+            with self.subTest(version=version):
+                migrated = migrate_config(self._minimal_config(version))
+
+                self.assertEqual(migrated["schema_version"], CURRENT_CONFIG_SCHEMA_VERSION)
+                self.assertEqual(validate_config(migrated), [])
 
 
 class TestParseSweepConfigValues(unittest.TestCase):
