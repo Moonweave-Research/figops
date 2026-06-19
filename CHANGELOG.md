@@ -15,6 +15,25 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.6.0] - 2026-06-20
+
+### Added
+
+- M4.1 multi-series broken-axis rendering now preserves per-series styling, legends,
+  error bars, and overlays; the earlier P1c refusal guard was removed.
+- M4.2 plot coverage now includes registered box plots, violin plots, faceting /
+  small-multiples, statistical overlays (fit line, CI band, and significance markers),
+  and grouped-bar mean / median replicate aggregation.
+- M4.3 materials/polymer domain analysis helpers provide reusable, contract-validated
+  analysis steps for common signal processing and material-physics transforms.
+- M4.4 richer semantic data contracts add monotonic, monotonic-within-group,
+  exact and ranged expected sample counts, and unit-coherence checks.
+
+### Changed
+
+- The `graphhub.describe` discovery surface now exposes the expanded semantic-check
+  vocabulary so agents can discover data-contract capabilities from the live registry.
+
 ## [0.5.0] - 2026-06-19
 
 ### Added
