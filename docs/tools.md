@@ -3072,12 +3072,24 @@ Declare and validate the source column used for error bars.
 
 ### `expected_sample_count`
 
-Require each configured group to have exactly the expected number of non-null target values.
+Require each configured group to have an exact or ranged expected count of non-null target values.
 
 **Schema**
 
 ```json
 {
+  "oneOf": [
+    {
+      "required": [
+        "count"
+      ]
+    },
+    {
+      "required": [
+        "range"
+      ]
+    }
+  ],
   "properties": {
     "count": {
       "minimum": 1,
@@ -3089,11 +3101,25 @@ Require each configured group to have exactly the expected number of non-null ta
       },
       "minItems": 1,
       "type": "array"
+    },
+    "range": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "minimum": 1,
+          "type": "integer"
+        }
+      ],
+      "type": "array"
     }
   },
   "required": [
-    "group_by",
-    "count"
+    "group_by"
   ],
   "type": "object"
 }
@@ -3105,9 +3131,12 @@ Require each configured group to have exactly the expected number of non-null ta
 {
   "value": {
     "expected_sample_count": {
-      "count": 3,
       "group_by": [
         "condition"
+      ],
+      "range": [
+        3,
+        5
       ]
     }
   }

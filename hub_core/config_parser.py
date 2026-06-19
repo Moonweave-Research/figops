@@ -324,9 +324,26 @@ def _validate_expected_sample_count_config(errors, *, column: str, raw_check: ob
         errors.append(f"Semantic expected_sample_count.group_by for '{column}' must be a non-empty list.")
     elif any(not isinstance(item, str) or not item.strip() for item in group_by):
         errors.append(f"Semantic expected_sample_count.group_by for '{column}' must contain only non-empty strings.")
-    count = raw_check.get("count")
-    if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
-        errors.append(f"Semantic expected_sample_count.count for '{column}' must be a positive integer.")
+    has_count = "count" in raw_check
+    has_range = "range" in raw_check
+    if has_count == has_range:
+        errors.append(f"Semantic expected_sample_count for '{column}' must specify exactly one of count or range.")
+    if has_count:
+        count = raw_check.get("count")
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            errors.append(f"Semantic expected_sample_count.count for '{column}' must be a positive integer.")
+    if has_range:
+        count_range = raw_check.get("range")
+        if (
+            not isinstance(count_range, list)
+            or len(count_range) != 2
+            or any(isinstance(item, bool) or not isinstance(item, int) or item <= 0 for item in count_range)
+        ):
+            errors.append(
+                f"Semantic expected_sample_count.range for '{column}' must be [min_count, max_count] positive integers."
+            )
+        elif count_range[0] > count_range[1]:
+            errors.append(f"Semantic expected_sample_count.range for '{column}' must have min_count <= max_count.")
 
 
 def _validate_unit_coherence_config(errors, *, column: str, raw_check: object) -> None:

@@ -571,6 +571,54 @@ class TestRicherSemanticContracts(unittest.TestCase):
 
             self.assertFalse(validate_data_contract(tmpdir, config))
 
+    def test_expected_sample_count_passes_group_counts_within_range(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_expected_n_range_pass_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "condition,value\nA,1.0\nA,2.0\nB,4.0\nB,5.0\nB,6.0\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {"expected_sample_count": {"group_by": ["condition"], "range": [2, 3]}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, config))
+
+    def test_expected_sample_count_fails_group_counts_outside_range(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_expected_n_range_fail_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "condition,value\nA,1.0\nB,4.0\nB,5.0\nB,6.0\nB,7.0\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {"expected_sample_count": {"group_by": ["condition"], "range": [2, 3]}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
     def test_unit_coherence_passes_consistent_related_units(self):
         with tempfile.TemporaryDirectory(prefix="dcp_unit_coherence_pass_") as tmpdir:
             data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
@@ -673,6 +721,29 @@ class TestRicherSemanticContracts(unittest.TestCase):
         self.assertTrue(any("monotonic_within_group.mode" in error for error in errors))
         self.assertTrue(any("expected_sample_count.count" in error for error in errors))
         self.assertTrue(any("unit_coherence.terms" in error for error in errors))
+
+    def test_validate_config_rejects_malformed_expected_sample_count_range(self):
+        config = {
+            "project": {"name": "Richer Contract Demo"},
+            "visual_style": {"target_format": "nature"},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "results/data/summary.csv",
+                        "semantic_checks": {
+                            "value": {
+                                "expected_sample_count": {"group_by": ["condition"], "count": 3, "range": [3, 2]}
+                            }
+                        },
+                    }
+                ]
+            },
+        }
+
+        errors = validate_config(config)
+
+        self.assertTrue(any("expected_sample_count" in error and "exactly one" in error for error in errors))
+        self.assertTrue(any("expected_sample_count.range" in error for error in errors))
 
 
 class TestLogErrorbarCalculationChecks(unittest.TestCase):
