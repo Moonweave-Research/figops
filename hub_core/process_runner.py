@@ -18,6 +18,7 @@ from .cache_manager import (
 )
 from .config_parser import get_language_policy, normalize_lang, resolve_presets, resolve_step_style
 from .data_contract import get_data_contract_paths
+from .domain_analysis import DomainAnalysisError, run_domain_helper
 from .logging import get_logger
 from .utils import (
     expand_glob_inputs,
@@ -236,6 +237,86 @@ def run_analysis(
         return True
 
     for i, step in enumerate(steps, 1):
+        domain_helper = step.get("domain_helper")
+        if domain_helper:
+            step_key = f"{i}:domain_helper:{domain_helper}"
+            raw_inputs = normalize_string_list(step.get("inputs"))
+            expand_mode = step.get("expand", "batch")
+            glob_results = expand_glob_inputs(project_dir, raw_inputs)
+            declared_inputs = [os.path.relpath(p, project_dir) for p in flatten_glob_results(glob_results)]
+            declared_outputs = normalize_string_list(step.get("outputs"))
+            input_abs_paths = flatten_glob_results(glob_results)
+
+            if raw_inputs and not declared_inputs:
+                _log(f"      ❌ Glob patterns matched zero files: {raw_inputs}")
+                return False
+
+            signature = {
+                "domain_helper": domain_helper,
+                "inputs": collect_signatures(project_dir, declared_inputs),
+                "input_patterns": raw_inputs,
+                "outputs": declared_outputs,
+                "params": step.get("params", {}) or {},
+                "expand_mode": expand_mode,
+            }
+            env_overrides = step.get("_cache_env_overrides")
+            if isinstance(env_overrides, dict) and env_overrides:
+                signature["env_overrides"] = {key: str(env_overrides[key]) for key in sorted(env_overrides)}
+            output_signatures = collect_signatures(project_dir, declared_outputs)
+            cache_enabled = bool(step.get("cache", True))
+
+            if not declared_outputs:
+                stale = True
+                stale_reason = "cache unavailable (no outputs declared)"
+            elif not cache_enabled:
+                stale = True
+                stale_reason = "cache disabled by config"
+            else:
+                stale, stale_reason = is_step_stale(
+                    step_kind="analysis",
+                    step_key=step_key,
+                    signature=signature,
+                    output_signatures=output_signatures,
+                    build_state=build_state,
+                    config_hash=config_hash,
+                    force=force,
+                )
+
+            if not stale:
+                _log(f"   [SKIP] analysis {i}: {domain_helper} (unchanged)")
+                continue
+
+            prefetcher.ensure_local(input_abs_paths)
+            scan_csv_export_anomalies(project_dir, declared_inputs)
+            _log(f"   [RUN] analysis {i}: {domain_helper} ({stale_reason})")
+            try:
+                run_domain_helper(
+                    str(domain_helper),
+                    input_paths=input_abs_paths,
+                    output_paths=[resolve_path(project_dir, p) for p in declared_outputs],
+                    params=step.get("params", {}) or {},
+                )
+            except DomainAnalysisError as exc:
+                _log(f"      ❌ Domain helper failed: {exc}")
+                return False
+
+            output_signatures = collect_signatures(project_dir, declared_outputs)
+            missing_outputs = [item["path"] for item in output_signatures if not item.get("exists")]
+            if declared_outputs and missing_outputs:
+                _log(f"      ❌ Analysis outputs not generated: {', '.join(missing_outputs)}")
+                return False
+
+            record_step_state(
+                build_state=build_state,
+                step_kind="analysis",
+                step_key=step_key,
+                signature=signature,
+                outputs=output_signatures,
+                config_hash=config_hash,
+            )
+            save_build_state(build_state_path, build_state)
+            continue
+
         script = step["script"]
         lang = normalize_lang(step.get("lang", "R")) or "r"
         step_key = f"{i}:{script}"

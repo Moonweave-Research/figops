@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
 from hub_core.data_contract import SEMANTIC_CHECK_DEFINITIONS
+from hub_core.domain_analysis import list_domain_helper_descriptions
 from hub_core.rendering import PLOT_TYPES
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
 
@@ -231,6 +232,7 @@ def describe_graphhub_surface() -> dict[str, Any]:
             for tool in list_tool_definitions()
         ],
         "semantic_checks": list_semantic_check_descriptions(),
+        "domain_helpers": list_domain_helper_descriptions(),
     }
 
 
@@ -293,6 +295,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "plot_types": {"type": "array", "items": {"type": "object"}},
                     "tools": {"type": "array", "items": {"type": "object"}},
                     "semantic_checks": {"type": "array", "items": {"type": "object"}},
+                    "domain_helpers": {"type": "array", "items": {"type": "object"}},
                 }
             ),
         ),

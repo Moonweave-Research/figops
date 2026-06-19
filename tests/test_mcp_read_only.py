@@ -224,6 +224,10 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             "z",
         )
         self.assertIn("range", {check["name"] for check in result["semantic_checks"]})
+        described_domain_helpers = {helper["name"]: helper for helper in result["domain_helpers"]}
+        self.assertIn("materials_polymer.signal_smooth_baseline", described_domain_helpers)
+        self.assertIn("materials_polymer.resistivity_transform", described_domain_helpers)
+        self.assertIn("params_schema", described_domain_helpers["materials_polymer.resistivity_transform"])
 
     def test_read_only_tools_use_fixture_root_without_writing_files(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:

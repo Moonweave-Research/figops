@@ -136,5 +136,8 @@ quality/layout warning for manual review. Open the printed PNG path to inspect t
   project figure from a public-safe CSV fixture.
 - [Multipanel project tutorial](../examples/multipanel_project/README.md): assembles a public-safe
   three-panel SVG fixture.
+- [Materials/polymer domain helper recipe](../examples/materials_polymer_recipe/README.md): runs
+  reusable signal-processing and resistivity analysis helpers through the data contract before
+  rendering a figure.
 - [Tool reference](tools.md): generated MCP tool schemas, plot types, semantic checks, and examples.
 - [Onboarding path](onboarding.md): the recommended sequence for a new lab member.
