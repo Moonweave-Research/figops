@@ -14,8 +14,11 @@ import warnings
 from datetime import datetime
 
 from .config_parser import discover_projects_with_status, load_config
+from .logging import get_logger
 from .runtime_paths import resolve_hub_logs_dir, resolve_runtime_root
 from .utils import resolve_path
+
+logger = get_logger(__name__)
 
 try:
     from PIL import Image, ImageChops, ImageStat
@@ -149,10 +152,10 @@ def write_check_all_report(
             f.flush()
             os.fsync(f.fileno())
     except OSError as exc:
-        print(f"❌ Check-all report write failed: {report_path}\n   └─ {exc}")
+        logger.error("❌ Check-all report write failed: %s\n   └─ %s", report_path, exc)
         raise RuntimeError(f"failed to write check-all report: {report_path}") from exc
 
-    print(f"🧪 Check-all report written: {report_path}")
+    logger.info("🧪 Check-all report written: %s", report_path)
     return report_path
 
 

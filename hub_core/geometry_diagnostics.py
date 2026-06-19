@@ -1077,6 +1077,21 @@ def _box_center(box: Bbox) -> tuple[float, float]:
 def _box_vector_away(source: Bbox, obstacle: Bbox, *, step_px: float, seed: Any = None) -> tuple[float, float]:
     sx, sy = _box_center(source)
     ox, oy = _box_center(obstacle)
+    inter = Bbox.intersection(source, obstacle)
+    if inter is not None and inter.width > 0 and inter.height > 0:
+        if sx < ox:
+            clear_x = obstacle.x0 - source.x1 - step_px
+        else:
+            clear_x = obstacle.x1 - source.x0 + step_px
+        if sy < oy:
+            clear_y = obstacle.y0 - source.y1 - step_px
+        else:
+            clear_y = obstacle.y1 - source.y0 + step_px
+        if abs(abs(clear_x) - abs(clear_y)) > GEOM_EPS_PX:
+            if abs(clear_x) < abs(clear_y):
+                return (float(clear_x), 0.0)
+            return (0.0, float(clear_y))
+
     vx = sx - ox
     vy = sy - oy
     norm = float(np.hypot(vx, vy))
@@ -1454,7 +1469,10 @@ def _font_size_token_drift(data_axes: list[Axes], font_token_sizes: list[float] 
     return {
         "name": name,
         "passed": len(offenders) == 0 and not divergent_roles,
-        "detail": f"{len(offenders)} text artists use non-token font sizes; divergent roles: {', '.join(divergent_roles) or 'none'}",
+        "detail": (
+            f"{len(offenders)} text artists use non-token font sizes; divergent roles: "
+            f"{', '.join(divergent_roles) or 'none'}"
+        ),
         "data": {
             "token_sizes": token_sizes,
             "offenders": offenders,

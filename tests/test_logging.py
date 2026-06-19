@@ -2,12 +2,17 @@ import contextlib
 import io
 import json
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import hub_core.process_runner as pr
+from hub_core.cache_manager import load_build_state
+from hub_core.execution_log import append_execution_log
 from hub_core.logging import configure_logging, get_logger
 from hub_core.mcp import GraphHubMCPServer, run_stdio_server
+from hub_core.visual_regression import write_check_all_report
 
 
 class TestGraphHubLogging(unittest.TestCase):
@@ -79,3 +84,57 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertNotIn(b"LOG_WOULD_CORRUPT_WIRE", raw_output)
         self.assertEqual("", process_stdout.getvalue())
         self.assertIn("LOG_WOULD_CORRUPT_WIRE", stderr.getvalue())
+
+    def test_cache_manager_warnings_log_to_stderr_not_stdout(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_cache_") as tmpdir:
+            project_dir = Path(tmpdir)
+            (project_dir / ".build_state.json").write_text("{not json", encoding="utf-8")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                state, state_path = load_build_state(str(project_dir))
+
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("invalid build state", stderr.getvalue())
+        self.assertEqual(state_path, str(project_dir / ".build_state.json"))
+        self.assertEqual(state["version"], 4)
+
+    def test_execution_log_status_logs_to_stderr_not_stdout(self):
+        record = {"status": "success", "schema_version": 1}
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_exec_") as tmpdir:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                log_path = append_execution_log(
+                    hub_path=tmpdir,
+                    record=record,
+                    log_dirname=tmpdir,
+                    filename="execution.jsonl",
+                )
+            self.assertTrue(Path(log_path).exists())
+
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("Execution log appended", stderr.getvalue())
+
+    def test_visual_regression_report_status_logs_to_stderr_not_stdout(self):
+        report = {
+            "schema_version": 3,
+            "success": True,
+            "results": [],
+            "project_count": 0,
+        }
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_report_") as tmpdir:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                report_path = write_check_all_report(tmpdir, report, log_dirname=tmpdir)
+            self.assertTrue(Path(report_path).exists())
+
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("Check-all report written", stderr.getvalue())

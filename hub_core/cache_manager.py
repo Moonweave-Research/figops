@@ -4,7 +4,10 @@ import os
 import tempfile
 from datetime import datetime
 
+from .logging import get_logger
 from .utils import expand_declared_paths
+
+logger = get_logger(__name__)
 
 CACHE_STRATEGY_MTIME = "mtime"
 CACHE_STRATEGY_CONTENT_HASH = "content_hash"
@@ -86,11 +89,11 @@ def load_build_state(project_dir):
         with open(state_path, "r", encoding="utf-8") as f:
             state = json.load(f)
     except (OSError, json.JSONDecodeError):
-        print(f"⚠️  Warning: invalid build state, resetting cache: {state_path}")
+        logger.warning("⚠️  Warning: invalid build state, resetting cache: %s", state_path)
         return _empty_build_state(), state_path
 
     if not isinstance(state, dict):
-        print(f"⚠️  Warning: malformed build state, resetting cache: {state_path}")
+        logger.warning("⚠️  Warning: malformed build state, resetting cache: %s", state_path)
         return _empty_build_state(), state_path
 
     normalized = _empty_build_state()
@@ -120,7 +123,7 @@ def save_build_state(state_path, build_state):
                 os.remove(temp_name)
             except OSError:
                 pass
-        print(f"⚠️  Warning: failed to save build state: {state_path}\n   └─ {e}")
+        logger.warning("⚠️  Warning: failed to save build state: %s\n   └─ %s", state_path, e)
         return False
 
 def is_step_stale(step_kind, step_key, signature, output_signatures, build_state, config_hash, force=False):

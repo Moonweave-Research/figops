@@ -687,6 +687,15 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         hash_vector = (float(np.cos(hash_angle) * 5.0), float(np.sin(hash_angle) * 5.0))
         self.assertNotEqual(expected, hash_vector)
 
+    def test_box_vector_away_escapes_wide_thin_line_on_short_axis(self):
+        source = Bbox.from_extents(340.0, 284.0, 466.0, 312.0)
+        obstacle = Bbox.from_extents(119.0, 295.0, 495.0, 299.0)
+
+        dx, dy = _box_vector_away(source, obstacle, step_px=4.0)
+
+        self.assertEqual(dx, 0.0)
+        self.assertGreater(abs(dy), 4.0)
+
 
 if __name__ == "__main__":
     unittest.main()

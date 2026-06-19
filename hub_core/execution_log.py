@@ -7,6 +7,7 @@ from argparse import Namespace
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .logging import get_logger
 from .provenance import _build_environment_hash, _readable_git_commit, _readable_tool_version
 from .runtime_paths import (
     ensure_runtime_dirs,
@@ -15,6 +16,8 @@ from .runtime_paths import (
     resolve_latest_publish_dir,
     resolve_runtime_root,
 )
+
+logger = get_logger(__name__)
 
 DEFAULT_LOG_DIRNAME = "hub_logs"
 DEFAULT_LOG_FILENAME = "execution_history.jsonl"
@@ -148,15 +151,15 @@ def append_execution_log(hub_path, record, *, log_dirname=DEFAULT_LOG_DIRNAME, f
         log_path = _append_jsonl(log_dir, filename, record)
     except OSError as exc:
         fallback_dir = os.path.join(tempfile.gettempdir(), "graph_making_hub", DEFAULT_LOG_DIRNAME)
-        print(f"⚠️  Execution logging failed at primary path: {log_path}\n   └─ {exc}")
-        print(f"   ↪ Retrying with fallback log dir: {fallback_dir}")
+        logger.warning("⚠️  Execution logging failed at primary path: %s\n   └─ %s", log_path, exc)
+        logger.info("   ↪ Retrying with fallback log dir: %s", fallback_dir)
         try:
             log_path = _append_jsonl(fallback_dir, filename, record)
         except OSError as fallback_exc:
-            print(f"❌ Execution logging failed: {fallback_dir}\n   └─ {fallback_exc}")
+            logger.error("❌ Execution logging failed: %s\n   └─ %s", fallback_dir, fallback_exc)
             raise RuntimeError(f"failed to append execution log: {fallback_dir}") from fallback_exc
 
-    print(f"🗂️  Execution log appended: {log_path}")
+    logger.info("🗂️  Execution log appended: %s", log_path)
     return log_path
 
 
