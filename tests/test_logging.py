@@ -13,6 +13,7 @@ from hub_core.cache_manager import load_build_state
 from hub_core.config_parser import load_config
 from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
 from hub_core.docker_runner import rerun_in_docker
+from hub_core.error_dumper import dump_contract_report
 from hub_core.execution_log import append_execution_log
 from hub_core.logging import configure_logging, get_logger
 from hub_core.mcp import GraphHubMCPServer, run_stdio_server
@@ -327,3 +328,26 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertEqual(1, rc)
         self.assertEqual("", stdout.getvalue())
         self.assertIn("Docker run timed out", stderr.getvalue())
+
+    def test_contract_report_status_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        violations = [
+            {
+                "row": "1",
+                "column": "value",
+                "value": "bad",
+                "expected": "numeric",
+                "violation_type": "type",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_contract_report_") as tmpdir:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                report_path = dump_contract_report(tmpdir, "results/data/summary.csv", violations)
+            self.assertIsNotNone(report_path)
+            self.assertTrue(Path(report_path).exists())
+
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("[Contract Violations] Report saved", stderr.getvalue())
