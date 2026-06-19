@@ -5,11 +5,11 @@ import argparse
 import json
 
 from hub_core.logging import configure_logging
-from hub_core.mcp import GraphHubMCPServer, run_stdio_server
+from hub_core.mcp import GraphHubMCPServer, McpServerConfig, run_stdio_server
 
 
-def _run_smoke() -> int:
-    server = GraphHubMCPServer()
+def _run_smoke(config: McpServerConfig) -> int:
+    server = GraphHubMCPServer(config=config)
     health = server.call_tool("graphhub.health", {})["structuredContent"]
     styles = server.call_tool("graphhub.list_styles", {})["structuredContent"]
     payload = {
@@ -25,11 +25,25 @@ def _run_smoke() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Graph Hub MCP stdio server")
     parser.add_argument("--smoke", action="store_true", help="Run a read-only MCP health/style smoke check")
+    parser.add_argument("--hub-path", help="Explicit Graph Hub repository path")
+    parser.add_argument("--research-root", help="Explicit research/project discovery root")
+    parser.add_argument("--runtime-root", help="Explicit MCP runtime root")
+    parser.add_argument(
+        "--enable-write-tools",
+        action="store_true",
+        help="Enable MCP tools that write files or execute render jobs",
+    )
     args = parser.parse_args()
     configure_logging()
+    config = McpServerConfig(
+        hub_path=args.hub_path,
+        research_root=args.research_root,
+        runtime_root=args.runtime_root,
+        write_tools_enabled=True if args.enable_write_tools else None,
+    )
     if args.smoke:
-        return _run_smoke()
-    return run_stdio_server(GraphHubMCPServer(require_initialize=True))
+        return _run_smoke(config)
+    return run_stdio_server(GraphHubMCPServer(config=config, require_initialize=True))
 
 
 if __name__ == "__main__":
