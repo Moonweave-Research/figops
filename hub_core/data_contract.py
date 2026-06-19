@@ -97,16 +97,23 @@ SEMANTIC_CHECK_DEFINITIONS = {
         "example": {"mean": {"min_replicates": {"group_by": ["condition"], "n": 3}}},
     },
     "expected_sample_count": {
-        "purpose": "Require each configured group to have exactly the expected number of non-null target values.",
+        "purpose": "Require each configured group to have an exact or ranged expected count of non-null target values.",
         "schema": {
             "type": "object",
             "properties": {
                 "group_by": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                 "count": {"type": "integer", "minimum": 1},
+                "range": {
+                    "type": "array",
+                    "prefixItems": [{"type": "integer", "minimum": 1}, {"type": "integer", "minimum": 1}],
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
             },
-            "required": ["group_by", "count"],
+            "required": ["group_by"],
+            "oneOf": [{"required": ["count"]}, {"required": ["range"]}],
         },
-        "example": {"value": {"expected_sample_count": {"group_by": ["condition"], "count": 3}}},
+        "example": {"value": {"expected_sample_count": {"group_by": ["condition"], "range": [3, 5]}}},
     },
     "grouped_cv": {
         "purpose": "Check coefficient of variation within configured groups.",
@@ -1181,9 +1188,10 @@ def _check_expected_sample_count_constraint(
         )
         return [message], []
 
-    count = raw_check.get("count")
-    if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
-        message = f"Column '{col}': expected_sample_count.count must be a positive integer"
+    has_count = "count" in raw_check
+    has_range = "range" in raw_check
+    if has_count == has_range:
+        message = f"Column '{col}': expected_sample_count must specify exactly one of count or range"
         _append_failed_calculation_check(
             calculation_checks,
             csv_rel_path=csv_rel_path,
@@ -1193,23 +1201,71 @@ def _check_expected_sample_count_constraint(
             message=message,
         )
         return [message], []
+    if has_count:
+        count = raw_check.get("count")
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            message = f"Column '{col}': expected_sample_count.count must be a positive integer"
+            _append_failed_calculation_check(
+                calculation_checks,
+                csv_rel_path=csv_rel_path,
+                name="expected_sample_count",
+                target=col,
+                source_config_path=source_config_path,
+                message=message,
+            )
+            return [message], []
+        min_count = count
+        max_count = count
+        expected_label = str(count)
+        expected_message = f"exactly count={count}"
+    else:
+        count_range = raw_check.get("range")
+        if (
+            not isinstance(count_range, list)
+            or len(count_range) != 2
+            or any(isinstance(item, bool) or not isinstance(item, int) or item <= 0 for item in count_range)
+        ):
+            message = f"Column '{col}': expected_sample_count.range must be [min_count, max_count] positive integers"
+            _append_failed_calculation_check(
+                calculation_checks,
+                csv_rel_path=csv_rel_path,
+                name="expected_sample_count",
+                target=col,
+                source_config_path=source_config_path,
+                message=message,
+            )
+            return [message], []
+        min_count, max_count = count_range
+        if min_count > max_count:
+            message = f"Column '{col}': expected_sample_count.range must have min_count <= max_count"
+            _append_failed_calculation_check(
+                calculation_checks,
+                csv_rel_path=csv_rel_path,
+                name="expected_sample_count",
+                target=col,
+                source_config_path=source_config_path,
+                message=message,
+            )
+            return [message], []
+        expected_label = f"{min_count}..{max_count}"
+        expected_message = f"count between {min_count} and {max_count}"
 
     violations = []
     row_violations = []
     grouped = df.groupby(actual_group_by, dropna=False, sort=False)
     for group_key, group_df in grouped:
         observed_count = int(series.loc[group_df.index].notna().sum())
-        if observed_count == count:
+        if min_count <= observed_count <= max_count:
             continue
         group_payload = _group_dict(group_by, group_key)
-        violations.append({"group": group_payload, "count": observed_count, "expected": count})
+        violations.append({"group": group_payload, "count": observed_count, "expected": expected_label})
         for idx in group_df.index[:max_row_detail]:
             row_violations.append(
                 {
                     "row": str(idx),
                     "column": col,
                     "value": str(series.loc[idx]),
-                    "expected": f"expected_sample_count == {count} for group {group_payload}",
+                    "expected": f"expected_sample_count={expected_label} for group {group_payload}",
                     "violation_type": "expected_sample_count",
                 }
             )
@@ -1224,12 +1280,12 @@ def _check_expected_sample_count_constraint(
             source_config_path=source_config_path,
             status="passed",
             manual_review_needed=False,
-            message=f"All groups have exactly count={count}",
+            message=f"All groups have {expected_message}",
             violations=[],
         )
         return [], []
 
-    message = f"Column '{col}': {len(violations)} group(s) failed expected_sample_count={count}"
+    message = f"Column '{col}': {len(violations)} group(s) failed expected_sample_count={expected_label}"
     _append_calculation_check(
         calculation_checks,
         csv_rel_path=csv_rel_path,
