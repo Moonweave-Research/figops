@@ -22,7 +22,7 @@ from matplotlib import font_manager
 
 try:
     # Package import path: from themes.journal_theme import ...
-    from .palettes import WT_COLORS, get_palette
+    from .palettes import get_palette
 
     try:
         from .style_profiles import get_profile_rc_overrides, resolve_profile_name
@@ -393,7 +393,8 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
     (순수 함수 지향: 환경 변수를 내부에서 읽지 않고 인자로만 작동)
 
     Args:
-        target_format (str): 적용할 테마 프리셋 이름 ('nature', 'nature_surfur', 'science', 'ppt', 'default', 'acs', 'rsc', 'elsevier')
+        target_format (str): 적용할 테마 프리셋 이름
+            ('nature', 'nature_surfur', 'science', 'ppt', 'default', 'acs', 'rsc', 'elsevier')
         font_scale (float): 기준 테마 폰트 사이즈 대비 보정 배율
         profile_name (str): 세부 스타일 프로파일 이름 (예: baseline, resistance_premium)
     """
@@ -562,8 +563,11 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
     from matplotlib.transforms import Bbox
 
     try:
-        from hub_core.geometry_diagnostics import _artist_overlap_candidate_items, _box_vector_away
-        from hub_core.geometry_diagnostics import _marker_footprint_box_entries
+        from hub_core.geometry_diagnostics import (
+            _artist_overlap_candidate_items,
+            _box_vector_away,
+            _marker_footprint_box_entries,
+        )
         from plotting.utils import place_point_labels
     except Exception as exc:
         return {"enabled": True, "applied": False, "iterations": 0, "reason": str(exc)}
@@ -599,7 +603,9 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
                 existing_target_px = None
                 if isinstance(existing_target, (tuple, list)) and len(existing_target) == 2:
                     try:
-                        existing_target_px = ax.transData.transform((float(existing_target[0]), float(existing_target[1])))
+                        existing_target_px = ax.transData.transform(
+                            (float(existing_target[0]), float(existing_target[1]))
+                        )
                     except (TypeError, ValueError):
                         existing_target_px = None
                 best_marker_box = None
@@ -650,6 +656,24 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
                     inter = Bbox.intersection(box_a, box_b)
                     if inter is None or inter.width <= 0 or inter.height <= 0:
                         continue
+                    if (
+                        isinstance(artist_a, Text)
+                        and isinstance(artist_b, Text)
+                        and artist_a.get_transform() is ax.transData
+                        and artist_b.get_transform() is ax.transData
+                    ):
+                        center_a = ((box_a.x0 + box_a.x1) / 2, (box_a.y0 + box_a.y1) / 2)
+                        center_b = ((box_b.x0 + box_b.x1) / 2, (box_b.y0 + box_b.y1) / 2)
+                        if abs(center_a[0] - center_b[0]) <= 1.0 and abs(center_a[1] - center_b[1]) <= 1.0:
+                            if inter.width <= inter.height:
+                                dx, dy = float(inter.width / 2 + step_px), 0.0
+                            else:
+                                dx, dy = 0.0, float(inter.height / 2 + step_px)
+                            old_dx, old_dy = displacements.get(artist_a, (0.0, 0.0))
+                            displacements[artist_a] = (old_dx - dx, old_dy - dy)
+                            old_dx, old_dy = displacements.get(artist_b, (0.0, 0.0))
+                            displacements[artist_b] = (old_dx + dx, old_dy + dy)
+                            continue
                     if isinstance(artist_a, Text) and artist_a.get_transform() is ax.transData:
                         dx, dy = _box_vector_away(box_a, box_b, step_px=step_px, seed=id(artist_a))
                         old_dx, old_dy = displacements.get(artist_a, (0.0, 0.0))
