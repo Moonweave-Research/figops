@@ -1,10 +1,25 @@
 import importlib.util
 import json
+import logging
 import math
 import os
 from pathlib import Path
 
+from .logging import get_logger
 from .utils import ensure_local_files, resolve_path
+
+logger = get_logger(__name__)
+
+
+def _log(message: str) -> None:
+    if "❌" in message:
+        level = logging.ERROR
+    elif "⚠️" in message or "🟠" in message:
+        level = logging.WARNING
+    else:
+        level = logging.INFO
+    logger.log(level, message)
+
 
 # ---------------------------------------------------------------------------
 # Unit-aware validation via Pint (optional dependency)
@@ -52,7 +67,7 @@ def _read_csv_safe(csv_path, pd, **read_kwargs):
     if file_size < _CSV_CHUNK_THRESHOLD_BYTES:
         return pd.read_csv(csv_path, encoding="utf-8-sig", **read_kwargs)
 
-    print(f"      ℹ️  Large file ({file_size // 1024 // 1024} MB) — using chunked read")
+    _log(f"      ℹ️  Large file ({file_size // 1024 // 1024} MB) — using chunked read")
     chunks = pd.read_csv(
         csv_path,
         encoding="utf-8-sig",
@@ -183,39 +198,39 @@ def validate_data_contract_preflight(project_dir, config, require_existing: bool
     if not checks:
         return True
 
-    print("\n🧪 [Data Contract Preflight]")
+    _log("\n🧪 [Data Contract Preflight]")
     for i, check in enumerate(checks, 1):
         rel_path = check.get("path")
         if not isinstance(rel_path, str) or not rel_path.strip():
-            print(f"   ❌ Check {i}: data_contract.csv_checks[{i - 1}].path is missing.")
+            _log(f"   ❌ Check {i}: data_contract.csv_checks[{i - 1}].path is missing.")
             return False
 
         rel_path = rel_path.strip()
         resolved_path = resolve_path(project_dir, rel_path)
         suffix = os.path.splitext(resolved_path)[1].lower()
-        print(f"   ➤ Check {i}: {rel_path}")
+        _log(f"   ➤ Check {i}: {rel_path}")
 
         if suffix not in _SUPPORTED_DATA_CONTRACT_SUFFIXES:
             supported = ", ".join(sorted(_SUPPORTED_DATA_CONTRACT_SUFFIXES))
-            print(f"      ❌ Unsupported data_contract format '{suffix or '<none>'}'. Supported: {supported}")
+            _log(f"      ❌ Unsupported data_contract format '{suffix or '<none>'}'. Supported: {supported}")
             return False
 
         dependency = _OPTIONAL_IO_DEPENDENCIES.get(suffix)
         if dependency is not None:
             module_name, display_name = dependency
             if not _module_available(module_name):
-                print(f"      ❌ {display_name} is required for '{suffix}' files. Install with: uv sync --extra io")
+                _log(f"      ❌ {display_name} is required for '{suffix}' files. Install with: uv sync --extra io")
                 return False
 
         if require_existing:
             if not os.path.exists(resolved_path):
-                print(f"      ❌ Required data_contract file not found: {resolved_path}")
+                _log(f"      ❌ Required data_contract file not found: {resolved_path}")
                 return False
             ensure_local_files([resolved_path])
 
-        print("      ✅ Preflight passed")
+        _log("      ✅ Preflight passed")
 
-    print("   ✅ Data contract preflight completed.")
+    _log("   ✅ Data contract preflight completed.")
     return True
 
 
@@ -230,10 +245,10 @@ def validate_data_contract(project_dir, config):
     try:
         import pandas as pd
     except ImportError:
-        print("❌ Error: data_contract requires pandas, but pandas is not installed.")
+        _log("❌ Error: data_contract requires pandas, but pandas is not installed.")
         return False
 
-    print("\n🔍 [Data Contract Step]")
+    _log("\n🔍 [Data Contract Step]")
     _write_calculation_checks_sidecar(project_dir, [])
     calculation_checks = []
     contract_failed = False
@@ -243,9 +258,9 @@ def validate_data_contract(project_dir, config):
         dtypes = check.get("dtypes", {}) or {}
         min_rows = check.get("min_rows", None)
 
-        print(f"   ➤ Check {i}: {check['path']}")
+        _log(f"   ➤ Check {i}: {check['path']}")
         if not os.path.exists(csv_path):
-            print(f"      ❌ Required CSV not found: {csv_path}")
+            _log(f"      ❌ Required CSV not found: {csv_path}")
             return False
 
         ensure_local_files([csv_path])
@@ -253,24 +268,24 @@ def validate_data_contract(project_dir, config):
         try:
             df = _read_data_safe(csv_path, pd)
         except FileNotFoundError:
-            print(f"      ❌ CSV file not found: {csv_path}")
+            _log(f"      ❌ CSV file not found: {csv_path}")
             return False
         except PermissionError:
-            print(f"      ❌ Permission denied: Cannot read {csv_path}. Check file locks.")
+            _log(f"      ❌ Permission denied: Cannot read {csv_path}. Check file locks.")
             return False
         except Exception as e:
-            print(f"      ❌ Failed to read CSV: {csv_path}\n      └─ Detail: {type(e).__name__}: {e}")
+            _log(f"      ❌ Failed to read CSV: {csv_path}\n      └─ Detail: {type(e).__name__}: {e}")
             return False
 
         if min_rows is not None and len(df) < min_rows:
-            print(f"      ❌ Row count check failed: expected >= {min_rows}, got {len(df)}")
+            _log(f"      ❌ Row count check failed: expected >= {min_rows}, got {len(df)}")
             return False
 
         stripped_to_actual = {}
         for actual_col in df.columns:
             stripped_col = str(actual_col).strip()
             if stripped_col in stripped_to_actual and stripped_to_actual[stripped_col] != actual_col:
-                print(
+                _log(
                     "      ❌ Ambiguous columns after strip normalization: "
                     f"'{stripped_to_actual[stripped_col]}' and '{actual_col}'"
                 )
@@ -279,22 +294,22 @@ def validate_data_contract(project_dir, config):
 
         missing = [col for col in required_cols if str(col).strip() not in stripped_to_actual]
         if missing:
-            print(f"      ❌ Missing required columns: {missing}")
+            _log(f"      ❌ Missing required columns: {missing}")
             return False
 
         for col, expected in dtypes.items():
             normalized_col = str(col).strip()
             actual_col = stripped_to_actual.get(normalized_col)
             if actual_col is None:
-                print(f"      ❌ Dtype check failed: column '{col}' not found.")
+                _log(f"      ❌ Dtype check failed: column '{col}' not found.")
                 return False
             try:
                 dtype_ok = _dtype_matches(df[actual_col], expected, pd)
             except ValueError as e:
-                print(f"      ❌ Dtype check failed for '{col}': {e}")
+                _log(f"      ❌ Dtype check failed for '{col}': {e}")
                 return False
             if not dtype_ok:
-                print(f"      ❌ Dtype mismatch for '{col}': expected '{expected}', got '{df[actual_col].dtype}'.")
+                _log(f"      ❌ Dtype mismatch for '{col}': expected '{expected}', got '{df[actual_col].dtype}'.")
                 return False
 
         # --- Semantic Validation Layer ---
@@ -310,9 +325,9 @@ def validate_data_contract(project_dir, config):
             )
             if semantic_errors:
                 _write_calculation_checks_sidecar(project_dir, calculation_checks)
-                print(f"      ❌ Semantic validation failed for '{check['path']}':")
+                _log(f"      ❌ Semantic validation failed for '{check['path']}':")
                 for s_err in semantic_errors:
-                    print(f"         - {s_err}")
+                    _log(f"         - {s_err}")
                 # Generate Markdown diagnostic report
                 if row_violations:
                     try:
@@ -324,7 +339,7 @@ def validate_data_contract(project_dir, config):
                             row_violations,
                         )
                         if rpt:
-                            print(f"      📄 Report: {rpt}")
+                            _log(f"      📄 Report: {rpt}")
                     except Exception:
                         pass
                 contract_failed = True
@@ -334,14 +349,14 @@ def validate_data_contract(project_dir, config):
         cv_threshold = contract.get("cv_threshold", 0.10)
         quality_result = _check_statistical_quality(df, check["path"], cv_threshold, project_dir)
         if not quality_result["quality_passed"]:
-            print(f"      🟠 quality_passed=False for '{check['path']}' (CV threshold: {cv_threshold:.0%})")
+            _log(f"      🟠 quality_passed=False for '{check['path']}' (CV threshold: {cv_threshold:.0%})")
 
-        print(f"      ✅ Passed ({len(df)} rows)")
+        _log(f"      ✅ Passed ({len(df)} rows)")
 
     _write_calculation_checks_sidecar(project_dir, calculation_checks)
     if contract_failed:
         return False
-    print("   ✅ Data contract checks completed.")
+    _log("   ✅ Data contract checks completed.")
     return True
 
 
@@ -1870,9 +1885,9 @@ def _check_statistical_quality(df, csv_rel_path, cv_threshold, project_dir):
     if not warnings:
         return quality_result
 
-    print(f"      🟠 [Quality Score] High noise detected in '{csv_rel_path}':")
+    _log(f"      🟠 [Quality Score] High noise detected in '{csv_rel_path}':")
     for w in warnings:
-        print(f"         - '{w['column']}': CV = {w['cv']:.1%} (threshold: {cv_threshold:.0%})")
+        _log(f"         - '{w['column']}': CV = {w['cv']:.1%} (threshold: {cv_threshold:.0%})")
 
     # 진단 리포트에 품질 경고 추가 + JSON sidecar 기록
     try:
@@ -1898,7 +1913,7 @@ def _check_statistical_quality(df, csv_rel_path, cv_threshold, project_dir):
         for w in warnings:
             lines.append(f"| {w['column']} | {w['cv']:.1%} | ⚠️ High noise |")
         rpt.write_text("\n".join(lines), encoding="utf-8")
-        print(f"      📄 Quality report: {rpt}")
+        _log(f"      📄 Quality report: {rpt}")
         quality_result["report_path"] = str(rpt)
 
         # JSON sidecar (latest-wins, machine-readable for Athena bridge)
@@ -1928,14 +1943,14 @@ def _check_unit_compatibility(col_name, actual_unit_str, expected_unit_str):
         "skip"          -- Pint 미설치
     """
     if not _PINT_AVAILABLE:
-        print(f"      ⚠️  Column '{col_name}': unit check skipped (pint not installed)")
+        _log(f"      ⚠️  Column '{col_name}': unit check skipped (pint not installed)")
         return "skip"
 
     try:
         expected = _ureg.parse_expression(expected_unit_str)
         actual = _ureg.parse_expression(actual_unit_str)
     except Exception:
-        print(f"      ⚠️  Column '{col_name}': could not parse units ('{actual_unit_str}' or '{expected_unit_str}')")
+        _log(f"      ⚠️  Column '{col_name}': could not parse units ('{actual_unit_str}' or '{expected_unit_str}')")
         return "skip"
 
     if actual.units == expected.units:

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import hub_core.process_runner as pr
 from hub_core.cache_manager import load_build_state
+from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
 from hub_core.execution_log import append_execution_log
 from hub_core.logging import configure_logging, get_logger
 from hub_core.mcp import GraphHubMCPServer, run_stdio_server
@@ -138,3 +139,32 @@ class TestGraphHubLogging(unittest.TestCase):
 
         self.assertEqual("", stdout.getvalue())
         self.assertIn("Check-all report written", stderr.getvalue())
+
+    def test_data_contract_preflight_logs_to_stderr_not_stdout(self):
+        config = {"data_contract": {"csv_checks": [{"path": "results/data/summary.csv"}]}}
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_contract_preflight_") as tmpdir:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                result = validate_data_contract_preflight(tmpdir, config)
+
+        self.assertTrue(result)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("[Data Contract Preflight]", stderr.getvalue())
+
+    def test_data_contract_validation_logs_to_stderr_not_stdout(self):
+        config = {"data_contract": {"csv_checks": [{"path": "summary.csv", "required_columns": ["value"]}]}}
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_contract_") as tmpdir:
+            Path(tmpdir, "summary.csv").write_text("value\n1\n2\n", encoding="utf-8")
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                result = validate_data_contract(tmpdir, config)
+
+        self.assertTrue(result)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("[Data Contract Step]", stderr.getvalue())

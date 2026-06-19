@@ -6,6 +6,10 @@ import shutil
 import sys
 import time
 
+from .logging import get_logger
+
+logger = get_logger(__name__)
+
 PREFETCH_ATTEMPTS = 3
 PREFETCH_RETRY_DELAYS = (0.25, 1.0)
 
@@ -107,7 +111,7 @@ def expand_glob_inputs(
                 if os.path.isfile(m)
             )
             if not matches:
-                print(f"      [WARN] Glob pattern matched zero files: {item}")
+                logger.warning("      [WARN] Glob pattern matched zero files: %s", item)
             results.append((item, matches))
         else:
             results.append((item, [abs_path]))
@@ -144,19 +148,15 @@ def ensure_local_files(paths):
     if total == 0:
         return
 
-    print(f"   📡 [Prefetch] Ensuring {total} files are local (Google Drive Sync)...")
+    logger.info("   📡 [Prefetch] Ensuring %s files are local (Google Drive Sync)...", total)
     success_count = 0
     fail_count = 0
     failed_targets = []
 
     for i, p in enumerate(targets, 1):
         filename = os.path.basename(p)
-        # 긴 파일명 생략 처리
         display_name = (filename[:30] + '..') if len(filename) > 32 else filename
-
-        # 실시간 진행률 출력 (동일 라인 업데이트는 터미널 환경에 따라 다르므로 줄바꿈 없이 출력 시도)
-        sys.stdout.write(f"\r      └─ Progress: [{i}/{total}] {display_name}   ")
-        sys.stdout.flush()
+        logger.debug("      └─ Progress: [%s/%s] %s", i, total, display_name)
 
         last_error = None
         attempts_used = 0
@@ -178,22 +178,22 @@ def ensure_local_files(paths):
             fail_count += 1
             failed_targets.append((display_name, type(last_error).__name__, attempts_used))
 
-    sys.stdout.write("\n") # 진행률 줄바꿈
-
     if fail_count > 0:
         failed_preview = ", ".join(
             f"{name} ({error_name}, attempts={attempts})"
             for name, error_name, attempts in failed_targets[:3]
         )
-        print(
-            f"      ⚠️  Prefetch incomplete: {success_count}/{total} ready, "
-            f"{fail_count} timed out or unavailable."
+        logger.warning(
+            "      ⚠️  Prefetch incomplete: %s/%s ready, %s timed out or unavailable.",
+            success_count,
+            total,
+            fail_count,
         )
         if failed_preview:
-            print(f"         unresolved: {failed_preview}")
-        print("         pipeline will continue and let the downstream step decide.")
+            logger.warning("         unresolved: %s", failed_preview)
+        logger.warning("         pipeline will continue and let the downstream step decide.")
     else:
-        print(f"      ✅ All {success_count} files are ready locally.")
+        logger.info("      ✅ All %s files are ready locally.", success_count)
 
 
 def scan_csv_export_anomalies(base_dir, paths):
@@ -236,7 +236,7 @@ def scan_csv_export_anomalies(base_dir, paths):
         warnings.append(warning)
 
     if warnings:
-        print("   🟠 [Input Export Anomaly] CSV header anomalies detected before analysis:")
+        logger.warning("   🟠 [Input Export Anomaly] CSV header anomalies detected before analysis:")
         for warning in warnings[:10]:
             detail_parts = []
             if warning["duplicate_headers"]:
@@ -245,9 +245,9 @@ def scan_csv_export_anomalies(base_dir, paths):
                 )
             if warning["blank_headers"]:
                 detail_parts.append(f"blank headers: {warning['blank_headers']}")
-            print(f"      - {warning['path']} | " + " | ".join(detail_parts))
+            logger.warning("      - %s | %s", warning["path"], " | ".join(detail_parts))
         if len(warnings) > 10:
-            print(f"      - ... {len(warnings) - 10} more")
+            logger.warning("      - ... %s more", len(warnings) - 10)
 
     return warnings
 
