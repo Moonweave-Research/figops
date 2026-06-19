@@ -6,10 +6,13 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from .logging import get_logger
 from .utils import hash_file, is_executable_available, short_hash
 
 DEFAULT_PYTHON_LOCK_CANDIDATES = ("uv.lock",)
 DEFAULT_R_LOCK_CANDIDATE = "renv.lock"
+
+logger = get_logger(__name__)
 
 
 def hash_csv_file(csv_path: str | Path) -> str:
@@ -105,23 +108,23 @@ def validate_environment_locks(project_dir, hub_path, config, strict_cli=False):
     if not r_info["exists"]:
         missing.append("r_lock")
 
-    print("\n🔐 [Environment Lock Gate]")
+    logger.info("\n🔐 [Environment Lock Gate]")
     py_status = "OK" if python_info["exists"] else "MISSING"
     r_status = "OK" if r_info["exists"] else "MISSING"
-    print(f"   - python_lock ({python_info['source']}): {python_info['path']} [{py_status}]")
+    logger.info("   - python_lock (%s): %s [%s]", python_info["source"], python_info["path"], py_status)
     if python_info["hash"]:
-        print(f"     hash: {short_hash(python_info['hash'])}")
-    print(f"   - r_lock ({r_info['source']}): {r_info['path']} [{r_status}]")
+        logger.info("     hash: %s", short_hash(python_info["hash"]))
+    logger.info("   - r_lock (%s): %s [%s]", r_info["source"], r_info["path"], r_status)
     if r_info["hash"]:
-        print(f"     hash: {short_hash(r_info['hash'])}")
+        logger.info("     hash: %s", short_hash(r_info["hash"]))
 
     if missing and strict:
-        print(f"   ❌ Strict mode enabled: missing lockfile(s): {', '.join(missing)}")
-        print(
+        logger.info("   ❌ Strict mode enabled: missing lockfile(s): %s", ", ".join(missing))
+        logger.info(
             "   ├─ Add the missing lockfile(s), or set "
             "environment.r_lock / environment.python_lock in project_config.yaml."
         )
-        print("   └─ If you only want a local smoke run, rerun without --strict-lock.")
+        logger.info("   └─ If you only want a local smoke run, rerun without --strict-lock.")
         return {
             "ok": False,
             "strict": strict,
@@ -130,10 +133,12 @@ def validate_environment_locks(project_dir, hub_path, config, strict_cli=False):
         }
 
     if missing:
-        print(f"   ⚠️  Lockfile missing: {', '.join(missing)} (continuing, non-strict mode)")
-        print("   └─ This run is allowed, but provenance and reproducibility are weaker until lockfiles are added.")
+        logger.info("   ⚠️  Lockfile missing: %s (continuing, non-strict mode)", ", ".join(missing))
+        logger.info(
+            "   └─ This run is allowed, but provenance and reproducibility are weaker until lockfiles are added."
+        )
     else:
-        print("   ✅ Lockfile gate passed.")
+        logger.info("   ✅ Lockfile gate passed.")
 
     return {
         "ok": True,
@@ -192,24 +197,24 @@ def print_provenance(
     r_version = _readable_tool_version(r_exec)
     environment_hash = _build_environment_hash(lock_info, python_version, r_version, config)
 
-    print("\n🧾 [Provenance]")
-    print(f"   - timestamp: {timestamp}")
-    print(f"   - project_path: {os.path.abspath(project_dir)}")
-    print(f"   - project_hash: {short_hash(project_hash)}")
-    print(f"   - config_path: {config_path}")
-    print(f"   - config_hash: {short_hash(config_hash)}")
-    print(f"   - git_commit: {git_commit}")
-    print(f"   - python_version: {python_version}")
-    print(f"   - r_version: {r_version}")
+    logger.info("\n🧾 [Provenance]")
+    logger.info("   - timestamp: %s", timestamp)
+    logger.info("   - project_path: %s", os.path.abspath(project_dir))
+    logger.info("   - project_hash: %s", short_hash(project_hash))
+    logger.info("   - config_path: %s", config_path)
+    logger.info("   - config_hash: %s", short_hash(config_hash))
+    logger.info("   - git_commit: %s", git_commit)
+    logger.info("   - python_version: %s", python_version)
+    logger.info("   - r_version: %s", r_version)
     if build_state_path:
-        print(f"   - build_state: {build_state_path}")
+        logger.info("   - build_state: %s", build_state_path)
 
     if isinstance(lock_info, dict):
         python_lock = lock_info.get("python_lock", {})
         r_lock = lock_info.get("r_lock", {})
-        print(f"   - python_lock_hash: {short_hash(python_lock.get('hash'))}")
-        print(f"   - r_lock_hash: {short_hash(r_lock.get('hash'))}")
-    print(f"   - environment_hash: {short_hash(environment_hash)}")
+        logger.info("   - python_lock_hash: %s", short_hash(python_lock.get("hash")))
+        logger.info("   - r_lock_hash: %s", short_hash(r_lock.get("hash")))
+    logger.info("   - environment_hash: %s", short_hash(environment_hash))
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +424,7 @@ def embed_figures_fingerprint(
     all_paths = set(config_meta.keys()) | discovered_paths
     unregistered = discovered_paths - set(config_meta.keys())
     if unregistered:
-        print(f"   ℹ️  {len(unregistered)} unregistered figure(s) found in results/figures/ — tagging all.")
+        logger.info("   ℹ️  %s unregistered figure(s) found in results/figures/ — tagging all.", len(unregistered))
 
     embedded = 0
     skipped = []
@@ -441,9 +446,9 @@ def embed_figures_fingerprint(
         else:
             skipped.append(os.path.basename(path))
 
-    print(f"\n🔏 [Digital Fingerprint] {embedded} file(s) tagged.")
+    logger.info("\n🔏 [Digital Fingerprint] %s file(s) tagged.", embedded)
     if skipped:
-        print(f"   ⚠️  Skipped (dependency missing or error): {', '.join(skipped)}")
+        logger.info("   ⚠️  Skipped (dependency missing or error): %s", ", ".join(skipped))
 
     return embedded
 
