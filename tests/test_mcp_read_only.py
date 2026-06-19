@@ -224,6 +224,10 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             "z",
         )
         self.assertIn("range", {check["name"] for check in result["semantic_checks"]})
+        described_semantic_checks = {check["name"]: check for check in result["semantic_checks"]}
+        self.assertIn("monotonic_within_group", described_semantic_checks)
+        self.assertIn("expected_sample_count", described_semantic_checks)
+        self.assertIn("unit_coherence", described_semantic_checks)
         described_domain_helpers = {helper["name"]: helper for helper in result["domain_helpers"]}
         self.assertIn("materials_polymer.signal_smooth_baseline", described_domain_helpers)
         self.assertIn("materials_polymer.resistivity_transform", described_domain_helpers)

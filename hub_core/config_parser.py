@@ -300,6 +300,59 @@ def _validate_axis_unit_check_config(errors, *, column: str, raw_check: object) 
             errors.append(f"Semantic axis_unit.{key} for '{column}' must be a non-empty string.")
 
 
+def _validate_monotonic_within_group_config(errors, *, column: str, raw_check: object) -> None:
+    if not isinstance(raw_check, dict):
+        errors.append(f"Semantic monotonic_within_group for '{column}' must be a mapping.")
+        return
+    group_by = raw_check.get("group_by")
+    if not isinstance(group_by, list) or not group_by:
+        errors.append(f"Semantic monotonic_within_group.group_by for '{column}' must be a non-empty list.")
+    elif any(not isinstance(item, str) or not item.strip() for item in group_by):
+        errors.append(f"Semantic monotonic_within_group.group_by for '{column}' must contain only non-empty strings.")
+    mode = raw_check.get("mode")
+    if not isinstance(mode, str) or mode not in ALLOWED_MONOTONIC_MODES:
+        allowed = ", ".join(sorted(ALLOWED_MONOTONIC_MODES))
+        errors.append(f"Semantic monotonic_within_group.mode for '{column}' must be one of: {allowed}.")
+
+
+def _validate_expected_sample_count_config(errors, *, column: str, raw_check: object) -> None:
+    if not isinstance(raw_check, dict):
+        errors.append(f"Semantic expected_sample_count for '{column}' must be a mapping.")
+        return
+    group_by = raw_check.get("group_by")
+    if not isinstance(group_by, list) or not group_by:
+        errors.append(f"Semantic expected_sample_count.group_by for '{column}' must be a non-empty list.")
+    elif any(not isinstance(item, str) or not item.strip() for item in group_by):
+        errors.append(f"Semantic expected_sample_count.group_by for '{column}' must contain only non-empty strings.")
+    count = raw_check.get("count")
+    if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+        errors.append(f"Semantic expected_sample_count.count for '{column}' must be a positive integer.")
+
+
+def _validate_unit_coherence_config(errors, *, column: str, raw_check: object) -> None:
+    if not isinstance(raw_check, dict):
+        errors.append(f"Semantic unit_coherence for '{column}' must be a mapping.")
+        return
+    expected_unit = raw_check.get("expected_unit")
+    if not isinstance(expected_unit, str) or not expected_unit.strip():
+        errors.append(f"Semantic unit_coherence.expected_unit for '{column}' must be a non-empty string.")
+    terms = raw_check.get("terms")
+    if not isinstance(terms, list) or not terms:
+        errors.append(f"Semantic unit_coherence.terms for '{column}' must be a non-empty list.")
+        return
+    for idx, term in enumerate(terms, 1):
+        if not isinstance(term, dict):
+            errors.append(f"Semantic unit_coherence.terms[{idx}] for '{column}' must be a mapping.")
+            continue
+        for key in ("column", "unit"):
+            value = term.get(key)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"Semantic unit_coherence.terms[{idx}].{key} for '{column}' must be a non-empty string.")
+        exponent = term.get("exponent", 1)
+        if isinstance(exponent, bool) or not isinstance(exponent, int) or exponent == 0:
+            errors.append(f"Semantic unit_coherence.terms[{idx}].exponent for '{column}' must be a non-zero integer.")
+
+
 def get_language_policy(config):
     raw = config.get("language_policy", {})
     if raw is None:
@@ -734,12 +787,24 @@ def validate_config(config):
                                 errors.append(
                                     f"Semantic monotonic for '{col}' must be one of: {allowed}. Got '{monotonic_mode}'."
                                 )
+                        if "monotonic_within_group" in constraints:
+                            _validate_monotonic_within_group_config(
+                                errors,
+                                column=str(col),
+                                raw_check=constraints["monotonic_within_group"],
+                            )
                         if "min_replicates" in constraints:
                             _validate_grouped_check_config(
                                 errors,
                                 column=str(col),
                                 check_name="min_replicates",
                                 raw_check=constraints["min_replicates"],
+                            )
+                        if "expected_sample_count" in constraints:
+                            _validate_expected_sample_count_config(
+                                errors,
+                                column=str(col),
+                                raw_check=constraints["expected_sample_count"],
                             )
                         if "grouped_cv" in constraints:
                             _validate_grouped_check_config(
@@ -781,6 +846,12 @@ def validate_config(config):
                                 errors,
                                 column=str(col),
                                 raw_check=constraints["axis_unit"],
+                            )
+                        if "unit_coherence" in constraints:
+                            _validate_unit_coherence_config(
+                                errors,
+                                column=str(col),
+                                raw_check=constraints["unit_coherence"],
                             )
 
     golden_metrics = config.get("golden_metrics", [])

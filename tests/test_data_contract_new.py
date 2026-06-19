@@ -464,6 +464,217 @@ class TestGroupedCalculationChecks(unittest.TestCase):
             self.assertFalse(validate_data_contract(tmpdir, config))
 
 
+class TestRicherSemanticContracts(unittest.TestCase):
+    def test_monotonic_within_group_passes_valid_grouped_series(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_mono_group_pass_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "sample,time_s,value\nA,0,1.0\nA,1,1.5\nA,2,1.8\nB,0,2.0\nB,1,2.1\nB,2,2.4\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["sample", "time_s", "value"],
+                            "semantic_checks": {
+                                "time_s": {
+                                    "monotonic_within_group": {
+                                        "group_by": ["sample"],
+                                        "mode": "increasing",
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, config))
+
+    def test_monotonic_within_group_fails_on_group_violation(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_mono_group_fail_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "sample,time_s,value\nA,0,1.0\nA,2,1.5\nA,1,1.8\nB,0,2.0\nB,1,2.1\nB,2,2.4\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["sample", "time_s", "value"],
+                            "semantic_checks": {
+                                "time_s": {
+                                    "monotonic_within_group": {
+                                        "group_by": ["sample"],
+                                        "mode": "increasing",
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_expected_sample_count_passes_exact_group_counts(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_expected_n_pass_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "condition,value\nA,1.0\nA,2.0\nA,3.0\nB,4.0\nB,5.0\nB,6.0\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {"expected_sample_count": {"group_by": ["condition"], "count": 3}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, config))
+
+    def test_expected_sample_count_fails_wrong_group_count(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_expected_n_fail_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "condition,value\nA,1.0\nA,2.0\nA,3.0\nB,4.0\nB,5.0\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": ["condition", "value"],
+                            "semantic_checks": {
+                                "value": {"expected_sample_count": {"group_by": ["condition"], "count": 3}}
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_unit_coherence_passes_consistent_related_units(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_unit_coherence_pass_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "resistance_ohm,area_cm2,thickness_cm,resistivity_ohm_cm\n100,0.5,0.01,5000\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": [
+                                "resistance_ohm",
+                                "area_cm2",
+                                "thickness_cm",
+                                "resistivity_ohm_cm",
+                            ],
+                            "semantic_checks": {
+                                "resistivity_ohm_cm": {
+                                    "unit_coherence": {
+                                        "expected_unit": "ohm*cm",
+                                        "terms": [
+                                            {"column": "resistance_ohm", "unit": "ohm"},
+                                            {"column": "area_cm2", "unit": "cm^2"},
+                                            {"column": "thickness_cm", "unit": "cm", "exponent": -1},
+                                        ],
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertTrue(validate_data_contract(tmpdir, config))
+
+    def test_unit_coherence_fails_inconsistent_related_units(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_unit_coherence_fail_") as tmpdir:
+            data_path = Path(tmpdir) / "results" / "data" / "summary.csv"
+            data_path.parent.mkdir(parents=True)
+            data_path.write_text(
+                "resistance_ohm,area_s,thickness_cm,resistivity_ohm_cm\n100,0.5,0.01,5000\n",
+                encoding="utf-8",
+            )
+            config = {
+                "data_contract": {
+                    "csv_checks": [
+                        {
+                            "path": "results/data/summary.csv",
+                            "required_columns": [
+                                "resistance_ohm",
+                                "area_s",
+                                "thickness_cm",
+                                "resistivity_ohm_cm",
+                            ],
+                            "semantic_checks": {
+                                "resistivity_ohm_cm": {
+                                    "unit_coherence": {
+                                        "expected_unit": "ohm*cm",
+                                        "terms": [
+                                            {"column": "resistance_ohm", "unit": "ohm"},
+                                            {"column": "area_s", "unit": "s"},
+                                            {"column": "thickness_cm", "unit": "cm", "exponent": -1},
+                                        ],
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            }
+
+            self.assertFalse(validate_data_contract(tmpdir, config))
+
+    def test_validate_config_rejects_malformed_richer_semantic_checks(self):
+        config = {
+            "project": {"name": "Richer Contract Demo"},
+            "visual_style": {"target_format": "nature"},
+            "data_contract": {
+                "csv_checks": [
+                    {
+                        "path": "results/data/summary.csv",
+                        "semantic_checks": {
+                            "value": {
+                                "monotonic_within_group": {"group_by": [], "mode": "zigzag"},
+                                "expected_sample_count": {"group_by": ["condition"], "count": 0},
+                                "unit_coherence": {"expected_unit": "ohm*cm", "terms": []},
+                            }
+                        },
+                    }
+                ]
+            },
+        }
+
+        errors = validate_config(config)
+
+        self.assertTrue(any("monotonic_within_group.group_by" in error for error in errors))
+        self.assertTrue(any("monotonic_within_group.mode" in error for error in errors))
+        self.assertTrue(any("expected_sample_count.count" in error for error in errors))
+        self.assertTrue(any("unit_coherence.terms" in error for error in errors))
+
+
 class TestLogErrorbarCalculationChecks(unittest.TestCase):
     def test_validate_config_accepts_log_errorbar_calculation_checks(self):
         config = {

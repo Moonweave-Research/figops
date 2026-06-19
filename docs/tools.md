@@ -3070,6 +3070,50 @@ Declare and validate the source column used for error bars.
 }
 ```
 
+### `expected_sample_count`
+
+Require each configured group to have exactly the expected number of non-null target values.
+
+**Schema**
+
+```json
+{
+  "properties": {
+    "count": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "group_by": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "group_by",
+    "count"
+  ],
+  "type": "object"
+}
+```
+
+**Example**
+
+```json
+{
+  "value": {
+    "expected_sample_count": {
+      "count": 3,
+      "group_by": [
+        "condition"
+      ]
+    }
+  }
+}
+```
+
 ### `grouped_cv`
 
 Check coefficient of variation within configured groups.
@@ -3227,6 +3271,55 @@ Require ordered values in the target column.
 }
 ```
 
+### `monotonic_within_group`
+
+Require ordered values in the target column within each configured group.
+
+**Schema**
+
+```json
+{
+  "properties": {
+    "group_by": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "mode": {
+      "enum": [
+        "decreasing",
+        "increasing",
+        "nondecreasing",
+        "nonincreasing"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "group_by",
+    "mode"
+  ],
+  "type": "object"
+}
+```
+
+**Example**
+
+```json
+{
+  "time": {
+    "monotonic_within_group": {
+      "group_by": [
+        "sample"
+      ],
+      "mode": "increasing"
+    }
+  }
+}
+```
+
 ### `outlier_flag`
 
 Validate a boolean outlier flag column and maximum flagged fraction.
@@ -3328,6 +3421,77 @@ Validate actual_unit compatibility with an expected unit when Pint is installed.
   "current": {
     "actual_unit": "mA",
     "unit": "A"
+  }
+}
+```
+
+### `unit_coherence`
+
+Validate that declared related-column units combine to the target column's expected unit.
+
+**Schema**
+
+```json
+{
+  "properties": {
+    "expected_unit": {
+      "type": "string"
+    },
+    "terms": {
+      "items": {
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "exponent": {
+            "default": 1,
+            "type": "integer"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "unit"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "expected_unit",
+    "terms"
+  ],
+  "type": "object"
+}
+```
+
+**Example**
+
+```json
+{
+  "resistivity": {
+    "unit_coherence": {
+      "expected_unit": "ohm*cm",
+      "terms": [
+        {
+          "column": "resistance",
+          "unit": "ohm"
+        },
+        {
+          "column": "area",
+          "unit": "cm^2"
+        },
+        {
+          "column": "thickness",
+          "exponent": -1,
+          "unit": "cm"
+        }
+      ]
+    }
   }
 }
 ```
