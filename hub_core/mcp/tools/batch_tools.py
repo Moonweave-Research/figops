@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import multiprocessing
-import queue
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -338,37 +338,28 @@ class McpBatchToolsMixin:
         max_depth: int,
         timeout_seconds: float,
     ) -> tuple[list[Any], bool, list[str]]:
-        result_queue: multiprocessing.Queue = multiprocessing.Queue(maxsize=1)
-        process = multiprocessing.Process(
-            target=render_helpers._batch_discovery_worker,
-            args=(str(root), max_depth, result_queue),
-            name="graphhub-mcp-batch-discovery",
-        )
-        try:
+        with tempfile.TemporaryDirectory(prefix="graphhub_mcp_batch_worker_") as tmpdir:
+            result_path = Path(tmpdir) / "result.json"
+            process = multiprocessing.Process(
+                target=render_helpers._batch_discovery_worker,
+                args=(str(root), max_depth, str(result_path)),
+                name="graphhub-mcp-batch-discovery",
+            )
             process.start()
-            try:
-                result = result_queue.get(timeout=max(0.0, timeout_seconds))
-            except queue.Empty:
-                if process.is_alive():
-                    process.terminate()
-                    process.join(5)
-                    if process.is_alive():
-                        process.kill()
-                        process.join(5)
-                    return [], True, [f"Batch discovery timed out after {timeout_seconds:.1f} seconds."]
-                if process.exitcode not in (0, None):
-                    return [], True, [f"Batch discovery worker exited with code {process.exitcode}."]
-                return [], True, ["Batch discovery worker exited without returning a result."]
-            process.join(5)
+            process.join(max(0.0, timeout_seconds))
             if process.is_alive():
                 process.terminate()
                 process.join(5)
                 if process.is_alive():
                     process.kill()
                     process.join(5)
-                return [], True, ["Batch discovery worker returned a result but did not exit cleanly."]
+                return [], True, [f"Batch discovery timed out after {timeout_seconds:.1f} seconds."]
             if process.exitcode not in (0, None):
                 return [], True, [f"Batch discovery worker exited with code {process.exitcode}."]
+            try:
+                result = render_helpers._read_worker_result(result_path, "Batch discovery")
+            except RuntimeError as exc:
+                return [], True, [str(exc)]
             if result.get("status") != "ok":
                 trace = result.get("traceback") if isinstance(result.get("traceback"), list) else []
                 message = "\n".join(str(line) for line in trace[-render_helpers.SCRIPT_OUTPUT_TAIL_LINES:]) or str(
@@ -377,13 +368,6 @@ class McpBatchToolsMixin:
                 return [], True, [message]
             projects = result.get("projects")
             return (projects if isinstance(projects, list) else []), False, []
-        finally:
-            close_queue = getattr(result_queue, "close", None)
-            if close_queue is not None:
-                close_queue()
-            join_queue_thread = getattr(result_queue, "join_thread", None)
-            if join_queue_thread is not None:
-                join_queue_thread()
 
     @staticmethod
     def _batch_skip_reason(

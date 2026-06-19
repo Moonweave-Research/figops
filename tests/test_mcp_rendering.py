@@ -2,7 +2,6 @@ import contextlib
 import csv
 import json
 import os
-import queue
 import tempfile
 import time
 import unittest
@@ -13,18 +12,21 @@ from unittest.mock import patch
 import yaml
 
 from hub_core.mcp import GraphHubMCPServer
+from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.schemas import list_tool_definitions
 from hub_core.mcp.transport import _handle_json_rpc
 
 
 class _CompletedRenderProcess:
-    exitcode = 0
-
     def __init__(self, *args, **kwargs):
+        self.exitcode = 0
         self.started = False
+        self._target = kwargs["target"]
+        self._args = kwargs["args"]
 
     def start(self):
         self.started = True
+        self._target(*self._args)
 
     def join(self, _timeout=None):
         return None
@@ -33,32 +35,23 @@ class _CompletedRenderProcess:
         return False
 
 
-class _DelayedRenderQueue:
-    def __init__(self, *args, **kwargs):
-        self.blocking_get_timeout = None
-        self.closed = False
-        self.joined = False
-
-    def get_nowait(self):
-        raise queue.Empty
-
-    def get(self, timeout=None):
-        self.blocking_get_timeout = timeout
-        return {"status": "ok"}
-
-    def close(self):
-        self.closed = True
-
-    def join_thread(self):
-        self.joined = True
-
-
-def _sleeping_render_worker(_spec_payload, _result_queue):
+def _sleeping_render_worker(_spec_payload, _result_path):
     time.sleep(1)
 
 
-def _path_leaking_render_worker(spec_payload, result_queue):
-    result_queue.put({"status": "error", "error": f"failed at {spec_payload['output_path']}"})
+def _path_leaking_render_worker(spec_payload, result_path):
+    render_helpers._write_worker_result(
+        result_path,
+        {"status": "error", "error": f"failed at {spec_payload['output_path']}"},
+    )
+
+
+def _successful_render_worker(_spec_payload, result_path):
+    render_helpers._write_worker_result(result_path, {"status": "ok"})
+
+
+def _successful_batch_discovery_worker(_root, _max_depth, result_path):
+    render_helpers._write_worker_result(result_path, {"status": "ok", "projects": []})
 
 
 def _write_csv(path: Path) -> Path:
@@ -1422,24 +1415,16 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "baseline-failure-demo"})
             self.assertEqual(collected["baseline_comparison"], result["baseline_comparison"])
 
-    def test_render_worker_uses_blocking_queue_read_after_process_exit(self):
-        delayed_queue = _DelayedRenderQueue()
-
+    def test_render_worker_reads_file_result_after_process_exit(self):
         with (
-            patch("hub_core.mcp.render_orchestration.multiprocessing.Queue", return_value=delayed_queue),
+            patch("hub_core.mcp.render_orchestration._render_bridge_figure_worker", _successful_render_worker),
             patch("hub_core.mcp.render_orchestration.multiprocessing.Process", _CompletedRenderProcess),
         ):
             GraphHubMCPServer._run_render_bridge_figure({"csv_path": "input.csv", "output_path": "graph.png"})
 
-        self.assertIsNotNone(delayed_queue.blocking_get_timeout)
-        self.assertTrue(delayed_queue.closed)
-        self.assertTrue(delayed_queue.joined)
-
-    def test_batch_discovery_uses_blocking_queue_read_after_process_exit(self):
-        delayed_queue = _DelayedRenderQueue()
-
+    def test_batch_discovery_reads_file_result_after_process_exit(self):
         with (
-            patch("hub_core.mcp.render_orchestration.multiprocessing.Queue", return_value=delayed_queue),
+            patch("hub_core.mcp.render_orchestration._batch_discovery_worker", _successful_batch_discovery_worker),
             patch("hub_core.mcp.render_orchestration.multiprocessing.Process", _CompletedRenderProcess),
         ):
             projects, timed_out, warnings = GraphHubMCPServer._discover_batch_projects(
@@ -1451,9 +1436,6 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         self.assertEqual(projects, [])
         self.assertFalse(timed_out)
         self.assertEqual(warnings, [])
-        self.assertIsNotNone(delayed_queue.blocking_get_timeout)
-        self.assertTrue(delayed_queue.closed)
-        self.assertTrue(delayed_queue.joined)
 
     def test_baseline_comparison_does_not_expose_baseline_hash(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:

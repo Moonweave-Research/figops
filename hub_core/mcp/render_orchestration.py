@@ -4,10 +4,11 @@ import hashlib
 import json
 import multiprocessing
 import os
-import queue
+import pickle
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 from contextlib import contextmanager, redirect_stdout
@@ -27,22 +28,65 @@ from hub_core.project_discovery import ProjectDiscoveryService
 
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0
-MCP_RENDER_RESULT_QUEUE_TIMEOUT_SECONDS = 5.0
 MCP_BATCH_TIMEOUT_SECONDS = 30.0
+MCP_WORKER_RESULT_MAX_BYTES = 16 * 1024 * 1024
 
 
-def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_queue: multiprocessing.Queue) -> None:
+def _write_worker_result(result_path: str | Path, result: dict[str, Any]) -> None:
+    try:
+        payload = pickle.dumps(result)
+    except (pickle.PickleError, TypeError, ValueError) as exc:
+        payload = pickle.dumps(
+            {
+                "status": "error",
+                "error": f"Worker result could not be serialized: {type(exc).__name__}: {exc}",
+                "failure_stage": "TRANSFER",
+            }
+        )
+    size = len(payload)
+    if size > MCP_WORKER_RESULT_MAX_BYTES:
+        payload = pickle.dumps(
+            {
+                "status": "error",
+                "error": (
+                    f"Worker result too large: {size} bytes exceeds "
+                    f"{MCP_WORKER_RESULT_MAX_BYTES} bytes."
+                ),
+                "failure_stage": "TRANSFER",
+            }
+        )
+    Path(result_path).write_bytes(payload)
+
+
+def _read_worker_result(result_path: str | Path, worker_label: str) -> dict[str, Any]:
+    path = Path(result_path)
+    if not path.is_file():
+        raise RuntimeError(f"{worker_label} worker exited without returning a result.")
+    try:
+        result = pickle.loads(path.read_bytes())
+    except (OSError, pickle.PickleError, EOFError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"{worker_label} worker returned an unreadable result: {exc}") from exc
+    if not isinstance(result, dict):
+        raise RuntimeError(f"{worker_label} worker returned an invalid result payload.")
+    return result
+
+
+def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_path: str) -> None:
     os.environ.setdefault("MPLBACKEND", "Agg")
     try:
         with redirect_stdout(sys.stderr):
             from plotting.bridge_renderer import BridgeFigureSpec, render_bridge_figure
 
             output_path = render_bridge_figure(BridgeFigureSpec(**spec_payload))
-        result_queue.put({"status": "ok", "output_path": output_path})
+        _write_worker_result(result_path, {"status": "ok", "output_path": output_path})
     except Exception as exc:
-        result_queue.put({"status": "error", "error": str(exc), "traceback": traceback.format_exc().splitlines()})
+        _write_worker_result(
+            result_path,
+            {"status": "error", "error": str(exc), "traceback": traceback.format_exc().splitlines()},
+        )
 
-def _batch_discovery_worker(root: str, max_depth: int, result_queue: multiprocessing.Queue) -> None:
+
+def _batch_discovery_worker(root: str, max_depth: int, result_path: str) -> None:
     os.environ.setdefault("MPLBACKEND", "Agg")
     try:
         with redirect_stdout(sys.stderr):
@@ -51,9 +95,12 @@ def _batch_discovery_worker(root: str, max_depth: int, result_queue: multiproces
                 include_worktrees=True,
                 include_ephemeral=True,
             ).discover(max_depth=max_depth)
-        result_queue.put({"status": "ok", "projects": projects})
+        _write_worker_result(result_path, {"status": "ok", "projects": projects})
     except Exception as exc:
-        result_queue.put({"status": "error", "error": str(exc), "traceback": traceback.format_exc().splitlines()})
+        _write_worker_result(
+            result_path,
+            {"status": "error", "error": str(exc), "traceback": traceback.format_exc().splitlines()},
+        )
 
 
 class McpRenderOrchestrationMixin:
@@ -195,50 +242,31 @@ class McpRenderOrchestrationMixin:
 
     @staticmethod
     def _run_render_bridge_figure(spec_payload: dict[str, Any]) -> None:
-        result_queue: multiprocessing.Queue = multiprocessing.Queue(maxsize=1)
-        process = multiprocessing.Process(
-            target=_render_bridge_figure_worker,
-            args=(spec_payload, result_queue),
-            name="graphhub-mcp-render",
-        )
-        try:
+        with tempfile.TemporaryDirectory(prefix="graphhub_mcp_render_worker_") as tmpdir:
+            result_path = Path(tmpdir) / "result.json"
+            process = multiprocessing.Process(
+                target=_render_bridge_figure_worker,
+                args=(spec_payload, str(result_path)),
+                name="graphhub-mcp-render",
+            )
             process.start()
-            try:
-                result = result_queue.get(timeout=MCP_RENDER_TIMEOUT_SECONDS)
-            except queue.Empty as exc:
-                if process.is_alive():
-                    process.terminate()
-                    process.join(5)
-                    if process.is_alive():
-                        process.kill()
-                        process.join(5)
-                    raise TimeoutError(f"Render timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.") from exc
-                if process.exitcode not in (0, None):
-                    raise RuntimeError(f"Render worker exited with code {process.exitcode}.") from exc
-                raise RuntimeError("Render worker exited without returning a result.") from exc
-            process.join(5)
+            process.join(MCP_RENDER_TIMEOUT_SECONDS)
             if process.is_alive():
                 process.terminate()
                 process.join(5)
                 if process.is_alive():
                     process.kill()
                     process.join(5)
-                raise TimeoutError("Render worker returned a result but did not exit cleanly.")
+                raise TimeoutError(f"Render timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.")
             if process.exitcode not in (0, None):
                 raise RuntimeError(f"Render worker exited with code {process.exitcode}.")
+            result = _read_worker_result(result_path, "Render")
             if result.get("status") != "ok":
                 trace = result.get("traceback") if isinstance(result.get("traceback"), list) else []
                 message = "\n".join(str(line) for line in trace[-SCRIPT_OUTPUT_TAIL_LINES:]) or str(
                     result.get("error") or "Render worker failed."
                 )
                 raise RuntimeError(message)
-        finally:
-            close_queue = getattr(result_queue, "close", None)
-            if close_queue is not None:
-                close_queue()
-            join_queue_thread = getattr(result_queue, "join_thread", None)
-            if join_queue_thread is not None:
-                join_queue_thread()
 
     def _project_render_error(
         self,

@@ -4,6 +4,8 @@ import os
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from .cache_manager import (
@@ -30,6 +32,10 @@ from .utils import (
 from .uv_runtime import build_uv_environment, ensure_uv_runtime_dirs
 
 logger = get_logger(__name__)
+_RUN_COMMAND_ENV_OVERLAY: ContextVar[dict[str, str] | None] = ContextVar(
+    "_RUN_COMMAND_ENV_OVERLAY",
+    default=None,
+)
 
 
 def _log(message: str = "") -> None:
@@ -40,6 +46,18 @@ def _log(message: str = "") -> None:
     else:
         level = logging.INFO
     logger.log(level, message)
+
+
+@contextmanager
+def _run_command_env_overlay(env_overrides: dict[str, str]):
+    prior = _RUN_COMMAND_ENV_OVERLAY.get() or {}
+    merged = dict(prior)
+    merged.update(env_overrides)
+    token = _RUN_COMMAND_ENV_OVERLAY.set(merged)
+    try:
+        yield
+    finally:
+        _RUN_COMMAND_ENV_OVERLAY.reset(token)
 
 
 def _fallback_sanitize_path(raw_path: str, allowed_roots: list[Path]) -> Path:
@@ -184,6 +202,9 @@ def run_command(cmd_list, cwd, additional_env=None):
         env["MPLCONFIGDIR"] = mpl_cache
     if "MPLBACKEND" not in env and not env.get("DISPLAY"):
         env["MPLBACKEND"] = "Agg"
+    env_overlay = _RUN_COMMAND_ENV_OVERLAY.get()
+    if env_overlay:
+        env.update(env_overlay)
     if additional_env:
         env.update(additional_env)
     env = build_uv_environment(env, hub_root=hub_path)
@@ -761,20 +782,7 @@ def run_sweep(
         # Also inject bare names so scripts can reference them directly
         sweep_env.update(env_overrides)
 
-        # Temporarily patch run_command to always include sweep_env
-        import hub_core.process_runner as _self
-
-        _orig = _self.run_command
-
-        def _sweep_run_command(cmd_list, cwd, additional_env=None):
-            merged = dict(sweep_env)
-            if additional_env:
-                merged.update(additional_env)
-            return _orig(cmd_list, cwd, additional_env=merged)
-
-        _self.run_command = _sweep_run_command
-
-        try:
+        with _run_command_env_overlay(sweep_env):
             if run_success and step in ("analysis", "all"):
                 run_success = run_analysis(
                     project_dir,
@@ -828,8 +836,6 @@ def run_sweep(
                         "EXECUTE",
                         f"Sweep diagram generation failed for run {idx}/{total} ({label_parts}).",
                     )
-        finally:
-            _self.run_command = _orig
 
         status = "✅" if run_success else "❌"
         _log(f"   {status} Sweep run {idx}/{total} ({label_parts}): {'OK' if run_success else 'FAILED'}")
@@ -926,19 +932,7 @@ def run_comparison(
         cond_env.update(env_overrides)
         cond_env["COMPARISON_LABEL"] = label
 
-        import hub_core.process_runner as _self
-
-        _orig = _self.run_command
-
-        def _comparison_run_command(cmd_list, cwd, additional_env=None, _env=cond_env):
-            merged = dict(_env)
-            if additional_env:
-                merged.update(additional_env)
-            return _orig(cmd_list, cwd, additional_env=merged)
-
-        _self.run_command = _comparison_run_command
-
-        try:
+        with _run_command_env_overlay(cond_env):
             if run_success and step in ("analysis", "all"):
                 run_success = run_analysis(
                     project_dir,
@@ -992,8 +986,6 @@ def run_comparison(
                         "EXECUTE",
                         f"Comparison diagram generation failed for condition {idx}/{total} ({label}).",
                     )
-        finally:
-            _self.run_command = _orig
 
         status = "✅" if run_success else "❌"
         _log(f"   {status} Condition {idx}/{total} ({label}): {'OK' if run_success else 'FAILED'}")
