@@ -5,14 +5,18 @@ import sys
 from contextlib import redirect_stdout
 from typing import Any
 
-MCP_MAX_MESSAGE_BYTES = 16 * 1024 * 1024
+from hub_core.mcp.errors import (
+    JSONRPC_INTERNAL_ERROR,
+    JSONRPC_INVALID_PARAMS,
+    JSONRPC_INVALID_REQUEST,
+    JSONRPC_METHOD_NOT_FOUND,
+    JSONRPC_PARSE_ERROR,
+    JSONRPC_RESOURCE_NOT_FOUND,
+    taxonomy_data,
+    taxonomy_entry_for_jsonrpc_code,
+)
 
-JSONRPC_INVALID_REQUEST = -32600
-JSONRPC_INVALID_PARAMS = -32602
-JSONRPC_INTERNAL_ERROR = -32603
-JSONRPC_METHOD_NOT_FOUND = -32601
-JSONRPC_PARSE_ERROR = -32700
-JSONRPC_RESOURCE_NOT_FOUND = -32002
+MCP_MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = frozenset({"2024-11-05", "2025-03-26", DEFAULT_PROTOCOL_VERSION})
@@ -308,7 +312,12 @@ def _matches_json_schema_type(value: Any, expected_type: Any) -> bool:
 
 
 def _json_rpc_error(request_id: Any, code: int, message: str) -> dict[str, Any]:
-    return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
+    entry = taxonomy_entry_for_jsonrpc_code(code)
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "error": {"code": code, "message": message, "data": taxonomy_data(entry, jsonrpc_code=code)},
+    }
 
 
 class _StdioParseError(Exception):
