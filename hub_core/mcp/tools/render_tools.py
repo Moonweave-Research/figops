@@ -29,6 +29,7 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
             x_column = self._required_string(arguments, "x_column")
             y_column = self._required_string(arguments, "y_column")
             z_column = str(arguments.get("z_column") or "").strip()
+            facet_column = str(arguments.get("facet_column") or "").strip()
         except ValueError as exc:
             return self._envelope(
                 "graphhub.render_csv_graph",
@@ -85,6 +86,22 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 geometry_diagnostics=render_helpers._geometry_stub("no figure"),
                 layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
             )
+        if plot_type == "facet" and not facet_column:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid plot settings.",
+                errors=["plot_type 'facet' requires a facet_column."],
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Provide facet_column for facet plot_type.",
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=render_helpers._geometry_stub("no figure"),
+                layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
+            )
         style_errors = self._render_style_errors(target_format, output_format, profile)
         if style_errors:
             return self._envelope(
@@ -125,6 +142,7 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
             x_column=x_column,
             y_column=y_column,
             z_column=z_column,
+            facet_column=facet_column,
             semantic_checks=semantic_checks,
         )
         config_errors = validate_config(config)
@@ -153,6 +171,7 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 x_column,
                 y_column,
                 *([z_column] if z_column else []),
+                *([facet_column] if facet_column else []),
                 *[str(key) for key in semantic_checks],
             ],
             semantic_checks=semantic_checks,
@@ -251,6 +270,7 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                         "x_column": x_column,
                         "y_column": y_column,
                         "z_column": z_column,
+                        "facet_column": facet_column,
                         "title": str(arguments.get("title") or "Graph Hub MCP render"),
                         "x_axis_label": str(arguments.get("x_axis_label") or x_column),
                         "y_axis_label": str(arguments.get("y_axis_label") or y_column),

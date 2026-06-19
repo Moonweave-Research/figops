@@ -84,12 +84,27 @@ def _render_violin(ax: Axes, points: list[Point], spec: BridgeFigureSpec) -> Non
     _render_violin_plot(ax, points, spec)
 
 
+def _render_facet(ax: Axes, points: list[Point], spec: BridgeFigureSpec) -> None:
+    from plotting.bridge_renderer import _render_facet_plot
+
+    _render_facet_plot(ax, points, spec)
+
+
 _DISTRIBUTION_ARG_SCHEMA = {
     "type": "object",
     "required": ["x_column", "y_column"],
     "properties": {
         "x_column": {"type": "string"},
         "y_column": {"type": "string"},
+    },
+}
+
+
+_FACET_ARG_SCHEMA = {
+    "type": "object",
+    "required": ["facet_column"],
+    "properties": {
+        "facet_column": {"type": "string"},
     },
 }
 
@@ -153,6 +168,17 @@ PLOT_TYPES: dict[str, PlotType] = {
             shows_individual_points=True,
             warns_small_n=True,
             falls_back_for_small_n=True,
+        ),
+    ),
+    "facet": PlotType(
+        name="facet",
+        render=_render_facet,
+        arg_schema=_FACET_ARG_SCHEMA,
+        capabilities=_common_capabilities(
+            supports_broken_axis=False,
+            supports_faceting=True,
+            base_plot_type="line",
+            shares_axes=True,
         ),
     ),
 }

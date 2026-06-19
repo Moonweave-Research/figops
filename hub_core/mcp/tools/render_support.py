@@ -482,6 +482,7 @@ class McpRenderToolSupportMixin:
         x_column: str,
         y_column: str,
         z_column: str,
+        facet_column: str,
         semantic_checks: dict[str, Any],
     ) -> dict[str, Any]:
         return {
@@ -496,7 +497,12 @@ class McpRenderToolSupportMixin:
                 "csv_checks": [
                     {
                         "path": "data/input.csv",
-                        "required_columns": [x_column, y_column, *([z_column] if z_column else [])],
+                        "required_columns": [
+                            x_column,
+                            y_column,
+                            *([z_column] if z_column else []),
+                            *([facet_column] if facet_column else []),
+                        ],
                         "semantic_checks": semantic_checks,
                     }
                 ]

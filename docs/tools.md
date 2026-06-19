@@ -1000,6 +1000,9 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "default": false,
       "type": "boolean"
     },
+    "facet_column": {
+      "type": "string"
+    },
     "job_id": {
       "description": "Stable render job ID; auto-generated when omitted.",
       "type": "string"
@@ -1022,6 +1025,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "enum": [
         "bar",
         "box",
+        "facet",
         "heatmap",
         "line",
         "scatter",
@@ -2605,6 +2609,56 @@ Run a bounded project discovery and validation batch check with optional runtime
     "job_id": "example-box",
     "output_format": "png",
     "plot_type": "box",
+    "profile": "baseline",
+    "target_format": "nature",
+    "x_column": "x",
+    "y_column": "y"
+  },
+  "tool": "graphhub.render_csv_graph"
+}
+```
+
+### `facet`
+
+**Capabilities**
+
+```json
+{
+  "base_plot_type": "line",
+  "shares_axes": true,
+  "supports_broken_axis": false,
+  "supports_faceting": true,
+  "supports_series": true,
+  "supports_yerr": true
+}
+```
+
+**Argument schema**
+
+```json
+{
+  "properties": {
+    "facet_column": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "facet_column"
+  ],
+  "type": "object"
+}
+```
+
+**Worked example**
+
+```json
+{
+  "arguments": {
+    "data_path": "/path/to/data.csv",
+    "facet_column": "facet",
+    "job_id": "example-facet",
+    "output_format": "png",
+    "plot_type": "facet",
     "profile": "baseline",
     "target_format": "nature",
     "x_column": "x",
