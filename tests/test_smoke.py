@@ -61,6 +61,7 @@ class HubSmokeTest(unittest.TestCase):
                     "--step",
                     "all",
                     "--strict-lock",
+                    "--verbose",
                 ],
                 tmp_path,
             )
@@ -82,6 +83,7 @@ class HubSmokeTest(unittest.TestCase):
                     "--step",
                     "all",
                     "--strict-lock",
+                    "--verbose",
                 ],
                 tmp_path,
             )
