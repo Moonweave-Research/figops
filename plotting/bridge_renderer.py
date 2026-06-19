@@ -140,6 +140,7 @@ class BridgeFigureSpec:
     overlay_baselines: tuple[dict, ...] = ()
     y_break_range: tuple[float, float] | None = None
     facet_column: str = ""
+    aggregate: str = ""
     fit_line: bool = False
     ci_band: bool = False
     significance_markers: tuple[dict, ...] = ()
@@ -159,6 +160,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         points = _load_points(csv_path, spec)
+        _validate_bar_aggregate(spec)
         _validate_statistical_overlays(points, spec)
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
         try:
@@ -1045,9 +1047,47 @@ def _points_to_distribution_frame(points: list[dict], spec: BridgeFigureSpec):
     )
 
 
+def _validate_bar_aggregate(spec: BridgeFigureSpec) -> None:
+    aggregate = str(spec.aggregate or "").strip().lower()
+    if not aggregate:
+        return
+    if aggregate not in {"mean", "median"}:
+        raise ValueError("aggregate must be one of: mean, median")
+    if str(spec.plot_type or "").strip().lower() != "bar":
+        raise ValueError("aggregate is only supported for plot_type 'bar'")
+    if spec.series_column:
+        raise ValueError("aggregate is only supported for single-series bar plots")
+
+
+def _aggregate_single_series_bar_points(points: list[dict], method: str) -> list[dict]:
+    grouped: dict[float | str, list[dict]] = {}
+    for point in points:
+        grouped.setdefault(point["x"], []).append(point)
+
+    aggregated: list[dict] = []
+    for category, category_points in grouped.items():
+        values = [float(point["y"]) for point in category_points]
+        if method == "mean":
+            y_value = float(np.mean(values))
+        else:
+            y_value = float(np.median(values))
+        representative = dict(category_points[0])
+        representative["x"] = category
+        representative["y"] = y_value
+        representative["yerr"] = None
+        representative["yerr_minus"] = None
+        representative["label"] = ""
+        aggregated.append(representative)
+    return aggregated
+
+
 def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     grouped = _group_points(points, spec)
     has_multi_series = any(key != "__single__" for key in grouped)
+    aggregate = str(spec.aggregate or "").strip().lower()
+    if aggregate and not has_multi_series:
+        points = _aggregate_single_series_bar_points(points, aggregate)
+        grouped = _group_points(points, spec)
     categories: list[float | str] = []
     for point in points:
         if point["x"] not in categories:

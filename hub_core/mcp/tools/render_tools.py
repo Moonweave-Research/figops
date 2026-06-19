@@ -16,6 +16,7 @@ from hub_core.rendering import PLOT_TYPES
 from themes.style_profiles import DEFAULT_PROFILE
 
 _STATISTICAL_OVERLAY_PLOT_TYPES = {"line", "scatter", "xy"}
+_BAR_AGGREGATE_METHODS = {"mean", "median"}
 
 
 class McpRenderToolsMixin(McpRenderToolSupportMixin):
@@ -55,6 +56,7 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
         fit_line = arguments.get("fit_line", False)
         ci_band = arguments.get("ci_band", False)
         significance_markers = arguments.get("significance_markers", ())
+        aggregate = str(arguments.get("aggregate") or "").strip().lower()
         raw_semantic_checks = arguments.get("semantic_checks", {})
         semantic_checks = {} if raw_semantic_checks is None else raw_semantic_checks
         if plot_type not in PLOT_TYPES:
@@ -92,6 +94,23 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 is_dry_run=dry_run,
                 failure_stage="CONFIG",
                 resolution_hint="Use fit_line, ci_band, and significance_markers only with line, scatter, or xy plots.",
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=render_helpers._geometry_stub("no figure"),
+                layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
+            )
+        aggregate_errors = self._bar_aggregate_arg_errors(plot_type=plot_type, aggregate=aggregate)
+        if aggregate_errors:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid bar aggregation settings.",
+                errors=aggregate_errors,
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Use aggregate='mean' or aggregate='median' only with plot_type 'bar'.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=render_helpers._geometry_stub("no figure"),
@@ -298,6 +317,7 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                         "y_column": y_column,
                         "z_column": z_column,
                         "facet_column": facet_column,
+                        "aggregate": aggregate,
                         "fit_line": fit_line,
                         "ci_band": ci_band,
                         "significance_markers": significance_markers,
@@ -514,6 +534,17 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 "statistical overlays are only supported for plot_type 'line', 'scatter', or 'xy'."
             )
         return errors
+
+    @staticmethod
+    def _bar_aggregate_arg_errors(*, plot_type: str, aggregate: str) -> list[str]:
+        if not aggregate:
+            return []
+        if aggregate not in _BAR_AGGREGATE_METHODS:
+            allowed = ", ".join(sorted(_BAR_AGGREGATE_METHODS))
+            return [f"aggregate must be one of: {allowed}."]
+        if plot_type != "bar":
+            return ["aggregate is only supported for plot_type 'bar'."]
+        return []
 
     def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
         dry_run = bool(arguments.get("dry_run", False))

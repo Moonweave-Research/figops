@@ -988,6 +988,13 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
 {
   "additionalProperties": false,
   "properties": {
+    "aggregate": {
+      "enum": [
+        "mean",
+        "median"
+      ],
+      "type": "string"
+    },
     "baseline_path": {
       "description": "Optional baseline figure path to compare the rendered output against.",
       "type": "string"
@@ -2548,7 +2555,12 @@ Run a bounded project discovery and validation batch check with optional runtime
 
 ```json
 {
+  "aggregate_methods": [
+    "mean",
+    "median"
+  ],
   "supports_broken_axis": false,
+  "supports_replicate_aggregation": true,
   "supports_series": true,
   "supports_yerr": true
 }
@@ -2557,7 +2569,18 @@ Run a bounded project discovery and validation batch check with optional runtime
 **Argument schema**
 
 ```json
-{}
+{
+  "properties": {
+    "aggregate": {
+      "enum": [
+        "mean",
+        "median"
+      ],
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
 ```
 
 **Worked example**
@@ -2565,6 +2588,7 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
+    "aggregate": "mean",
     "data_path": "/path/to/data.csv",
     "job_id": "example-bar",
     "output_format": "png",
