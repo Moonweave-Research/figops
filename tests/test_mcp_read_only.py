@@ -731,6 +731,67 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             },
         )
 
+    def test_json_rpc_validation_errors_include_taxonomy_data(self):
+        server = GraphHubMCPServer()
+
+        response = self._call_rpc(server, "graphhub.list_projects", {"max_depth": 99})
+
+        self.assertEqual(response["error"]["code"], -32602)
+        self.assertEqual(
+            response["error"]["data"],
+            {"category": "validation", "code": "GRAPHHUB_VALIDATION", "jsonrpc_code": -32602},
+        )
+
+    def test_json_rpc_not_found_errors_include_taxonomy_data(self):
+        server = GraphHubMCPServer()
+
+        response = _handle_json_rpc(
+            server,
+            {
+                "jsonrpc": "2.0",
+                "id": 98,
+                "method": "resources/read",
+                "params": {"uri": "graphhub://jobs/missing-job/manifest"},
+            },
+        )
+
+        self.assertEqual(response["error"]["code"], -32002)
+        self.assertEqual(
+            response["error"]["data"],
+            {"category": "not_found", "code": "GRAPHHUB_NOT_FOUND", "jsonrpc_code": -32002},
+        )
+
+    def test_tool_disabled_errors_include_taxonomy_fields(self):
+        server = GraphHubMCPServer(write_tools_enabled=False)
+
+        response = server.call_tool(
+            "graphhub.scaffold_project",
+            {"project_name": "Blocked", "project_root": "/tmp/blocked", "dry_run": True},
+        )
+
+        structured = response["structuredContent"]
+        self.assertTrue(response["isError"])
+        self.assertEqual(structured["status"], "error")
+        self.assertEqual(structured["error_category"], "disabled")
+        self.assertEqual(structured["error_code"], "GRAPHHUB_DISABLED")
+        self.assertEqual(structured["jsonrpc_code"], -32600)
+
+    def test_tool_internal_errors_include_taxonomy_fields(self):
+        server = GraphHubMCPServer()
+
+        def fail(_arguments):
+            raise RuntimeError("boom")
+
+        server._handlers["graphhub.health"] = fail
+        response = server.call_tool("graphhub.health", {})
+
+        structured = response["structuredContent"]
+        self.assertTrue(response["isError"])
+        self.assertEqual(structured["status"], "error")
+        self.assertEqual(structured["error_category"], "internal")
+        self.assertEqual(structured["error_code"], "GRAPHHUB_INTERNAL")
+        self.assertEqual(structured["jsonrpc_code"], -32603)
+
     def test_rpc_rejects_max_depth_above_advertised_maximum(self):
         server = GraphHubMCPServer()
 

@@ -7,6 +7,12 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from .errors import (
+    DISABLED_ERROR,
+    infer_tool_error_entry,
+    taxonomy_data,
+    taxonomy_entry_for_exception,
+)
 from .prompts import McpPromptsMixin
 from .render_orchestration import McpRenderOrchestrationMixin
 from .resources import McpResourcesMixin
@@ -92,6 +98,7 @@ class GraphHubMCPServer(
                 summary=f"{name} is disabled by the Graph Hub MCP write-tool guard.",
                 errors=["Write tools are disabled for this Graph Hub MCP server."],
                 manual_review_needed=True,
+                error_category=DISABLED_ERROR.category,
             )
             return {
                 "content": [{"type": "text", "text": json.dumps(structured, ensure_ascii=False, sort_keys=True)}],
@@ -103,6 +110,7 @@ class GraphHubMCPServer(
             structured = handler(arguments)
             is_error = structured.get("status") == "error"
         except Exception as exc:
+            entry = taxonomy_entry_for_exception(exc)
             structured = self._envelope(
                 name,
                 arguments,
@@ -110,6 +118,7 @@ class GraphHubMCPServer(
                 summary=f"{name} failed.",
                 errors=[str(exc)],
                 manual_review_needed=True,
+                error_category=entry.category,
             )
             is_error = True
 
@@ -192,6 +201,9 @@ class GraphHubMCPServer(
         errors: list[str] | None = None,
         manual_review_needed: bool = False,
         is_dry_run: bool = True,
+        error_category: str | None = None,
+        error_code: str | None = None,
+        jsonrpc_code: int | None = None,
         **extra: Any,
     ) -> dict[str, Any]:
         operation_id = self._operation_id(tool_name, arguments)
@@ -210,6 +222,22 @@ class GraphHubMCPServer(
             "script_output": [self._sanitize_diagnostic_text(line, arguments) for line in (script_output or [])],
             "manual_review_needed": manual_review_needed,
         }
+        if status == "error":
+            entry = infer_tool_error_entry(
+                error_category=error_category,
+                failure_stage=extra.get("failure_stage"),
+                errors=result["errors"],
+            )
+            data = taxonomy_data(entry)
+            result["error_category"] = data["category"]
+            result["error_code"] = error_code or str(data["code"])
+            result["jsonrpc_code"] = jsonrpc_code if jsonrpc_code is not None else int(data["jsonrpc_code"])
+        elif error_category or error_code or jsonrpc_code is not None:
+            entry = infer_tool_error_entry(error_category=error_category)
+            data = taxonomy_data(entry)
+            result["error_category"] = data["category"]
+            result["error_code"] = error_code or str(data["code"])
+            result["jsonrpc_code"] = jsonrpc_code if jsonrpc_code is not None else int(data["jsonrpc_code"])
         result.update(extra)
         return result
 
