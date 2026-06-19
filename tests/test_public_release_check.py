@@ -1,6 +1,10 @@
 import subprocess
+import unicodedata
 from pathlib import Path
 
+from PIL import Image
+
+from hub_core.provenance import embed_provenance_fingerprint
 from scripts.check_public_release import run_release_check
 
 
@@ -91,3 +95,48 @@ def test_public_release_check_scans_svg_text_for_private_markers(tmp_path: Path)
 
     assert not result.ok
     assert any("figure.svg" in blocker for blocker in result.blockers)
+
+
+def test_public_release_check_normalizes_nfd_korean_markers(tmp_path: Path) -> None:
+    (tmp_path / "LICENSE").write_text("Apache-2.0\n", encoding="utf-8")
+    (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text(unicodedata.normalize("NFD", "저항 측정"), encoding="utf-8")
+
+    result = run_release_check(tmp_path, check_style_registry=False)
+
+    assert not result.ok
+    assert any("저항 측정" in blocker for blocker in result.blockers)
+
+
+def test_public_release_check_blocks_undecodable_text_files(tmp_path: Path) -> None:
+    (tmp_path / "LICENSE").write_text("Apache-2.0\n", encoding="utf-8")
+    (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
+    (tmp_path / "README.md").write_bytes(b"public intro\n\xffPI_control\n")
+
+    result = run_release_check(tmp_path, check_style_registry=False)
+
+    assert not result.ok
+    assert any("Unable to decode UTF-8 text file: README.md" in blocker for blocker in result.blockers)
+
+
+def test_public_release_check_scans_png_provenance_fingerprint_for_private_markers(tmp_path: Path) -> None:
+    (tmp_path / "LICENSE").write_text("Apache-2.0\n", encoding="utf-8")
+    (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
+    figure = tmp_path / "figure.png"
+    Image.new("RGB", (1, 1), "white").save(figure)
+    embedded = embed_provenance_fingerprint(
+        str(figure),
+        {
+            "project": "PI_control",
+            "config": "abc",
+            "env": "def",
+            "git": "ghi",
+            "timestamp": "2026-06-19T00:00:00Z",
+        },
+    )
+    assert embedded
+
+    result = run_release_check(tmp_path, check_style_registry=False)
+
+    assert not result.ok
+    assert any("figure.png" in blocker and "PI_control" in blocker for blocker in result.blockers)
