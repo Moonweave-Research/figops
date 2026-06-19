@@ -4,11 +4,13 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
+from hub_core.data_contract import SEMANTIC_CHECK_DEFINITIONS
 from hub_core.rendering import PLOT_TYPES
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
 
 TOOL_NAMES = (
     "graphhub.health",
+    "graphhub.describe",
     "graphhub.list_styles",
     "graphhub.list_projects",
     "graphhub.inspect_project",
@@ -91,6 +93,7 @@ _LAYOUT_REPORT_SCHEMA = {
 
 TOOL_HANDLER_NAMES = {
     "graphhub.health": "health",
+    "graphhub.describe": "describe",
     "graphhub.list_styles": "list_styles",
     "graphhub.list_projects": "list_projects",
     "graphhub.inspect_project": "inspect_project",
@@ -167,6 +170,62 @@ def _supported_render_plot_types() -> list[str]:
     return sorted(PLOT_TYPES)
 
 
+def _plot_type_example(name: str, arg_schema: dict[str, Any]) -> dict[str, Any]:
+    arguments: dict[str, Any] = {
+        "data_path": "/path/to/data.csv",
+        "x_column": "x",
+        "y_column": "y",
+        "plot_type": name,
+        "target_format": "nature",
+        "profile": DEFAULT_PROFILE,
+        "output_format": "png",
+        "job_id": f"example-{name}",
+    }
+    if "z_column" in arg_schema.get("required", []):
+        arguments["z_column"] = "z"
+    return {"tool": "graphhub.render_csv_graph", "arguments": arguments}
+
+
+def list_plot_type_descriptions() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": name,
+            "arg_schema": dict(plot_type.arg_schema),
+            "capabilities": dict(plot_type.capabilities),
+            "worked_example": _plot_type_example(name, plot_type.arg_schema),
+        }
+        for name, plot_type in sorted(PLOT_TYPES.items())
+    ]
+
+
+def list_semantic_check_descriptions() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": name,
+            "purpose": definition["purpose"],
+            "schema": definition["schema"],
+            "example": definition["example"],
+        }
+        for name, definition in sorted(SEMANTIC_CHECK_DEFINITIONS.items())
+    ]
+
+
+def describe_graphhub_surface() -> dict[str, Any]:
+    return {
+        "plot_types": list_plot_type_descriptions(),
+        "tools": [
+            {
+                "name": tool["name"],
+                "purpose": tool["description"],
+                "inputSchema": tool["inputSchema"],
+                "outputSchema": tool["outputSchema"],
+            }
+            for tool in list_tool_definitions()
+        ],
+        "semantic_checks": list_semantic_check_descriptions(),
+    }
+
+
 def list_tool_definitions() -> list[dict[str, Any]]:
     supported_render_plot_types = _supported_render_plot_types()
     root_arg = {"type": "string", "description": "Project scan root. Defaults to Graph Hub research root."}
@@ -214,6 +273,18 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "style_format_count": {"type": "integer"},
                     "discovery_status": {"type": "object"},
                     "write_tools_enabled": {"type": "boolean"},
+                }
+            ),
+        ),
+        ToolDefinition(
+            "graphhub.describe",
+            "Describe registered Graph Hub tools, plot types, semantic checks, and render examples.",
+            _object_schema(),
+            _standard_output_schema(
+                {
+                    "plot_types": {"type": "array", "items": {"type": "object"}},
+                    "tools": {"type": "array", "items": {"type": "object"}},
+                    "semantic_checks": {"type": "array", "items": {"type": "object"}},
                 }
             ),
         ),
