@@ -259,6 +259,131 @@ class TestRunSweepMonkeyPatch(unittest.TestCase):
         self.assertIs(pr.run_command, original_run_command)
         self.assertFalse(result)
 
+    def test_run_sweep_does_not_replace_run_command_while_running(self):
+        original_run_command = pr.run_command
+        captured_env: dict[str, str] = {}
+
+        class Completed:
+            returncode = 0
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            @property
+            def stdout(self):
+                return []
+
+        def fake_popen(_cmd, **kwargs):
+            captured_env.update(kwargs["env"])
+            return Completed()
+
+        def fake_run_analysis(project_dir, *_args, **_kwargs):
+            self.assertIs(pr.run_command, original_run_command)
+            return pr.run_command(["analysis"], project_dir, additional_env={"EXTRA": "1"})
+
+        sweep_cfg = {
+            "enabled": True,
+            "parameter": "lr",
+            "values": [0.01],
+            "output_dir_pattern": "results/sweep_{parameter}_{value}",
+        }
+        config = {
+            "project": {"name": "sweep_runtime_test"},
+            "environment": {},
+            "pipeline": {"analysis": [{"script": "analysis.py"}]},
+            "figures": [],
+            "diagrams": [],
+            "data_contract": {},
+        }
+
+        with (
+            patch("hub_core.process_runner.run_analysis", side_effect=fake_run_analysis),
+            patch("hub_core.process_runner.run_plots", return_value=True),
+            patch("hub_core.process_runner.run_diagrams", return_value=True),
+            patch("hub_core.process_runner.subprocess.Popen", side_effect=fake_popen),
+            patch("hub_core.data_contract.validate_data_contract", return_value=True),
+            patch("os.makedirs"),
+        ):
+            result = run_sweep(
+                project_dir="/tmp/fake_project",
+                config=config,
+                build_state={},
+                build_state_path="/tmp/fake_project/.build_state.json",
+                config_hash="abc123",
+                sweep_cfg=sweep_cfg,
+            )
+
+        self.assertTrue(result)
+        self.assertIs(pr.run_command, original_run_command)
+        self.assertEqual(captured_env["SWEEP_lr"], "0.01")
+        self.assertEqual(captured_env["lr"], "0.01")
+        self.assertEqual(captured_env["EXTRA"], "1")
+
+    def test_run_comparison_does_not_replace_run_command_while_running(self):
+        original_run_command = pr.run_command
+        captured_env: dict[str, str] = {}
+
+        class Completed:
+            returncode = 0
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            @property
+            def stdout(self):
+                return []
+
+        def fake_popen(_cmd, **kwargs):
+            captured_env.update(kwargs["env"])
+            return Completed()
+
+        def fake_run_analysis(project_dir, *_args, **_kwargs):
+            self.assertIs(pr.run_command, original_run_command)
+            return pr.run_command(["analysis"], project_dir, additional_env={"EXTRA": "1"})
+
+        comparison_cfg = {
+            "enabled": True,
+            "conditions": [
+                {
+                    "label": "control",
+                    "env": {"dose": "low"},
+                }
+            ],
+            "output_dir_pattern": "results/comparison_{condition}",
+        }
+        config = {
+            "project": {"name": "comparison_runtime_test"},
+            "environment": {},
+            "pipeline": {"analysis": [{"script": "analysis.py"}]},
+            "figures": [],
+            "diagrams": [],
+            "data_contract": {},
+        }
+
+        with (
+            patch("hub_core.process_runner.run_analysis", side_effect=fake_run_analysis),
+            patch("hub_core.process_runner.run_plots", return_value=True),
+            patch("hub_core.process_runner.run_diagrams", return_value=True),
+            patch("hub_core.process_runner.subprocess.Popen", side_effect=fake_popen),
+            patch("hub_core.data_contract.validate_data_contract", return_value=True),
+            patch("os.makedirs"),
+        ):
+            result = run_comparison(
+                project_dir="/tmp/fake_project",
+                config=config,
+                build_state={},
+                build_state_path="/tmp/fake_project/.build_state.json",
+                config_hash="abc123",
+                comparison_cfg=comparison_cfg,
+            )
+
+        self.assertTrue(result)
+        self.assertIs(pr.run_command, original_run_command)
+        self.assertEqual(captured_env["COMPARISON_dose"], "low")
+        self.assertEqual(captured_env["dose"], "low")
+        self.assertEqual(captured_env["COMPARISON_LABEL"], "control")
+        self.assertEqual(captured_env["EXTRA"], "1")
+
     def test_run_sweep_injects_cache_env_overrides_and_unique_grid_outputs(self):
         """Grid sweeps should stamp env overrides into analysis cache keys and redirect outputs uniquely."""
         seen_configs: list[tuple[dict, str]] = []

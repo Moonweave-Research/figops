@@ -9,11 +9,39 @@ from pathlib import Path
 from unittest.mock import patch
 
 from hub_core.mcp import GraphHubMCPServer
+from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.schemas import list_tool_definitions
 
 
-def _sleeping_batch_discovery_worker(_root, _max_depth, _result_queue):
+def _sleeping_batch_discovery_worker(_root, _max_depth, _result_path):
     time.sleep(1)
+
+
+def _large_batch_discovery_worker(_root, _max_depth, result_path):
+    projects = [
+        {
+            "project_id": f"project-{index}",
+            "name": f"Project {index}",
+            "path": f"/tmp/research/project-{index}",
+            "status": "valid",
+        }
+        for index in range(100_000)
+    ]
+    render_helpers._write_worker_result(result_path, {"status": "ok", "projects": projects})
+
+
+def _oversized_batch_discovery_worker(_root, _max_depth, result_path):
+    projects = [
+        {
+            "project_id": f"project-{index}",
+            "name": f"Project {index}",
+            "path": f"/tmp/research/project-{index}",
+            "status": "valid",
+            "metadata": f"{index}-" + ("x" * 1024),
+        }
+        for index in range(100_000)
+    ]
+    render_helpers._write_worker_result(result_path, {"status": "ok", "projects": projects})
 
 
 VALID_CONFIG = """
@@ -345,6 +373,47 @@ class BatchQualityMCPTest(unittest.TestCase):
             self.assertTrue(any("timed out" in warning for warning in result["warnings"]))
             self.assertEqual(result["checked_projects"], [])
             self.assertTrue(Path(result["manifest_path"]).is_file())
+
+    def test_batch_discovery_large_result_returns_without_queue_timeout(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            root.mkdir()
+
+            started_at = time.monotonic()
+            with patch(
+                "hub_core.mcp.render_orchestration._batch_discovery_worker",
+                _large_batch_discovery_worker,
+            ):
+                projects, timed_out, warnings = GraphHubMCPServer._discover_batch_projects(
+                    root,
+                    max_depth=1,
+                    timeout_seconds=3.0,
+                )
+            elapsed = time.monotonic() - started_at
+
+            self.assertLess(elapsed, 5.0)
+            self.assertFalse(timed_out, warnings)
+            self.assertEqual(warnings, [])
+            self.assertEqual(len(projects), 100_000)
+
+    def test_batch_discovery_oversized_result_reports_clear_transfer_error(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            root.mkdir()
+
+            with patch(
+                "hub_core.mcp.render_orchestration._batch_discovery_worker",
+                _oversized_batch_discovery_worker,
+            ):
+                projects, timed_out, warnings = GraphHubMCPServer._discover_batch_projects(
+                    root,
+                    max_depth=1,
+                    timeout_seconds=3.0,
+                )
+
+            self.assertFalse(projects, f"expected no projects, got {len(projects)}")
+            self.assertTrue(timed_out)
+            self.assertTrue(any("result too large" in warning.lower() for warning in warnings), warnings)
 
 
 if __name__ == "__main__":
