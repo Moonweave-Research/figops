@@ -179,6 +179,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertTrue(
             {
                 "graphhub.health",
+                "graphhub.describe",
                 "graphhub.list_styles",
                 "graphhub.list_projects",
                 "graphhub.inspect_project",
@@ -202,6 +203,27 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertIn("style_packs", result)
         self.assertTrue(any(pack["name"] == "surfur_internal" for pack in result["style_packs"]))
         self.assertIn("nature_surfur", result["target_formats"])
+
+    def test_describe_exposes_registry_backed_capabilities(self):
+        server = GraphHubMCPServer()
+        definitions = {tool["name"]: tool for tool in list_tool_definitions()}
+
+        result = self._call(server, "graphhub.describe")
+        described_tools = {tool["name"]: tool for tool in result["tools"]}
+        described_plot_types = {plot_type["name"]: plot_type for plot_type in result["plot_types"]}
+        render_plot_enum = definitions["graphhub.render_csv_graph"]["inputSchema"]["properties"]["plot_type"]["enum"]
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(set(described_tools), set(definitions))
+        self.assertEqual(set(described_plot_types), set(render_plot_enum))
+        self.assertIn("arg_schema", described_plot_types["heatmap"])
+        self.assertIn("capabilities", described_plot_types["heatmap"])
+        self.assertIn("z_column", described_plot_types["heatmap"]["arg_schema"]["required"])
+        self.assertEqual(
+            described_plot_types["heatmap"]["worked_example"]["arguments"]["z_column"],
+            "z",
+        )
+        self.assertIn("range", {check["name"] for check in result["semantic_checks"]})
 
     def test_read_only_tools_use_fixture_root_without_writing_files(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
@@ -458,7 +480,9 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             },
         )
 
-        self.assertEqual(listed["result"]["tools"][0]["name"], "graphhub.health")
+        listed_tools = {tool["name"] for tool in listed["result"]["tools"]}
+        self.assertIn("graphhub.health", listed_tools)
+        self.assertIn("graphhub.describe", listed_tools)
         self.assertIn("structuredContent", called["result"])
         self.assertFalse(called["result"]["isError"])
         self.assertEqual(called["result"]["structuredContent"]["target_formats"], sorted(ALLOWED_TARGET_FORMATS))

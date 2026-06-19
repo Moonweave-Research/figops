@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS, find_config_path, validate_config
+from hub_core.mcp.schemas import describe_graphhub_surface
 from hub_core.project_discovery import ProjectDiscoveryService
 from themes.style_packs import list_style_packs
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
@@ -63,6 +64,19 @@ class McpReadToolsMixin:
             style_packs=list_style_packs(),
             default_target_format="nature",
             default_profile=DEFAULT_PROFILE,
+        )
+
+    def describe(self, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+        arguments = arguments or {}
+        surface = describe_graphhub_surface()
+        return self._envelope(
+            "graphhub.describe",
+            arguments,
+            summary=(
+                f"Described {len(surface['tools'])} tools, {len(surface['plot_types'])} plot type(s), "
+                f"and {len(surface['semantic_checks'])} semantic check(s)."
+            ),
+            **surface,
         )
 
     def list_projects(self, arguments: dict[str, Any]) -> dict[str, Any]:
