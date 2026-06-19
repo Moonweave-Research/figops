@@ -7,29 +7,29 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
-from .mcp.prompts import McpPromptsMixin
-from .mcp.render_orchestration import McpRenderOrchestrationMixin
-from .mcp.resources import McpResourcesMixin
-from .mcp.schemas import (
+from .prompts import McpPromptsMixin
+from .render_orchestration import McpRenderOrchestrationMixin
+from .resources import McpResourcesMixin
+from .schemas import (
     get_tool_handlers,
 )
-from .mcp.schemas import (
+from .schemas import (
     list_prompt_definitions as schema_list_prompt_definitions,
 )
-from .mcp.schemas import (
+from .schemas import (
     list_resource_definitions as schema_list_resource_definitions,
 )
-from .mcp.schemas import (
+from .schemas import (
     list_resource_templates as schema_list_resource_templates,
 )
-from .mcp.schemas import (
+from .schemas import (
     list_tool_definitions as schema_list_tool_definitions,
 )
-from .mcp.security import McpSecurityMixin, is_write_tool_name
-from .mcp.tools.batch_tools import McpBatchToolsMixin
-from .mcp.tools.project_tools import McpProjectToolsMixin
-from .mcp.tools.read_tools import McpReadToolsMixin
-from .mcp.tools.render_tools import McpRenderToolsMixin
+from .security import McpSecurityMixin, is_write_tool_name
+from .tools.batch_tools import McpBatchToolsMixin
+from .tools.project_tools import McpProjectToolsMixin
+from .tools.read_tools import McpReadToolsMixin
+from .tools.render_tools import McpRenderToolsMixin
 
 
 class GraphHubMCPServer(

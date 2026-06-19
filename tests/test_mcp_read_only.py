@@ -9,6 +9,7 @@ from io import BytesIO
 from pathlib import Path
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
+from hub_core.mcp import GraphHubMCPServer
 from hub_core.mcp.schemas import list_tool_definitions
 from hub_core.mcp.transport import (
     JSONRPC_INVALID_REQUEST,
@@ -18,7 +19,6 @@ from hub_core.mcp.transport import (
     _validate_tool_arguments,
     run_stdio_server,
 )
-from hub_core.mcp_surface import GraphHubMCPServer
 from hub_core.project_discovery import ProjectDiscoveryService
 from themes.style_profiles import PROFILE_ALIASES, list_profiles
 
@@ -123,7 +123,7 @@ class BlockBridgeRenderer(importlib.abc.MetaPathFinder):
         return None
 
 sys.meta_path.insert(0, BlockBridgeRenderer())
-from hub_core.mcp_surface import GraphHubMCPServer
+from hub_core.mcp import GraphHubMCPServer
 server = GraphHubMCPServer(runtime_root={runtime_root!r})
 result = server.call_tool("graphhub.health", {{}})
 assert result["structuredContent"]["status"] in ("ok", "warning")

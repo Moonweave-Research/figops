@@ -7,8 +7,8 @@ from pathlib import Path
 import yaml
 
 from hub_core.config_parser import validate_config
+from hub_core.mcp import GraphHubMCPServer
 from hub_core.mcp.schemas import list_tool_definitions
-from hub_core.mcp_surface import GraphHubMCPServer
 
 
 def _snapshot_files(root: Path) -> dict[str, tuple[int, int]]:

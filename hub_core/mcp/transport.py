@@ -26,7 +26,7 @@ def run_stdio_server(
 ) -> int:
     """Run a JSON-RPC stdio MCP server (newline-delimited or Content-Length framed)."""
     if server is None:
-        from hub_core.mcp_surface import GraphHubMCPServer
+        from hub_core.mcp.server import GraphHubMCPServer
 
         active_server = GraphHubMCPServer()
     else:

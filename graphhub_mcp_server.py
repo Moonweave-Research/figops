@@ -4,8 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from hub_core.mcp import run_stdio_server
-from hub_core.mcp_surface import GraphHubMCPServer
+from hub_core.mcp import GraphHubMCPServer, run_stdio_server
 
 
 def _run_smoke() -> int:
