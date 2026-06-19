@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import hub_core.process_runner as pr
 from hub_core.cache_manager import load_build_state
+from hub_core.config_parser import load_config
 from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
 from hub_core.execution_log import append_execution_log
 from hub_core.logging import configure_logging, get_logger
@@ -236,3 +237,50 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertEqual("", stdout.getvalue())
         self.assertIn("unregistered figure(s)", stderr.getvalue())
         self.assertIn("[Digital Fingerprint] 1 file(s) tagged", stderr.getvalue())
+
+    def test_missing_project_config_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_config_missing_") as tmpdir:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                config, config_path, config_hash = load_config(tmpdir)
+
+        self.assertIsNone(config)
+        self.assertIsNone(config_path)
+        self.assertIsNone(config_hash)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("project_config.yaml not found", stderr.getvalue())
+
+    def test_invalid_project_config_yaml_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_config_yaml_") as tmpdir:
+            Path(tmpdir, "project_config.yaml").write_text("project: [\n", encoding="utf-8")
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                config, config_path, config_hash = load_config(tmpdir)
+
+        self.assertIsNone(config)
+        self.assertIsNone(config_path)
+        self.assertIsNone(config_hash)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("Invalid YAML", stderr.getvalue())
+
+    def test_invalid_project_config_schema_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_config_schema_") as tmpdir:
+            Path(tmpdir, "project_config.yaml").write_text("project: {}\n", encoding="utf-8")
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                config, config_path, config_hash = load_config(tmpdir)
+
+        self.assertIsNone(config)
+        self.assertIsNone(config_path)
+        self.assertIsNone(config_hash)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("Invalid config schema", stderr.getvalue())
