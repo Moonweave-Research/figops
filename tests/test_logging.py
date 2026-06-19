@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import matplotlib.pyplot as plt
 
 import hub_core.process_runner as pr
+import orchestrator
 from hub_core.athena_bridge import AthenaBridge
 from hub_core.cache_manager import load_build_state
 from hub_core.config_parser import load_config
@@ -438,3 +439,32 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertTrue(rendered)
         self.assertEqual("", stdout.getvalue())
         self.assertIn("Rendered: fig.png", stderr.getvalue())
+
+    def test_orchestrator_athena_health_hook_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        proc = MagicMock(returncode=0)
+
+        with (
+            patch("orchestrator.subprocess.run", return_value=proc),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            configure_logging("INFO")
+            orchestrator.run_athena_health_hook("/tmp/research-root", "/tmp/hub")
+
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("Athena Health", stderr.getvalue())
+
+    def test_orchestrator_cli_preset_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        config = {"presets": {"paper": {"target_format": "nature"}}, "visual_style": {}}
+
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            configure_logging("INFO")
+            orchestrator._apply_cli_preset(config, "paper")
+
+        self.assertEqual("nature", config["visual_style"]["target_format"])
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("--preset 'paper' applied", stderr.getvalue())
