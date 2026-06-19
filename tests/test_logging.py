@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -23,8 +24,11 @@ from hub_core.execution_log import append_execution_log
 from hub_core.logging import configure_logging, get_logger
 from hub_core.mcp import GraphHubMCPServer, run_stdio_server
 from hub_core.provenance import embed_figures_fingerprint, print_provenance, validate_environment_locks
+from hub_core.scaffold import scaffold_project
 from hub_core.ui_utils import ui_panel, ui_print, ui_table
 from hub_core.visual_regression import write_check_all_report
+
+HUB_ROOT = Path(__file__).resolve().parent.parent
 
 
 class TestGraphHubLogging(unittest.TestCase):
@@ -569,3 +573,35 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertEqual("", stdout.getvalue())
         self.assertIn("[Smart Build]", stderr.getvalue())
         self.assertIn("Pipeline Successfully Finished", stderr.getvalue())
+
+    def test_generated_scaffold_scripts_log_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_scaffold_") as tmpdir:
+            project_dir = Path(tmpdir) / "project"
+            scaffold_project(project_dir, HUB_ROOT, project_name="Logging Scaffold")
+            (project_dir / "results" / "data" / "summary.csv").write_text(
+                "time,value,molarity\n0,1,0.1\n1,2,0.2\n",
+                encoding="utf-8",
+            )
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(project_dir)
+                with (
+                    patch.dict(os.environ, {"RESEARCH_HUB_PATH": str(HUB_ROOT), "MPLBACKEND": "Agg"}, clear=False),
+                    contextlib.redirect_stdout(stdout),
+                    contextlib.redirect_stderr(stderr),
+                ):
+                    runpy.run_path(str(project_dir / "hub_scripts" / "plot.py"), run_name="__main__")
+                    runpy.run_path(
+                        str(project_dir / "hub_scripts" / "diagrams" / "device_cross_section.py"),
+                        run_name="__main__",
+                    )
+            finally:
+                os.chdir(old_cwd)
+
+        self.assertEqual("", stdout.getvalue())
+        stderr_text = stderr.getvalue()
+        self.assertIn("Saved scaffold figure", stderr_text)
+        self.assertIn("Saved scaffold diagram", stderr_text)
