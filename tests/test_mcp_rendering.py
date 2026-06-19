@@ -12,9 +12,9 @@ from unittest.mock import patch
 
 import yaml
 
+from hub_core.mcp import GraphHubMCPServer
 from hub_core.mcp.schemas import list_tool_definitions
 from hub_core.mcp.transport import _handle_json_rpc
-from hub_core.mcp_surface import GraphHubMCPServer
 
 
 class _CompletedRenderProcess:
@@ -1806,7 +1806,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
 
     def test_project_save_journal_populates_sidecar(self):
         # Routes through the real save_journal_fig chokepoint (not the write_bytes bypass),
-        # so the project env-dict transport (mcp_surface.py:2080-2081) is exercised: deleting
+        # so the project env-dict transport is exercised: deleting
         # those two env keys would drop the populated sidecar and fail this test.
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
