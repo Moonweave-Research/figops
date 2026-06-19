@@ -495,3 +495,38 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertEqual("", stdout.getvalue())
         self.assertIn("[Check-All Summary]", stderr.getvalue())
         self.assertIn("report_path: /tmp/check-all.json", stderr.getvalue())
+
+    def test_orchestrator_no_projects_error_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with (
+            patch.object(sys, "argv", ["orchestrator.py"]),
+            patch("orchestrator.run_preflight_check"),
+            patch("orchestrator.get_discoverable_projects", return_value=[]),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            rc = orchestrator.main()
+
+        self.assertEqual(1, rc)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("No configured projects found", stderr.getvalue())
+
+    def test_orchestrator_missing_project_error_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_missing_project_") as tmpdir:
+            with (
+                patch.object(sys, "argv", ["orchestrator.py", "--project", "missing"]),
+                patch("orchestrator.get_research_root", return_value=tmpdir),
+                patch("orchestrator.run_preflight_check"),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                rc = orchestrator.main()
+
+        self.assertEqual(1, rc)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("Project directory not found", stderr.getvalue())
