@@ -530,3 +530,42 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertEqual(1, rc)
         self.assertEqual("", stdout.getvalue())
         self.assertIn("Project directory not found", stderr.getvalue())
+
+    def test_orchestrator_pipeline_status_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        config = {"project": {"name": "Logging Project"}, "execution": {}, "pipeline": {"analysis": []}}
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_pipeline_") as tmpdir:
+            project_dir = Path(tmpdir) / "project"
+            project_dir.mkdir()
+            build_state_path = project_dir / ".build_state.json"
+            with (
+                patch.object(
+                    sys,
+                    "argv",
+                    ["orchestrator.py", "--project", str(project_dir), "--step", "analysis", "--verbose"],
+                ),
+                patch("orchestrator.run_preflight_check"),
+                patch(
+                    "orchestrator.load_config",
+                    return_value=(config, str(project_dir / "project_config.yaml"), "cfg"),
+                ),
+                patch("orchestrator.validate_environment_locks", return_value={"ok": True}),
+                patch("orchestrator.load_build_state", return_value=({}, str(build_state_path))),
+                patch("orchestrator.print_provenance"),
+                patch("orchestrator.run_analysis", return_value=True),
+                patch("orchestrator.save_build_state"),
+                patch("orchestrator.embed_figures_fingerprint", return_value=0),
+                patch("orchestrator._refresh_visual_output_signatures"),
+                patch("orchestrator.write_execution_log"),
+                patch("orchestrator.os.path.exists", side_effect=lambda path: Path(path).exists()),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                rc = orchestrator.main()
+
+        self.assertEqual(0, rc)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("[Smart Build]", stderr.getvalue())
+        self.assertIn("Pipeline Successfully Finished", stderr.getvalue())
