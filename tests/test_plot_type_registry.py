@@ -104,7 +104,7 @@ def test_described_tool_set_matches_live_tool_registry():
 
 
 def test_builtin_plot_types_registered():
-    assert {"bar", "line", "scatter", "xy", "heatmap", "box", "violin"}.issubset(PLOT_TYPES)
+    assert {"bar", "line", "scatter", "xy", "heatmap", "box", "violin", "facet"}.issubset(PLOT_TYPES)
 
 
 def test_distribution_plot_types_publish_contracts():
@@ -132,3 +132,44 @@ def test_distribution_plot_types_publish_contracts():
         "warns_small_n": True,
         "falls_back_for_small_n": True,
     }
+
+
+def test_facet_plot_type_publishes_contract():
+    assert PLOT_TYPES["facet"].arg_schema == {
+        "type": "object",
+        "required": ["facet_column"],
+        "properties": {
+            "facet_column": {"type": "string"},
+        },
+    }
+    assert PLOT_TYPES["facet"].capabilities == {
+        "supports_series": True,
+        "supports_yerr": True,
+        "supports_broken_axis": False,
+        "supports_faceting": True,
+        "base_plot_type": "line",
+        "shares_axes": True,
+    }
+
+
+def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
+    definitions = list_tool_definitions()
+    render_tool = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
+    assert render_tool["inputSchema"]["properties"]["facet_column"] == {"type": "string"}
+
+    with tempfile.TemporaryDirectory(prefix="graphhub_facet_schema_") as tmpdir:
+        data_path = Path(tmpdir) / "facet.csv"
+        data_path.write_text("x,y,phase\n0,1,A\n1,2,A\n0,3,B\n1,4,B\n", encoding="utf-8")
+        errors = _validate_tool_arguments(
+            "graphhub.render_csv_graph",
+            {
+                "data_path": str(data_path),
+                "x_column": "x",
+                "y_column": "y",
+                "facet_column": "phase",
+                "plot_type": "facet",
+            },
+            definitions,
+        )
+
+    assert errors == []

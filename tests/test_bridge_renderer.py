@@ -49,6 +49,18 @@ class BridgeRendererUnitTest(unittest.TestCase):
             writer.writerows(rows)
         return csv_path
 
+    def _write_facet_csv(self, root: Path, name: str) -> Path:
+        csv_path = root / name
+        rows = []
+        for facet_idx, facet in enumerate(("low strain", "high strain", "recovered")):
+            for idx in range(4):
+                rows.append({"cycle": idx, "stress": facet_idx + idx * 0.25, "phase": facet})
+        with csv_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = DictWriter(handle, fieldnames=["cycle", "stress", "phase"])
+            writer.writeheader()
+            writer.writerows(rows)
+        return csv_path
+
     def test_display_label_uses_shared_compression_rules(self):
         raw = "Coated Sample_Noa_None_Aligned"
         compressed = _display_label(raw)
@@ -211,6 +223,59 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 x_column="condition",
                 y_column="modulus",
                 title="Violin distribution",
+            )
+
+            with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):
+                out = render_bridge_figure(spec)
+
+            self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
+            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
+
+    def test_facet_plot_type_renders_one_subplot_per_facet(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_facet_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_facet_csv(tmpdir_path, "facet.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "facet.png"),
+                plot_type="facet",
+                x_column="cycle",
+                y_column="stress",
+                title="Facet stress",
+                facet_column="phase",
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                axes = [ax for ax in fig.axes if ax.get_visible()]
+                observed["titles"] = [ax.get_title() for ax in axes]
+                observed["line_counts"] = [len(ax.lines) for ax in axes]
+                observed["xlabels"] = [ax.get_xlabel() for ax in axes]
+                observed["ylabels"] = [ax.get_ylabel() for ax in axes]
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                out = render_bridge_figure(spec)
+
+            self.assertTrue(Path(out).exists())
+            self.assertEqual(observed["titles"], ["low strain", "high strain", "recovered"])
+            self.assertEqual(observed["line_counts"], [1, 1, 1])
+            self.assertEqual(observed["xlabels"], ["", "", "cycle"])
+            self.assertEqual(observed["ylabels"], ["stress", "", "stress"])
+
+    def test_facet_plot_type_matches_visual_regression_baseline(self):
+        baseline = Path(__file__).parent / "fixtures" / "visual_regression" / "m4_2_facet_plot.png"
+        with tempfile.TemporaryDirectory(prefix="bridge_facet_baseline_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_facet_csv(tmpdir_path, "facet.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "facet.png"),
+                plot_type="facet",
+                x_column="cycle",
+                y_column="stress",
+                title="Facet stress",
+                facet_column="phase",
             )
 
             with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):

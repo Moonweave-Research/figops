@@ -183,6 +183,8 @@ def _plot_type_example(name: str, arg_schema: dict[str, Any]) -> dict[str, Any]:
     }
     if "z_column" in arg_schema.get("required", []):
         arguments["z_column"] = "z"
+    if "facet_column" in arg_schema.get("required", []):
+        arguments["facet_column"] = "facet"
     return {"tool": "graphhub.render_csv_graph", "arguments": arguments}
 
 
@@ -364,6 +366,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "x_column": {"type": "string"},
                     "y_column": {"type": "string"},
                     "z_column": {"type": "string"},
+                    "facet_column": {"type": "string"},
                     "plot_type": {"type": "string", "enum": supported_render_plot_types, "default": "scatter"},
                     "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
                     "profile": {

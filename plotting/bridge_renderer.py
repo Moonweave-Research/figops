@@ -138,6 +138,7 @@ class BridgeFigureSpec:
     physics_type: str = ""
     overlay_baselines: tuple[dict, ...] = ()
     y_break_range: tuple[float, float] | None = None
+    facet_column: str = ""
 
 
 def render_bridge_figure(spec: BridgeFigureSpec) -> str:
@@ -471,7 +472,7 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
         reader = csv.DictReader(handle)
         headers = reader.fieldnames or []
         required = [spec.x_column, spec.y_column]
-        for col_attr in ("label_column", "series_column", "yerr_column", "yerr_minus_column"):
+        for col_attr in ("label_column", "series_column", "yerr_column", "yerr_minus_column", "facet_column"):
             col = getattr(spec, col_attr)
             if col:
                 required.append(col)
@@ -509,6 +510,7 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
                     "series": row[spec.series_column] if spec.series_column else "",
                     "yerr": yerr_val,
                     "yerr_minus": yerr_minus_val,
+                    "facet": row[spec.facet_column] if spec.facet_column else "",
                 }
             )
     if skipped:
@@ -832,6 +834,58 @@ def _render_heatmap_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None
     colorbar = ax.figure.colorbar(mesh, ax=ax)
     colorbar.ax._graph_hub_role = "colorbar"  # positive tag for geometry-diagnostics classification
     colorbar.set_label(spec.z_column)
+
+
+def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
+    if not spec.facet_column:
+        raise ValueError("facet plot_type requires facet_column")
+    if not points:
+        warnings.warn(
+            f"bridge_renderer: no valid data points for {spec.title!r}, figure will be blank",
+            stacklevel=2,
+        )
+        return
+
+    fig = ax.figure
+    ax.set_visible(False)
+    grouped = _group_facet_points(points)
+    n_facets = len(grouped)
+    n_cols = min(3, max(1, math.ceil(math.sqrt(n_facets))))
+    n_rows = math.ceil(n_facets / n_cols)
+    shared_x = None
+    shared_y = None
+
+    for idx, (facet_name, facet_points) in enumerate(grouped.items()):
+        row_idx = idx // n_cols
+        col_idx = idx % n_cols
+        facet_ax = fig.add_subplot(n_rows, n_cols, idx + 1, sharex=shared_x, sharey=shared_y)
+        if shared_x is None:
+            shared_x = facet_ax
+            shared_y = facet_ax
+        _render_xy_plot(facet_ax, facet_points, spec, line=True)
+        facet_ax.set_title(_display_label(facet_name, compress_labels=spec.compress_labels))
+        if row_idx == n_rows - 1:
+            facet_ax.set_xlabel(spec.x_axis_label or spec.x_column)
+        else:
+            facet_ax.set_xlabel("")
+            facet_ax.tick_params(labelbottom=False)
+        if col_idx == 0:
+            facet_ax.set_ylabel(spec.y_axis_label or spec.y_column)
+        else:
+            facet_ax.set_ylabel("")
+        if facet_ax.get_legend() is not None:
+            facet_ax.get_legend().remove()
+
+    if spec.title:
+        fig.suptitle(spec.title)
+
+
+def _group_facet_points(points: list[dict]) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for point in points:
+        key = str(point.get("facet") or "")
+        grouped.setdefault(key, []).append(point)
+    return grouped
 
 
 def _render_box_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
