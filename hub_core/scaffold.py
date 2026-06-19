@@ -118,11 +118,15 @@ def apply_project_theme(target_format=None, font_scale=None, profile_name=None):
     return theme_font_tokens(target, scale, profile)
 """
 
-DEFAULT_PLOT_PY = """import os
+DEFAULT_PLOT_PY = """import logging
+import os
 import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
+
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr, force=True)
+logger = logging.getLogger(__name__)
 
 hub_path = os.environ.get("RESEARCH_HUB_PATH")
 if not hub_path:
@@ -168,18 +172,22 @@ def main():
 
     save_journal_fig(fig, output_path)  # dpi from apply_journal_theme rcParams
     plt.close(fig)
-    print(f"Saved scaffold figure: {output_path}")
+    logger.info("Saved scaffold figure: %s", output_path)
 
 
 if __name__ == "__main__":
     main()
 """
 
-DEFAULT_DIAGRAM_PY = """import os
+DEFAULT_DIAGRAM_PY = """import logging
+import os
 import sys
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr, force=True)
+logger = logging.getLogger(__name__)
 
 hub_path = os.environ.get("RESEARCH_HUB_PATH")
 if not hub_path:
@@ -224,7 +232,7 @@ def main():
 
     save_journal_fig(fig, output_path)  # dpi from apply_journal_theme rcParams
     plt.close(fig)
-    print(f"Saved scaffold diagram: {output_path}")
+    logger.info("Saved scaffold diagram: %s", output_path)
 
 
 if __name__ == "__main__":
