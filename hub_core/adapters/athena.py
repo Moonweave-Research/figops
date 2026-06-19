@@ -16,6 +16,10 @@ class AthenaBridge(Protocol):
 
     def run_draft_bridge(self, project_dir: str, hub_path: str) -> None: ...
 
+    def load_solve_context_env(self) -> dict[str, str]: ...
+
+    def load_solve_data_context(self) -> dict: ...
+
 
 class NullAthena:
     def run_health_hook(self, root_dir: str, hub_path: str) -> None:
@@ -24,12 +28,75 @@ class NullAthena:
     def run_draft_bridge(self, project_dir: str, hub_path: str) -> None:
         return None
 
+    def load_solve_context_env(self) -> dict[str, str]:
+        return {}
+
+    def load_solve_data_context(self) -> dict:
+        return {}
+
 
 class LegacyAthenaBridge:
-    def run_health_hook(self, root_dir: str, hub_path: str) -> None:
-        from orchestrator import run_athena_health_hook
+    _athena_path_registered = False
 
-        run_athena_health_hook(root_dir, hub_path)
+    def _ensure_athena_on_path(self) -> None:
+        if self._athena_path_registered:
+            return
+        from hub_core.utils import get_hub_path
+
+        athena_root = os.path.abspath(os.path.join(get_hub_path(), "..", "[Athena]"))
+        if athena_root not in sys.path:
+            sys.path.insert(0, athena_root)
+        self._athena_path_registered = True
+
+    def load_solve_context_env(self) -> dict[str, str]:
+        try:
+            self._ensure_athena_on_path()
+            from integrations.solve_live_context import load_as_env_vars
+
+            return load_as_env_vars()
+        except Exception as exc:
+            logger.warning("      Failed to load solve context env: %s: %s", type(exc).__name__, exc)
+            return {}
+
+    def load_solve_data_context(self) -> dict:
+        try:
+            self._ensure_athena_on_path()
+            from integrations.solve_live_context import load_as_data_context
+
+            return load_as_data_context()
+        except Exception as exc:
+            logger.warning("      Failed to load solve data context: %s: %s", type(exc).__name__, exc)
+            return {}
+
+    def run_health_hook(self, root_dir: str, hub_path: str) -> None:
+        health_script = os.path.join(root_dir, "scripts", "athena_health.py")
+        report_path = os.path.join(root_dir, "workspace_state.md")
+
+        try:
+            result = subprocess.run(
+                [sys.executable, health_script, "--md-out", report_path],
+                capture_output=True,
+                text=True,
+                cwd=hub_path,
+                check=True,
+                timeout=SUBPROCESS_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("\nAthena Health hook timed out; pipeline result is unchanged.")
+            return
+        except subprocess.CalledProcessError as exc:
+            logger.warning("\nAthena Health hook failed; pipeline result is unchanged.")
+            stderr_preview = (exc.stderr or exc.stdout or "").strip()
+            if stderr_preview:
+                logger.warning("   %s", stderr_preview[:200])
+            return
+        except Exception as exc:
+            logger.warning("\nAthena Health hook error: %s; pipeline result is unchanged.", exc)
+            return
+
+        if result.returncode == 0:
+            logger.info("\nAthena Health: workspace_state.md updated.")
+            logger.info("   - sync_status refreshed.")
 
     def run_draft_bridge(self, project_dir: str, hub_path: str) -> None:
         bridge_script = os.path.join(hub_path, "graph_hub_draft_bridge.py")

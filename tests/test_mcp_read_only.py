@@ -335,28 +335,29 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             self._write_legacy_project(root, "03_Legacy")
             self._write_project(root, ".worktrees/feature/04_Worktree")
 
-            server = GraphHubMCPServer(research_root=Path(tmpdir))
-            result = self._call(
-                server,
-                "graphhub.list_projects",
-                {"root": str(root), "include_worktrees": True, "include_ephemeral": True, "max_depth": 5},
-            )
+            with unittest.mock.patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "surfur"}, clear=False):
+                server = GraphHubMCPServer(research_root=Path(tmpdir))
+                result = self._call(
+                    server,
+                    "graphhub.list_projects",
+                    {"root": str(root), "include_worktrees": True, "include_ephemeral": True, "max_depth": 5},
+                )
 
-            by_path = {project["project_root"]: project for project in result["projects"]}
-            self.assertEqual(by_path["03_Legacy"]["status"], "legacy")
-            self.assertEqual(by_path[".worktrees/feature/04_Worktree"]["status"], "ephemeral")
+                by_path = {project["project_root"]: project for project in result["projects"]}
+                self.assertEqual(by_path["03_Legacy"]["status"], "legacy")
+                self.assertEqual(by_path[".worktrees/feature/04_Worktree"]["status"], "ephemeral")
 
-            inspected = self._call(
-                server,
-                "graphhub.inspect_project",
-                {
-                    "root": str(root),
-                    "project_id": by_path[".worktrees/feature/04_Worktree"]["project_id"],
-                    "include_worktrees": True,
-                    "include_ephemeral": True,
-                    "max_depth": 5,
-                },
-            )
+                inspected = self._call(
+                    server,
+                    "graphhub.inspect_project",
+                    {
+                        "root": str(root),
+                        "project_id": by_path[".worktrees/feature/04_Worktree"]["project_id"],
+                        "include_worktrees": True,
+                        "include_ephemeral": True,
+                        "max_depth": 5,
+                    },
+                )
             self.assertEqual(inspected["status"], "ok")
             self.assertEqual(inspected["style_summary"]["target_format"], "nature_surfur")
 

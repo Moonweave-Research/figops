@@ -17,7 +17,6 @@ import argparse
 import hashlib
 import os
 import shlex
-import subprocess
 import sys
 from datetime import datetime, timezone
 
@@ -56,43 +55,11 @@ from hub_core import (
     validate_environment_locks,
     write_execution_log,
 )
+from hub_core.adapters import select_adapters
 from hub_core.cache_manager import collect_signatures
 from hub_core.logging import configure_logging, get_logger
 
-SUBPROCESS_TIMEOUT = 60  # seconds; guards athena health hook and draft bridge
 logger = get_logger(__name__)
-
-
-def run_athena_health_hook(root_dir: str, hub_path: str) -> None:
-    health_script = os.path.join(root_dir, "scripts", "athena_health.py")
-    report_path = os.path.join(root_dir, "workspace_state.md")
-
-    try:
-        result = subprocess.run(
-            [sys.executable, health_script, "--md-out", report_path],
-            capture_output=True,
-            text=True,
-            cwd=hub_path,
-            check=True,
-            timeout=SUBPROCESS_TIMEOUT,
-        )
-
-    except subprocess.TimeoutExpired:
-        logger.warning("\n⚠️  Athena Health hook 시간 초과 (파이프라인 결과에는 영향 없음)")
-        return
-    except subprocess.CalledProcessError as exc:
-        logger.warning("\n⚠️  Athena Health hook 실행 실패 (파이프라인 결과에는 영향 없음)")
-        stderr_preview = (exc.stderr or exc.stdout or "").strip()
-        if stderr_preview:
-            logger.warning("   %s", stderr_preview[:200])
-        return
-    except Exception as exc:
-        logger.warning("\n⚠️  Athena Health hook 오류: %s (파이프라인 결과에는 영향 없음)", exc)
-        return
-
-    if result.returncode == 0:
-        logger.info("\n🩺 Athena Health: workspace_state.md 업데이트 완료")
-        logger.info("   - sync_status: Sync OK 상태를 포함해 갱신됨")
 
 
 def _refresh_visual_output_signatures(project_dir: str, config: dict, build_state: dict) -> None:
@@ -247,7 +214,6 @@ def main():
     args = parser.parse_args()
     configure_logging(verbose=args.verbose)
 
-    # 루트 경로 계산 (Google Drive '연구' 폴더 상정)
     root_dir = inferred_root_dir
     hub_path = inferred_hub_path
 
@@ -270,6 +236,7 @@ def main():
     lock_info = None
     build_state_path = None
     failure_dump_path = None
+    adapters = None
 
     if args.docker and os.environ.get("RESEARCH_HUB_IN_DOCKER") != "1":
         try:
@@ -434,6 +401,8 @@ def main():
             _apply_cli_preset(config, args.preset)
             config_hash = hashlib.sha256(f"{config_hash}:preset={args.preset}".encode()).hexdigest()
 
+        adapters = select_adapters(config)
+
         lock_info = validate_environment_locks(
             project_dir=project_path,
             hub_path=hub_path,
@@ -546,6 +515,8 @@ def main():
                     step=args.step,
                     force=args.force,
                     failure_context=sweep_failure,
+                    prefetcher=adapters.prefetcher,
+                    athena=adapters.athena,
                 )
                 if not success:
                     failure_stage = sweep_failure.get("stage", "EXECUTE")
@@ -576,6 +547,8 @@ def main():
                     step=args.step,
                     force=args.force,
                     failure_context=comparison_failure,
+                    prefetcher=adapters.prefetcher,
+                    athena=adapters.athena,
                 )
                 if not success:
                     failure_stage = comparison_failure.get("stage", "EXECUTE")
@@ -587,6 +560,7 @@ def main():
                     project_path,
                     config,
                     require_existing=args.step == "plot",
+                    prefetcher=adapters.prefetcher,
                 )
                 if not success:
                     failure_stage = "VALIDATE"
@@ -600,6 +574,8 @@ def main():
                     build_state_path=build_state_path,
                     config_hash=config_hash,
                     force=args.force,
+                    prefetcher=adapters.prefetcher,
+                    athena=adapters.athena,
                 )
                 if not success:
                     failure_stage = "EXECUTE"
@@ -623,7 +599,7 @@ def main():
                     status_message = "Golden regression check failed."
 
             if success and args.step in ["plot", "all"]:
-                success = validate_data_contract(project_path, config)
+                success = validate_data_contract(project_path, config, prefetcher=adapters.prefetcher)
                 if not success:
                     failure_stage = "VALIDATE"
                     status_message = "Data contract validation failed."
@@ -636,13 +612,15 @@ def main():
                     build_state_path=build_state_path,
                     config_hash=config_hash,
                     force=args.force,
+                    prefetcher=adapters.prefetcher,
+                    athena=adapters.athena,
                 )
                 if not success:
                     failure_stage = "EXECUTE"
                     status_message = "Plotting step failed."
 
             if success and args.step in ["plot", "all"]:
-                run_athena_health_hook(root_dir, hub_path)
+                adapters.athena.run_health_hook(root_dir, hub_path)
 
             if success and args.step in ["diagrams", "all"]:
                 success = run_diagrams(
@@ -652,6 +630,8 @@ def main():
                     build_state_path=build_state_path,
                     config_hash=config_hash,
                     force=args.force,
+                    prefetcher=adapters.prefetcher,
+                    athena=adapters.athena,
                 )
                 if not success:
                     failure_stage = "EXECUTE"
@@ -758,31 +738,8 @@ def main():
 
     duration = end_time - start_time
 
-    # ── Draft Station Bridge (파이프라인 성공 시 자동 실행) ──
-    if success and project_path:
-        try:
-            bridge_script = os.path.join(hub_path, "graph_hub_draft_bridge.py")
-            if os.path.exists(bridge_script):
-                import subprocess
-
-                result = subprocess.run(
-                    [sys.executable, bridge_script, "--project", project_path, "--manifest-only"],
-                    capture_output=True,
-                    text=True,
-                    cwd=hub_path,
-                    timeout=SUBPROCESS_TIMEOUT,
-                )
-                if result.returncode == 0:
-                    logger.info("\n📋 Draft Bridge: manifest 업데이트 완료")
-                    logger.info("   /draft show-candidates <alias> 로 결과 확인")
-                else:
-                    logger.warning("\n⚠️  Draft Bridge 실행 실패 (파이프라인 결과에는 영향 없음)")
-                    if result.stderr:
-                        logger.warning("   %s", result.stderr.strip()[:200])
-        except subprocess.TimeoutExpired:
-            logger.warning("\n⚠️  Draft Bridge 시간 초과 (파이프라인 결과에는 영향 없음)")
-        except Exception as e:
-            logger.warning("\n⚠️  Draft Bridge 오류: %s (파이프라인 결과에는 영향 없음)", e)
+    if success and project_path and adapters is not None:
+        adapters.athena.run_draft_bridge(project_path, hub_path)
 
     logger.info("\n%s", "=" * 60)
     if success:

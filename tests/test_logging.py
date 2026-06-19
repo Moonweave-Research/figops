@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 
 import hub_core.process_runner as pr
 import orchestrator
+from hub_core.adapters import LegacyAthenaBridge
 from hub_core.athena_bridge import AthenaBridge
 from hub_core.cache_manager import load_build_state
 from hub_core.config_parser import load_config
@@ -451,12 +452,12 @@ class TestGraphHubLogging(unittest.TestCase):
         proc = MagicMock(returncode=0)
 
         with (
-            patch("orchestrator.subprocess.run", return_value=proc),
+            patch("hub_core.adapters.athena.subprocess.run", return_value=proc),
             contextlib.redirect_stdout(stdout),
             contextlib.redirect_stderr(stderr),
         ):
             configure_logging("INFO")
-            orchestrator.run_athena_health_hook("/tmp/research-root", "/tmp/hub")
+            LegacyAthenaBridge().run_health_hook("/tmp/research-root", "/tmp/hub")
 
         self.assertEqual("", stdout.getvalue())
         self.assertIn("Athena Health", stderr.getvalue())
