@@ -7,20 +7,20 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import orchestrator
+from hub_core.adapters import LegacyAthenaBridge
 
 
 class OrchestratorSubprocessTimeoutTest(unittest.TestCase):
     def test_athena_health_hook_timeout_is_swallowed(self):
         # TimeoutExpired must not propagate — the function should return silently.
         with (
-            patch("orchestrator.os.path.join", return_value="/fake/athena_health.py"),
             patch(
-                "orchestrator.subprocess.run",
+                "hub_core.adapters.athena.subprocess.run",
                 side_effect=subprocess.TimeoutExpired(cmd="athena_health.py", timeout=60),
             ),
         ):
             # Should complete without raising.
-            orchestrator.run_athena_health_hook("/fake/root", "/fake/hub")
+            LegacyAthenaBridge().run_health_hook("/fake/root", "/fake/hub")
 
     def test_draft_bridge_timeout_is_swallowed(self):
         # TimeoutExpired on the draft bridge must not propagate out of main().
@@ -28,7 +28,11 @@ class OrchestratorSubprocessTimeoutTest(unittest.TestCase):
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
 
-            config = {"project": {"name": "timeout-demo"}, "execution": {}}
+            config = {
+                "project": {"name": "timeout-demo"},
+                "execution": {},
+                "environment": {"adapters": {"athena": "legacy"}},
+            }
 
             argv = ["orchestrator.py", "--project", str(project_dir), "--step", "plot"]
 
@@ -59,7 +63,7 @@ class OrchestratorSubprocessTimeoutTest(unittest.TestCase):
                 patch("orchestrator.run_plots", return_value=True),
                 patch("orchestrator.write_execution_log", side_effect=mock_log),
                 patch("orchestrator.get_hub_path", return_value=str(tmpdir)),
-                patch("orchestrator.subprocess.run", side_effect=fake_subprocess_run),
+                patch("hub_core.adapters.athena.subprocess.run", side_effect=fake_subprocess_run),
             ):
                 rc = orchestrator.main()
 

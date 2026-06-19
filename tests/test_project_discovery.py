@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from hub_core.adapters import SurfurConventions
 from hub_core.project_discovery import ProjectDiscoveryService
 
 VALID_CONFIG = """
@@ -35,7 +36,19 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
         config_path.write_text(VALID_CONFIG.format(name=name), encoding="utf-8")
         return config_path
 
-    def test_discovers_symlinked_projects_and_excludes_ephemeral_defaults(self):
+    def test_generic_conventions_treat_surfur_paths_as_regular_projects(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            self._write_config(root / ".worktrees" / "feature" / "02_Worktree", "Worktree Project")
+            self._write_config(root / "[Athena]" / "bridge_jobs" / "job1" / "hub_project", "Bridge Job")
+
+            projects = ProjectDiscoveryService(root).discover(max_depth=5)
+
+            by_path = {project.path: project for project in projects}
+            self.assertEqual(by_path[".worktrees/feature/02_Worktree"].classification, "official")
+            self.assertEqual(by_path["[Athena]/bridge_jobs/job1/hub_project"].classification, "official")
+
+    def test_surfur_conventions_exclude_ephemeral_defaults(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
             real_project = Path(tmpdir) / "external" / "01_Project"
@@ -45,7 +58,7 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
             self._write_config(root / ".worktrees" / "feature" / "02_Worktree", "Worktree Project")
             self._write_config(root / "[Athena]" / "bridge_jobs" / "job1" / "hub_project", "Bridge Job")
 
-            projects = ProjectDiscoveryService(root).discover(max_depth=4)
+            projects = ProjectDiscoveryService(root, conventions=SurfurConventions()).discover(max_depth=4)
 
             paths = {project.path for project in projects}
             self.assertIn("01_Project", paths)
@@ -98,6 +111,7 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
                 root,
                 include_worktrees=True,
                 include_ephemeral=True,
+                conventions=SurfurConventions(),
             ).discover(max_depth=5)
 
             by_path = {project.path: project for project in projects}
@@ -116,11 +130,12 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
                 "Bridge Job",
             )
 
-            hidden = ProjectDiscoveryService(root).discover(max_depth=6)
+            hidden = ProjectDiscoveryService(root, conventions=SurfurConventions()).discover(max_depth=6)
             included = ProjectDiscoveryService(
                 root,
                 include_worktrees=True,
                 include_ephemeral=True,
+                conventions=SurfurConventions(),
             ).discover(max_depth=6)
 
             self.assertEqual(hidden, [])

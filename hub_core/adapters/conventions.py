@@ -7,11 +7,21 @@ from typing import Protocol
 class Conventions(Protocol):
     def is_ephemeral_project_path(self, rel_path: str) -> bool: ...
 
+    def is_worktree_path(self, rel_path: str) -> bool: ...
+
+    def is_bridge_job_path(self, rel_path: str) -> bool: ...
+
     def default_target_format(self) -> str: ...
 
 
 class GenericConventions:
     def is_ephemeral_project_path(self, rel_path: str) -> bool:
+        return False
+
+    def is_worktree_path(self, rel_path: str) -> bool:
+        return False
+
+    def is_bridge_job_path(self, rel_path: str) -> bool:
         return False
 
     def default_target_format(self) -> str:

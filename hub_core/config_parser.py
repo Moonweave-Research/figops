@@ -1063,7 +1063,7 @@ def load_config(project_dir):
         return None, None, None
     except OSError as e:
         logger.error("❌ Error: Failed to read config %s\n   └─ %s", config_path, e)
-        logger.error("   └─ Check file permissions and Google Drive sync state.")
+        logger.error("   └─ Check file permissions and local file availability.")
         return None, None, None
 
     errors = validate_config(config)

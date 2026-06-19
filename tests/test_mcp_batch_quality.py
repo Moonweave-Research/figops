@@ -202,9 +202,13 @@ class BatchQualityMCPTest(unittest.TestCase):
             self._write_project(root, "[Athena]/bridge_jobs/job-1/05_Bridge")
             before = _snapshot_files(root)
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
-
-            result = self._call(server, "graphhub.batch_check", {"root": str(root), "max_depth": 8, "dry_run": True})
+            with patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "surfur"}, clear=False):
+                server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+                result = self._call(
+                    server,
+                    "graphhub.batch_check",
+                    {"root": str(root), "max_depth": 8, "dry_run": True},
+                )
 
             self.assertEqual(result["status"], "ok")
             self.assertTrue(result["is_dry_run"])

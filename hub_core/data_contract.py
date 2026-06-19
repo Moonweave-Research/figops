@@ -5,8 +5,9 @@ import math
 import os
 from pathlib import Path
 
+from .adapters import select_adapters
 from .logging import get_logger
-from .utils import ensure_local_files, resolve_path
+from .utils import resolve_path
 
 logger = get_logger(__name__)
 
@@ -191,7 +192,12 @@ def get_data_contract_paths(config):
     return deduped
 
 
-def validate_data_contract_preflight(project_dir, config, require_existing: bool = False):
+def _resolve_prefetcher(config: dict, prefetcher=None):
+    return prefetcher if prefetcher is not None else select_adapters(config).prefetcher
+
+
+def validate_data_contract_preflight(project_dir, config, require_existing: bool = False, prefetcher=None):
+    prefetcher = _resolve_prefetcher(config, prefetcher)
     contract = config.get("data_contract", {})
     checks = contract.get("csv_checks", []) if isinstance(contract, dict) else []
 
@@ -226,7 +232,7 @@ def validate_data_contract_preflight(project_dir, config, require_existing: bool
             if not os.path.exists(resolved_path):
                 _log(f"      ❌ Required data_contract file not found: {resolved_path}")
                 return False
-            ensure_local_files([resolved_path])
+            prefetcher.ensure_local([resolved_path])
 
         _log("      ✅ Preflight passed")
 
@@ -234,7 +240,8 @@ def validate_data_contract_preflight(project_dir, config, require_existing: bool
     return True
 
 
-def validate_data_contract(project_dir, config):
+def validate_data_contract(project_dir, config, prefetcher=None):
+    prefetcher = _resolve_prefetcher(config, prefetcher)
     contract = config.get("data_contract", {})
     checks = contract.get("csv_checks", []) if isinstance(contract, dict) else []
 
@@ -263,7 +270,7 @@ def validate_data_contract(project_dir, config):
             _log(f"      ❌ Required CSV not found: {csv_path}")
             return False
 
-        ensure_local_files([csv_path])
+        prefetcher.ensure_local([csv_path])
 
         try:
             df = _read_data_safe(csv_path, pd)

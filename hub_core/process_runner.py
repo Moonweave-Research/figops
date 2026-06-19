@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
+from .adapters import select_adapters
 from .cache_manager import (
     collect_signatures,
     file_signature,
@@ -19,7 +20,6 @@ from .config_parser import get_language_policy, normalize_lang, resolve_presets,
 from .data_contract import get_data_contract_paths
 from .logging import get_logger
 from .utils import (
-    ensure_local_files,
     expand_glob_inputs,
     flatten_glob_results,
     get_hub_path,
@@ -88,12 +88,7 @@ def _sanitize_script_path(raw_path: str, project_dir: str) -> str:
     project_root = Path(project_dir).resolve()
     allowed = [hub_root, project_root]
     try:
-        _ensure_athena_on_path()
-        from utils.path_sanitizer import sanitize_path as _sp
-    except Exception:
-        _sp = _fallback_sanitize_path
-    try:
-        return str(_sp(raw_path, allowed))
+        return str(_fallback_sanitize_path(raw_path, allowed))
     except ValueError as exc:
         raise ValueError(f"Script path rejected (path traversal guard): {exc}") from exc
 
@@ -109,9 +104,6 @@ except Exception:
         return key if key else "baseline"
 
 
-_athena_path_registered = False
-
-
 def _set_failure_context(failure_context: dict | None, stage: str, message: str) -> None:
     if not isinstance(failure_context, dict):
         return
@@ -119,36 +111,12 @@ def _set_failure_context(failure_context: dict | None, stage: str, message: str)
     failure_context.setdefault("message", message)
 
 
-def _ensure_athena_on_path() -> None:
-    global _athena_path_registered
-    if _athena_path_registered:
-        return
-    athena_root = os.path.abspath(os.path.join(get_hub_path(), "..", "[Athena]"))
-    if athena_root not in sys.path:
-        sys.path.insert(0, athena_root)
-    _athena_path_registered = True
+def _resolve_prefetcher(config: dict, prefetcher=None):
+    return prefetcher if prefetcher is not None else select_adapters(config).prefetcher
 
 
-def _load_solve_context_env() -> dict[str, str]:
-    try:
-        _ensure_athena_on_path()
-        from integrations.solve_live_context import load_as_env_vars
-
-        return load_as_env_vars()
-    except Exception as exc:
-        _log(f"      ⚠️  Failed to load solve context env: {type(exc).__name__}: {exc}")
-        return {}
-
-
-def _load_solve_data_context() -> dict:
-    try:
-        _ensure_athena_on_path()
-        from integrations.solve_live_context import load_as_data_context
-
-        return load_as_data_context()
-    except Exception as exc:
-        _log(f"      ⚠️  Failed to load solve data context: {type(exc).__name__}: {exc}")
-        return {}
+def _resolve_athena(config: dict, athena=None):
+    return athena if athena is not None else select_adapters(config).athena
 
 
 def _resolve_runner(lang, step_cfg, config):
@@ -245,8 +213,19 @@ def run_command(cmd_list, cwd, additional_env=None):
         return False
 
 
-def run_analysis(project_dir, config, build_state, build_state_path, config_hash, force=False):
+def run_analysis(
+    project_dir,
+    config,
+    build_state,
+    build_state_path,
+    config_hash,
+    force=False,
+    prefetcher=None,
+    athena=None,
+):
     _log(f"\n🚀 [Analysis Step] {config['project']['name']}")
+    prefetcher = _resolve_prefetcher(config, prefetcher)
+    athena = _resolve_athena(config, athena)
     policy = get_language_policy(config)
     pipeline = config.get("pipeline", {})
     steps = pipeline.get("analysis", [])
@@ -301,7 +280,7 @@ def run_analysis(project_dir, config, build_state, build_state_path, config_hash
         if declared_inputs:
             additional_env["GRAPH_HUB_INPUTS"] = os.pathsep.join(resolve_path(project_dir, p) for p in declared_inputs)
 
-        solve_env = _load_solve_context_env()
+        solve_env = athena.load_solve_context_env()
         additional_env.update(solve_env)
 
         signature = {
@@ -339,10 +318,8 @@ def run_analysis(project_dir, config, build_state, build_state_path, config_hash
             _log(f"   [SKIP] analysis {i}: {script} (unchanged)")
             continue
 
-        # --- Prefetch Logic (Google Drive Force Download) ---
-        ensure_local_files(input_abs_paths)
+        prefetcher.ensure_local(input_abs_paths)
         scan_csv_export_anomalies(project_dir, declared_inputs)
-        # ----------------------------------------------------
         _log(f"   [RUN] analysis {i}: {script} ({stale_reason})")
         if lang == "r":
             base_cmd = _build_r_cmd(runner, script_full_path, config)
@@ -388,8 +365,12 @@ def _run_visual_artifacts(
     item_prefix,
     default_inputs,
     force=False,
+    prefetcher=None,
+    athena=None,
 ):
     _log(f"\n{step_header} {config['project']['name']}")
+    prefetcher = _resolve_prefetcher(config, prefetcher)
+    athena = _resolve_athena(config, athena)
     policy = get_language_policy(config)
     artifacts = config.get(section_name, [])
 
@@ -438,7 +419,7 @@ def _run_visual_artifacts(
         if style.get("output_format"):
             env_vars["THEME_OUTPUT_FORMAT"] = style["output_format"].strip().lower()
 
-        solve_env = _load_solve_context_env()
+        solve_env = athena.load_solve_context_env()
         env_vars.update(solve_env)
 
         runner = _resolve_runner(lang, artifact, config)
@@ -459,7 +440,7 @@ def _run_visual_artifacts(
         declared_outputs = [output]
 
         input_abs_paths = flatten_glob_results(glob_results)
-        ensure_local_files(input_abs_paths)
+        prefetcher.ensure_local(input_abs_paths)
 
         if declared_inputs:
             env_vars["GRAPH_HUB_INPUTS"] = os.pathsep.join(resolve_path(project_dir, p) for p in declared_inputs)
@@ -525,7 +506,7 @@ def _run_visual_artifacts(
 
                     athena_spec = artifact.get("spec", {})
                     output_abs_path = resolve_path(project_dir, expanded_output)
-                    data_context = {}
+                    data_context = athena.load_solve_data_context()
                     success = athena_bridge.render_from_athena_spec(athena_spec, output_abs_path, data_context)
                     if not success:
                         _log(f"      ❌ Athena rendering failed for {artifact_id} ({stem}).")
@@ -613,7 +594,7 @@ def _run_visual_artifacts(
             athena_spec = artifact.get("spec", {})
             output_abs_path = resolve_path(project_dir, output)
 
-            data_context = _load_solve_data_context()
+            data_context = athena.load_solve_data_context()
 
             success = athena_bridge.render_from_athena_spec(athena_spec, output_abs_path, data_context)
             if not success:
@@ -658,7 +639,16 @@ def _run_visual_artifacts(
     return True
 
 
-def run_plots(project_dir, config, build_state, build_state_path, config_hash, force=False):
+def run_plots(
+    project_dir,
+    config,
+    build_state,
+    build_state_path,
+    config_hash,
+    force=False,
+    prefetcher=None,
+    athena=None,
+):
     contract_paths = get_data_contract_paths(config)
     success = _run_visual_artifacts(
         project_dir,
@@ -674,13 +664,24 @@ def run_plots(project_dir, config, build_state, build_state_path, config_hash, f
         item_prefix="Fig",
         default_inputs=contract_paths,
         force=force,
+        prefetcher=prefetcher,
+        athena=athena,
     )
     if success:
         _log("   ✅ Plotting step completed.")
     return success
 
 
-def run_diagrams(project_dir, config, build_state, build_state_path, config_hash, force=False):
+def run_diagrams(
+    project_dir,
+    config,
+    build_state,
+    build_state_path,
+    config_hash,
+    force=False,
+    prefetcher=None,
+    athena=None,
+):
     success = _run_visual_artifacts(
         project_dir,
         config,
@@ -695,6 +696,8 @@ def run_diagrams(project_dir, config, build_state, build_state_path, config_hash
         item_prefix="Diagram",
         default_inputs=[],
         force=force,
+        prefetcher=prefetcher,
+        athena=athena,
     )
     if success:
         _log("   ✅ Diagram step completed.")
@@ -711,6 +714,8 @@ def run_sweep(
     step: str = "all",
     force: bool = False,
     failure_context: dict | None = None,
+    prefetcher=None,
+    athena=None,
 ) -> bool:
     from .config_parser import parse_sweep_config
     from .data_contract import validate_data_contract, validate_data_contract_preflight
@@ -769,6 +774,7 @@ def run_sweep(
                 project_dir,
                 run_config,
                 require_existing=step == "plot",
+                prefetcher=prefetcher,
             )
             if not run_success:
                 _set_failure_context(
@@ -791,6 +797,8 @@ def run_sweep(
                     build_state_path,
                     config_hash,
                     force=force,
+                    prefetcher=prefetcher,
+                    athena=athena,
                 )
                 if not run_success:
                     _set_failure_context(
@@ -799,7 +807,7 @@ def run_sweep(
                         f"Sweep analysis failed for run {idx}/{total} ({label_parts}).",
                     )
             if run_success and step in ("plot", "all"):
-                run_success = validate_data_contract(project_dir, run_config)
+                run_success = validate_data_contract(project_dir, run_config, prefetcher=prefetcher)
                 if not run_success:
                     _set_failure_context(
                         failure_context,
@@ -814,6 +822,8 @@ def run_sweep(
                     build_state_path,
                     config_hash,
                     force=force,
+                    prefetcher=prefetcher,
+                    athena=athena,
                 )
                 if not run_success:
                     _set_failure_context(
@@ -829,6 +839,8 @@ def run_sweep(
                     build_state_path,
                     config_hash,
                     force=force,
+                    prefetcher=prefetcher,
+                    athena=athena,
                 )
                 if not run_success:
                     _set_failure_context(
@@ -862,6 +874,8 @@ def run_comparison(
     step: str = "all",
     force: bool = False,
     failure_context: dict | None = None,
+    prefetcher=None,
+    athena=None,
 ) -> bool:
     from .config_parser import parse_comparison_config
     from .data_contract import validate_data_contract, validate_data_contract_preflight
@@ -919,6 +933,7 @@ def run_comparison(
                 project_dir,
                 run_config,
                 require_existing=step == "plot",
+                prefetcher=prefetcher,
             )
             if not run_success:
                 _set_failure_context(
@@ -941,6 +956,8 @@ def run_comparison(
                     build_state_path,
                     config_hash,
                     force=force,
+                    prefetcher=prefetcher,
+                    athena=athena,
                 )
                 if not run_success:
                     _set_failure_context(
@@ -949,7 +966,7 @@ def run_comparison(
                         f"Comparison analysis failed for condition {idx}/{total} ({label}).",
                     )
             if run_success and step in ("plot", "all"):
-                run_success = validate_data_contract(project_dir, run_config)
+                run_success = validate_data_contract(project_dir, run_config, prefetcher=prefetcher)
                 if not run_success:
                     _set_failure_context(
                         failure_context,
@@ -964,6 +981,8 @@ def run_comparison(
                     build_state_path,
                     config_hash,
                     force=force,
+                    prefetcher=prefetcher,
+                    athena=athena,
                 )
                 if not run_success:
                     _set_failure_context(
@@ -979,6 +998,8 @@ def run_comparison(
                     build_state_path,
                     config_hash,
                     force=force,
+                    prefetcher=prefetcher,
+                    athena=athena,
                 )
                 if not run_success:
                     _set_failure_context(

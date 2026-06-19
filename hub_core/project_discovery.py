@@ -6,8 +6,9 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from .adapters import select_adapters
+
 DEFAULT_EXCLUDED_DIRS = {"__pycache__"}
-EPHEMERAL_DIRS = {".worktrees"}
 
 
 @dataclass(frozen=True)
@@ -43,10 +44,12 @@ class ProjectDiscoveryService:
         *,
         include_worktrees: bool = False,
         include_ephemeral: bool = False,
+        conventions=None,
     ) -> None:
         self.root_dir = Path(root_dir).expanduser().resolve()
         self.include_worktrees = include_worktrees
         self.include_ephemeral = include_ephemeral
+        self.conventions = conventions if conventions is not None else select_adapters({}).conventions
 
     def discover(self, max_depth: int = 4) -> list[DiscoveredProject]:
         max_depth = max(1, int(max_depth or 1))
@@ -94,11 +97,11 @@ class ProjectDiscoveryService:
                 continue
             if dirname == ".venv":
                 continue
-            if dirname == ".worktrees" and not self.include_worktrees:
-                continue
             child = current_path / dirname
             rel_child = self._relative_path(child)
-            if self._is_bridge_job_path(rel_child) and not self.include_ephemeral:
+            if self.conventions.is_worktree_path(rel_child) and not self.include_worktrees:
+                continue
+            if self.conventions.is_bridge_job_path(rel_child) and not self.include_ephemeral:
                 continue
             result.append(dirname)
         return result
@@ -135,26 +138,14 @@ class ProjectDiscoveryService:
         return "official"
 
     def _include_ephemeral_path(self, rel_project: str) -> bool:
-        if self._is_worktree_path(rel_project):
+        if self.conventions.is_worktree_path(rel_project):
             return self.include_worktrees
-        if self._is_bridge_job_path(rel_project):
+        if self.conventions.is_bridge_job_path(rel_project):
             return self.include_ephemeral
         return self.include_ephemeral
 
     def _is_ephemeral_path(self, rel_project: str) -> bool:
-        return self._is_worktree_path(rel_project) or self._is_bridge_job_path(rel_project)
-
-    @staticmethod
-    def _is_worktree_path(rel_path: str) -> bool:
-        return ".worktrees" in Path(rel_path).parts
-
-    @staticmethod
-    def _is_bridge_job_path(rel_path: str) -> bool:
-        parts = Path(rel_path).parts
-        return any(
-            part == "[Athena]" and index + 1 < len(parts) and parts[index + 1] == "bridge_jobs"
-            for index, part in enumerate(parts)
-        )
+        return self.conventions.is_ephemeral_project_path(rel_project)
 
     def _relative_path(self, path: Path) -> str:
         try:
@@ -207,11 +198,13 @@ def discover_projects_with_status(
     max_depth: int = 4,
     include_worktrees: bool = False,
     include_ephemeral: bool = False,
+    conventions=None,
 ) -> list[dict]:
     service = ProjectDiscoveryService(
         root_dir,
         include_worktrees=include_worktrees,
         include_ephemeral=include_ephemeral,
+        conventions=conventions,
     )
     return [project.to_dict() for project in service.discover(max_depth=max_depth)]
 
@@ -222,6 +215,7 @@ def get_discoverable_projects(
     max_depth: int = 4,
     include_worktrees: bool = False,
     include_ephemeral: bool = False,
+    conventions=None,
 ) -> list[dict]:
     projects = []
     for project in discover_projects_with_status(
@@ -229,6 +223,7 @@ def get_discoverable_projects(
         max_depth=max_depth,
         include_worktrees=include_worktrees,
         include_ephemeral=include_ephemeral,
+        conventions=conventions,
     ):
         if not project["valid"]:
             continue
