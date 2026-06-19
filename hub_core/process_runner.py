@@ -1,4 +1,5 @@
 import glob as glob_module
+import logging
 import os
 import subprocess
 import sys
@@ -14,6 +15,7 @@ from .cache_manager import (
 )
 from .config_parser import get_language_policy, normalize_lang, resolve_presets, resolve_step_style
 from .data_contract import get_data_contract_paths
+from .logging import get_logger
 from .utils import (
     ensure_local_files,
     expand_glob_inputs,
@@ -26,6 +28,18 @@ from .utils import (
     verify_output_file,
 )
 from .uv_runtime import build_uv_environment, ensure_uv_runtime_dirs
+
+logger = get_logger(__name__)
+
+
+def _log(message: str = "") -> None:
+    if "❌" in message or "FAIL" in message:
+        level = logging.ERROR
+    elif "⚠️" in message or "[WARN]" in message:
+        level = logging.WARNING
+    else:
+        level = logging.INFO
+    logger.log(level, message)
 
 
 def _fallback_sanitize_path(raw_path: str, allowed_roots: list[Path]) -> Path:
@@ -104,7 +118,7 @@ def _load_solve_context_env() -> dict[str, str]:
 
         return load_as_env_vars()
     except Exception as exc:
-        print(f"      ⚠️  Failed to load solve context env: {type(exc).__name__}: {exc}")
+        _log(f"      ⚠️  Failed to load solve context env: {type(exc).__name__}: {exc}")
         return {}
 
 
@@ -115,7 +129,7 @@ def _load_solve_data_context() -> dict:
 
         return load_as_data_context()
     except Exception as exc:
-        print(f"      ⚠️  Failed to load solve data context: {type(exc).__name__}: {exc}")
+        _log(f"      ⚠️  Failed to load solve data context: {type(exc).__name__}: {exc}")
         return {}
 
 
@@ -188,37 +202,37 @@ def run_command(cmd_list, cwd, additional_env=None):
         output_lines: list[str] = []
         for line in process.stdout:
             stripped = line.strip()
-            print(f"      {stripped}")
+            _log(f"      {stripped}")
             if stripped:
                 output_lines.append(stripped)
         process.wait(timeout=600)  # 10분 타임아웃
         if process.returncode != 0:
-            print(f"      ❌ Execution failed with return code {process.returncode}")
+            _log(f"      ❌ Execution failed with return code {process.returncode}")
             tail = output_lines[-_OUTPUT_TAIL_LINES:] if len(output_lines) > _OUTPUT_TAIL_LINES else output_lines
             if tail:
-                print(f"      ── last {len(tail)} lines ──")
+                _log(f"      ── last {len(tail)} lines ──")
                 for tail_line in tail:
-                    print(f"      {tail_line}")
+                    _log(f"      {tail_line}")
         return process.returncode == 0
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait()
-        print("      ❌ Execution timed out (600s limit)")
+        _log("      ❌ Execution timed out (600s limit)")
         return False
     except Exception as e:
-        print(f"      ❌ Execution failed: {e}")
+        _log(f"      ❌ Execution failed: {e}")
         return False
 
 
 def run_analysis(project_dir, config, build_state, build_state_path, config_hash, force=False):
-    print(f"\n🚀 [Analysis Step] {config['project']['name']}")
+    _log(f"\n🚀 [Analysis Step] {config['project']['name']}")
     policy = get_language_policy(config)
     pipeline = config.get("pipeline", {})
     steps = pipeline.get("analysis", [])
     contract_paths = get_data_contract_paths(config)
 
     if not steps:
-        print("   (No analysis steps defined)")
+        _log("   (No analysis steps defined)")
         return True
 
     for i, step in enumerate(steps, 1):
@@ -227,25 +241,25 @@ def run_analysis(project_dir, config, build_state, build_state_path, config_hash
         step_key = f"{i}:{script}"
 
         if (not policy["allow_nonstandard"]) and lang != policy["analysis_lang"]:
-            print(f"      ❌ Policy violation: analysis language must be '{policy['analysis_lang']}', got '{lang}'.")
+            _log(f"      ❌ Policy violation: analysis language must be '{policy['analysis_lang']}', got '{lang}'.")
             return False
 
         script_full_path = resolve_path(project_dir, script)
         try:
             script_full_path = _sanitize_script_path(script_full_path, project_dir)
         except ValueError as exc:
-            print(f"      ❌ {exc}")
+            _log(f"      ❌ {exc}")
             return False
         if not os.path.exists(script_full_path):
-            print(f"      ❌ Script not found: {script_full_path}")
+            _log(f"      ❌ Script not found: {script_full_path}")
             return False
 
         runner = _resolve_runner(lang, step, config)
         if not runner:
-            print(f"      ❌ Unsupported language: {lang}")
+            _log(f"      ❌ Unsupported language: {lang}")
             return False
         if not is_executable_available(runner):
-            print(f"      ❌ Runner not found or not executable: {runner}")
+            _log(f"      ❌ Runner not found or not executable: {runner}")
             return False
 
         raw_inputs = normalize_string_list(step.get("inputs"))
@@ -257,7 +271,7 @@ def run_analysis(project_dir, config, build_state, build_state_path, config_hash
             declared_outputs = contract_paths
 
         if raw_inputs and not declared_inputs:
-            print(f"      ❌ Glob patterns matched zero files: {raw_inputs}")
+            _log(f"      ❌ Glob patterns matched zero files: {raw_inputs}")
             return False
 
         input_abs_paths = flatten_glob_results(glob_results)
@@ -301,27 +315,27 @@ def run_analysis(project_dir, config, build_state, build_state_path, config_hash
             )
 
         if not stale:
-            print(f"   [SKIP] analysis {i}: {script} (unchanged)")
+            _log(f"   [SKIP] analysis {i}: {script} (unchanged)")
             continue
 
         # --- Prefetch Logic (Google Drive Force Download) ---
         ensure_local_files(input_abs_paths)
         scan_csv_export_anomalies(project_dir, declared_inputs)
         # ----------------------------------------------------
-        print(f"   [RUN] analysis {i}: {script} ({stale_reason})")
+        _log(f"   [RUN] analysis {i}: {script} ({stale_reason})")
         if lang == "r":
             base_cmd = _build_r_cmd(runner, script_full_path, config)
         else:
             base_cmd = [runner, script]
         cmd = _prefix_uv_if_needed(base_cmd, config)
         if not run_command(cmd, project_dir, additional_env=additional_env):
-            print(f"      ❌ Step {i} failed. Stopping pipeline.")
+            _log(f"      ❌ Step {i} failed. Stopping pipeline.")
             return False
 
         output_signatures = collect_signatures(project_dir, declared_outputs)
         missing_outputs = [item["path"] for item in output_signatures if not item.get("exists")]
         if declared_outputs and missing_outputs:
-            print(f"      ❌ Analysis outputs not generated: {', '.join(missing_outputs)}")
+            _log(f"      ❌ Analysis outputs not generated: {', '.join(missing_outputs)}")
             return False
 
         record_step_state(
@@ -334,7 +348,7 @@ def run_analysis(project_dir, config, build_state, build_state_path, config_hash
         )
         save_build_state(build_state_path, build_state)
 
-    print("   ✅ Analysis step completed.")
+    _log("   ✅ Analysis step completed.")
     return True
 
 
@@ -354,12 +368,12 @@ def _run_visual_artifacts(
     default_inputs,
     force=False,
 ):
-    print(f"\n{step_header} {config['project']['name']}")
+    _log(f"\n{step_header} {config['project']['name']}")
     policy = get_language_policy(config)
     artifacts = config.get(section_name, [])
 
     if not artifacts:
-        print(f"   (No {section_name} defined)")
+        _log(f"   (No {section_name} defined)")
         return True
 
     resolved_presets = resolve_presets(config)
@@ -376,17 +390,17 @@ def _run_visual_artifacts(
 
         lang = normalize_lang(lang)
         if (not policy["allow_nonstandard"]) and lang != policy["plot_lang"] and lang != "athena":
-            print(f"      ❌ Policy violation: plotting language must be '{policy['plot_lang']}', got '{lang}'.")
+            _log(f"      ❌ Policy violation: plotting language must be '{policy['plot_lang']}', got '{lang}'.")
             return False
 
         script_full_path = resolve_path(project_dir, script)
         try:
             script_full_path = _sanitize_script_path(script_full_path, project_dir)
         except ValueError as exc:
-            print(f"      ❌ {exc}")
+            _log(f"      ❌ {exc}")
             return False
         if not os.path.exists(script_full_path):
-            print(f"      ❌ {run_label.capitalize()} script not found: {script_full_path}")
+            _log(f"      ❌ {run_label.capitalize()} script not found: {script_full_path}")
             return False
 
         style = resolve_step_style(artifact, config, resolved_presets)
@@ -409,10 +423,10 @@ def _run_visual_artifacts(
         runner = _resolve_runner(lang, artifact, config)
         if lang != "athena":
             if not runner:
-                print(f"      ❌ Unsupported language: {lang}")
+                _log(f"      ❌ Unsupported language: {lang}")
                 return False
             if not is_executable_available(runner):
-                print(f"      ❌ Runner not found or not executable: {runner}")
+                _log(f"      ❌ Runner not found or not executable: {runner}")
                 return False
 
         raw_inputs = normalize_string_list(artifact.get("inputs"))
@@ -432,7 +446,7 @@ def _run_visual_artifacts(
         has_glob_patterns = any(glob_module.has_magic(p) for p in raw_inputs) if raw_inputs else False
 
         if expand_mode == "each" and not has_glob_patterns and raw_inputs:
-            print("      [WARN] expand='each' has no effect without glob patterns in inputs")
+            _log("      [WARN] expand='each' has no effect without glob patterns in inputs")
 
         if expand_mode == "each" and has_glob_patterns:
             all_matched = flatten_glob_results(glob_results)
@@ -480,10 +494,10 @@ def _run_visual_artifacts(
                     )
 
                 if not iter_stale:
-                    print(f"   [SKIP] {skip_label} {artifact_id} ({stem}): {expanded_output} (unchanged)")
+                    _log(f"   [SKIP] {skip_label} {artifact_id} ({stem}): {expanded_output} (unchanged)")
                     continue
 
-                print(f"   [RUN] {run_label} {artifact_id} ({stem}): {expanded_output} ({iter_stale_reason})")
+                _log(f"   [RUN] {run_label} {artifact_id} ({stem}): {expanded_output} ({iter_stale_reason})")
 
                 if lang == "athena":
                     from hub_core import athena_bridge
@@ -493,30 +507,30 @@ def _run_visual_artifacts(
                     data_context = {}
                     success = athena_bridge.render_from_athena_spec(athena_spec, output_abs_path, data_context)
                     if not success:
-                        print(f"      ❌ Athena rendering failed for {artifact_id} ({stem}).")
+                        _log(f"      ❌ Athena rendering failed for {artifact_id} ({stem}).")
                         return False
                 else:
                     cmd = _prefix_uv_if_needed([runner, script], config)
                     try:
                         if not run_command(cmd, project_dir, additional_env=iter_env_vars):
-                            print(f"      ❌ Failed to generate {artifact_id} ({stem}). Stopping pipeline.")
+                            _log(f"      ❌ Failed to generate {artifact_id} ({stem}). Stopping pipeline.")
                             return False
                     except KeyError as e:
                         if "RESEARCH_COLOR_PALETTES" in str(e) or "Nature Journal" in str(e):
-                            print("      ❌ Style Error: Invalid palette name in script. Check palettes.yaml.")
+                            _log("      ❌ Style Error: Invalid palette name in script. Check palettes.yaml.")
                         else:
-                            print(f"      ❌ Logic Error: Missing key {e} in {run_label} script.")
+                            _log(f"      ❌ Logic Error: Missing key {e} in {run_label} script.")
                         return False
                     except Exception as e:
-                        print(f"      ❌ Unexpected execution failure: {e}")
+                        _log(f"      ❌ Unexpected execution failure: {e}")
                         return False
 
                 iter_output_path = resolve_path(project_dir, expanded_output)
                 valid, verification_msg = verify_output_file(iter_output_path)
                 if not valid:
-                    print(f"      ❌ Output verification failed: {verification_msg}")
+                    _log(f"      ❌ Output verification failed: {verification_msg}")
                     return False
-                print(f"      ✅ Output verified: {verification_msg}")
+                _log(f"      ✅ Output verified: {verification_msg}")
 
                 iter_output_signatures = collect_signatures(project_dir, expanded_declared_outputs)
                 record_step_state(
@@ -566,10 +580,10 @@ def _run_visual_artifacts(
             )
 
         if not stale:
-            print(f"   [SKIP] {skip_label} {artifact_id}: {output} (unchanged)")
+            _log(f"   [SKIP] {skip_label} {artifact_id}: {output} (unchanged)")
             continue
 
-        print(f"   [RUN] {run_label} {artifact_id}: {output} ({stale_reason})")
+        _log(f"   [RUN] {run_label} {artifact_id}: {output} ({stale_reason})")
 
         # ── 1. Check for Athena Engine ──────────────────────────────────────
         if lang == "athena":
@@ -582,7 +596,7 @@ def _run_visual_artifacts(
 
             success = athena_bridge.render_from_athena_spec(athena_spec, output_abs_path, data_context)
             if not success:
-                print(f"      ❌ Athena rendering failed for {artifact_id}.")
+                _log(f"      ❌ Athena rendering failed for {artifact_id}.")
                 return False
 
         # ── 2. Standard Script Execution ────────────────────────────────────
@@ -590,24 +604,24 @@ def _run_visual_artifacts(
             cmd = _prefix_uv_if_needed([runner, script], config)
             try:
                 if not run_command(cmd, project_dir, additional_env=env_vars):
-                    print(f"      ❌ Failed to generate {artifact_id}. Stopping pipeline.")
+                    _log(f"      ❌ Failed to generate {artifact_id}. Stopping pipeline.")
                     return False
             except KeyError as e:
                 if "RESEARCH_COLOR_PALETTES" in str(e) or "Nature Journal" in str(e):
-                    print("      ❌ Style Error: Invalid palette name in script. Check palettes.yaml.")
+                    _log("      ❌ Style Error: Invalid palette name in script. Check palettes.yaml.")
                 else:
-                    print(f"      ❌ Logic Error: Missing key {e} in {run_label} script.")
+                    _log(f"      ❌ Logic Error: Missing key {e} in {run_label} script.")
                 return False
             except Exception as e:
-                print(f"      ❌ Unexpected execution failure: {e}")
+                _log(f"      ❌ Unexpected execution failure: {e}")
                 return False
 
         output_path = resolve_path(project_dir, output)
         valid, verification_msg = verify_output_file(output_path)
         if not valid:
-            print(f"      ❌ Output verification failed: {verification_msg}")
+            _log(f"      ❌ Output verification failed: {verification_msg}")
             return False
-        print(f"      ✅ Output verified: {verification_msg}")
+        _log(f"      ✅ Output verified: {verification_msg}")
 
         output_signatures = collect_signatures(project_dir, declared_outputs)
         record_step_state(
@@ -641,7 +655,7 @@ def run_plots(project_dir, config, build_state, build_state_path, config_hash, f
         force=force,
     )
     if success:
-        print("   ✅ Plotting step completed.")
+        _log("   ✅ Plotting step completed.")
     return success
 
 
@@ -662,7 +676,7 @@ def run_diagrams(project_dir, config, build_state, build_state_path, config_hash
         force=force,
     )
     if success:
-        print("   ✅ Diagram step completed.")
+        _log("   ✅ Diagram step completed.")
     return success
 
 
@@ -685,7 +699,7 @@ def run_sweep(
     output_dir_pattern = parsed["output_dir_pattern"]
 
     if not runs:
-        print("   ⚠️  Sweep enabled but no parameter runs resolved. Check sweep.values or sweep.grid.")
+        _log("   ⚠️  Sweep enabled but no parameter runs resolved. Check sweep.values or sweep.grid.")
         _set_failure_context(
             failure_context,
             "CONFIG",
@@ -694,13 +708,13 @@ def run_sweep(
         return False
 
     total = len(runs)
-    print(f"\n🔁 [Sweep Mode] {total} run(s) scheduled")
+    _log(f"\n🔁 [Sweep Mode] {total} run(s) scheduled")
 
     all_success = True
     for idx, env_overrides in enumerate(runs, 1):
         label_parts = ", ".join(f"{k}={v}" for k, v in env_overrides.items())
-        print(f"\n{'─' * 60}")
-        print(f"   Sweep run {idx}/{total}: {label_parts}")
+        _log(f"\n{'─' * 60}")
+        _log(f"   Sweep run {idx}/{total}: {label_parts}")
 
         # Resolve output directory for this run
         output_dir = output_dir_pattern
@@ -818,17 +832,17 @@ def run_sweep(
             _self.run_command = _orig
 
         status = "✅" if run_success else "❌"
-        print(f"   {status} Sweep run {idx}/{total} ({label_parts}): {'OK' if run_success else 'FAILED'}")
-        print(f"      output_dir: {sweep_output_dir}")
+        _log(f"   {status} Sweep run {idx}/{total} ({label_parts}): {'OK' if run_success else 'FAILED'}")
+        _log(f"      output_dir: {sweep_output_dir}")
 
         if not run_success:
             all_success = False
 
-    print(f"\n{'=' * 60}")
+    _log(f"\n{'=' * 60}")
     if all_success:
-        print(f"✅ Sweep completed: {total}/{total} runs passed.")
+        _log(f"✅ Sweep completed: {total}/{total} runs passed.")
     else:
-        print("❌ Sweep finished with failures. Check output above.")
+        _log("❌ Sweep finished with failures. Check output above.")
     return all_success
 
 
@@ -851,7 +865,7 @@ def run_comparison(
     overlay_output = parsed["overlay_output"]
 
     if not conditions:
-        print("   ⚠️  Comparison enabled but no conditions defined. Check comparison.conditions.")
+        _log("   ⚠️  Comparison enabled but no conditions defined. Check comparison.conditions.")
         _set_failure_context(
             failure_context,
             "CONFIG",
@@ -860,9 +874,9 @@ def run_comparison(
         return False
 
     total = len(conditions)
-    print(f"\n🔀 [Comparison Mode] {total} condition(s) scheduled")
+    _log(f"\n🔀 [Comparison Mode] {total} condition(s) scheduled")
     if overlay_output:
-        print(f"   overlay_output: {overlay_output}")
+        _log(f"   overlay_output: {overlay_output}")
 
     all_success = True
     for idx, cond in enumerate(conditions, 1):
@@ -870,8 +884,8 @@ def run_comparison(
         env_overrides = cond["env"]
         data_override = cond.get("data_override")
 
-        print(f"\n{'─' * 60}")
-        print(f"   Condition {idx}/{total}: {label}")
+        _log(f"\n{'─' * 60}")
+        _log(f"   Condition {idx}/{total}: {label}")
 
         import copy
 
@@ -982,20 +996,20 @@ def run_comparison(
             _self.run_command = _orig
 
         status = "✅" if run_success else "❌"
-        print(f"   {status} Condition {idx}/{total} ({label}): {'OK' if run_success else 'FAILED'}")
-        print(f"      output_dir: {abs_condition_dir}")
+        _log(f"   {status} Condition {idx}/{total} ({label}): {'OK' if run_success else 'FAILED'}")
+        _log(f"      output_dir: {abs_condition_dir}")
 
         if not run_success:
             all_success = False
 
-    print(f"\n{'=' * 60}")
+    _log(f"\n{'=' * 60}")
     if all_success:
-        print(f"✅ Comparison completed: {total}/{total} conditions passed.")
+        _log(f"✅ Comparison completed: {total}/{total} conditions passed.")
         if overlay_output:
-            print(f"   overlay_output target: {os.path.join(project_dir, overlay_output)}")
-            print("   (overlay assembly is delegated to the project's plot script via COMPARISON_LABEL env vars)")
+            _log(f"   overlay_output target: {os.path.join(project_dir, overlay_output)}")
+            _log("   (overlay assembly is delegated to the project's plot script via COMPARISON_LABEL env vars)")
     else:
-        print("❌ Comparison finished with failures. Check output above.")
+        _log("❌ Comparison finished with failures. Check output above.")
     return all_success
 
 
@@ -1004,19 +1018,19 @@ def run_assemblies(project_dir: str, config: dict, force: bool = False) -> bool:
     if not assemblies:
         return True
 
-    print(f"\n   [Assembly Step] {config['project']['name']}")
+    _log(f"\n   [Assembly Step] {config['project']['name']}")
 
     from plotting.figure_assembler import assemble_figure
 
     all_success = True
     for fig_id, fig_cfg in assemblies.items():
-        print(f"   [RUN] assembling {fig_id}...")
+        _log(f"   [RUN] assembling {fig_id}...")
         try:
             out_path = assemble_figure(fig_id, fig_cfg, project_dir)
             rel_path = os.path.relpath(out_path, project_dir)
-            print(f"      -> {rel_path}")
+            _log(f"      -> {rel_path}")
         except Exception as exc:
-            print(f"      FAIL {fig_id}: {exc}")
+            _log(f"      FAIL {fig_id}: {exc}")
             all_success = False
 
     return all_success

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from hub_core.logging import configure_logging
 from hub_core.mcp import GraphHubMCPServer, run_stdio_server
 
 
@@ -25,6 +26,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Graph Hub MCP stdio server")
     parser.add_argument("--smoke", action="store_true", help="Run a read-only MCP health/style smoke check")
     args = parser.parse_args()
+    configure_logging()
     if args.smoke:
         return _run_smoke()
     return run_stdio_server(GraphHubMCPServer(require_initialize=True))

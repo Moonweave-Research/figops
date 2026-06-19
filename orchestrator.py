@@ -57,6 +57,7 @@ from hub_core import (
     write_execution_log,
 )
 from hub_core.cache_manager import collect_signatures
+from hub_core.logging import configure_logging
 
 SUBPROCESS_TIMEOUT = 60  # seconds; guards athena health hook and draft bridge
 
@@ -239,8 +240,10 @@ def main():
             "(nature, nature_surfur, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
         ),
     )
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging on stderr")
 
     args = parser.parse_args()
+    configure_logging(verbose=args.verbose)
 
     # 루트 경로 계산 (Google Drive '연구' 폴더 상정)
     root_dir = inferred_root_dir
