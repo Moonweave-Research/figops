@@ -15,6 +15,8 @@ from hub_core.mcp.tools.render_support import McpRenderToolSupportMixin
 from hub_core.rendering import PLOT_TYPES
 from themes.style_profiles import DEFAULT_PROFILE
 
+_STATISTICAL_OVERLAY_PLOT_TYPES = {"line", "scatter", "xy"}
+
 
 class McpRenderToolsMixin(McpRenderToolSupportMixin):
     """Graph rendering MCP tool handlers."""
@@ -50,6 +52,9 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
         target_format = str(arguments.get("target_format") or "nature").strip().lower()
         profile = str(arguments.get("profile") or DEFAULT_PROFILE).strip() or DEFAULT_PROFILE
         output_format = str(arguments.get("output_format") or "png").strip().lower().lstrip(".")
+        fit_line = arguments.get("fit_line", False)
+        ci_band = arguments.get("ci_band", False)
+        significance_markers = arguments.get("significance_markers", ())
         raw_semantic_checks = arguments.get("semantic_checks", {})
         semantic_checks = {} if raw_semantic_checks is None else raw_semantic_checks
         if plot_type not in PLOT_TYPES:
@@ -65,6 +70,28 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 is_dry_run=dry_run,
                 failure_stage="CONFIG",
                 resolution_hint="Use a supported plot_type.",
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=render_helpers._geometry_stub("no figure"),
+                layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
+            )
+        overlay_errors = self._statistical_overlay_arg_errors(
+            plot_type=plot_type,
+            fit_line=fit_line,
+            ci_band=ci_band,
+            significance_markers=significance_markers,
+        )
+        if overlay_errors:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid statistical overlay settings.",
+                errors=overlay_errors,
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Use fit_line, ci_band, and significance_markers only with line, scatter, or xy plots.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=render_helpers._geometry_stub("no figure"),
@@ -271,6 +298,9 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                         "y_column": y_column,
                         "z_column": z_column,
                         "facet_column": facet_column,
+                        "fit_line": fit_line,
+                        "ci_band": ci_band,
+                        "significance_markers": significance_markers,
                         "title": str(arguments.get("title") or "Graph Hub MCP render"),
                         "x_axis_label": str(arguments.get("x_axis_label") or x_column),
                         "y_axis_label": str(arguments.get("y_axis_label") or y_column),
@@ -444,6 +474,47 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
             baseline_comparison=baseline_comparison,
             calculation_checks=calculation_checks,
         )
+
+    @staticmethod
+    def _statistical_overlay_arg_errors(
+        *,
+        plot_type: str,
+        fit_line: Any,
+        ci_band: Any,
+        significance_markers: Any,
+    ) -> list[str]:
+        errors: list[str] = []
+        if not isinstance(fit_line, bool):
+            errors.append("fit_line must be a boolean.")
+        if not isinstance(ci_band, bool):
+            errors.append("ci_band must be a boolean.")
+        if significance_markers is None:
+            significance_markers = ()
+        if not isinstance(significance_markers, (list, tuple)):
+            errors.append("significance_markers must be an array of objects.")
+        else:
+            for idx, marker in enumerate(significance_markers):
+                if not isinstance(marker, dict):
+                    errors.append(f"significance_markers[{idx}] must be an object.")
+                    continue
+                missing = [key for key in ("x1", "x2", "y") if key not in marker]
+                if missing:
+                    errors.append(f"significance_markers[{idx}] missing required field(s): {', '.join(missing)}.")
+                    continue
+                for key in ("x1", "x2", "y", "h"):
+                    if key not in marker or marker.get(key) is None:
+                        continue
+                    try:
+                        float(marker[key])
+                    except (TypeError, ValueError):
+                        errors.append(f"significance_markers[{idx}].{key} must be numeric.")
+        has_overlays = bool(fit_line or ci_band or significance_markers)
+        if has_overlays and plot_type not in _STATISTICAL_OVERLAY_PLOT_TYPES:
+            errors.append(
+                "statistical overlays are only supported for plot_type 'line', 'scatter', or 'xy'."
+            )
+        return errors
+
     def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
         dry_run = bool(arguments.get("dry_run", False))
         overwrite = bool(arguments.get("overwrite", False))

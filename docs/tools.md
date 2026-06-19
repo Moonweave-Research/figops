@@ -992,6 +992,9 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "description": "Optional baseline figure path to compare the rendered output against.",
       "type": "string"
     },
+    "ci_band": {
+      "type": "boolean"
+    },
     "data_path": {
       "description": "CSV input path under an allowed data root.",
       "type": "string"
@@ -1002,6 +1005,9 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     },
     "facet_column": {
       "type": "string"
+    },
+    "fit_line": {
+      "type": "boolean"
     },
     "job_id": {
       "description": "Stable render job ID; auto-generated when omitted.",
@@ -1052,6 +1058,12 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "semantic_checks": {
       "description": "Optional per-column semantic constraints keyed by CSV column name.",
       "type": "object"
+    },
+    "significance_markers": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
     },
     "target_format": {
       "default": "nature",
@@ -2718,7 +2730,11 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "supports_broken_axis": true,
+  "supports_ci_band": true,
+  "supports_fit_line": true,
   "supports_series": true,
+  "supports_significance_markers": true,
+  "supports_statistical_overlays": true,
   "supports_yerr": true
 }
 ```
@@ -2726,7 +2742,20 @@ Run a bounded project discovery and validation batch check with optional runtime
 **Argument schema**
 
 ```json
-{}
+{
+  "properties": {
+    "ci_band": {
+      "type": "boolean"
+    },
+    "fit_line": {
+      "type": "boolean"
+    },
+    "significance_markers": {
+      "type": "array"
+    }
+  },
+  "type": "object"
+}
 ```
 
 **Worked example**
@@ -2734,11 +2763,21 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
+    "ci_band": true,
     "data_path": "/path/to/data.csv",
+    "fit_line": true,
     "job_id": "example-line",
     "output_format": "png",
     "plot_type": "line",
     "profile": "baseline",
+    "significance_markers": [
+      {
+        "label": "p<0.05",
+        "x1": 0,
+        "x2": 1,
+        "y": 2
+      }
+    ],
     "target_format": "nature",
     "x_column": "x",
     "y_column": "y"
@@ -2754,7 +2793,11 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "supports_broken_axis": true,
+  "supports_ci_band": true,
+  "supports_fit_line": true,
   "supports_series": true,
+  "supports_significance_markers": true,
+  "supports_statistical_overlays": true,
   "supports_yerr": true
 }
 ```
@@ -2762,7 +2805,20 @@ Run a bounded project discovery and validation batch check with optional runtime
 **Argument schema**
 
 ```json
-{}
+{
+  "properties": {
+    "ci_band": {
+      "type": "boolean"
+    },
+    "fit_line": {
+      "type": "boolean"
+    },
+    "significance_markers": {
+      "type": "array"
+    }
+  },
+  "type": "object"
+}
 ```
 
 **Worked example**
@@ -2770,11 +2826,21 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
+    "ci_band": true,
     "data_path": "/path/to/data.csv",
+    "fit_line": true,
     "job_id": "example-scatter",
     "output_format": "png",
     "plot_type": "scatter",
     "profile": "baseline",
+    "significance_markers": [
+      {
+        "label": "p<0.05",
+        "x1": 0,
+        "x2": 1,
+        "y": 2
+      }
+    ],
     "target_format": "nature",
     "x_column": "x",
     "y_column": "y"
@@ -2843,7 +2909,11 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "supports_broken_axis": true,
+  "supports_ci_band": true,
+  "supports_fit_line": true,
   "supports_series": true,
+  "supports_significance_markers": true,
+  "supports_statistical_overlays": true,
   "supports_yerr": true
 }
 ```
@@ -2851,7 +2921,20 @@ Run a bounded project discovery and validation batch check with optional runtime
 **Argument schema**
 
 ```json
-{}
+{
+  "properties": {
+    "ci_band": {
+      "type": "boolean"
+    },
+    "fit_line": {
+      "type": "boolean"
+    },
+    "significance_markers": {
+      "type": "array"
+    }
+  },
+  "type": "object"
+}
 ```
 
 **Worked example**
@@ -2859,11 +2942,21 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
+    "ci_band": true,
     "data_path": "/path/to/data.csv",
+    "fit_line": true,
     "job_id": "example-xy",
     "output_format": "png",
     "plot_type": "xy",
     "profile": "baseline",
+    "significance_markers": [
+      {
+        "label": "p<0.05",
+        "x1": 0,
+        "x2": 1,
+        "y": 2
+      }
+    ],
     "target_format": "nature",
     "x_column": "x",
     "y_column": "y"

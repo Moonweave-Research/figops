@@ -981,6 +981,29 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn("z_column", result["errors"][0])
             self.assertFalse((runtime_root / "mcp_jobs").exists())
 
+    def test_render_csv_graph_rejects_invalid_statistical_overlay_args(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "scatter",
+                    "significance_markers": [{"x1": 0, "y": 3, "label": "p<0.05"}],
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertIn("significance_markers[0]", result["errors"][0])
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
     def test_render_csv_graph_rejects_large_csv_before_copying(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = Path(tmpdir) / "input" / "large.csv"

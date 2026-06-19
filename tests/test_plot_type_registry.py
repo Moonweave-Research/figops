@@ -173,3 +173,62 @@ def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
         )
 
     assert errors == []
+
+
+def test_xy_plot_types_publish_statistical_overlay_contracts():
+    overlay_properties = {
+        "fit_line": {"type": "boolean"},
+        "ci_band": {"type": "boolean"},
+        "significance_markers": {"type": "array"},
+    }
+    for name in ("line", "scatter", "xy"):
+        plot_type = PLOT_TYPES[name]
+        assert plot_type.capabilities["supports_statistical_overlays"] is True
+        assert plot_type.capabilities["supports_fit_line"] is True
+        assert plot_type.capabilities["supports_ci_band"] is True
+        assert plot_type.capabilities["supports_significance_markers"] is True
+        for key, schema in overlay_properties.items():
+            assert plot_type.arg_schema["properties"][key] == schema
+
+
+def test_describe_surfaces_statistical_overlay_args_for_xy_plot_types():
+    surface = describe_graphhub_surface()
+    described = {plot_type["name"]: plot_type for plot_type in surface["plot_types"]}
+
+    for name in ("line", "scatter", "xy"):
+        props = described[name]["arg_schema"]["properties"]
+        assert props["fit_line"] == {"type": "boolean"}
+        assert props["ci_band"] == {"type": "boolean"}
+        assert props["significance_markers"] == {"type": "array"}
+        example_args = described[name]["worked_example"]["arguments"]
+        assert example_args["fit_line"] is True
+        assert example_args["ci_band"] is True
+        assert example_args["significance_markers"][0]["label"] == "p<0.05"
+
+
+def test_render_csv_schema_accepts_statistical_overlay_args():
+    definitions = list_tool_definitions()
+    render_tool = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
+    properties = render_tool["inputSchema"]["properties"]
+    assert properties["fit_line"] == {"type": "boolean"}
+    assert properties["ci_band"] == {"type": "boolean"}
+    assert properties["significance_markers"] == {"type": "array", "items": {"type": "object"}}
+
+    with tempfile.TemporaryDirectory(prefix="graphhub_stat_overlay_schema_") as tmpdir:
+        data_path = Path(tmpdir) / "overlay.csv"
+        data_path.write_text("x,y\n0,1\n1,2\n2,3\n", encoding="utf-8")
+        errors = _validate_tool_arguments(
+            "graphhub.render_csv_graph",
+            {
+                "data_path": str(data_path),
+                "x_column": "x",
+                "y_column": "y",
+                "plot_type": "scatter",
+                "fit_line": True,
+                "ci_band": True,
+                "significance_markers": [{"x1": 0, "x2": 2, "y": 3, "label": "p<0.05"}],
+            },
+            definitions,
+        )
+
+    assert errors == []
