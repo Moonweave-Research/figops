@@ -61,6 +61,22 @@ class BridgeRendererUnitTest(unittest.TestCase):
             writer.writerows(rows)
         return csv_path
 
+    def _write_overlay_csv(self, root: Path, name: str) -> Path:
+        csv_path = root / name
+        rows = [
+            {"strain": 0.0, "stress": 0.9},
+            {"strain": 1.0, "stress": 1.9},
+            {"strain": 2.0, "stress": 3.2},
+            {"strain": 3.0, "stress": 4.1},
+            {"strain": 4.0, "stress": 5.2},
+            {"strain": 5.0, "stress": 6.1},
+        ]
+        with csv_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = DictWriter(handle, fieldnames=["strain", "stress"])
+            writer.writeheader()
+            writer.writerows(rows)
+        return csv_path
+
     def test_display_label_uses_shared_compression_rules(self):
         raw = "Coated Sample_Noa_None_Aligned"
         compressed = _display_label(raw)
@@ -276,6 +292,81 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 y_column="stress",
                 title="Facet stress",
                 facet_column="phase",
+            )
+
+            with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):
+                out = render_bridge_figure(spec)
+
+            self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
+            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
+
+    def test_statistical_overlays_render_fit_ci_and_significance_marker(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_stat_overlay_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_overlay_csv(tmpdir_path, "overlay.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "overlay.png"),
+                plot_type="scatter",
+                x_column="strain",
+                y_column="stress",
+                title="Stat overlays",
+                fit_line=True,
+                ci_band=True,
+                significance_markers=({"x1": 1.0, "x2": 4.0, "y": 5.6, "label": "p<0.01"},),
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                ax = fig.axes[0]
+                observed["line_labels"] = [line.get_label() for line in ax.lines]
+                observed["collections"] = [type(collection).__name__ for collection in ax.collections]
+                observed["texts"] = [text.get_text() for text in ax.texts]
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                out = render_bridge_figure(spec)
+
+            self.assertTrue(Path(out).exists())
+            self.assertIn("Linear fit", observed["line_labels"])
+            self.assertTrue(any("PolyCollection" in name for name in observed["collections"]))
+            self.assertIn("p<0.01", observed["texts"])
+
+    def test_statistical_overlay_rejects_invalid_significance_marker(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_stat_overlay_invalid_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_overlay_csv(tmpdir_path, "overlay.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "overlay.png"),
+                plot_type="scatter",
+                x_column="strain",
+                y_column="stress",
+                title="Stat overlays",
+                significance_markers=({"x1": 1.0, "y": 5.6, "label": "p<0.01"},),
+            )
+
+            with self.assertRaises(ValueError) as ctx:
+                render_bridge_figure(spec)
+
+            self.assertIn("significance_markers[0]", str(ctx.exception))
+            self.assertIn("x2", str(ctx.exception))
+
+    def test_statistical_overlays_match_visual_regression_baseline(self):
+        baseline = Path(__file__).parent / "fixtures" / "visual_regression" / "m4_2_stat_overlays.png"
+        with tempfile.TemporaryDirectory(prefix="bridge_stat_overlay_baseline_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_overlay_csv(tmpdir_path, "overlay.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "overlay.png"),
+                plot_type="scatter",
+                x_column="strain",
+                y_column="stress",
+                title="Statistical overlays",
+                fit_line=True,
+                ci_band=True,
+                significance_markers=({"x1": 1.0, "x2": 4.0, "y": 5.6, "label": "p<0.01"},),
             )
 
             with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):

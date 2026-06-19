@@ -100,6 +100,16 @@ _DISTRIBUTION_ARG_SCHEMA = {
 }
 
 
+_STATISTICAL_OVERLAY_ARG_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "fit_line": {"type": "boolean"},
+        "ci_band": {"type": "boolean"},
+        "significance_markers": {"type": "array"},
+    },
+}
+
+
 _FACET_ARG_SCHEMA = {
     "type": "object",
     "required": ["facet_column"],
@@ -119,20 +129,38 @@ PLOT_TYPES: dict[str, PlotType] = {
     "line": PlotType(
         name="line",
         render=_render_line,
-        arg_schema={},
-        capabilities=_common_capabilities(supports_broken_axis=True),
+        arg_schema=_STATISTICAL_OVERLAY_ARG_SCHEMA,
+        capabilities=_common_capabilities(
+            supports_broken_axis=True,
+            supports_statistical_overlays=True,
+            supports_fit_line=True,
+            supports_ci_band=True,
+            supports_significance_markers=True,
+        ),
     ),
     "scatter": PlotType(
         name="scatter",
         render=_render_scatter,
-        arg_schema={},
-        capabilities=_common_capabilities(supports_broken_axis=True),
+        arg_schema=_STATISTICAL_OVERLAY_ARG_SCHEMA,
+        capabilities=_common_capabilities(
+            supports_broken_axis=True,
+            supports_statistical_overlays=True,
+            supports_fit_line=True,
+            supports_ci_band=True,
+            supports_significance_markers=True,
+        ),
     ),
     "xy": PlotType(
         name="xy",
         render=_render_line,
-        arg_schema={},
-        capabilities=_common_capabilities(supports_broken_axis=True),
+        arg_schema=_STATISTICAL_OVERLAY_ARG_SCHEMA,
+        capabilities=_common_capabilities(
+            supports_broken_axis=True,
+            supports_statistical_overlays=True,
+            supports_fit_line=True,
+            supports_ci_band=True,
+            supports_significance_markers=True,
+        ),
     ),
     "heatmap": PlotType(
         name="heatmap",

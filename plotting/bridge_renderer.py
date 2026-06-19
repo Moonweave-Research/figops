@@ -18,6 +18,7 @@ import numpy as np
 from hub_core.rendering import PLOT_TYPES, render_plot
 from plotting.axis_break import _draw_break_marks
 from plotting.utils import (
+    annotate_significance,
     apply_density_alpha,
     auto_panel_tag,
     compress_sample_label,
@@ -139,6 +140,9 @@ class BridgeFigureSpec:
     overlay_baselines: tuple[dict, ...] = ()
     y_break_range: tuple[float, float] | None = None
     facet_column: str = ""
+    fit_line: bool = False
+    ci_band: bool = False
+    significance_markers: tuple[dict, ...] = ()
 
 
 def render_bridge_figure(spec: BridgeFigureSpec) -> str:
@@ -155,6 +159,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         points = _load_points(csv_path, spec)
+        _validate_statistical_overlays(points, spec)
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
         try:
             if spec.y_break_range is not None:
@@ -162,6 +167,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
                 _render_broken_axis_plot(fig, points, spec)
             else:
                 _render_plot(ax, points, spec)
+                _draw_statistical_overlays(ax, points, spec)
                 _draw_overlay_baselines(ax, spec.overlay_baselines)
                 _apply_axes_metadata(ax, spec)
                 ax.set_title(spec.title)
@@ -636,6 +642,134 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
 
     if has_multi_series:
         ax.legend(**_legend_kwargs(ax, spec, n_series=len(grouped)))
+
+
+def _has_statistical_overlays(spec: BridgeFigureSpec) -> bool:
+    return bool(spec.fit_line or spec.ci_band or spec.significance_markers)
+
+
+def _validate_statistical_overlays(points: list[dict], spec: BridgeFigureSpec) -> None:
+    if not _has_statistical_overlays(spec):
+        return
+    plot_type = str(spec.plot_type or "").strip().lower()
+    if plot_type not in {"line", "scatter", "xy"}:
+        raise ValueError(
+            "statistical overlays are only supported for plot_type 'line', 'scatter', or 'xy'; "
+            f"got {spec.plot_type!r}"
+        )
+    if spec.y_break_range is not None:
+        raise ValueError("statistical overlays do not support y_break_range")
+    if spec.fit_line or spec.ci_band:
+        min_points = 3 if spec.ci_band else 2
+        _numeric_xy_arrays(points, min_points=min_points, context="fit_line/ci_band")
+    _normalized_significance_markers(spec.significance_markers)
+
+
+def _numeric_xy_arrays(points: list[dict], *, min_points: int, context: str) -> tuple[np.ndarray, np.ndarray]:
+    xs: list[float] = []
+    ys: list[float] = []
+    for point in points:
+        try:
+            x_val = float(point["x"])
+            y_val = float(point["y"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{context} requires numeric x and y values") from exc
+        if not math.isfinite(x_val) or not math.isfinite(y_val):
+            raise ValueError(f"{context} requires finite x and y values")
+        xs.append(x_val)
+        ys.append(y_val)
+
+    if len(xs) < min_points:
+        raise ValueError(f"{context} requires at least {min_points} valid points")
+    if len(set(xs)) < 2:
+        raise ValueError(f"{context} requires at least two distinct x values")
+    return np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)
+
+
+def _normalized_significance_markers(markers: object) -> tuple[dict[str, float | str | None], ...]:
+    if markers in (None, (), []):
+        return ()
+    if not isinstance(markers, (list, tuple)):
+        raise ValueError("significance_markers must be an array of objects")
+
+    normalized = []
+    for idx, marker in enumerate(markers):
+        if not isinstance(marker, dict):
+            raise ValueError(f"significance_markers[{idx}] must be an object")
+        missing = [key for key in ("x1", "x2", "y") if key not in marker]
+        if missing:
+            raise ValueError(f"significance_markers[{idx}] missing required field(s): {', '.join(missing)}")
+        try:
+            x1 = float(marker["x1"])
+            x2 = float(marker["x2"])
+            y = float(marker["y"])
+            h = float(marker["h"]) if marker.get("h") is not None else None
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"significance_markers[{idx}] x1, x2, y, and h must be numeric") from exc
+        if not all(math.isfinite(value) for value in (x1, x2, y)) or (h is not None and not math.isfinite(h)):
+            raise ValueError(f"significance_markers[{idx}] x1, x2, y, and h must be finite")
+        label = str(marker.get("label") or marker.get("text") or "*")
+        color = str(marker.get("color") or "black")
+        normalized.append({"x1": x1, "x2": x2, "y": y, "h": h, "label": label, "color": color})
+    return tuple(normalized)
+
+
+def _draw_statistical_overlays(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
+    if not _has_statistical_overlays(spec):
+        return
+    if spec.fit_line or spec.ci_band:
+        _draw_linear_fit_overlay(ax, points, spec)
+    for marker in _normalized_significance_markers(spec.significance_markers):
+        annotate_significance(
+            ax,
+            marker["x1"],
+            marker["x2"],
+            marker["y"],
+            str(marker["label"]),
+            h=marker["h"],
+            color=str(marker["color"]),
+        )
+
+
+def _draw_linear_fit_overlay(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
+    xs, ys = _numeric_xy_arrays(points, min_points=3 if spec.ci_band else 2, context="fit_line/ci_band")
+    slope, intercept = np.polyfit(xs, ys, 1)
+    x_grid = np.linspace(float(xs.min()), float(xs.max()), 200)
+    y_grid = slope * x_grid + intercept
+    ax.plot(x_grid, y_grid, color="black", linewidth=1.0, linestyle="-", label="Linear fit", zorder=4)
+
+    if not spec.ci_band:
+        return
+
+    dof = len(xs) - 2
+    if dof <= 0:
+        raise ValueError("ci_band requires at least 3 valid points")
+    residuals = ys - (slope * xs + intercept)
+    sxx = float(np.sum((xs - float(xs.mean())) ** 2))
+    if sxx <= 0:
+        raise ValueError("ci_band requires at least two distinct x values")
+    residual_std = math.sqrt(float(np.sum(residuals**2)) / dof)
+    se_mean = residual_std * np.sqrt((1 / len(xs)) + ((x_grid - float(xs.mean())) ** 2 / sxx))
+    t_crit = _t_critical_95(dof)
+    ax.fill_between(
+        x_grid,
+        y_grid - t_crit * se_mean,
+        y_grid + t_crit * se_mean,
+        color="black",
+        alpha=0.12,
+        linewidth=0,
+        label="95% CI",
+        zorder=1,
+    )
+
+
+def _t_critical_95(dof: int) -> float:
+    try:
+        from scipy.stats import t
+
+        return float(t.ppf(0.975, dof))
+    except Exception:
+        return 1.96
 
 
 def _render_broken_axis_plot(fig, points: list[dict], spec: BridgeFigureSpec) -> None:
