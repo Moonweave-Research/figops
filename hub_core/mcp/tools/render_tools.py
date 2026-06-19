@@ -8,11 +8,11 @@ from typing import Any
 
 import yaml
 
+from hub_core.adapters import select_adapters
 from hub_core.config_parser import validate_config
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.schemas import SUPPORTED_RENDER_PLOT_TYPES
 from hub_core.mcp.tools.render_support import McpRenderToolSupportMixin
-from hub_core.utils import ensure_local_files
 from themes.style_profiles import DEFAULT_PROFILE
 
 
@@ -144,8 +144,9 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 geometry_diagnostics=render_helpers._geometry_stub("no figure"),
                 layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
             )
+        prefetcher = select_adapters(config).prefetcher
         with redirect_stdout(sys.stderr):
-            ensure_local_files([str(data_path)])
+            prefetcher.ensure_local([str(data_path)])
         contract_result = self._validate_render_data_contract(
             data_path,
             required_columns=[

@@ -308,7 +308,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(str(Path(result["output_path"]).resolve()).startswith(str(runtime_root.resolve())))
             self.assertFalse(preview_root.exists())
 
-    def test_render_csv_graph_redirects_prefetch_stdout_away_from_mcp_stdout(self):
+    def test_render_csv_graph_redirects_gdrive_prefetch_stdout_away_from_mcp_stdout(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
@@ -319,8 +319,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 print("prefetch stdout would corrupt MCP framing")
 
             with (
+                patch.dict(os.environ, {"GRAPH_HUB_PREFETCH_ADAPTER": "gdrive"}, clear=False),
                 patch("hub_core.mcp.security.resolve_runtime_root", return_value=str(runtime_root)),
-                patch("hub_core.mcp.tools.render_tools.ensure_local_files", side_effect=noisy_prefetch),
+                patch("hub_core.adapters.prefetch.ensure_local_files", side_effect=noisy_prefetch),
                 contextlib.redirect_stdout(stdout),
                 contextlib.redirect_stderr(stderr),
             ):
@@ -1278,12 +1279,32 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 self.assertEqual(payload["calculation_checks"]["checks"][0]["name"], "axis_unit")
                 self.assertEqual(payload["calculation_checks"]["checks"][0]["status"], "skipped")
 
-    def test_render_csv_graph_prefetches_input_before_reading_or_copying(self):
+    def test_render_csv_graph_default_prefetcher_is_noop(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
-            with patch("hub_core.mcp.tools.render_tools.ensure_local_files") as ensure_local:
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch("hub_core.adapters.prefetch.ensure_local_files", side_effect=AssertionError("gdrive ran")),
+            ):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+
+    def test_render_csv_graph_uses_gdrive_prefetcher_when_opted_in(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
+
+            with (
+                patch.dict(os.environ, {"GRAPH_HUB_PREFETCH_ADAPTER": "gdrive"}, clear=False),
+                patch("hub_core.adapters.prefetch.ensure_local_files") as ensure_local,
+            ):
                 result = self._call(
                     server,
                     "graphhub.render_csv_graph",
