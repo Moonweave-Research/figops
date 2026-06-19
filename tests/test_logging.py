@@ -2,15 +2,17 @@ import contextlib
 import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import hub_core.process_runner as pr
 from hub_core.cache_manager import load_build_state
 from hub_core.config_parser import load_config
 from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
+from hub_core.docker_runner import rerun_in_docker
 from hub_core.execution_log import append_execution_log
 from hub_core.logging import configure_logging, get_logger
 from hub_core.mcp import GraphHubMCPServer, run_stdio_server
@@ -284,3 +286,44 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertIsNone(config_hash)
         self.assertEqual("", stdout.getvalue())
         self.assertIn("Invalid config schema", stderr.getvalue())
+
+    def test_docker_runner_status_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        proc = MagicMock(returncode=0)
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_docker_") as tmpdir:
+            with (
+                patch("hub_core.docker_runner.shutil.which", return_value="/usr/bin/docker"),
+                patch("hub_core.docker_runner.subprocess.run", return_value=proc),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                configure_logging("INFO")
+                rc = rerun_in_docker(tmpdir, tmpdir, [], build=True)
+
+        self.assertEqual(0, rc)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("[Docker Build]", stderr.getvalue())
+        self.assertIn("[Docker Mode]", stderr.getvalue())
+
+    def test_docker_runner_timeout_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_docker_timeout_") as tmpdir:
+            with (
+                patch("hub_core.docker_runner.shutil.which", return_value="/usr/bin/docker"),
+                patch(
+                    "hub_core.docker_runner.subprocess.run",
+                    side_effect=subprocess.TimeoutExpired(cmd="docker", timeout=3600),
+                ),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                configure_logging("INFO")
+                rc = rerun_in_docker(tmpdir, tmpdir, [])
+
+        self.assertEqual(1, rc)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("Docker run timed out", stderr.getvalue())
