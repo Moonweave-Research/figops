@@ -18,6 +18,7 @@ from hub_core.execution_log import append_execution_log
 from hub_core.logging import configure_logging, get_logger
 from hub_core.mcp import GraphHubMCPServer, run_stdio_server
 from hub_core.provenance import embed_figures_fingerprint, print_provenance, validate_environment_locks
+from hub_core.ui_utils import ui_panel, ui_print, ui_table
 from hub_core.visual_regression import write_check_all_report
 
 
@@ -351,3 +352,18 @@ class TestGraphHubLogging(unittest.TestCase):
 
         self.assertEqual("", stdout.getvalue())
         self.assertIn("[Contract Violations] Report saved", stderr.getvalue())
+
+    def test_ui_helpers_write_human_output_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            ui_print("plain status")
+            ui_panel("panel body", title="Panel")
+            ui_table("Table", ["Name"], [["alpha"]])
+
+        self.assertEqual("", stdout.getvalue())
+        stderr_text = stderr.getvalue()
+        self.assertIn("plain status", stderr_text)
+        self.assertIn("panel body", stderr_text)
+        self.assertIn("alpha", stderr_text)

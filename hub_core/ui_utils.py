@@ -1,35 +1,33 @@
 import sys
-import os
 
 try:
     from rich.console import Console
-    from rich.table import Table
     from rich.panel import Panel
-    from rich.prompt import Prompt, Confirm
-    from rich import print as rprint
+    from rich.prompt import Confirm, Prompt
+    from rich.table import Table
     HAS_RICH = True
-    console = Console()
+    console = Console(stderr=True)
 except ImportError:
     HAS_RICH = False
     console = None
 
 def ui_print(message, style=None):
     if HAS_RICH:
-        rprint(message)
+        console.print(message, style=style)
     else:
         # Simple fallback for standard print
         # Remove rich-style tags if present
         import re
         clean_msg = re.sub(r'\[/?[a-z #0-9]+\]', '', str(message))
-        print(clean_msg)
+        print(clean_msg, file=sys.stderr)
 
 def ui_panel(message, title=None, subtitle=None, style="blue"):
     if HAS_RICH:
         ui_print(Panel(message, title=title, subtitle=subtitle, border_style=style))
     else:
-        print(f"\n{'='*10} {title if title else ''} {'='*10}")
-        print(message)
-        print('='*30)
+        print(f"\n{'='*10} {title if title else ''} {'='*10}", file=sys.stderr)
+        print(message, file=sys.stderr)
+        print('='*30, file=sys.stderr)
 
 def ui_table(title, columns, rows):
     if HAS_RICH:
@@ -40,13 +38,13 @@ def ui_table(title, columns, rows):
             table.add_row(*row)
         console.print(table)
     else:
-        print(f"\n--- {title} ---")
+        print(f"\n--- {title} ---", file=sys.stderr)
         header = " | ".join(columns)
-        print(header)
-        print("-" * len(header))
+        print(header, file=sys.stderr)
+        print("-" * len(header), file=sys.stderr)
         for row in rows:
-            print(" | ".join(map(str, row)))
-        print("-" * len(header))
+            print(" | ".join(map(str, row)), file=sys.stderr)
+        print("-" * len(header), file=sys.stderr)
 
 def ui_prompt(message, default=None):
     if HAS_RICH:
