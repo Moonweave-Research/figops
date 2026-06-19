@@ -115,7 +115,10 @@ class ProcessRunnerPrefetchAdapterTest(unittest.TestCase):
             with (
                 patch.dict(os.environ, {}, clear=True),
                 patch("hub_core.process_runner.run_command", return_value=True),
-                patch("hub_core.utils.ensure_local_files", side_effect=AssertionError("gdrive prefetch ran")),
+                patch(
+                    "hub_core.adapters.prefetch.ensure_local_files",
+                    side_effect=AssertionError("gdrive prefetch ran"),
+                ),
             ):
                 result = process_runner.run_analysis(
                     str(project_dir),
@@ -145,7 +148,7 @@ class ProcessRunnerPrefetchAdapterTest(unittest.TestCase):
             with (
                 patch.dict(os.environ, {}, clear=True),
                 patch("hub_core.process_runner.run_command", return_value=True),
-                patch("hub_core.utils.ensure_local_files") as ensure_local,
+                patch("hub_core.adapters.prefetch.ensure_local_files") as ensure_local,
             ):
                 result = process_runner.run_analysis(
                     str(project_dir),

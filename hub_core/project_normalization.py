@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from .adapters import select_adapters
 from .config_parser import ALLOWED_TARGET_FORMATS, validate_config
 from .scaffold import (
     DEFAULT_ANALYZE_R,
@@ -34,6 +35,7 @@ def plan_scaffold_project(
     project_name: str,
     target_format: str,
     template: str,
+    conventions=None,
 ) -> dict[str, Any]:
     if template not in {"standard", "researchos"}:
         raise ValueError("template must be 'standard' or 'researchos'.")
@@ -41,8 +43,9 @@ def plan_scaffold_project(
         raise ValueError(f"Invalid target_format: {target_format}.")
 
     project_root = _project_root_path(project_root)
+    conventions = conventions if conventions is not None else select_adapters({}).conventions
     config = _scaffold_config(hub_path, project_name, target_format)
-    entries = _scaffold_entries(project_root, config)
+    entries = _scaffold_entries(project_root, config, conventions=conventions)
     return {
         "operation": "scaffold_project",
         "project_root": str(project_root),
@@ -338,7 +341,7 @@ def _scaffold_config(hub_path: Path, project_name: str, target_format: str) -> d
     return config
 
 
-def _scaffold_entries(project_root: Path, config: dict[str, Any]) -> list[dict[str, Any]]:
+def _scaffold_entries(project_root: Path, config: dict[str, Any], *, conventions) -> list[dict[str, Any]]:
     directories = [
         ".",
         "raw",
@@ -364,7 +367,7 @@ def _scaffold_entries(project_root: Path, config: dict[str, Any]) -> list[dict[s
             "destination": rel_path,
             "operation": "mkdir",
             "kind": "directory",
-            "reason": "ResearchOS scaffold directory",
+            "reason": conventions.scaffold_directory_reason(),
             "status": "planned",
             "checksum": "",
         }
@@ -376,7 +379,7 @@ def _scaffold_entries(project_root: Path, config: dict[str, Any]) -> list[dict[s
             "destination": rel_path,
             "operation": "write",
             "kind": "file",
-            "reason": "ResearchOS scaffold file",
+            "reason": conventions.scaffold_file_reason(),
             "status": "planned",
             "checksum": hashlib.sha256(content.encode("utf-8")).hexdigest(),
             "content": content,

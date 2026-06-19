@@ -52,25 +52,31 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
     def test_scaffold_project_dry_run_is_side_effect_free(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project_root = Path(tmpdir) / "ResearchOS" / "New_Project"
-            server = GraphHubMCPServer(research_root=Path(tmpdir))
             before = _snapshot_files(Path(tmpdir))
 
-            result = self._call(
-                server,
-                "graphhub.scaffold_project",
-                {
-                    "project_name": "New Project",
-                    "project_root": str(project_root),
-                    "target_format": "nature_surfur",
-                    "dry_run": True,
-                },
-            )
+            with unittest.mock.patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": ""}, clear=False):
+                server = GraphHubMCPServer(research_root=Path(tmpdir))
+                result = self._call(
+                    server,
+                    "graphhub.scaffold_project",
+                    {
+                        "project_name": "New Project",
+                        "project_root": str(project_root),
+                        "target_format": "nature_surfur",
+                        "dry_run": True,
+                    },
+                )
 
             self.assertEqual(result["status"], "ok")
             self.assertTrue(result["is_dry_run"])
             self.assertEqual(_snapshot_files(Path(tmpdir)), before)
             self.assertIn("project_config.yaml", result["planned_paths"])
             self.assertIn("hub_scripts/analyze.R", result["planned_paths"])
+            reasons = {entry["reason"] for entry in result["manifest"]["entries"]}
+            self.assertIn("scaffold directory", reasons)
+            self.assertIn("scaffold file", reasons)
+            self.assertNotIn("ResearchOS scaffold directory", reasons)
+            self.assertNotIn("ResearchOS scaffold file", reasons)
             for required_dir in (
                 "raw",
                 "work",
@@ -84,6 +90,26 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 self.assertIn(required_dir, result["planned_paths"])
             self.assertEqual(result["style_summary"]["target_format"], "nature_surfur")
             self.assertEqual(result["manifest"]["operation"], "scaffold_project")
+
+    def test_scaffold_project_surfur_conventions_preserve_researchos_reasons(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
+            project_root = Path(tmpdir) / "ResearchOS" / "New_Project"
+
+            with unittest.mock.patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "surfur"}, clear=False):
+                server = GraphHubMCPServer(research_root=Path(tmpdir))
+                result = self._call(
+                    server,
+                    "graphhub.scaffold_project",
+                    {
+                        "project_name": "New Project",
+                        "project_root": str(project_root),
+                        "dry_run": True,
+                    },
+                )
+
+            reasons = {entry["reason"] for entry in result["manifest"]["entries"]}
+            self.assertIn("ResearchOS scaffold directory", reasons)
+            self.assertIn("ResearchOS scaffold file", reasons)
 
     def test_scaffold_project_rejects_project_root_outside_research_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:

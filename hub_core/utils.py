@@ -4,15 +4,10 @@ import hashlib
 import os
 import shutil
 import sys
-import time
 
 from .logging import get_logger
 
 logger = get_logger(__name__)
-
-PREFETCH_ATTEMPTS = 3
-PREFETCH_RETRY_DELAYS = (0.25, 1.0)
-
 
 def resolve_path(base_dir, path):
     return path if os.path.isabs(path) else os.path.join(base_dir, path)
@@ -126,75 +121,6 @@ def is_executable_available(cmd):
     if os.path.isabs(cmd) or cmd.startswith('.'):
         return os.path.isfile(cmd) and os.access(cmd, os.X_OK)
     return shutil.which(cmd) is not None
-
-def ensure_local_files(paths):
-    """
-    가상 파일(Google Drive File Stream)을 강제로 한 번 읽어서 로컬 다운로드를 유도합니다.
-    디렉토리가 주어지면 내부의 모든 파일을 재귀적으로 처리하며, 실시간 진행률을 표시합니다.
-    """
-    if not paths:
-        return
-
-    targets = []
-    for p in expand_declared_paths(os.getcwd(), paths):
-        if os.path.isfile(p):
-            targets.append(p)
-        elif os.path.isdir(p):
-            for root, _, files in os.walk(p):
-                for f in files:
-                    targets.append(os.path.join(root, f))
-
-    total = len(targets)
-    if total == 0:
-        return
-
-    logger.info("   📡 [Prefetch] Ensuring %s files are local (Google Drive Sync)...", total)
-    success_count = 0
-    fail_count = 0
-    failed_targets = []
-
-    for i, p in enumerate(targets, 1):
-        filename = os.path.basename(p)
-        display_name = (filename[:30] + '..') if len(filename) > 32 else filename
-        logger.debug("      └─ Progress: [%s/%s] %s", i, total, display_name)
-
-        last_error = None
-        attempts_used = 0
-        for attempt in range(PREFETCH_ATTEMPTS):
-            attempts_used = attempt + 1
-            try:
-                # 첫 1바이트 읽기로 다운로드 유도
-                with open(p, "rb") as f:
-                    f.read(1)
-                success_count += 1
-                last_error = None
-                break
-            except Exception as exc:
-                last_error = exc
-                if attempt < len(PREFETCH_RETRY_DELAYS):
-                    time.sleep(PREFETCH_RETRY_DELAYS[attempt])
-
-        if last_error is not None:
-            fail_count += 1
-            failed_targets.append((display_name, type(last_error).__name__, attempts_used))
-
-    if fail_count > 0:
-        failed_preview = ", ".join(
-            f"{name} ({error_name}, attempts={attempts})"
-            for name, error_name, attempts in failed_targets[:3]
-        )
-        logger.warning(
-            "      ⚠️  Prefetch incomplete: %s/%s ready, %s timed out or unavailable.",
-            success_count,
-            total,
-            fail_count,
-        )
-        if failed_preview:
-            logger.warning("         unresolved: %s", failed_preview)
-        logger.warning("         pipeline will continue and let the downstream step decide.")
-    else:
-        logger.info("      ✅ All %s files are ready locally.", success_count)
-
 
 def scan_csv_export_anomalies(base_dir, paths):
     warnings = []

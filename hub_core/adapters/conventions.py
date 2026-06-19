@@ -13,6 +13,10 @@ class Conventions(Protocol):
 
     def default_target_format(self) -> str: ...
 
+    def scaffold_directory_reason(self) -> str: ...
+
+    def scaffold_file_reason(self) -> str: ...
+
 
 class GenericConventions:
     def is_ephemeral_project_path(self, rel_path: str) -> bool:
@@ -27,6 +31,12 @@ class GenericConventions:
     def default_target_format(self) -> str:
         return "nature"
 
+    def scaffold_directory_reason(self) -> str:
+        return "scaffold directory"
+
+    def scaffold_file_reason(self) -> str:
+        return "scaffold file"
+
 
 class SurfurConventions:
     def is_ephemeral_project_path(self, rel_path: str) -> bool:
@@ -34,6 +44,12 @@ class SurfurConventions:
 
     def default_target_format(self) -> str:
         return "nature_surfur"
+
+    def scaffold_directory_reason(self) -> str:
+        return "ResearchOS scaffold directory"
+
+    def scaffold_file_reason(self) -> str:
+        return "ResearchOS scaffold file"
 
     @staticmethod
     def is_worktree_path(rel_path: str) -> bool:
