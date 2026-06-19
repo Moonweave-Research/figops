@@ -371,23 +371,23 @@ def main():
                 regression_baseline=args.regression_baseline,
             )
         except RuntimeError as exc:
-            print(f"❌ {exc}")
+            logger.error("❌ %s", exc)
             return 1
 
-        print("\n🧪 [Check-All Summary]")
-        print(f"   - report_path: {report_path}")
-        print(f"   - discovered_configs: {report.get('discovered_count', report['project_count'])}")
-        print(f"   - project_count: {report['project_count']}")
-        print(f"   - invalid_configs: {report.get('invalid_count', 0)}")
-        print(f"   - passed: {report['passed_count']}")
-        print(f"   - failed: {report['failed_count']}")
+        logger.info("\n🧪 [Check-All Summary]")
+        logger.info("   - report_path: %s", report_path)
+        logger.info("   - discovered_configs: %s", report.get("discovered_count", report["project_count"]))
+        logger.info("   - project_count: %s", report["project_count"])
+        logger.info("   - invalid_configs: %s", report.get("invalid_count", 0))
+        logger.info("   - passed: %s", report["passed_count"])
+        logger.info("   - failed: %s", report["failed_count"])
         if args.regression_baseline != "ignore":
             baseline = report.get("baseline_summary", {})
-            print(f"   - baseline_mode: {baseline.get('mode')}")
-            print(f"   - matched: {baseline.get('matched_count', 0)}")
-            print(f"   - mismatched: {baseline.get('mismatch_count', 0)}")
-            print(f"   - missing_baseline: {baseline.get('missing_baseline_count', 0)}")
-            print(f"   - updated: {baseline.get('updated_count', 0)}")
+            logger.info("   - baseline_mode: %s", baseline.get("mode"))
+            logger.info("   - matched: %s", baseline.get("matched_count", 0))
+            logger.info("   - mismatched: %s", baseline.get("mismatch_count", 0))
+            logger.info("   - missing_baseline: %s", baseline.get("missing_baseline_count", 0))
+            logger.info("   - updated: %s", baseline.get("updated_count", 0))
         return 0 if report.get("success") else 1
 
     if not args.project:

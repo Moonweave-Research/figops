@@ -3,6 +3,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -468,3 +469,29 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertEqual("nature", config["visual_style"]["target_format"])
         self.assertEqual("", stdout.getvalue())
         self.assertIn("--preset 'paper' applied", stderr.getvalue())
+
+    def test_orchestrator_check_all_summary_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        report = {
+            "success": True,
+            "project_count": 1,
+            "discovered_count": 1,
+            "invalid_count": 0,
+            "passed_count": 1,
+            "failed_count": 0,
+        }
+
+        with (
+            patch.object(sys, "argv", ["orchestrator.py", "--check-all", "--verbose"]),
+            patch("orchestrator.run_preflight_check"),
+            patch("orchestrator.run_check_all", return_value=("/tmp/check-all.json", report)),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            rc = orchestrator.main()
+
+        self.assertEqual(0, rc)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("[Check-All Summary]", stderr.getvalue())
+        self.assertIn("report_path: /tmp/check-all.json", stderr.getvalue())
