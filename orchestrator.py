@@ -57,9 +57,10 @@ from hub_core import (
     write_execution_log,
 )
 from hub_core.cache_manager import collect_signatures
-from hub_core.logging import configure_logging
+from hub_core.logging import configure_logging, get_logger
 
 SUBPROCESS_TIMEOUT = 60  # seconds; guards athena health hook and draft bridge
+logger = get_logger(__name__)
 
 
 def run_athena_health_hook(root_dir: str, hub_path: str) -> None:
@@ -77,21 +78,21 @@ def run_athena_health_hook(root_dir: str, hub_path: str) -> None:
         )
 
     except subprocess.TimeoutExpired:
-        print("\n⚠️  Athena Health hook 시간 초과 (파이프라인 결과에는 영향 없음)")
+        logger.warning("\n⚠️  Athena Health hook 시간 초과 (파이프라인 결과에는 영향 없음)")
         return
     except subprocess.CalledProcessError as exc:
-        print("\n⚠️  Athena Health hook 실행 실패 (파이프라인 결과에는 영향 없음)")
+        logger.warning("\n⚠️  Athena Health hook 실행 실패 (파이프라인 결과에는 영향 없음)")
         stderr_preview = (exc.stderr or exc.stdout or "").strip()
         if stderr_preview:
-            print(f"   {stderr_preview[:200]}")
+            logger.warning("   %s", stderr_preview[:200])
         return
     except Exception as exc:
-        print(f"\n⚠️  Athena Health hook 오류: {exc} (파이프라인 결과에는 영향 없음)")
+        logger.warning("\n⚠️  Athena Health hook 오류: %s (파이프라인 결과에는 영향 없음)", exc)
         return
 
     if result.returncode == 0:
-        print("\n🩺 Athena Health: workspace_state.md 업데이트 완료")
-        print("   - sync_status: Sync OK 상태를 포함해 갱신됨")
+        logger.info("\n🩺 Athena Health: workspace_state.md 업데이트 완료")
+        logger.info("   - sync_status: Sync OK 상태를 포함해 갱신됨")
 
 
 def _refresh_visual_output_signatures(project_dir: str, config: dict, build_state: dict) -> None:
@@ -126,14 +127,15 @@ def _apply_cli_preset(config: dict, preset_name: str) -> None:
         for key, val in presets[matching_name].items():
             if key in allowed_keys:
                 visual[key] = val
-        print(f"   --preset '{preset_name}' applied: {presets[matching_name]}")
+        logger.info("   --preset '%s' applied: %s", preset_name, presets[matching_name])
     elif preset_key in ALLOWED_TARGET_FORMATS:
         config.setdefault("visual_style", {})["target_format"] = preset_key
-        print(f"   --preset → target_format='{preset_key}'")
+        logger.info("   --preset → target_format='%s'", preset_key)
     else:
-        print(
-            f"⚠️  Warning: --preset '{preset_name}' not found in presets: section "
-            f"and not a known target_format. Ignored."
+        logger.warning(
+            "⚠️  Warning: --preset '%s' not found in presets: section "
+            "and not a known target_format. Ignored.",
+            preset_name,
         )
 
 
