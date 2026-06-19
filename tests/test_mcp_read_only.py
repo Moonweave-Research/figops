@@ -9,7 +9,8 @@ from io import BytesIO
 from pathlib import Path
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
-from hub_core.mcp import GraphHubMCPServer
+from hub_core.mcp import GraphHubMCPServer, McpServerConfig
+from hub_core.mcp.config import ROOT_ADAPTER_SECURITY_ENV_VARS
 from hub_core.mcp.schemas import list_tool_definitions
 from hub_core.mcp.transport import (
     JSONRPC_INVALID_REQUEST,
@@ -109,6 +110,41 @@ class ReadOnlyMCPTest(unittest.TestCase):
         self.assertIn("content", response)
         self.assertEqual(json.loads(response["content"][0]["text"]), response["structuredContent"])
         return response["structuredContent"]
+
+    def test_server_runs_with_explicit_config_and_no_special_env(self):
+        with (
+            tempfile.TemporaryDirectory(prefix="graph_hub_mcp_explicit_") as tmpdir,
+            unittest.mock.patch.dict(os.environ, {}, clear=True),
+        ):
+            root = Path(tmpdir)
+            research_root = root / "research"
+            runtime_root = root / "runtime"
+            extra_root = root / "extra_data"
+            research_root.mkdir()
+            extra_root.mkdir()
+            config = McpServerConfig(
+                hub_path=HUB_ROOT,
+                research_root=research_root,
+                runtime_root=runtime_root,
+                write_tools_enabled=False,
+                allowed_data_roots=(extra_root,),
+            )
+
+            server = GraphHubMCPServer(config=config)
+            health = self._call(server, "graphhub.health")
+
+        self.assertEqual(server.research_root, research_root.resolve())
+        self.assertEqual(server.runtime_root, runtime_root.resolve())
+        self.assertIn(extra_root.resolve(), server.allowed_data_roots)
+        self.assertFalse(server.write_tools_enabled)
+        self.assertEqual(health["runtime_root"], str(runtime_root.resolve()))
+
+    def test_env_trust_model_documents_root_adapter_security_env_vars(self):
+        trust_model = (HUB_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+        missing = [name for name in sorted(ROOT_ADAPTER_SECURITY_ENV_VARS) if f"`{name}`" not in trust_model]
+
+        self.assertEqual(missing, [])
 
     def test_read_only_mcp_import_does_not_require_bridge_renderer(self):
         runtime_root = str(Path(tempfile.gettempdir()) / "graph_hub_mcp_no_bridge")

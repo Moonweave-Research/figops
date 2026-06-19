@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from hub_core.mcp.config import McpServerConfig, normalize_allowed_root
 from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.runtime_paths import preview_runtime_root, resolve_runtime_root
 from hub_core.utils import get_hub_path, get_research_root
@@ -33,18 +34,50 @@ class McpSecurityMixin:
     def _init_security_state(
         self,
         *,
+        config: McpServerConfig | dict[str, Any] | None,
         hub_path: str | os.PathLike | None,
         research_root: str | os.PathLike | None,
         runtime_root: str | os.PathLike | None,
         write_tools_enabled: bool | None,
     ) -> None:
-        self.hub_path = Path(hub_path or get_hub_path()).expanduser().resolve()
-        self.research_root = Path(research_root or get_research_root()).expanduser().resolve()
-        self._runtime_root_explicit = runtime_root is not None
-        self.runtime_root = self._resolve_runtime_root(runtime_root)
+        server_config = self._resolve_server_config(
+            config,
+            hub_path=hub_path,
+            research_root=research_root,
+            runtime_root=runtime_root,
+            write_tools_enabled=write_tools_enabled,
+        )
+        self.hub_path = Path(server_config.hub_path or get_hub_path()).expanduser().resolve()
+        self.research_root = Path(server_config.research_root or get_research_root()).expanduser().resolve()
+        self._runtime_root_explicit = server_config.explicit_runtime_root()
+        self.runtime_root = self._resolve_runtime_root(server_config.runtime_root)
         self.security_warnings = []
+        self._configured_allowed_data_roots = server_config.allowed_data_roots
+        self._strict_roots = bool(server_config.strict_roots)
         self.allowed_data_roots = self._allowed_data_roots()
-        self.write_tools_enabled = self._resolve_write_tools_enabled(write_tools_enabled)
+        self.write_tools_enabled = self._resolve_write_tools_enabled(server_config.write_tools_enabled)
+
+    @staticmethod
+    def _resolve_server_config(
+        config: McpServerConfig | dict[str, Any] | None,
+        *,
+        hub_path: str | os.PathLike | None,
+        research_root: str | os.PathLike | None,
+        runtime_root: str | os.PathLike | None,
+        write_tools_enabled: bool | None,
+    ) -> McpServerConfig:
+        if config is None:
+            server_config = McpServerConfig.from_env()
+        elif isinstance(config, McpServerConfig):
+            server_config = config
+        else:
+            server_config = McpServerConfig.from_mapping(config)
+        return server_config.overlay(
+            hub_path=hub_path,
+            research_root=research_root,
+            runtime_root=runtime_root,
+            write_tools_enabled=write_tools_enabled,
+        )
 
     @staticmethod
     def _resolve_runtime_root(runtime_root: str | os.PathLike | None = None) -> Path:
@@ -56,39 +89,27 @@ class McpSecurityMixin:
     def _resolve_write_tools_enabled(write_tools_enabled: bool | None) -> bool:
         if write_tools_enabled is not None:
             return bool(write_tools_enabled)
-        raw = os.environ.get("GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED")
-        if raw is None:
-            # Fail closed: write/exec tools require explicit opt-in via constructor arg or env var.
-            return False
-        return raw.strip().lower() in {"1", "true", "yes", "on"}
+        # Fail closed: write/exec tools require explicit opt-in via config, constructor, or env config source.
+        return False
 
     def _allowed_data_roots(self) -> tuple[Path, ...]:
         roots = [self.research_root, self.runtime_root]
-        raw_extra = os.environ.get("GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS", "")
-        strict_roots = os.environ.get("GRAPH_HUB_MCP_STRICT_ROOTS", "").strip().lower() in {"1", "true", "yes", "on"}
-        for item in raw_extra.split(os.pathsep):
-            stripped = item.strip()
-            if not stripped:
-                continue
-            extra = Path(stripped).expanduser()
+        for item in self._configured_allowed_data_roots:
+            extra = normalize_allowed_root(item)
+            stripped = str(item)
             if not extra.is_absolute():
-                self.security_warnings.append(
-                    f"Skipped GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS entry because it is not absolute: {stripped}"
-                )
+                self.security_warnings.append(f"Skipped allowed data root because it is not absolute: {stripped}")
                 continue
             resolved = extra.resolve()
             if not resolved.is_dir():
                 self.security_warnings.append(
-                    "Skipped GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS entry because it does not exist as a directory: "
-                    f"{resolved}"
+                    f"Skipped allowed data root because it does not exist as a directory: {resolved}"
                 )
                 continue
             broad_warning = self._broad_data_root_warning(resolved)
             if broad_warning:
-                if strict_roots:
-                    self.security_warnings.append(
-                        f"refused broad data root from GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS: {resolved}"
-                    )
+                if self._strict_roots:
+                    self.security_warnings.append(f"refused broad data root: {resolved}")
                     continue
                 self.security_warnings.append(broad_warning)
             roots.append(resolved)

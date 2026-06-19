@@ -103,18 +103,23 @@ Before adding plot-specific utility code, check `plotting/utils.py` for an exist
 
 ## 10) MCP Env Trust Model
 
-The MCP launcher is trusted. Environment variables that define runtime paths or
-data roots are operator policy, not untrusted user input. The server still
-validates boundary-widening values before use and reports warnings through
-`graphhub.health`.
+The MCP launcher is trusted. Prefer explicit server config/CLI values for
+`hub_path`, `research_root`, `runtime_root`, write-tool enablement, and
+allowed data roots. Environment variables remain a supported operator-policy
+source and must be validated before they widen access. Boundary-widening values
+report warnings through `graphhub.health`.
 
 - `GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS`: widens read access for MCP data inputs
   beyond the research root and runtime root. Entries must be non-empty,
   absolute, and existing directories. Bad entries are skipped with warnings.
   Broad roots such as `/`, a drive root, or the current user's home directory
   warn by default. Set `GRAPH_HUB_MCP_STRICT_ROOTS=1` to refuse broad roots.
+- `GRAPH_HUB_MCP_STRICT_ROOTS`: refuses broad roots listed in
+  `GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS` when set to `1`, `true`, `yes`, or `on`.
 - `GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED`: enables MCP tools that write files or
   execute render jobs. It defaults closed when unset.
+- `GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES`: limits MCP CSV render input size.
+  Invalid or non-positive values are ignored in favor of the default limit.
 - `RESEARCH_HUB_RUNTIME_ROOT` / `RESEARCH_HUB_RUNTIME_HOME`: select where MCP
   jobs, manifests, logs, and generated artifacts are stored. Runtime access
   must stay under the resolved runtime root.
@@ -123,6 +128,13 @@ validates boundary-widening values before use and reports warnings through
 - `PROJECT_ROOT`: points project scripts at the active project or runtime
   snapshot. Render code must use resolved project/snapshot paths and fail if
   the selected script or output path escapes that tree.
+- `GRAPH_HUB_PREFETCH_ADAPTER`: selects the prefetch adapter (`none`/`noop` or
+  `gdrive`). Default is no prefetch.
+- `GRAPH_HUB_ATHENA_ADAPTER`: selects the Athena bridge (`off`/`null` or
+  `legacy`/`on`). Default is no Athena bridge.
+- `GRAPH_HUB_CONVENTIONS_ADAPTER`: selects naming/discovery conventions
+  (`generic` or `surfur`). Default is generic.
+- `ATHENA_PATH`: path used only by the opt-in legacy Athena bridge.
 
 ---
 

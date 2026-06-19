@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from .config import McpServerConfig
 from .errors import (
     DISABLED_ERROR,
     infer_tool_error_entry,
@@ -53,6 +54,7 @@ class GraphHubMCPServer(
     def __init__(
         self,
         *,
+        config: McpServerConfig | dict[str, Any] | None = None,
         hub_path: str | os.PathLike | None = None,
         research_root: str | os.PathLike | None = None,
         runtime_root: str | os.PathLike | None = None,
@@ -62,6 +64,7 @@ class GraphHubMCPServer(
         self.require_initialize = require_initialize
         self.initialized = False
         self._init_security_state(
+            config=config,
             hub_path=hub_path,
             research_root=research_root,
             runtime_root=runtime_root,
