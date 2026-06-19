@@ -13,6 +13,7 @@ from hub_core.data_contract import validate_data_contract, validate_data_contrac
 from hub_core.execution_log import append_execution_log
 from hub_core.logging import configure_logging, get_logger
 from hub_core.mcp import GraphHubMCPServer, run_stdio_server
+from hub_core.provenance import embed_figures_fingerprint, print_provenance, validate_environment_locks
 from hub_core.visual_regression import write_check_all_report
 
 
@@ -168,3 +169,70 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual("", stdout.getvalue())
         self.assertIn("[Data Contract Step]", stderr.getvalue())
+
+    def test_environment_lock_gate_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_lock_") as tmpdir:
+            project_dir = Path(tmpdir) / "project"
+            hub_dir = Path(tmpdir) / "hub"
+            project_dir.mkdir()
+            hub_dir.mkdir()
+            config = {"environment": {}}
+
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                result = validate_environment_locks(str(project_dir), str(hub_dir), config, strict_cli=False)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("[Environment Lock Gate]", stderr.getvalue())
+        self.assertIn("Lockfile missing", stderr.getvalue())
+
+    def test_print_provenance_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_provenance_") as tmpdir:
+            project_dir = Path(tmpdir) / "project"
+            config_path = project_dir / "project_config.yaml"
+            project_dir.mkdir()
+            config_path.write_text("project:\n  name: logging\n", encoding="utf-8")
+
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                print_provenance(str(project_dir), str(config_path), "abc123", {"execution": {}})
+
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("[Provenance]", stderr.getvalue())
+        self.assertIn("config_hash:", stderr.getvalue())
+
+    def test_figure_fingerprint_logs_to_stderr_not_stdout(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_logging_fingerprint_") as tmpdir:
+            project_dir = Path(tmpdir)
+            figures_dir = project_dir / "results" / "figures"
+            figures_dir.mkdir(parents=True)
+            (figures_dir / "unregistered.svg").write_text(
+                '<svg height="10" width="10"><circle cx="5" cy="5" r="4" /></svg>',
+                encoding="utf-8",
+            )
+
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                configure_logging("INFO")
+                embedded = embed_figures_fingerprint(
+                    str(project_dir),
+                    {"project": {"name": "logging"}, "figures": [], "diagrams": []},
+                    "config-hash",
+                    "env-hash",
+                    "git-sha",
+                    "2026-06-19T00:00:00",
+                )
+
+        self.assertEqual(1, embedded)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("unregistered figure(s)", stderr.getvalue())
+        self.assertIn("[Digital Fingerprint] 1 file(s) tagged", stderr.getvalue())
