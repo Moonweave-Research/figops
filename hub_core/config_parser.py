@@ -32,6 +32,9 @@ ALLOWED_ANALYSIS_POLICY_LANGS = {"r"}
 ALLOWED_PLOT_POLICY_LANGS = {"python"}
 ALLOWED_OUTPUT_FORMATS = {"png", "pdf", "svg"}
 ALLOWED_MONOTONIC_MODES = {"increasing", "decreasing", "nondecreasing", "nonincreasing"}
+ALLOWED_PREFETCH_ADAPTERS = {"none", "noop", "off", "gdrive"}
+ALLOWED_ATHENA_ADAPTERS = {"none", "null", "off", "legacy", "on"}
+ALLOWED_CONVENTIONS_ADAPTERS = {"none", "generic", "surfur"}
 CONFIG_FILE_CANDIDATES = (
     "project_config.yaml",
     os.path.join("scripts", "project_config.yaml"),
@@ -177,6 +180,24 @@ def _validate_linear_fit_check_config(errors, *, column: str, raw_check: object)
 
 def _is_scalar_flag_value(value: object) -> bool:
     return isinstance(value, (str, bool, int, float)) and not (isinstance(value, float) and math.isnan(value))
+
+
+def _validate_named_adapter(
+    errors: list[str],
+    adapters: dict,
+    key: str,
+    allowed_values: set[str],
+) -> None:
+    if key not in adapters:
+        return
+    raw_value = adapters.get(key)
+    if not isinstance(raw_value, str) or not raw_value.strip():
+        errors.append(f"environment.adapters.{key} must be a non-empty string.")
+        return
+    value = raw_value.strip().lower()
+    if value not in allowed_values:
+        allowed = ", ".join(sorted(allowed_values))
+        errors.append(f"environment.adapters.{key} '{raw_value}' is invalid. Allowed: {allowed}.")
 
 
 def _validate_outlier_flag_check_config(errors, *, column: str, raw_check: object) -> None:
@@ -544,6 +565,15 @@ def validate_config(config):
             errors.append("environment.r_lock must be a string.")
         if "strict" in environment and not isinstance(environment.get("strict"), bool):
             errors.append("environment.strict must be a boolean.")
+        adapters = environment.get("adapters", {})
+        if adapters is None:
+            adapters = {}
+        if not isinstance(adapters, dict):
+            errors.append("environment.adapters must be a mapping.")
+        else:
+            _validate_named_adapter(errors, adapters, "prefetch", ALLOWED_PREFETCH_ADAPTERS)
+            _validate_named_adapter(errors, adapters, "athena", ALLOWED_ATHENA_ADAPTERS)
+            _validate_named_adapter(errors, adapters, "conventions", ALLOWED_CONVENTIONS_ADAPTERS)
 
     data_contract = config.get("data_contract", {})
     if data_contract is None:
