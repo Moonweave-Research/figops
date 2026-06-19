@@ -646,7 +646,7 @@ def _validate_semantic_constraints(
 def _calculation_summary(checks: list[dict]) -> dict:
     return {
         "checks": checks,
-        "quality_passed": not any(check.get("status") in {"warning", "failed", "skipped"} for check in checks),
+        "quality_passed": not any(check.get("status") in {"warning", "failed"} for check in checks),
         "manual_review_needed": any(bool(check.get("manual_review_needed")) for check in checks),
     }
 

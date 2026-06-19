@@ -383,7 +383,9 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
     def test_legend_marker_consistency_accepts_proxy_line_for_matching_scatter_shape(self):
         fig, ax = plt.subplots(figsize=(3, 3))
         label = "electret/leaky ctrl."
-        ax.scatter([0.5], [0.5], marker="s", facecolors="gray", edgecolors="gray", s=64, label=label)
+        marker_diameter = 8.0
+        scatter_area = np.pi * (marker_diameter / 2.0) ** 2
+        ax.scatter([0.5], [0.5], marker="s", facecolors="gray", edgecolors="gray", s=scatter_area, label=label)
         legend_handle = Line2D(
             [],
             [],
@@ -391,10 +393,33 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
             linestyle="none",
             markerfacecolor="gray",
             markeredgecolor="gray",
-            markersize=8,
+            markersize=marker_diameter,
             label=label,
         )
         ax.legend(handles=[legend_handle])
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "legend_marker_consistency")
+
+        self.assertTrue(check["passed"])
+        self.assertEqual(check["data"]["mismatches"], [])
+
+    def test_legend_marker_consistency_compares_scatter_area_as_visual_diameter(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        label = "area-matched marker"
+        marker_diameter = 8.0
+        scatter_area = np.pi * (marker_diameter / 2.0) ** 2
+        ax.scatter([0.5], [0.5], marker="o", facecolors="gray", edgecolors="gray", s=scatter_area, label=label)
+        legend_handle = Line2D(
+            [],
+            [],
+            marker="o",
+            linestyle="none",
+            markerfacecolor="gray",
+            markeredgecolor="gray",
+            markersize=marker_diameter,
+            label=label,
+        )
+        ax.legend(handles=[legend_handle])
+
         check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "legend_marker_consistency")
 
         self.assertTrue(check["passed"])
