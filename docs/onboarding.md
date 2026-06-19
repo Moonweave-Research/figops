@@ -6,8 +6,9 @@ Follow this sequence when you are new to Graph Hub.
    figure without bespoke environment variables.
 2. Run `uv run python graphhub_mcp_server.py doctor` and resolve any blocking errors. Optional
    dependency or disabled-write-tool warnings are normal until you need those capabilities.
-3. Work through the [synthetic project tutorial](../examples/synthetic_project/README.md), then the
-   [multipanel tutorial](../examples/multipanel_project/README.md).
+3. Work through the [synthetic project tutorial](../examples/synthetic_project/README.md), the
+   [multipanel tutorial](../examples/multipanel_project/README.md), and the
+   [materials/polymer domain helper recipe](../examples/materials_polymer_recipe/README.md).
 4. Use the generated [tool reference](tools.md) to inspect MCP inputs, outputs, plot types,
    semantic checks, and worked render examples.
 5. Read [CONTRIBUTING.md](../CONTRIBUTING.md) before adding plot types, MCP tools, or docs.

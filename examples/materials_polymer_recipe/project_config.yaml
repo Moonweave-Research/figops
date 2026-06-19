@@ -1,0 +1,68 @@
+project:
+  name: Materials Polymer Domain Helper Recipe
+  description: Public-safe recipe for reusable materials/polymer analysis helpers.
+
+visual_style:
+  target_format: nature
+  profile: baseline
+
+pipeline:
+  analysis:
+    - domain_helper: materials_polymer.signal_smooth_baseline
+      inputs: ["raw/polymer_response.csv"]
+      outputs: ["results/data/polymer_signal_cleaned.csv"]
+      params:
+        x_column: time_s
+        y_column: signal_au
+        window: 3
+        baseline_method: first
+    - domain_helper: materials_polymer.resistivity_transform
+      inputs: ["results/data/polymer_signal_cleaned.csv"]
+      outputs: ["results/data/polymer_material_properties.csv"]
+      params:
+        resistance_column: resistance_ohm
+        area_column: area_cm2
+        thickness_column: thickness_um
+        thickness_correction_um: 20
+
+data_contract:
+  csv_checks:
+    - path: results/data/polymer_signal_cleaned.csv
+      required_columns:
+        - time_s
+        - signal_au
+        - smoothed_signal_au
+        - baseline_au
+        - corrected_signal_au
+      dtypes:
+        time_s: number
+        signal_au: number
+        smoothed_signal_au: number
+        baseline_au: number
+        corrected_signal_au: number
+      semantic_checks:
+        time_s: {monotonic: nondecreasing, allow_null: false}
+        corrected_signal_au: {range: [-1, 2], allow_null: false}
+    - path: results/data/polymer_material_properties.csv
+      required_columns:
+        - time_s
+        - resistance_ohm
+        - resistivity_ohm_cm
+        - conductivity_s_cm
+      dtypes:
+        time_s: number
+        resistance_ohm: number
+        resistivity_ohm_cm: number
+        conductivity_s_cm: number
+      semantic_checks:
+        time_s: {monotonic: nondecreasing, allow_null: false}
+        resistivity_ohm_cm: {range: [1, 200000], allow_null: false}
+        conductivity_s_cm: {range: [0, 1], allow_null: false}
+
+figures:
+  - id: PolymerDomainHelper
+    title: Polymer domain helper output
+    script: hub_scripts/plot_polymer_domain_helper.py
+    inputs:
+      - results/data/polymer_material_properties.csv
+    output: results/figures/polymer_domain_helper.png

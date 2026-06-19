@@ -111,6 +111,22 @@ pipeline:
       # inputs supports glob patterns: ["raw/*.csv"]
       # expand: batch (default) — all matched files in one script call
       # expand: each  — one script call per file (analysis does not support 'each')
+    # Built-in reusable domain helpers can replace a project-local script:
+    # - domain_helper: "materials_polymer.signal_smooth_baseline"
+    #   inputs: ["raw/polymer_response.csv"]
+    #   outputs: ["results/data/polymer_signal_cleaned.csv"]
+    #   params:
+    #     x_column: "time_s"
+    #     y_column: "signal_au"
+    #     window: 5
+    # - domain_helper: "materials_polymer.resistivity_transform"
+    #   inputs: ["results/data/polymer_signal_cleaned.csv"]
+    #   outputs: ["results/data/polymer_material_properties.csv"]
+    #   params:
+    #     resistance_column: "resistance_ohm"
+    #     area_column: "area_cm2"
+    #     thickness_column: "thickness_um"
+    #     thickness_correction_um: 20
 
 # 5. 시각화 피겨 정의
 figures:

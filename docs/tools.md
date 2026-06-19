@@ -195,6 +195,12 @@ Describe registered Graph Hub tools, plot types, semantic checks, and render exa
       },
       "type": "array"
     },
+    "domain_helpers": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
     "error_category": {
       "enum": [
         "validation",

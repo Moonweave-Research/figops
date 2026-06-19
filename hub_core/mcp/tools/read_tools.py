@@ -74,7 +74,8 @@ class McpReadToolsMixin:
             arguments,
             summary=(
                 f"Described {len(surface['tools'])} tools, {len(surface['plot_types'])} plot type(s), "
-                f"and {len(surface['semantic_checks'])} semantic check(s)."
+                f"{len(surface['semantic_checks'])} semantic check(s), "
+                f"and {len(surface['domain_helpers'])} domain helper(s)."
             ),
             **surface,
         )

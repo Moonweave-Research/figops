@@ -6,6 +6,7 @@ from copy import deepcopy
 
 import yaml
 
+from .domain_analysis import DOMAIN_HELPER_NAMES
 from .logging import get_logger
 
 ALLOWED_TARGET_FORMATS = {
@@ -578,8 +579,21 @@ def validate_config(config):
                     errors.append(f"pipeline.analysis[{i}] must be a mapping.")
                     continue
                 script = step.get("script")
-                if not isinstance(script, str) or not script.strip():
-                    errors.append(f"pipeline.analysis[{i}].script is required.")
+                domain_helper = step.get("domain_helper")
+                has_script = isinstance(script, str) and bool(script.strip())
+                has_domain_helper = isinstance(domain_helper, str) and bool(domain_helper.strip())
+                if has_script == has_domain_helper:
+                    errors.append(f"pipeline.analysis[{i}] must define exactly one of script or domain_helper.")
+                if domain_helper is not None:
+                    if not isinstance(domain_helper, str) or not domain_helper.strip():
+                        errors.append(f"pipeline.analysis[{i}].domain_helper must be a non-empty string.")
+                    elif domain_helper not in DOMAIN_HELPER_NAMES:
+                        allowed = ", ".join(sorted(DOMAIN_HELPER_NAMES))
+                        errors.append(
+                            f"pipeline.analysis[{i}].domain_helper '{domain_helper}' is invalid. Allowed: {allowed}."
+                        )
+                    if "params" in step and not isinstance(step.get("params"), dict):
+                        errors.append(f"pipeline.analysis[{i}].params must be a mapping.")
                 inputs = step.get("inputs", None)
                 if inputs is not None and not isinstance(inputs, list):
                     errors.append(f"pipeline.analysis[{i}].inputs must be a list.")
@@ -597,6 +611,8 @@ def validate_config(config):
                 outputs = step.get("outputs", None)
                 if outputs is not None and not isinstance(outputs, list):
                     errors.append(f"pipeline.analysis[{i}].outputs must be a list.")
+                elif has_domain_helper and not outputs:
+                    errors.append(f"pipeline.analysis[{i}].outputs is required for domain_helper steps.")
                 if "cache" in step and not isinstance(step.get("cache"), bool):
                     errors.append(f"pipeline.analysis[{i}].cache must be a boolean.")
                 expand = step.get("expand")
@@ -607,7 +623,7 @@ def validate_config(config):
                         f"pipeline.analysis[{i}].expand='each' is not supported for analysis steps. "
                         f"Use 'each' only in figures/diagrams sections."
                     )
-                if not norm_policy["allow_nonstandard"]:
+                if has_script and not norm_policy["allow_nonstandard"]:
                     step_lang = normalize_lang(step.get("lang", "r")) or "r"
                     if step_lang != norm_policy["analysis_lang"]:
                         errors.append(
