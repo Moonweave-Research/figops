@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from hub_core.rendering import PLOT_TYPES, render_plot
-from plotting.axis_break import render_broken_y_axis
+from plotting.axis_break import _draw_break_marks
 from plotting.utils import (
     apply_density_alpha,
     auto_panel_tag,
@@ -153,47 +153,12 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         output_path = Path(spec.output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if spec.y_break_range is not None:
-            # The broken-axis path flattens all points into a single series and bypasses
-            # series splitting, error bars, labels, overlays, and the legend. Refuse rather
-            # than silently dropping them; multi-series broken-axis is not implemented yet.
-            unsupported = [
-                name
-                for name, value in (
-                    ("series_column", spec.series_column),
-                    ("yerr_column", spec.yerr_column),
-                    ("yerr_minus_column", spec.yerr_minus_column),
-                    ("label_column", spec.label_column),
-                    ("overlay_baselines", spec.overlay_baselines),
-                )
-                if value
-            ]
-            if unsupported:
-                raise ValueError(
-                    f"y_break_range does not support {', '.join(unsupported)} yet; the "
-                    "broken-axis renderer would silently drop them (no series split, error "
-                    "bars, labels, overlays, or legend). Remove y_break_range or those fields."
-                )
-
         points = _load_points(csv_path, spec)
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
         try:
             if spec.y_break_range is not None:
-                xs = np.array([pt["x"] for pt in points], dtype=float)
-                ys = np.array([pt["y"] for pt in points], dtype=float)
-                plot_func = "scatter" if spec.plot_type == "scatter" else "line"
                 ax.set_visible(False)
-                ax_top, ax_bot = render_broken_y_axis(
-                    fig,
-                    [0.125, 0.11, 0.775, 0.77],
-                    xs,
-                    ys,
-                    spec.y_break_range,
-                    plot_func=plot_func,
-                )
-                ax_bot.set_xlabel(spec.x_axis_label or spec.x_column)
-                ax_top.set_ylabel(spec.y_axis_label or spec.y_column)
-                ax_top.set_title(spec.title)
+                _render_broken_axis_plot(fig, points, spec)
             else:
                 _render_plot(ax, points, spec)
                 _draw_overlay_baselines(ax, spec.overlay_baselines)
@@ -669,6 +634,178 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
 
     if has_multi_series:
         ax.legend(**_legend_kwargs(ax, spec, n_series=len(grouped)))
+
+
+def _render_broken_axis_plot(fig, points: list[dict], spec: BridgeFigureSpec) -> None:
+    if not points:
+        warnings.warn(
+            f"bridge_renderer: no valid data points for {spec.title!r}, figure will be blank",
+            stacklevel=2,
+        )
+        return
+
+    plot_type = str(spec.plot_type or "line").strip().lower()
+    plot_type_entry = PLOT_TYPES.get(plot_type)
+    if plot_type_entry is None:
+        raise ValueError(f"y_break_range requires registered plot_type; got {spec.plot_type!r}")
+    if not plot_type_entry.capabilities.get("supports_broken_axis"):
+        raise ValueError(f"plot_type {plot_type!r} does not support y_break_range")
+
+    ax_top, ax_bot = _make_broken_y_axes(fig, points, spec.y_break_range)
+    _draw_grouped_broken_xy(ax_top, ax_bot, points, spec, line=plot_type != "scatter")
+    _draw_overlay_baselines(ax_top, spec.overlay_baselines)
+    ax_bot.set_xlabel(spec.x_axis_label or spec.x_column)
+    ax_top.set_ylabel(spec.y_axis_label or spec.y_column)
+    ax_top.set_title(spec.title)
+
+
+def _make_broken_y_axes(fig, points: list[dict], break_range: tuple[float, float] | None):
+    if break_range is None:
+        raise ValueError("y_break_range is required for broken-axis rendering")
+    left, bottom, width, height = [0.125, 0.11, 0.775, 0.77]
+    gap_fraction = 0.02
+    top_h = height * 0.5 - gap_fraction / 2
+    bot_h = height * 0.5 - gap_fraction / 2
+    ax_top = fig.add_axes([left, bottom + bot_h + gap_fraction, width, top_h])
+    ax_bot = fig.add_axes([left, bottom, width, bot_h], sharex=ax_top)
+
+    break_start, break_end = break_range
+    ys = [float(point["y"]) for point in points]
+    y_max = max(ys) if ys else break_end
+    y_min = min(ys) if ys else break_start
+    full_range = max(y_max - y_min, abs(break_end - break_start), 1e-6)
+    margin = full_range * 0.05
+
+    ax_top.set_ylim(break_end - margin, y_max + margin)
+    ax_bot.set_ylim(y_min - margin, break_start + margin)
+    ax_top.spines["bottom"].set_visible(False)
+    ax_bot.spines["top"].set_visible(False)
+    ax_top.tick_params(labelbottom=False, bottom=False)
+    ax_bot.tick_params(top=False)
+    _draw_break_marks(ax_top, ax_bot, style="diagonal")
+    return ax_top, ax_bot
+
+
+def _draw_grouped_broken_xy(ax_top, ax_bot, points: list[dict], spec: BridgeFigureSpec, *, line: bool) -> None:
+    grouped = _group_points(points, spec)
+    has_multi_series = any(key != "__single__" for key in grouped)
+
+    for idx, (series_name, series_points) in enumerate(grouped.items()):
+        xs = [point["x"] for point in series_points]
+        ys = [point["y"] for point in series_points]
+        yerr = _yerr_values(series_points, spec)
+        legend_label = _display_label(series_name, compress_labels=spec.compress_labels) if has_multi_series else None
+        sty = get_series_style(idx)
+
+        _draw_broken_xy_series(
+            ax_top,
+            xs,
+            ys,
+            yerr,
+            sty,
+            label=legend_label,
+            spec=spec,
+            line=line,
+        )
+        _draw_broken_xy_series(
+            ax_bot,
+            xs,
+            ys,
+            yerr,
+            sty,
+            label="_nolegend_",
+            spec=spec,
+            line=line,
+        )
+
+        if spec.label_column:
+            _annotate_broken_axis_points(ax_top, ax_bot, series_points, spec)
+
+    if has_multi_series:
+        ax_top.legend(**_legend_kwargs(ax_top, spec, n_series=len(grouped)))
+
+
+def _draw_broken_xy_series(
+    ax,
+    xs,
+    ys,
+    yerr,
+    sty: dict,
+    *,
+    label: str | None,
+    spec: BridgeFigureSpec,
+    line: bool,
+) -> None:
+    cap_size = spec.yerr_cap_width
+    cap_thick = max(0.5, spec.yerr_cap_width * 0.4)
+    if line:
+        if yerr is not None:
+            ax.errorbar(
+                xs,
+                ys,
+                yerr=yerr,
+                fmt=sty["marker"],
+                linestyle=sty["linestyle"],
+                linewidth=1.2,
+                capsize=cap_size,
+                capthick=cap_thick,
+                label=label,
+            )
+        else:
+            ax.plot(
+                xs,
+                ys,
+                marker=sty["marker"],
+                linestyle=sty["linestyle"],
+                linewidth=1.2,
+                label=label,
+            )
+    elif yerr is not None:
+        ax.errorbar(
+            xs,
+            ys,
+            yerr=yerr,
+            fmt=sty["marker"],
+            linestyle="none",
+            capsize=cap_size,
+            capthick=cap_thick,
+            label=label,
+        )
+    else:
+        ax.scatter(xs, ys, s=24, marker=sty["marker"], label=label)
+
+
+def _annotate_broken_axis_points(ax_top, ax_bot, series_points: list[dict], spec: BridgeFigureSpec) -> None:
+    break_start, break_end = spec.y_break_range or (float("-inf"), float("inf"))
+    top_points = [point for point in series_points if float(point["y"]) >= break_end]
+    bot_points = [point for point in series_points if float(point["y"]) <= break_start]
+    middle_points = [point for point in series_points if break_start < float(point["y"]) < break_end]
+
+    if top_points:
+        _annotate_points(
+            ax_top,
+            [point["x"] for point in top_points],
+            [point["y"] for point in top_points],
+            [str(point["label"]) for point in top_points],
+            compress_labels=spec.compress_labels,
+        )
+    if bot_points:
+        _annotate_points(
+            ax_bot,
+            [point["x"] for point in bot_points],
+            [point["y"] for point in bot_points],
+            [str(point["label"]) for point in bot_points],
+            compress_labels=spec.compress_labels,
+        )
+    for point in middle_points:
+        target = ax_top if abs(float(point["y"]) - break_end) < abs(float(point["y"]) - break_start) else ax_bot
+        _annotate_points(
+            target,
+            [point["x"]],
+            [point["y"]],
+            [str(point["label"])],
+            compress_labels=spec.compress_labels,
+        )
 
 
 def _render_heatmap_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
