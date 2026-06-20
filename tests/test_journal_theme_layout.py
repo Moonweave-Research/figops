@@ -254,9 +254,9 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 "violin_width": 0.52,
             },
             "science": {
-                "figure_width_mm": 55.0,
-                "figure_height_mm": 44.0,
-                "figure_column_widths_mm": {"single": 55.0, "double": 120.0, "full": 183.0, "triple": 183.0},
+                "figure_width_mm": 57.0,
+                "figure_height_mm": 45.6,
+                "figure_column_widths_mm": {"single": 57.0, "double": 121.0, "full": 184.0, "triple": 184.0},
                 "main_marker_size": 3.0,
                 "facet_marker_size": 2.2,
                 "main_marker_edge_width": 0.5,
@@ -272,9 +272,9 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 "default_colormap": "viridis",
             },
             "acs": {
-                "figure_width_mm": 82.55,
-                "figure_height_mm": 66.04,
-                "figure_column_widths_mm": {"single": 82.55, "double": 177.8, "full": 177.8},
+                "figure_width_mm": 84.67,
+                "figure_height_mm": 67.736,
+                "figure_column_widths_mm": {"single": 84.67, "double": 177.8, "full": 177.8},
                 "main_marker_size": 3.4,
                 "facet_marker_size": 2.6,
                 "main_marker_edge_width": 0.55,
@@ -290,9 +290,9 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 "default_colormap": "viridis",
             },
             "wiley": {
-                "figure_width_mm": 84.0,
-                "figure_height_mm": 67.2,
-                "figure_column_widths_mm": {"single": 84.0, "double": 174.0, "full": 174.0},
+                "figure_width_mm": 85.0,
+                "figure_height_mm": 68.0,
+                "figure_column_widths_mm": {"single": 85.0, "double": 178.0, "full": 178.0},
                 "main_marker_size": 3.5,
                 "facet_marker_size": 2.7,
                 "main_marker_edge_width": 0.55,
@@ -432,7 +432,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
             apply_journal_theme("cell")
 
             self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
-            self.assertEqual(plt.rcParams["font.sans-serif"][0], "Helvetica")
+            self.assertEqual(plt.rcParams["font.sans-serif"][0], "Arial")
             self.assertEqual(plt.rcParams["font.size"], 7.0)
             self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
             self.assertEqual(plt.rcParams["legend.fontsize"], 7.0)

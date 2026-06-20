@@ -96,10 +96,10 @@ class TestProfileResolution(unittest.TestCase):
         self.assertEqual(meta["profile"], "baseline")
         self.assertEqual(
             tokens["figure_column_widths_mm"],
-            {"single": 55.0, "double": 120.0, "full": 183.0, "triple": 183.0},
+            {"single": 57.0, "double": 121.0, "full": 184.0, "triple": 184.0},
         )
-        self.assertEqual(tokens["figure_width_mm"], 55.0)
-        self.assertEqual(tokens["figure_height_mm"], 44.0)
+        self.assertEqual(tokens["figure_width_mm"], 57.0)
+        self.assertEqual(tokens["figure_height_mm"], 45.6)
         self.assertEqual(tokens["main_marker_size"], 3.0)
         self.assertEqual(tokens["facet_marker_size"], 2.2)
         self.assertEqual(tokens["main_marker_edge_width"], 0.5)
@@ -121,10 +121,10 @@ class TestProfileResolution(unittest.TestCase):
         self.assertEqual(meta["profile"], "baseline")
         self.assertEqual(
             tokens["figure_column_widths_mm"],
-            {"single": 82.55, "double": 177.8, "full": 177.8},
+            {"single": 84.67, "double": 177.8, "full": 177.8},
         )
-        self.assertEqual(tokens["figure_width_mm"], 82.55)
-        self.assertEqual(tokens["figure_height_mm"], 66.04)
+        self.assertEqual(tokens["figure_width_mm"], 84.67)
+        self.assertEqual(tokens["figure_height_mm"], 67.736)
         self.assertEqual(tokens["main_marker_size"], 3.4)
         self.assertEqual(tokens["facet_marker_size"], 2.6)
         self.assertEqual(tokens["main_marker_edge_width"], 0.55)
@@ -146,10 +146,10 @@ class TestProfileResolution(unittest.TestCase):
         self.assertEqual(meta["profile"], "baseline")
         self.assertEqual(
             tokens["figure_column_widths_mm"],
-            {"single": 84.0, "double": 174.0, "full": 174.0},
+            {"single": 85.0, "double": 178.0, "full": 178.0},
         )
-        self.assertEqual(tokens["figure_width_mm"], 84.0)
-        self.assertEqual(tokens["figure_height_mm"], 67.2)
+        self.assertEqual(tokens["figure_width_mm"], 85.0)
+        self.assertEqual(tokens["figure_height_mm"], 68.0)
         self.assertEqual(tokens["main_marker_size"], 3.5)
         self.assertEqual(tokens["facet_marker_size"], 2.7)
         self.assertEqual(tokens["main_marker_edge_width"], 0.55)
