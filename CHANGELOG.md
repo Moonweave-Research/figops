@@ -15,6 +15,26 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.10.0] - 2026-06-20
+
+### Added
+
+- Per-journal compliance tokens now encode minimum font size, minimum line
+  width, and maximum figure height from each journal's official figure
+  guidelines, with clamp-with-warning enforcement so sub-spec output is not
+  silently emitted (#130).
+- A new `journal_compliance` geometry diagnostic reports journal guideline
+  compliance, and RSC / Elsevier tick sizing now honors their 7 pt floor
+  (#130).
+
+### Fixed
+
+- Journal column widths now match official figure guidelines: Science
+  57 / 121 / 184 mm, ACS single 84.67 mm (240 pt / 3.33 in), and Wiley /
+  Advanced Materials 85 / 178 mm (#129).
+- Cell Press style now uses Arial as its primary font per Cell figure
+  guidelines (#129).
+
 ## [0.9.0] - 2026-06-20
 
 ### Added
