@@ -15,6 +15,22 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.11.0] - 2026-06-21
+
+### Added
+
+- Explicit faceting layout control now supports `facet_ncols` and
+  `facet_nrows` for data-driven small multiples, including exact 2 / 3 / 4
+  column or row grids, an automatic column cap raised from 3 to 5, and
+  fail-fast validation of invalid grids (#132).
+
+### Changed
+
+- Maintenance: cleared all pre-existing repo-wide ruff lint findings, so
+  `ruff check .` now passes with 0 errors; this was limited to whitespace,
+  import-order, line-wrapping, and unused-import cleanup with no behavior
+  change (#133).
+
 ## [0.10.0] - 2026-06-20
 
 ### Added
