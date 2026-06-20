@@ -84,6 +84,9 @@ class TestPlotViolinWithPoints:
         with pytest.warns(UserWarning, match="falling back to strip plot"):
             fig, ax = plot_violin_with_points(small_df, "sample", "value")
         assert isinstance(fig, plt.Figure)
+        violin_bodies = [c for c in ax.collections
+                         if "PolyCollection" in type(c).__name__]
+        assert violin_bodies == []
 
     def test_large_n_creates_violin(self, large_df):
         fig, ax = plot_violin_with_points(large_df, "sample", "value")
