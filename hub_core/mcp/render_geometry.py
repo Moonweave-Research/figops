@@ -22,6 +22,7 @@ _GEOMETRY_WARNING_ELIGIBLE = frozenset(
         "legend_marker_consistency",
         "label_offset_consistency",
         "font_size_token_drift",
+        "journal_compliance",
     }
 )
 SCRIPT_OUTPUT_TAIL_LINES = 40
@@ -123,6 +124,10 @@ def _layout_report_from_geometry(
         elif name == "font_size_token_drift":
             report["font_roles"] = _layout_font_roles(data, check)
         elif name == "legend_marker_consistency" and check.get("passed") is False:
+            detail = check.get("detail")
+            if detail:
+                report["warnings"].append(str(detail))
+        elif name == "journal_compliance" and check.get("passed") is False:
             detail = check.get("detail")
             if detail:
                 report["warnings"].append(str(detail))

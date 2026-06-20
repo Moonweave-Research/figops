@@ -57,6 +57,7 @@ _WARNING_ELIGIBLE = frozenset(
         "legend_marker_consistency",
         "label_offset_consistency",
         "font_size_token_drift",
+        "journal_compliance",
     }
 )
 
@@ -67,6 +68,7 @@ def diagnose_figure_geometry(
     *,
     layout_locked: bool,
     font_token_sizes: list[float] | None = None,
+    journal_compliance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Measure objective geometry facts on a fully-drawn, still-open Figure.
 
@@ -99,6 +101,8 @@ def diagnose_figure_geometry(
         checks.append(_legend_marker_consistency(ax, axis_index))
     checks.append(_label_offset_consistency(fig, data_axes, renderer))
     checks.append(_font_size_token_drift(data_axes, font_token_sizes))
+    if journal_compliance:
+        checks.append(_journal_compliance(fig, data_axes, journal_compliance))
 
     # passed is None marks an informational skip (e.g. over-cap); never count it as a pass.
     passed = all(c["passed"] for c in checks if c["name"] in _WARNING_ELIGIBLE and c["passed"] is not None)
@@ -1572,3 +1576,115 @@ def _font_size_token_drift(data_axes: list[Axes], font_token_sizes: list[float] 
             "divergent_roles": divergent_roles,
         },
     }
+
+
+def _journal_compliance(fig: Figure, data_axes: list[Axes], compliance: dict[str, Any]) -> dict[str, Any]:
+    name = "journal_compliance"
+    target_format = str(compliance.get("target_format", "unknown"))
+    min_font = float(compliance["min_font_size_pt"])
+    min_line = float(compliance["min_line_width_pt"])
+    max_height = float(compliance["max_figure_height_mm"])
+    figure_height_mm = float(fig.get_size_inches()[1] * 25.4)
+
+    font_offenders = _journal_font_offenders(data_axes, min_font)
+    line_offenders = _journal_line_offenders(data_axes, min_line)
+    height_offender = figure_height_mm > max_height + 0.01
+    passed = not font_offenders and not line_offenders and not height_offender
+    return {
+        "name": name,
+        "passed": bool(passed),
+        "detail": (
+            f"{target_format}: {len(font_offenders)} font offenders below {min_font:g} pt; "
+            f"{len(line_offenders)} line offenders below {min_line:g} pt; "
+            f"height {figure_height_mm:.2f}/{max_height:g} mm"
+        ),
+        "data": {
+            "target_format": target_format,
+            "min_font_size_pt": min_font,
+            "min_line_width_pt": min_line,
+            "max_figure_height_mm": max_height,
+            "figure_height_mm": figure_height_mm,
+            "font_offenders": font_offenders,
+            "line_offenders": line_offenders,
+            "height_offender": bool(height_offender),
+        },
+    }
+
+
+def _journal_font_offenders(data_axes: list[Axes], min_font: float) -> list[dict[str, Any]]:
+    offenders: list[dict[str, Any]] = []
+    for axis_index, ax in enumerate(data_axes):
+        text_artists = [
+            ("title", ax.title),
+            ("axis", ax.xaxis.label),
+            ("axis", ax.yaxis.label),
+            *(("tick", text) for text in _visible_tick_labels(list(ax.get_xticklabels()))),
+            *(("tick", text) for text in _visible_tick_labels(list(ax.get_yticklabels()))),
+            *(("text", text) for text in ax.texts if text.get_text() and _is_paintable(text)),
+        ]
+        legend = ax.get_legend()
+        if legend is not None and _is_paintable(legend):
+            text_artists.extend(
+                ("legend", text) for text in legend.get_texts() if text.get_text() and _is_paintable(text)
+            )
+            title = legend.get_title()
+            if title is not None and title.get_text() and _is_paintable(title):
+                text_artists.append(("legend", title))
+        for role, text in text_artists:
+            if text is None or not text.get_text() or not _is_paintable(text):
+                continue
+            size = round(float(text.get_fontsize()), 2)
+            if size + 0.01 < min_font:
+                offenders.append({"axes": int(axis_index), "role": role, "text": text.get_text(), "fontsize": size})
+                if len(offenders) >= _MAX_REPORTED_PAIRS:
+                    return offenders
+    return offenders
+
+
+def _journal_line_offenders(data_axes: list[Axes], min_line: float) -> list[dict[str, Any]]:
+    offenders: list[dict[str, Any]] = []
+    for axis_index, ax in enumerate(data_axes):
+        for index, line in enumerate(ax.get_lines()):
+            if _is_paintable(line):
+                _append_linewidth_offender(offenders, axis_index, "line", index, line.get_linewidth(), min_line)
+        for index, coll in enumerate(ax.collections):
+            if _is_paintable(coll):
+                for linewidth in _line_width_values(coll.get_linewidths()):
+                    _append_linewidth_offender(offenders, axis_index, "collection", index, linewidth, min_line)
+        for index, patch in enumerate(ax.patches):
+            if _is_paintable(patch):
+                _append_linewidth_offender(offenders, axis_index, "patch", index, patch.get_linewidth(), min_line)
+        for spine_name, spine in ax.spines.items():
+            if _is_paintable(spine):
+                _append_linewidth_offender(
+                    offenders,
+                    axis_index,
+                    f"spine:{spine_name}",
+                    0,
+                    spine.get_linewidth(),
+                    min_line,
+                )
+        if len(offenders) >= _MAX_REPORTED_PAIRS:
+            return offenders[:_MAX_REPORTED_PAIRS]
+    return offenders
+
+
+def _line_width_values(value: Any) -> list[float]:
+    values = np.asarray(value, dtype=float).ravel()
+    return [float(item) for item in values if np.isfinite(item)]
+
+
+def _append_linewidth_offender(
+    offenders: list[dict[str, Any]],
+    axis_index: int,
+    role: str,
+    index: int,
+    linewidth: Any,
+    min_line: float,
+) -> None:
+    value = float(linewidth)
+    if value <= 0:
+        return
+    rounded = round(value, 3)
+    if rounded + 0.001 < min_line:
+        offenders.append({"axes": int(axis_index), "role": role, "index": int(index), "linewidth": rounded})

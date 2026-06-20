@@ -120,6 +120,15 @@ STYLE_PROFILES = {
 TARGET_FORMAT_PROFILE_TOKENS = {
     "nature": {
         "baseline": {
+            # Nature artwork minimum text size: 5 pt.
+            # Source: https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/
+            "min_font_size_pt": 5.0,
+            # Nature artwork minimum line weight: 0.25 pt.
+            # Source: https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/
+            "min_line_width_pt": 0.25,
+            # Nature full-page maximum artwork height: 247 mm.
+            # Source: https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/
+            "max_figure_height_mm": 247.0,
             "main_marker_size": 3.2,
             "facet_marker_size": 2.4,
             "axis_marker_margin_fraction": 0.06,
@@ -139,6 +148,16 @@ TARGET_FORMAT_PROFILE_TOKENS = {
             "figure_height_mm": 45.6,
             # Source: https://www.science.org/content/page/instructions-preparing-initial-manuscript
             "figure_column_widths_mm": {"single": 57.0, "double": 121.0, "full": 184.0, "triple": 184.0},
+            # Science figure guidance keeps final lettering at or above 5 pt.
+            # Source: https://www.science.org/content/page/instructions-preparing-initial-manuscript
+            "min_font_size_pt": 5.0,
+            # Science line-art floor used for Graph Hub output compliance.
+            # Source: https://www.science.org/content/page/instructions-preparing-initial-manuscript
+            "min_line_width_pt": 0.5,
+            # Tool default: Science gives widths but no max figure height; use
+            # a conservative 234 mm page-height cap for compliance diagnostics.
+            # Source: https://www.science.org/content/page/instructions-preparing-initial-manuscript
+            "max_figure_height_mm": 234.0,
             # Science uses compact final-size graphics; 3 pt markers keep
             # plotted points legible at 57 mm without dominating 6.5-7 pt text.
             "main_marker_size": 3.0,
@@ -186,6 +205,15 @@ TARGET_FORMAT_PROFILE_TOKENS = {
             # ACS official double-column graphic width remains 7 in.
             # Source: https://pubs.acs.org/page/4authors/submission/graphics_prep.html
             "figure_column_widths_mm": {"single": 84.67, "double": 177.8, "full": 177.8},
+            # ACS graphics guidance allows lettering down to 4.5 pt.
+            # Source: https://pubs.acs.org/page/4authors/submission/graphics_prep.html
+            "min_font_size_pt": 4.5,
+            # ACS graphics guidance uses 0.5 pt as the minimum line weight.
+            # Source: https://pubs.acs.org/page/4authors/submission/graphics_prep.html
+            "min_line_width_pt": 0.5,
+            # ACS 660 pt maximum graphic height including caption is ~233 mm.
+            # Source: https://pubs.acs.org/page/4authors/submission/graphics_prep.html
+            "max_figure_height_mm": 233.0,
             # ACS single-column figures are close to Nature's width but often
             # carry chemical/spectral detail; use a modest 3.4 pt marker.
             "main_marker_size": 3.4,
@@ -243,6 +271,15 @@ TARGET_FORMAT_PROFILE_TOKENS = {
                 "full": 171.0,
                 "triple": 171.0,
             },
+            # RSC author guidance sets 7 pt as the minimum final text size.
+            # Source: https://www.rsc.org/journals-books-databases/author-and-reviewer-hub/authors-information/preparing-your-article/
+            "min_font_size_pt": 7.0,
+            # RSC line-art guidance uses a 0.5 pt practical minimum.
+            # Source: https://www.rsc.org/journals-books-databases/author-and-reviewer-hub/authors-information/preparing-your-article/
+            "min_line_width_pt": 0.5,
+            # RSC maximum graphic height is treated as a full-page 233 mm cap.
+            # Source: https://www.rsc.org/journals-books-databases/author-and-reviewer-hub/authors-information/preparing-your-article/
+            "max_figure_height_mm": 233.0,
             # RSC single-column width is close to ACS/Cell, so 3.3 pt markers
             # remain readable without crowding chemical/materials plots.
             "main_marker_size": 3.3,
@@ -298,6 +335,18 @@ TARGET_FORMAT_PROFILE_TOKENS = {
                 "full": 190.0,
                 "triple": 190.0,
             },
+            # Elsevier artwork sizing expects readable final text; use 7 pt
+            # main lettering while noting 6 pt subscripts are separately allowed.
+            # Source: https://www.elsevier.com/researcher/author/tools-and-resources/artwork-and-media-instructions/artwork-sizing
+            "min_font_size_pt": 7.0,
+            # Tool default: Elsevier sizing guidance does not define a track
+            # line-weight floor, so Graph Hub enforces its conservative 0.5 pt.
+            # Source: https://www.elsevier.com/researcher/author/tools-and-resources/artwork-and-media-instructions/artwork-sizing
+            "min_line_width_pt": 0.5,
+            # Tool default: Elsevier sizing guidance here does not define a
+            # maximum height, so use the conservative 234 mm page-height cap.
+            # Source: https://www.elsevier.com/researcher/author/tools-and-resources/artwork-and-media-instructions/artwork-sizing
+            "max_figure_height_mm": 234.0,
             # Elsevier's single-column canvas is larger than the other journal
             # singles here, so 3.6 pt markers remain readable without crowding.
             "main_marker_size": 3.6,
@@ -349,6 +398,18 @@ TARGET_FORMAT_PROFILE_TOKENS = {
             # and 17.8 cm double/full column; no separate triple width modeled.
             # Source: https://onlinelibrary.wiley.com/page/journal/15214095/homepage/graphics-faq/index.html
             "figure_column_widths_mm": {"single": 85.0, "double": 178.0, "full": 178.0},
+            # Tool default: Wiley/Advanced Materials guidance is qualitative
+            # for minimum text in this track; Graph Hub enforces 5 pt.
+            # Source: https://onlinelibrary.wiley.com/page/journal/15214095/homepage/graphics-faq/index.html
+            "min_font_size_pt": 5.0,
+            # Tool default: Wiley/Advanced Materials guidance is qualitative
+            # for line weight here; Graph Hub enforces 0.5 pt.
+            # Source: https://onlinelibrary.wiley.com/page/journal/15214095/homepage/graphics-faq/index.html
+            "min_line_width_pt": 0.5,
+            # Tool default: Wiley/Advanced Materials guidance does not define
+            # a max height for this track; use conservative 234 mm.
+            # Source: https://onlinelibrary.wiley.com/page/journal/15214095/homepage/graphics-faq/index.html
+            "max_figure_height_mm": 234.0,
             # Wiley single-column width is close to ACS/Nature but slightly
             # broader than ACS; use a 3.5 pt marker for compact readability.
             "main_marker_size": 3.5,
@@ -405,6 +466,15 @@ TARGET_FORMAT_PROFILE_TOKENS = {
                 "full": 174.0,
                 "triple": 174.0,
             },
+            # Cell Press figure guidelines specify 6 pt as the minimum type size.
+            # Source: https://www.cell.com/figureguidelines
+            "min_font_size_pt": 6.0,
+            # Cell Press figure guidelines use 0.5 pt as the minimum line weight.
+            # Source: https://www.cell.com/figureguidelines
+            "min_line_width_pt": 0.5,
+            # Cell Press maximum figure height is 200 mm.
+            # Source: https://www.cell.com/figureguidelines
+            "max_figure_height_mm": 200.0,
             # Cell's single-column width is close to ACS/Wiley, so use the same
             # readable 3.4 pt main marker without cloning Nature's smaller mark.
             "main_marker_size": 3.4,

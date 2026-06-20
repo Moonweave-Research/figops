@@ -13,6 +13,7 @@ import copy
 import json
 import os
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,9 +26,9 @@ try:
     from .palettes import get_palette
 
     try:
-        from .style_profiles import get_profile_rc_overrides, resolve_profile_name
+        from .style_profiles import get_profile_rc_overrides, get_render_style_tokens, resolve_profile_name
     except ImportError:
-        from style_profiles import get_profile_rc_overrides, resolve_profile_name
+        from style_profiles import get_profile_rc_overrides, get_render_style_tokens, resolve_profile_name
 except ImportError:
     # Backward compatibility for direct path import: sys.path += ['themes']
     from palettes import get_palette
@@ -41,6 +42,9 @@ except ImportError:
 
         def get_profile_rc_overrides(profile_name=None):
             return {}, "baseline"
+
+        def get_render_style_tokens(target_format="nature", profile_name=None):
+            return {}, {"target_format": str(target_format or "nature").lower(), "profile": "baseline"}
 
 
 # ── Nature/Science Standard Widths (mm) ─────────────────────────
@@ -124,13 +128,11 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     # readable 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
     "acs": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
     # RSC artwork guidance uses Arial/Helvetica-style sans-serif lettering;
-    # use readable 7 pt body/axis text and 6.5 pt ticks as a Graph Hub
-    # assumption that stays within the established small-text floor.
-    "rsc": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
+    # use 7 pt body/axis/tick text to stay at the RSC minimum font floor.
+    "rsc": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=7.0),
     # Elsevier figure guidance supports Arial/Helvetica-style sans-serif text;
-    # use readable 7 pt body/axis text and 6.5 pt ticks as a Graph Hub
-    # assumption that stays within the established small-text floor.
-    "elsevier": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
+    # use 7 pt body/axis/tick text for main lettering; subscripts may be 6 pt.
+    "elsevier": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=7.0),
     # Wiley/Advanced Materials-family artwork uses readable sans-serif labels;
     # keep 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
     "wiley": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
@@ -143,6 +145,8 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     "default": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
 }
 _ACTIVE_FONT_TOKENS = _FONT_TOKEN_PRESETS["nature"]
+_ACTIVE_TARGET_FORMAT = "nature"
+_ACTIVE_COMPLIANCE_TOKENS: dict[str, float | str] | None = None
 
 
 def font_tokens(target: str = "nature", font_scale: float = 1.0, profile_name=None) -> FontTokens:
@@ -340,14 +344,14 @@ STYLE_PRESETS["rsc"].update(
         "mathtext.rm": "Arial",
         "mathtext.it": "Arial:italic",
         "mathtext.bf": "Arial:bold",
-        # Use readable 7 pt final-size body text. 6.5 pt ticks are a Graph Hub
-        # assumption for dense axes while respecting the local min-size floor.
+        # Use readable 7 pt final-size body/tick text to respect RSC's
+        # minimum final text size.
         "font.size": 7.0,
         "axes.titlesize": 7.5,
         "axes.labelsize": 7.0,
         "legend.fontsize": 7.0,
-        "xtick.labelsize": 6.5,
-        "ytick.labelsize": 6.5,
+        "xtick.labelsize": 7.0,
+        "ytick.labelsize": 7.0,
         # RSC single-column width is close to ACS/Cell; use 1.0 pt primary
         # strokes and 0.6 pt axes so line art stays above hairline weight.
         "axes.linewidth": 0.6,
@@ -372,14 +376,14 @@ STYLE_PRESETS["elsevier"].update(
         "mathtext.rm": "Arial",
         "mathtext.it": "Arial:italic",
         "mathtext.bf": "Arial:bold",
-        # Use readable 7 pt final-size body text. 6.5 pt ticks are a Graph Hub
-        # assumption for dense axes while respecting the local min-size floor.
+        # Use readable 7 pt final-size body/tick text for Elsevier main
+        # lettering; subscripts are the separate 6 pt exception.
         "font.size": 7.0,
         "axes.titlesize": 7.5,
         "axes.labelsize": 7.0,
         "legend.fontsize": 7.0,
-        "xtick.labelsize": 6.5,
-        "ytick.labelsize": 6.5,
+        "xtick.labelsize": 7.0,
+        "ytick.labelsize": 7.0,
         # Elsevier column widths are the broadest journal anchors in this set;
         # use slightly stronger primary strokes while staying publication-scale.
         "axes.linewidth": 0.65,
@@ -520,6 +524,90 @@ def _apply_runtime_font_resolution(theme_rc):
             theme_rc["mathtext.bf"] = f"{primary_font}:bold"
 
 
+def _positive_float(value) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number <= 0:
+        return None
+    return number
+
+
+def _journal_compliance_tokens(target_format: str, profile_name: str) -> dict[str, float | str] | None:
+    render_tokens, meta = get_render_style_tokens(target_format, profile_name)
+    required_keys = ("min_font_size_pt", "min_line_width_pt", "max_figure_height_mm")
+    if not all(key in render_tokens for key in required_keys):
+        return None
+    return {
+        "target_format": meta["target_format"],
+        "profile": meta["profile"],
+        "min_font_size_pt": float(render_tokens["min_font_size_pt"]),
+        "min_line_width_pt": float(render_tokens["min_line_width_pt"]),
+        "max_figure_height_mm": float(render_tokens["max_figure_height_mm"]),
+    }
+
+
+def _clamp_rc_to_journal_compliance(theme_rc: dict, compliance_tokens: dict[str, float | str] | None) -> None:
+    if not compliance_tokens:
+        return
+
+    target_format = str(compliance_tokens["target_format"])
+    min_font = float(compliance_tokens["min_font_size_pt"])
+    min_line = float(compliance_tokens["min_line_width_pt"])
+    font_keys = [
+        "font.size",
+        "axes.labelsize",
+        "axes.titlesize",
+        "legend.fontsize",
+        "legend.title_fontsize",
+        "xtick.labelsize",
+        "ytick.labelsize",
+    ]
+    line_keys = [
+        "axes.linewidth",
+        "lines.linewidth",
+        "lines.markeredgewidth",
+    ]
+
+    font_changes: list[str] = []
+    for key in font_keys:
+        value = _positive_float(theme_rc.get(key))
+        if value is not None and value < min_font:
+            theme_rc[key] = min_font
+            font_changes.append(f"{key} {value:g}->{min_font:g}")
+    if font_changes:
+        warnings.warn(
+            f"journal compliance: clamped {target_format} font rcParams to the {min_font:g} pt floor "
+            f"({', '.join(font_changes)})",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+
+    line_changes: list[str] = []
+    for key in line_keys:
+        value = _positive_float(theme_rc.get(key))
+        if value is not None and value < min_line:
+            theme_rc[key] = min_line
+            line_changes.append(f"{key} {value:g}->{min_line:g}")
+    if line_changes:
+        warnings.warn(
+            f"journal compliance: clamped {target_format} line rcParams to the {min_line:g} pt floor "
+            f"({', '.join(line_changes)})",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+
+
+def _font_tokens_from_rc(target_format: str, theme_rc: dict, font_scale: float, profile_name: str) -> FontTokens:
+    fallback = font_tokens(target_format, font_scale, profile_name)
+    axis = float(theme_rc.get("axes.labelsize", fallback.axis))
+    tick = float(theme_rc.get("xtick.labelsize", theme_rc.get("ytick.labelsize", fallback.tick)))
+    legend = float(theme_rc.get("legend.fontsize", fallback.legend))
+    tag = float(theme_rc.get("axes.titlesize", fallback.tag))
+    return FontTokens(tag=tag, label=axis, annot=axis, legend=legend, axis=axis, tick=tick)
+
+
 def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=None):
     """
     지정된 포맷과 폰트 스케일을 기반으로 전역 rcParams에 저널 스타일을 적용합니다.
@@ -531,7 +619,7 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
         font_scale (float): 기준 테마 폰트 사이즈 대비 보정 배율
         profile_name (str): 세부 스타일 프로파일 이름 (예: baseline, resistance_premium)
     """
-    global _ACTIVE_FONT_TOKENS
+    global _ACTIVE_COMPLIANCE_TOKENS, _ACTIVE_FONT_TOKENS, _ACTIVE_TARGET_FORMAT
 
     # 1. 포맷 가져오기 (fallback: nature)
     target_format = target_format.lower()
@@ -545,6 +633,7 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
         raise ValueError(f"font_scale must be a positive number, got {font_scale!r}")
     if font_scale != 1.0:
         keys_to_scale_font = [
+            "font.size",
             "axes.labelsize",
             "axes.titlesize",
             "legend.fontsize",
@@ -579,6 +668,9 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
     if profile_rc:
         theme_rc.update(profile_rc)
 
+    compliance_tokens = _journal_compliance_tokens(target_format, resolved_profile)
+    _clamp_rc_to_journal_compliance(theme_rc, compliance_tokens)
+
     # 2.7. SVG Baseline Alignment Correction (Zenith Audit Fix)
     # Matplotlib's default SVG path rendering can sometimes shift baselines.
     # We force mathtext depth to be accounted for more strictly in SVG export.
@@ -593,7 +685,9 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
 
     # 3. 전역 적용
     plt.rcParams.update(theme_rc)
-    _ACTIVE_FONT_TOKENS = font_tokens(target_format, font_scale, resolved_profile)
+    _ACTIVE_FONT_TOKENS = _font_tokens_from_rc(target_format, theme_rc, font_scale, resolved_profile)
+    _ACTIVE_TARGET_FORMAT = target_format
+    _ACTIVE_COMPLIANCE_TOKENS = compliance_tokens
 
 
 # 별칭 (Sulfur 프로젝트 호환성)
@@ -675,6 +769,7 @@ def _safe_geometry_diagnostics_inline(fig) -> dict:
             data_axes,
             layout_locked=layout_locked,
             font_token_sizes=_active_font_token_sizes(),
+            journal_compliance=_ACTIVE_COMPLIANCE_TOKENS,
         )
     except Exception as exc:
         from hub_core.geometry_diagnostics import SCHEMA_VERSION

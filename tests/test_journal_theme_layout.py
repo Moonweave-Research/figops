@@ -1,6 +1,8 @@
+import json
 import os
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 
 import matplotlib
@@ -155,7 +157,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
         self.assertEqual(tokens.annot, 7.0)
         self.assertEqual(tokens.legend, 7.0)
         self.assertEqual(tokens.axis, 7.0)
-        self.assertEqual(tokens.tick, 6.5)
+        self.assertEqual(tokens.tick, 7.0)
 
     def test_elsevier_font_tokens_use_readable_sans_serif_scale(self):
         tokens = font_tokens("elsevier")
@@ -165,7 +167,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
         self.assertEqual(tokens.annot, 7.0)
         self.assertEqual(tokens.legend, 7.0)
         self.assertEqual(tokens.axis, 7.0)
-        self.assertEqual(tokens.tick, 6.5)
+        self.assertEqual(tokens.tick, 7.0)
 
     def test_elsevier_render_tokens_use_elsevier_column_and_marker_values(self):
         tokens, meta = get_render_style_tokens("elsevier", "baseline")
@@ -459,8 +461,8 @@ class JournalThemeLayoutTest(unittest.TestCase):
             self.assertEqual(plt.rcParams["font.size"], 7.0)
             self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
             self.assertEqual(plt.rcParams["legend.fontsize"], 7.0)
-            self.assertEqual(plt.rcParams["xtick.labelsize"], 6.5)
-            self.assertEqual(plt.rcParams["ytick.labelsize"], 6.5)
+            self.assertEqual(plt.rcParams["xtick.labelsize"], 7.0)
+            self.assertEqual(plt.rcParams["ytick.labelsize"], 7.0)
             self.assertEqual(plt.rcParams["axes.linewidth"], 0.6)
             self.assertEqual(plt.rcParams["lines.linewidth"], 1.0)
             self.assertEqual(plt.rcParams["lines.markersize"], 3.3)
@@ -480,14 +482,35 @@ class JournalThemeLayoutTest(unittest.TestCase):
             self.assertEqual(plt.rcParams["font.size"], 7.0)
             self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
             self.assertEqual(plt.rcParams["legend.fontsize"], 7.0)
-            self.assertEqual(plt.rcParams["xtick.labelsize"], 6.5)
-            self.assertEqual(plt.rcParams["ytick.labelsize"], 6.5)
+            self.assertEqual(plt.rcParams["xtick.labelsize"], 7.0)
+            self.assertEqual(plt.rcParams["ytick.labelsize"], 7.0)
             self.assertEqual(plt.rcParams["axes.linewidth"], 0.65)
             self.assertEqual(plt.rcParams["lines.linewidth"], 1.05)
             self.assertEqual(plt.rcParams["lines.markersize"], 3.6)
             self.assertEqual(plt.rcParams["lines.markeredgewidth"], 0.6)
             self.assertEqual(plt.rcParams["xtick.direction"], "out")
             self.assertEqual(plt.rcParams["ytick.direction"], "out")
+        finally:
+            plt.rcParams.update(saved_rc)
+
+    def test_apply_theme_clamps_subfloor_font_and_line_values_with_warning(self):
+        saved_rc = plt.rcParams.copy()
+        try:
+            with warnings.catch_warnings(record=True) as captured:
+                warnings.simplefilter("always")
+                apply_journal_theme("science", font_scale=0.1)
+
+            messages = [str(item.message) for item in captured]
+            self.assertTrue(any("journal compliance" in message and "font" in message for message in messages))
+            self.assertTrue(any("journal compliance" in message and "line" in message for message in messages))
+            self.assertEqual(plt.rcParams["font.size"], 5.0)
+            self.assertEqual(plt.rcParams["axes.labelsize"], 5.0)
+            self.assertEqual(plt.rcParams["legend.fontsize"], 5.0)
+            self.assertEqual(plt.rcParams["xtick.labelsize"], 5.0)
+            self.assertEqual(plt.rcParams["ytick.labelsize"], 5.0)
+            self.assertEqual(plt.rcParams["lines.linewidth"], 0.5)
+            self.assertEqual(plt.rcParams["axes.linewidth"], 0.5)
+            self.assertEqual(plt.rcParams["lines.markeredgewidth"], 0.5)
         finally:
             plt.rcParams.update(saved_rc)
 
@@ -526,6 +549,36 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 payload = Path(tmpdir, "geometry.json").read_text(encoding="utf-8")
                 self.assertIn("font_size_token_drift", payload)
                 self.assertIn("drift", payload)
+        finally:
+            plt.close(fig)
+
+    def test_apply_journal_theme_passes_journal_compliance_to_diagnostics(self):
+        apply_journal_theme("science")
+        fig, ax = plt.subplots(figsize=(mm_to_inch(57.0), mm_to_inch(45.6)))
+        ax.plot([0, 1, 2], [0, 1, 0], label="A")
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        ax.legend()
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_compliance_") as tmpdir:
+                out_path = Path(tmpdir) / "science.png"
+                sidecar_path = Path(tmpdir) / "geometry.json"
+                prior = os.environ.get("GEOMETRY_DIAGNOSTICS_OUT")
+                os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = str(sidecar_path)
+                try:
+                    save_journal_fig(fig, out_path, dpi=150)
+                finally:
+                    if prior is None:
+                        os.environ.pop("GEOMETRY_DIAGNOSTICS_OUT", None)
+                    else:
+                        os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = prior
+                payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+                compliance = next(check for check in payload["checks"] if check["name"] == "journal_compliance")
+                self.assertTrue(compliance["passed"])
+                self.assertEqual(compliance["data"]["target_format"], "science")
+                self.assertEqual(compliance["data"]["min_font_size_pt"], 5.0)
+                self.assertEqual(compliance["data"]["min_line_width_pt"], 0.5)
+                self.assertEqual(compliance["data"]["max_figure_height_mm"], 234.0)
         finally:
             plt.close(fig)
 

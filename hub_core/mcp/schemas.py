@@ -41,6 +41,7 @@ _GEOMETRY_METRIC_NAMES = (
     "legend_marker_consistency",
     "label_offset_consistency",
     "font_size_token_drift",
+    "journal_compliance",
 )
 _GEOMETRY_DIAGNOSTICS_SCHEMA = {
     "type": "object",
