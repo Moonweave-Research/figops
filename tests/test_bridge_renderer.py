@@ -20,8 +20,10 @@ from plotting.bridge_renderer import (
     _apply_axes_metadata,
     _apply_layout,
     _display_label,
+    _figsize_for_format,
     _render_bar_plot,
     _render_heatmap_plot,
+    _render_multipanel_draft,
     _render_plot,
     _render_xy_plot,
     _resolved_legend_layout,
@@ -623,6 +625,34 @@ class BridgeRendererUnitTest(unittest.TestCase):
                     _assert_marker_footprints_inside_axes(self, fig, [ax])
                 finally:
                     plt.close(fig)
+
+    def test_science_bridge_figsize_uses_aaas_single_column_width(self):
+        science_w_in, science_h_in = _figsize_for_format("science")
+        nature_w_in, nature_h_in = _figsize_for_format("nature")
+
+        self.assertAlmostEqual(science_w_in * 25.4, 55.0, places=4)
+        self.assertAlmostEqual(science_h_in * 25.4, 44.0, places=4)
+        self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
+        self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
+
+    def test_science_multipanel_draft_uses_aaas_column_width_tokens(self):
+        spec = MultiPanelSpec(
+            panels=(),
+            output_path="unused.png",
+            rows=1,
+            cols=1,
+            target_format="science",
+            column_width="double",
+            panel_height_mm=40.0,
+        )
+
+        fig = _render_multipanel_draft(spec)
+        try:
+            width_mm, height_mm = (value * 25.4 for value in fig.get_size_inches())
+            self.assertAlmostEqual(width_mm, 120.0, places=4)
+            self.assertAlmostEqual(height_mm, 40.0, places=4)
+        finally:
+            plt.close(fig)
 
     def test_nature_facet_markers_are_smaller_and_not_clipped_by_axes_edges(self):
         points = []

@@ -75,20 +75,44 @@ class TestProfileResolution(unittest.TestCase):
 
         self.assertEqual(meta["target_format"], "nature")
         self.assertEqual(meta["profile"], "baseline")
+        self.assertNotIn("figure_column_widths_mm", tokens)
+        self.assertNotIn("default_colormap", tokens)
         self.assertEqual(tokens["main_marker_size"], 3.2)
+        self.assertEqual(tokens["main_marker_edge_width"], 0.6)
+        self.assertEqual(tokens["main_line_width"], 1.2)
         self.assertEqual(tokens["facet_marker_size"], 2.4)
+        self.assertEqual(tokens["axis_marker_margin_fraction"], 0.06)
+        self.assertEqual(tokens["facet_axis_marker_margin_fraction"], 0.16)
         self.assertEqual(tokens["violin_kde_points"], 256)
         self.assertEqual(tokens["violin_kde_bw_method"], "scott")
         self.assertEqual(tokens["violin_width"], 0.52)
+        self.assertEqual(tokens["figure_height_mm"], 68.0)
         self.assertLess(tokens["facet_marker_size"], tokens["main_marker_size"])
 
-    def test_science_baseline_keeps_profile_marker_size(self):
+    def test_science_baseline_resolves_aaas_track_tokens(self):
         tokens, meta = get_render_style_tokens("science", "baseline")
 
         self.assertEqual(meta["target_format"], "science")
         self.assertEqual(meta["profile"], "baseline")
-        self.assertEqual(tokens["main_marker_size"], 5.0)
-        self.assertEqual(tokens["violin_kde_points"], 100)
+        self.assertEqual(
+            tokens["figure_column_widths_mm"],
+            {"single": 55.0, "double": 120.0, "full": 183.0, "triple": 183.0},
+        )
+        self.assertEqual(tokens["figure_width_mm"], 55.0)
+        self.assertEqual(tokens["figure_height_mm"], 44.0)
+        self.assertEqual(tokens["main_marker_size"], 3.0)
+        self.assertEqual(tokens["facet_marker_size"], 2.2)
+        self.assertEqual(tokens["main_marker_edge_width"], 0.5)
+        self.assertEqual(tokens["main_line_width"], 0.9)
+        self.assertEqual(tokens["timeseries_line_width"], 0.75)
+        self.assertEqual(tokens["error_line_width"], 0.7)
+        self.assertEqual(tokens["error_cap_size"], 1.8)
+        self.assertEqual(tokens["jitter_size"], 10.0)
+        self.assertEqual(tokens["jitter_line_width"], 0.5)
+        self.assertEqual(tokens["bar_edge_width"], 0.45)
+        self.assertEqual(tokens["violin_kde_points"], 192)
+        self.assertEqual(tokens["violin_width"], 0.48)
+        self.assertEqual(tokens["default_colormap"], "viridis")
 
 
 if __name__ == "__main__":

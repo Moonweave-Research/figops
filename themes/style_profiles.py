@@ -129,6 +129,53 @@ TARGET_FORMAT_PROFILE_TOKENS = {
             "violin_width": 0.52,
         },
     },
+    "science": {
+        "baseline": {
+            # Science/AAAS figure-preparation widths: single-column figures are
+            # prepared at ~5.5 cm final width.
+            "figure_width_mm": 55.0,
+            # Height is a Graph Hub assumption, preserving the existing 0.80
+            # width:height bridge-render ratio for Science's 55 mm single column.
+            "figure_height_mm": 44.0,
+            # Science/AAAS figure-preparation widths: 5.5 cm single column,
+            # 12 cm double/intermediate width, and 18.3 cm full/triple width.
+            "figure_column_widths_mm": {"single": 55.0, "double": 120.0, "full": 183.0, "triple": 183.0},
+            # Science uses compact final-size graphics; 3 pt markers keep
+            # plotted points legible at 55 mm without dominating 6.5-7 pt text.
+            "main_marker_size": 3.0,
+            # Smaller facets need slightly smaller markers to avoid edge clipping
+            # when Science single-column panels are subdivided.
+            "facet_marker_size": 2.2,
+            # Thin marker edges preserve marker shape at final-size reduction.
+            "main_marker_edge_width": 0.5,
+            # Science line art should remain crisp but not heavy at final size;
+            # 0.9 pt is an assumption within the repo's existing journal range.
+            "main_line_width": 0.9,
+            # Dense time-series traces get a slightly lighter stroke than the
+            # main line token to preserve local detail in small Science panels.
+            "timeseries_line_width": 0.75,
+            # Error bars follow the lighter Science line-art stroke assumption.
+            "error_line_width": 0.7,
+            # Compact caps are scaled for 55 mm single-column panels.
+            "error_cap_size": 1.8,
+            # Scatter jitter area is reduced from the generic baseline for small
+            # Science panels while keeping points visible.
+            "jitter_size": 10.0,
+            # Jitter outlines follow the marker edge width.
+            "jitter_line_width": 0.5,
+            # Bar outlines are slightly lighter than Nature's 0.5 pt default.
+            "bar_edge_width": 0.45,
+            # KDE resolution is raised above generic baseline but below Nature's
+            # stricter 256-point track; this is a repo assumption for smooth
+            # Science violin plots at small final widths.
+            "violin_kde_points": 192,
+            # Narrower violins reduce crowding in compact Science figures.
+            "violin_width": 0.48,
+            # Science-specific default is explicit; viridis is perceptually
+            # uniform and already the repo fallback for unknown physics types.
+            "default_colormap": "viridis",
+        },
+    },
 }
 
 PROFILE_ALIASES = {
