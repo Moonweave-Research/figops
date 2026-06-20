@@ -376,6 +376,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "y_column": {"type": "string"},
                     "z_column": {"type": "string"},
                     "facet_column": {"type": "string"},
+                    "facet_scales": {"type": "string", "enum": ["fixed", "free"], "default": "fixed"},
                     "aggregate": {"type": "string", "enum": ["mean", "median"]},
                     "fit_line": {"type": "boolean"},
                     "ci_band": {"type": "boolean"},

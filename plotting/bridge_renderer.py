@@ -165,6 +165,7 @@ class BridgeFigureSpec:
     overlay_baselines: tuple[dict, ...] = ()
     y_break_range: tuple[float, float] | None = None
     facet_column: str = ""
+    facet_scales: str = "fixed"
     aggregate: str = ""
     fit_line: bool = False
     ci_band: bool = False
@@ -1026,6 +1027,8 @@ def _render_heatmap_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None
 def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     if not spec.facet_column:
         raise ValueError("facet plot_type requires facet_column")
+    if spec.facet_scales not in {"fixed", "free"}:
+        raise ValueError("facet_scales must be 'fixed' or 'free'")
     if not points:
         warnings.warn(
             f"bridge_renderer: no valid data points for {spec.title!r}, figure will be blank",
@@ -1041,12 +1044,19 @@ def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     n_rows = math.ceil(n_facets / n_cols)
     shared_x = None
     shared_y = None
+    share_axes = spec.facet_scales == "fixed"
 
     for idx, (facet_name, facet_points) in enumerate(grouped.items()):
         row_idx = idx // n_cols
         col_idx = idx % n_cols
-        facet_ax = fig.add_subplot(n_rows, n_cols, idx + 1, sharex=shared_x, sharey=shared_y)
-        if shared_x is None:
+        facet_ax = fig.add_subplot(
+            n_rows,
+            n_cols,
+            idx + 1,
+            sharex=shared_x if share_axes else None,
+            sharey=shared_y if share_axes else None,
+        )
+        if share_axes and shared_x is None:
             shared_x = facet_ax
             shared_y = facet_ax
         _render_xy_plot(facet_ax, facet_points, spec, line=True, small_panel=True)
