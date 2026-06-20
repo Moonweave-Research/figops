@@ -709,8 +709,8 @@ class BridgeRendererUnitTest(unittest.TestCase):
         science_w_in, science_h_in = _figsize_for_format("science")
         nature_w_in, nature_h_in = _figsize_for_format("nature")
 
-        self.assertAlmostEqual(science_w_in * 25.4, 55.0, places=4)
-        self.assertAlmostEqual(science_h_in * 25.4, 44.0, places=4)
+        self.assertAlmostEqual(science_w_in * 25.4, 57.0, places=4)
+        self.assertAlmostEqual(science_h_in * 25.4, 45.6, places=4)
         self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
@@ -718,8 +718,8 @@ class BridgeRendererUnitTest(unittest.TestCase):
         acs_w_in, acs_h_in = _figsize_for_format("acs")
         nature_w_in, nature_h_in = _figsize_for_format("nature")
 
-        self.assertAlmostEqual(acs_w_in * 25.4, 82.55, places=4)
-        self.assertAlmostEqual(acs_h_in * 25.4, 66.04, places=4)
+        self.assertAlmostEqual(acs_w_in * 25.4, 84.67, places=4)
+        self.assertAlmostEqual(acs_h_in * 25.4, 67.736, places=4)
         self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
@@ -727,8 +727,8 @@ class BridgeRendererUnitTest(unittest.TestCase):
         wiley_w_in, wiley_h_in = _figsize_for_format("wiley")
         nature_w_in, nature_h_in = _figsize_for_format("nature")
 
-        self.assertAlmostEqual(wiley_w_in * 25.4, 84.0, places=4)
-        self.assertAlmostEqual(wiley_h_in * 25.4, 67.2, places=4)
+        self.assertAlmostEqual(wiley_w_in * 25.4, 85.0, places=4)
+        self.assertAlmostEqual(wiley_h_in * 25.4, 68.0, places=4)
         self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
@@ -773,7 +773,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
         fig = _render_multipanel_draft(spec)
         try:
             width_mm, height_mm = (value * 25.4 for value in fig.get_size_inches())
-            self.assertAlmostEqual(width_mm, 120.0, places=4)
+            self.assertAlmostEqual(width_mm, 121.0, places=4)
             self.assertAlmostEqual(height_mm, 40.0, places=4)
         finally:
             plt.close(fig)
@@ -868,7 +868,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
         fig = _render_multipanel_draft(spec)
         try:
             width_mm, height_mm = (value * 25.4 for value in fig.get_size_inches())
-            self.assertAlmostEqual(width_mm, 174.0, places=4)
+            self.assertAlmostEqual(width_mm, 178.0, places=4)
             self.assertAlmostEqual(height_mm, 40.0, places=4)
         finally:
             plt.close(fig)

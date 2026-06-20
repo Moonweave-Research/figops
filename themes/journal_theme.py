@@ -134,9 +134,9 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     # Wiley/Advanced Materials-family artwork uses readable sans-serif labels;
     # keep 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
     "wiley": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    # Cell Press figure guidance uses Helvetica/Arial-family sans-serif text;
-    # use readable 7 pt body/axis lettering with 6.5 pt ticks as a Graph Hub
-    # assumption that stays within the repo's established small-text floor.
+    # Cell Press figure guidance specifies Arial fonts; use readable 7 pt
+    # body/axis lettering with 6.5 pt ticks as a Graph Hub assumption that
+    # stays within the repo's established small-text floor.
     "cell": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
     "nature_surfur": FontTokens(tag=6.0, label=5.0, annot=6.0, legend=6.0, axis=7.0, tick=6.0),
     "ppt": FontTokens(tag=16.0, label=12.0, annot=12.0, legend=12.0, axis=14.0, tick=12.0),
@@ -430,13 +430,13 @@ STYLE_PRESETS["wiley"].update(
 STYLE_PRESETS["cell"] = copy.deepcopy(STYLE_PRESETS["nature"])
 STYLE_PRESETS["cell"].update(
     {
-        # Cell Press production guidance asks for clear sans-serif lettering;
-        # prefer Helvetica first, then Arial and portable fallbacks.
+        # Cell Press figure guidelines specify Arial fonts.
+        # Source: https://www.cell.com/figureguidelines
         "font.family": "sans-serif",
-        "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans", "Liberation Sans"],
-        "mathtext.rm": "Helvetica",
-        "mathtext.it": "Helvetica:italic",
-        "mathtext.bf": "Helvetica:bold",
+        "font.sans-serif": ["Arial", "DejaVu Sans", "Liberation Sans", "Helvetica"],
+        "mathtext.rm": "Arial",
+        "mathtext.it": "Arial:italic",
+        "mathtext.bf": "Arial:bold",
         # Use readable final-size text across Cell-family figures. 7 pt
         # body/axis labels are a repo assumption aligned with the local floor.
         "font.size": 7.0,

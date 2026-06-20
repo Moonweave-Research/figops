@@ -131,17 +131,16 @@ TARGET_FORMAT_PROFILE_TOKENS = {
     },
     "science": {
         "baseline": {
-            # Science/AAAS figure-preparation widths: single-column figures are
-            # prepared at ~5.5 cm final width.
-            "figure_width_mm": 55.0,
+            # Science/AAAS official figure widths: 5.7, 12.1, 18.4 cm.
+            # Source: https://www.science.org/content/page/instructions-preparing-initial-manuscript
+            "figure_width_mm": 57.0,
             # Height is a Graph Hub assumption, preserving the existing 0.80
-            # width:height bridge-render ratio for Science's 55 mm single column.
-            "figure_height_mm": 44.0,
-            # Science/AAAS figure-preparation widths: 5.5 cm single column,
-            # 12 cm double/intermediate width, and 18.3 cm full/triple width.
-            "figure_column_widths_mm": {"single": 55.0, "double": 120.0, "full": 183.0, "triple": 183.0},
+            # width:height bridge-render ratio for Science's 57 mm single column.
+            "figure_height_mm": 45.6,
+            # Source: https://www.science.org/content/page/instructions-preparing-initial-manuscript
+            "figure_column_widths_mm": {"single": 57.0, "double": 121.0, "full": 184.0, "triple": 184.0},
             # Science uses compact final-size graphics; 3 pt markers keep
-            # plotted points legible at 55 mm without dominating 6.5-7 pt text.
+            # plotted points legible at 57 mm without dominating 6.5-7 pt text.
             "main_marker_size": 3.0,
             # Smaller facets need slightly smaller markers to avoid edge clipping
             # when Science single-column panels are subdivided.
@@ -178,15 +177,15 @@ TARGET_FORMAT_PROFILE_TOKENS = {
     },
     "acs": {
         "baseline": {
-            # ACS artwork guidance uses one-column graphics around 3.25 in;
-            # convert directly to millimetres for Graph Hub's width tokens.
-            "figure_width_mm": 82.55,
+            # ACS official one-column graphic width is 240 pt = 3.33 in.
+            # Source: https://pubs.acs.org/page/4authors/submission/graphics_prep.html
+            "figure_width_mm": 84.67,
             # Height is a Graph Hub assumption, preserving the existing 0.80
-            # width:height bridge-render ratio for ACS's 82.55 mm single column.
-            "figure_height_mm": 66.04,
-            # ACS journal artwork is commonly prepared for one-column (~3.25 in)
-            # and two-column (~7 in) widths; no separate triple width is assumed.
-            "figure_column_widths_mm": {"single": 82.55, "double": 177.8, "full": 177.8},
+            # width:height bridge-render ratio for ACS's 84.67 mm single column.
+            "figure_height_mm": 67.736,
+            # ACS official double-column graphic width remains 7 in.
+            # Source: https://pubs.acs.org/page/4authors/submission/graphics_prep.html
+            "figure_column_widths_mm": {"single": 84.67, "double": 177.8, "full": 177.8},
             # ACS single-column figures are close to Nature's width but often
             # carry chemical/spectral detail; use a modest 3.4 pt marker.
             "main_marker_size": 3.4,
@@ -340,15 +339,16 @@ TARGET_FORMAT_PROFILE_TOKENS = {
     },
     "wiley": {
         "baseline": {
-            # Wiley Advanced Materials-family figures commonly target 8.4 cm
-            # single-column artwork; store widths in Graph Hub's mm tokens.
-            "figure_width_mm": 84.0,
+            # Wiley Advanced Materials graphics FAQ names ~8.5 cm one-column width.
+            # Source: https://onlinelibrary.wiley.com/page/journal/15214095/homepage/graphics-faq/index.html
+            "figure_width_mm": 85.0,
             # Height is a Graph Hub assumption, preserving the existing 0.80
-            # width:height bridge-render ratio for Wiley's 84 mm single column.
-            "figure_height_mm": 67.2,
-            # Wiley Advanced Materials-family anchors: 8.4 cm single column and
-            # 17.4 cm double column; no separate triple width is modeled here.
-            "figure_column_widths_mm": {"single": 84.0, "double": 174.0, "full": 174.0},
+            # width:height bridge-render ratio for Wiley's 85 mm single column.
+            "figure_height_mm": 68.0,
+            # Wiley Advanced Materials-family corrected anchors: 8.5 cm single
+            # and 17.8 cm double/full column; no separate triple width modeled.
+            # Source: https://onlinelibrary.wiley.com/page/journal/15214095/homepage/graphics-faq/index.html
+            "figure_column_widths_mm": {"single": 85.0, "double": 178.0, "full": 178.0},
             # Wiley single-column width is close to ACS/Nature but slightly
             # broader than ACS; use a 3.5 pt marker for compact readability.
             "main_marker_size": 3.5,
