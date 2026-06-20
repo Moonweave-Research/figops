@@ -750,6 +750,15 @@ class BridgeRendererUnitTest(unittest.TestCase):
         self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
+    def test_elsevier_bridge_figsize_uses_elsevier_single_column_width(self):
+        elsevier_w_in, elsevier_h_in = _figsize_for_format("elsevier")
+        nature_w_in, nature_h_in = _figsize_for_format("nature")
+
+        self.assertAlmostEqual(elsevier_w_in * 25.4, 90.0, places=4)
+        self.assertAlmostEqual(elsevier_h_in * 25.4, 72.0, places=4)
+        self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
+        self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
+
     def test_science_multipanel_draft_uses_aaas_column_width_tokens(self):
         spec = MultiPanelSpec(
             panels=(),
@@ -803,6 +812,25 @@ class BridgeRendererUnitTest(unittest.TestCase):
         try:
             width_mm, height_mm = (value * 25.4 for value in fig.get_size_inches())
             self.assertAlmostEqual(width_mm, 171.0, places=4)
+            self.assertAlmostEqual(height_mm, 40.0, places=4)
+        finally:
+            plt.close(fig)
+
+    def test_elsevier_multipanel_draft_uses_elsevier_column_width_tokens(self):
+        spec = MultiPanelSpec(
+            panels=(),
+            output_path="unused.png",
+            rows=1,
+            cols=1,
+            target_format="elsevier",
+            column_width="double",
+            panel_height_mm=40.0,
+        )
+
+        fig = _render_multipanel_draft(spec)
+        try:
+            width_mm, height_mm = (value * 25.4 for value in fig.get_size_inches())
+            self.assertAlmostEqual(width_mm, 190.0, places=4)
             self.assertAlmostEqual(height_mm, 40.0, places=4)
         finally:
             plt.close(fig)
