@@ -75,7 +75,8 @@ class TestProfileResolution(unittest.TestCase):
 
         self.assertEqual(meta["target_format"], "nature")
         self.assertEqual(meta["profile"], "baseline")
-        self.assertNotIn("figure_column_widths_mm", tokens)
+        self.assertEqual(tokens["figure_width_mm"], 88.0)
+        self.assertEqual(tokens["figure_column_widths_mm"], {"single": 88.0, "double": 180.0, "full": 180.0})
         self.assertNotIn("default_colormap", tokens)
         self.assertEqual(tokens["main_marker_size"], 3.2)
         self.assertEqual(tokens["main_marker_edge_width"], 0.6)
@@ -86,7 +87,7 @@ class TestProfileResolution(unittest.TestCase):
         self.assertEqual(tokens["violin_kde_points"], 256)
         self.assertEqual(tokens["violin_kde_bw_method"], "scott")
         self.assertEqual(tokens["violin_width"], 0.52)
-        self.assertEqual(tokens["figure_height_mm"], 68.0)
+        self.assertEqual(tokens["figure_height_mm"], 71.0)
         self.assertLess(tokens["facet_marker_size"], tokens["main_marker_size"])
 
     def test_science_baseline_resolves_aaas_track_tokens(self):

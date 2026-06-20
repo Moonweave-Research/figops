@@ -120,6 +120,17 @@ STYLE_PROFILES = {
 TARGET_FORMAT_PROFILE_TOKENS = {
     "nature": {
         "baseline": {
+            # Nature Communications final page column widths: 88 mm single
+            # column and 180 mm double column.
+            # Source: https://www.nature.com/ncomms/submit/how-to-submit
+            "figure_width_mm": 88.0,
+            # Width-only NatComms correction; preserve Graph Hub's existing
+            # Nature single-panel render height.
+            "figure_height_mm": 71.0,
+            # Nature Communications does not define a separate 1.5-column slot
+            # on the submission page above, so only single and double/full
+            # widths are encoded here.
+            "figure_column_widths_mm": {"single": 88.0, "double": 180.0, "full": 180.0},
             # Nature artwork minimum text size: 5 pt.
             # Source: https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/
             "min_font_size_pt": 5.0,
