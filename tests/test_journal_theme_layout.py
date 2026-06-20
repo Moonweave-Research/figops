@@ -126,6 +126,16 @@ class JournalThemeLayoutTest(unittest.TestCase):
         self.assertEqual(tokens.axis, 7.0)
         self.assertEqual(tokens.tick, 6.5)
 
+    def test_wiley_font_tokens_use_readable_sans_serif_scale(self):
+        tokens = font_tokens("wiley")
+
+        self.assertEqual(tokens.tag, 8.0)
+        self.assertEqual(tokens.label, 7.0)
+        self.assertEqual(tokens.annot, 7.0)
+        self.assertEqual(tokens.legend, 7.0)
+        self.assertEqual(tokens.axis, 7.0)
+        self.assertEqual(tokens.tick, 6.5)
+
     def test_apply_science_theme_uses_distinct_sans_serif_rc_values(self):
         saved_rc = plt.rcParams.copy()
         try:
@@ -163,6 +173,27 @@ class JournalThemeLayoutTest(unittest.TestCase):
             self.assertEqual(plt.rcParams["lines.markeredgewidth"], 0.55)
             self.assertEqual(plt.rcParams["xtick.direction"], "out")
             self.assertEqual(plt.rcParams["ytick.direction"], "out")
+        finally:
+            plt.rcParams.update(saved_rc)
+
+    def test_apply_wiley_theme_uses_distinct_sans_serif_rc_values(self):
+        saved_rc = plt.rcParams.copy()
+        try:
+            apply_journal_theme("wiley")
+
+            self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
+            self.assertEqual(plt.rcParams["font.sans-serif"][0], "Helvetica")
+            self.assertEqual(plt.rcParams["font.size"], 7.0)
+            self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
+            self.assertEqual(plt.rcParams["legend.fontsize"], 7.0)
+            self.assertEqual(plt.rcParams["xtick.labelsize"], 6.5)
+            self.assertEqual(plt.rcParams["ytick.labelsize"], 6.5)
+            self.assertEqual(plt.rcParams["axes.linewidth"], 0.7)
+            self.assertEqual(plt.rcParams["lines.linewidth"], 1.0)
+            self.assertEqual(plt.rcParams["lines.markersize"], 3.5)
+            self.assertEqual(plt.rcParams["lines.markeredgewidth"], 0.55)
+            self.assertEqual(plt.rcParams["xtick.direction"], "in")
+            self.assertEqual(plt.rcParams["ytick.direction"], "in")
         finally:
             plt.rcParams.update(saved_rc)
 

@@ -139,6 +139,31 @@ class TestProfileResolution(unittest.TestCase):
         self.assertEqual(tokens["violin_width"], 0.5)
         self.assertEqual(tokens["default_colormap"], "viridis")
 
+    def test_wiley_baseline_resolves_advanced_materials_track_tokens(self):
+        tokens, meta = get_render_style_tokens("wiley", "baseline")
+
+        self.assertEqual(meta["target_format"], "wiley")
+        self.assertEqual(meta["profile"], "baseline")
+        self.assertEqual(
+            tokens["figure_column_widths_mm"],
+            {"single": 84.0, "double": 174.0, "full": 174.0},
+        )
+        self.assertEqual(tokens["figure_width_mm"], 84.0)
+        self.assertEqual(tokens["figure_height_mm"], 67.2)
+        self.assertEqual(tokens["main_marker_size"], 3.5)
+        self.assertEqual(tokens["facet_marker_size"], 2.7)
+        self.assertEqual(tokens["main_marker_edge_width"], 0.55)
+        self.assertEqual(tokens["main_line_width"], 1.0)
+        self.assertEqual(tokens["timeseries_line_width"], 0.85)
+        self.assertEqual(tokens["error_line_width"], 0.8)
+        self.assertEqual(tokens["error_cap_size"], 2.0)
+        self.assertEqual(tokens["jitter_size"], 12.5)
+        self.assertEqual(tokens["jitter_line_width"], 0.55)
+        self.assertEqual(tokens["bar_edge_width"], 0.55)
+        self.assertEqual(tokens["violin_kde_points"], 192)
+        self.assertEqual(tokens["violin_width"], 0.5)
+        self.assertEqual(tokens["default_colormap"], "viridis")
+
 
 if __name__ == "__main__":
     unittest.main()

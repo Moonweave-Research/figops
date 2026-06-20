@@ -125,7 +125,9 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     "acs": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
     "rsc": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
     "elsevier": FontTokens(tag=8.5, label=7.0, annot=7.0, legend=7.0, axis=8.0, tick=7.0),
-    "wiley": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
+    # Wiley/Advanced Materials-family artwork uses readable sans-serif labels;
+    # keep 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
+    "wiley": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
     "cell": FontTokens(tag=7.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
     "nature_surfur": FontTokens(tag=6.0, label=5.0, annot=6.0, legend=6.0, axis=7.0, tick=6.0),
     "ppt": FontTokens(tag=16.0, label=12.0, annot=12.0, legend=12.0, axis=14.0, tick=12.0),
@@ -343,14 +345,29 @@ STYLE_PRESETS["elsevier"].update(
 STYLE_PRESETS["wiley"] = copy.deepcopy(STYLE_PRESETS["nature"])
 STYLE_PRESETS["wiley"].update(
     {
+        # Wiley Advanced Materials-family artwork uses Helvetica/Arial-style
+        # sans-serif lettering; prefer Helvetica first, then portable fallbacks.
         "font.family": "sans-serif",
-        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"],
-        "axes.titlesize": 8.0,
+        "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans", "Liberation Sans"],
+        "mathtext.rm": "Helvetica",
+        "mathtext.it": "Helvetica:italic",
+        "mathtext.bf": "Helvetica:bold",
+        # Use readable 7 pt final-size text for dense materials figures; this
+        # is a Graph Hub assumption aligned with the local min-size floor.
+        "font.size": 7.0,
+        "axes.titlesize": 7.5,
         "axes.labelsize": 7.0,
+        "legend.fontsize": 7.0,
+        "xtick.labelsize": 6.5,
+        "ytick.labelsize": 6.5,
+        # Wiley column widths sit between ACS/Nature and full-width figures;
+        # these strokes are readable without the previous heavy 1.0 pt axes.
         "lines.linewidth": 1.0,
-        "axes.linewidth": 1.0,
-        "xtick.major.width": 1.0,
-        "ytick.major.width": 1.0,
+        "lines.markersize": 3.5,
+        "lines.markeredgewidth": 0.55,
+        "axes.linewidth": 0.7,
+        "xtick.major.width": 0.7,
+        "ytick.major.width": 0.7,
         "xtick.direction": "in",
         "ytick.direction": "in",
         "xtick.top": True,
