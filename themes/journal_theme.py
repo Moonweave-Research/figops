@@ -123,7 +123,10 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     # ACS artwork guidance permits small final lettering, but this track uses
     # readable 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
     "acs": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    "rsc": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
+    # RSC artwork guidance uses Arial/Helvetica-style sans-serif lettering;
+    # use readable 7 pt body/axis text and 6.5 pt ticks as a Graph Hub
+    # assumption that stays within the established small-text floor.
+    "rsc": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
     "elsevier": FontTokens(tag=8.5, label=7.0, annot=7.0, legend=7.0, axis=8.0, tick=7.0),
     # Wiley/Advanced Materials-family artwork uses readable sans-serif labels;
     # keep 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
@@ -327,8 +330,31 @@ STYLE_PRESETS["acs"].update(
 STYLE_PRESETS["rsc"] = copy.deepcopy(STYLE_PRESETS["nature"])
 STYLE_PRESETS["rsc"].update(
     {
+        # RSC journal artwork commonly uses Arial/Helvetica-style sans-serif
+        # lettering; prefer Arial first to match that author-facing wording.
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"],
+        "mathtext.rm": "Arial",
+        "mathtext.it": "Arial:italic",
+        "mathtext.bf": "Arial:bold",
+        # Use readable 7 pt final-size body text. 6.5 pt ticks are a Graph Hub
+        # assumption for dense axes while respecting the local min-size floor.
+        "font.size": 7.0,
+        "axes.titlesize": 7.5,
+        "axes.labelsize": 7.0,
+        "legend.fontsize": 7.0,
+        "xtick.labelsize": 6.5,
+        "ytick.labelsize": 6.5,
+        # RSC single-column width is close to ACS/Cell; use 1.0 pt primary
+        # strokes and 0.6 pt axes so line art stays above hairline weight.
         "axes.linewidth": 0.6,
-        "lines.linewidth": 1.2,
+        "lines.linewidth": 1.0,
+        "lines.markersize": 3.3,
+        "lines.markeredgewidth": 0.55,
+        "xtick.major.width": 0.6,
+        "ytick.major.width": 0.6,
+        "xtick.direction": "out",
+        "ytick.direction": "out",
     }
 )
 
