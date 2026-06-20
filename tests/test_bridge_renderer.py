@@ -19,6 +19,7 @@ from plotting.bridge_renderer import (
     _annotate_points,
     _apply_axes_metadata,
     _apply_layout,
+    _avoid_smart_legend_data_collision,
     _display_label,
     _figsize_for_format,
     _render_bar_plot,
@@ -29,6 +30,7 @@ from plotting.bridge_renderer import (
     _resolved_legend_layout,
     render_bridge_figure,
 )
+from themes.journal_theme import apply_journal_theme
 
 
 def _sha256(path: Path) -> str:
@@ -53,6 +55,26 @@ def _assert_marker_footprints_inside_axes(testcase: unittest.TestCase, fig, axes
             testcase.assertLessEqual(marker_box.x1, axes_box.x1, label)
             testcase.assertGreaterEqual(marker_box.y0, axes_box.y0, label)
             testcase.assertLessEqual(marker_box.y1, axes_box.y1, label)
+
+
+def _legend_diagnostic(result: dict) -> dict:
+    return _geometry_check(result, "legend_data_collision")
+
+
+def _legend_is_inside_axes(fig, ax) -> bool:
+    fig.canvas.draw()
+    legend = ax.get_legend()
+    if legend is None:
+        return False
+    renderer = fig.canvas.get_renderer()
+    legend_box = legend.get_window_extent(renderer)
+    axes_box = ax.get_window_extent(renderer)
+    return (
+        legend_box.x0 >= axes_box.x0
+        and legend_box.x1 <= axes_box.x1
+        and legend_box.y0 >= axes_box.y0
+        and legend_box.y1 <= axes_box.y1
+    )
 
 
 class BridgeRendererUnitTest(unittest.TestCase):
@@ -84,6 +106,63 @@ class BridgeRendererUnitTest(unittest.TestCase):
             writer.writeheader()
             writer.writerows(rows)
         return csv_path
+
+    def _cross_track_collision_points(self) -> list[dict]:
+        series_defs = {
+            "Control": (1.00, 0.18),
+            "Treatment A": (1.18, 0.24),
+            "Treatment B": (0.88, 0.31),
+        }
+        points = []
+        for idx, x_value in enumerate([0, 1, 2, 3, 4, 5]):
+            for series_name, (base, slope) in series_defs.items():
+                curvature = 0.025 * (idx - 2) ** 2 if series_name == "Treatment A" else 0.015 * idx
+                if series_name == "Treatment B":
+                    curvature = -0.018 * (idx - 1) ** 2 + 0.09
+                points.append(
+                    {
+                        "x": float(x_value),
+                        "y": float(base + slope * x_value + curvature),
+                        "label": "",
+                        "series": series_name,
+                        "yerr": float(0.055 + 0.012 * idx + (0.015 if series_name == "Treatment A" else 0.0)),
+                        "yerr_minus": None,
+                        "facet": "",
+                    }
+                )
+        return points
+
+    def _render_bridge_like_axes(self, points: list[dict], target_format: str, *, title: str = "Legend placement"):
+        saved_rc = plt.rcParams.copy()
+        apply_journal_theme(target_format)
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="line",
+            x_column="time_h",
+            y_column="response",
+            title=title,
+            x_axis_label="Time (h)",
+            y_axis_label="Normalized response",
+            series_column="series",
+            yerr_column="err" if any(point.get("yerr") is not None for point in points) else "",
+            target_format=target_format,
+        )
+        fig, ax = plt.subplots(figsize=_figsize_for_format(target_format))
+        try:
+            _render_plot(ax, points, spec)
+            _apply_axes_metadata(ax, spec)
+            ax.set_title(spec.title)
+            _apply_layout(fig, ax, spec)
+            return fig, ax, saved_rc
+        except Exception:
+            plt.rcParams.update(saved_rc)
+            plt.close(fig)
+            raise
+
+    def _close_bridge_like_axes(self, fig, saved_rc) -> None:
+        plt.rcParams.update(saved_rc)
+        plt.close(fig)
 
     def _write_overlay_csv(self, root: Path, name: str) -> Path:
         csv_path = root / name
@@ -913,6 +992,71 @@ class BridgeRendererUnitTest(unittest.TestCase):
             bbox = legend.get_bbox_to_anchor().transformed(ax.transAxes.inverted())
             self.assertLess(bbox.y0 + bbox.height/2, 0.5)
         finally:
+            plt.close(fig)
+
+    def test_auto_legend_relocates_when_it_collides_with_data_in_nature(self):
+        fig, ax, saved_rc = self._render_bridge_like_axes(self._cross_track_collision_points(), "nature")
+        try:
+            result = diagnose_figure_geometry(fig, [ax], layout_locked=False)
+            legend_check = _legend_diagnostic(result)
+            title_check = _geometry_check(result, "axis_label_title_overlap")
+            artist_check = _geometry_check(result, "artist_overlaps")
+
+            self.assertTrue(legend_check["passed"], legend_check)
+            self.assertLessEqual(legend_check["data"]["overlap_frac"], 0.05)
+            self.assertTrue(title_check["passed"], title_check)
+            self.assertTrue(artist_check["passed"], artist_check)
+        finally:
+            self._close_bridge_like_axes(fig, saved_rc)
+
+    def test_auto_legend_relocates_when_it_collides_with_data_in_compact_science(self):
+        fig, ax, saved_rc = self._render_bridge_like_axes(self._cross_track_collision_points(), "science")
+        try:
+            result = diagnose_figure_geometry(fig, [ax], layout_locked=False)
+            legend_check = _legend_diagnostic(result)
+            title_check = _geometry_check(result, "axis_label_title_overlap")
+            artist_check = _geometry_check(result, "artist_overlaps")
+
+            self.assertTrue(legend_check["passed"], legend_check)
+            self.assertLessEqual(legend_check["data"]["overlap_frac"], 0.05)
+            self.assertTrue(title_check["passed"], title_check)
+            self.assertTrue(artist_check["passed"], artist_check)
+        finally:
+            self._close_bridge_like_axes(fig, saved_rc)
+
+    def test_auto_legend_keeps_already_clear_inside_placement(self):
+        saved_rc = plt.rcParams.copy()
+        apply_journal_theme("nature")
+        fig, ax = plt.subplots(figsize=_figsize_for_format("nature"))
+        try:
+            ax.scatter([0.1, 0.2, 0.3], [0.1, 0.12, 0.14], label="low")
+            ax.scatter([0.1, 0.2, 0.3], [0.25, 0.27, 0.29], label="mid")
+            ax.set_xlim(0.0, 1.0)
+            ax.set_ylim(0.0, 1.0)
+            ax.legend(loc="upper right", frameon=False)
+            before_loc = ax.get_legend()._loc
+            spec = BridgeFigureSpec(
+                csv_path="unused.csv",
+                output_path="unused.png",
+                plot_type="scatter",
+                x_column="x",
+                y_column="y",
+                title="Clear inside legend",
+                series_column="series",
+                target_format="nature",
+            )
+
+            placement = _avoid_smart_legend_data_collision(fig, ax, spec)
+            result = diagnose_figure_geometry(fig, [ax], layout_locked=False)
+            legend_check = _legend_diagnostic(result)
+
+            self.assertEqual(placement, "inside")
+            self.assertEqual(ax.get_legend()._loc, before_loc)
+            self.assertTrue(legend_check["passed"], legend_check)
+            self.assertLessEqual(legend_check["data"]["overlap_frac"], 0.05)
+            self.assertTrue(_legend_is_inside_axes(fig, ax))
+        finally:
+            plt.rcParams.update(saved_rc)
             plt.close(fig)
 
     def test_ppt_multi_series_legend_uses_right_outside_layout(self):

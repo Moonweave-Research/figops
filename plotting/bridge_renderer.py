@@ -53,6 +53,17 @@ except Exception:
     )
 
 _PANEL_LABELS = tuple("abcdefghijklmnopqrstuvwxyz")
+_LEGEND_DATA_OVERLAP_WARN = 0.05
+_SMART_LEGEND_INSIDE_CANDIDATES: tuple[str, ...] = (
+    "upper right",
+    "upper left",
+    "lower left",
+    "lower right",
+    "center right",
+    "center left",
+    "lower center",
+    "upper center",
+)
 
 
 def _deterministic_timestamp() -> str:
@@ -1388,9 +1399,12 @@ def _apply_axes_metadata(ax, spec: BridgeFigureSpec) -> None:
 
 
 def _separate_top_legend_title(ax, spec: BridgeFigureSpec) -> None:
-    if not spec.title or _resolved_legend_layout(spec) != "top_outside":
-        return
     legend = ax.get_legend()
+    if not spec.title or (
+        _resolved_legend_layout(spec) != "top_outside"
+        and getattr(legend, "_graph_hub_legend_placement", None) != "top_outside"
+    ):
+        return
     if legend is None:
         return
 
@@ -1516,6 +1530,88 @@ def _find_best_legend_location(ax) -> dict:
     return legend_args
 
 
+def _legend_data_overlap_fraction(ax) -> float:
+    fig = ax.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    legend = ax.get_legend()
+    if legend is None or not legend.get_visible():
+        return 0.0
+    from hub_core.geometry_diagnostics import _box_area, _data_union_bbox, _extent, _inter_area
+
+    legend_bb = _extent(legend, renderer)
+    data_union = _data_union_bbox(ax, renderer)
+    if legend_bb is None or data_union is None:
+        return 0.0
+    legend_area = _box_area(legend_bb)
+    if legend_area <= 0:
+        return 0.0
+    return float(_inter_area(legend_bb, data_union) / legend_area)
+
+
+def _legend_inside_axes(ax) -> bool:
+    fig = ax.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    legend = ax.get_legend()
+    if legend is None or not legend.get_visible():
+        return False
+    legend_box = legend.get_window_extent(renderer)
+    axes_box = ax.get_window_extent(renderer)
+    return bool(
+        legend_box.x0 >= axes_box.x0
+        and legend_box.x1 <= axes_box.x1
+        and legend_box.y0 >= axes_box.y0
+        and legend_box.y1 <= axes_box.y1
+    )
+
+
+def _replace_legend(ax, **kwargs):
+    legend = ax.get_legend()
+    if legend is None:
+        return None
+    handles, labels = ax.get_legend_handles_labels()
+    pairs = [(handle, label) for handle, label in zip(handles, labels) if label and label != "_nolegend_"]
+    if not pairs:
+        return legend
+    legend.remove()
+    handles, labels = zip(*pairs)
+    return ax.legend(handles, labels, **kwargs)
+
+
+def _avoid_smart_legend_data_collision(fig, ax, spec: BridgeFigureSpec) -> str:
+    legend = ax.get_legend()
+    if legend is None:
+        return "none"
+    if _legend_data_overlap_fraction(ax) <= _LEGEND_DATA_OVERLAP_WARN and _legend_inside_axes(ax):
+        setattr(legend, "_graph_hub_legend_placement", "inside")
+        return "inside"
+
+    for loc in _SMART_LEGEND_INSIDE_CANDIDATES:
+        candidate = _replace_legend(ax, loc=loc, frameon=False, fontsize="small")
+        if candidate is None:
+            return "none"
+        fig.tight_layout(pad=0.5)
+        if _legend_data_overlap_fraction(ax) <= _LEGEND_DATA_OVERLAP_WARN and _legend_inside_axes(ax):
+            setattr(candidate, "_graph_hub_legend_placement", "inside")
+            return "inside"
+
+    ncol = min(max(len(ax.get_legend_handles_labels()[1]), 1), 3)
+    fallback = _replace_legend(
+        ax,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=ncol,
+        frameon=False,
+        fontsize=plt.rcParams.get("legend.fontsize", 7.0),
+    )
+    if fallback is not None:
+        setattr(fallback, "_graph_hub_legend_placement", "top_outside")
+    fig.tight_layout(pad=0.5)
+    _separate_top_legend_title(ax, spec)
+    return "top_outside"
+
+
 def _legend_kwargs(ax, spec: BridgeFigureSpec, *, n_series: int) -> dict:
     layout = _resolved_legend_layout(spec)
     if layout == "smart":
@@ -1556,6 +1652,8 @@ def _apply_layout(fig, ax, spec: BridgeFigureSpec, *, allow_figure_layout: bool 
         fig.tight_layout(pad=0.5)
     except Exception:
         pass
+    if layout == "smart":
+        _avoid_smart_legend_data_collision(fig, ax, spec)
 
 
 def _resolved_legend_layout(spec: BridgeFigureSpec) -> str:
