@@ -198,7 +198,7 @@ def test_science_no_box():
 
 def test_rsc_line_weights():
     assert STYLE_PRESETS['rsc']['axes.linewidth'] == 0.6
-    assert STYLE_PRESETS['rsc']['lines.linewidth'] == 1.2
+    assert STYLE_PRESETS['rsc']['lines.linewidth'] == 1.0
 
 
 def test_journal_presets_differ_from_nature():

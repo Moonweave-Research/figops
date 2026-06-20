@@ -226,6 +226,62 @@ TARGET_FORMAT_PROFILE_TOKENS = {
             "default_colormap": "viridis",
         },
     },
+    "rsc": {
+        "baseline": {
+            # RSC figure-preparation anchors: single-column artwork is commonly
+            # prepared around 8.3 cm final width.
+            "figure_width_mm": 83.0,
+            # Height is a Graph Hub assumption, preserving the existing 0.80
+            # width:height bridge-render ratio for RSC's 83 mm single column.
+            "figure_height_mm": 66.4,
+            # RSC anchors: 8.3 cm single column and 17.1 cm double column.
+            # RSC does not strongly define a 1.5-column slot here, so one_half
+            # is treated as the double/full width rather than a separate spec.
+            "figure_column_widths_mm": {
+                "single": 83.0,
+                "one_half": 171.0,
+                "double": 171.0,
+                "full": 171.0,
+                "triple": 171.0,
+            },
+            # RSC single-column width is close to ACS/Cell, so 3.3 pt markers
+            # remain readable without crowding chemical/materials plots.
+            "main_marker_size": 3.3,
+            # Facet markers stay below the main marker size to avoid crowding
+            # in subdivided RSC panels.
+            "facet_marker_size": 2.5,
+            # Marker edges stay above hairline weight while preserving symbol
+            # interiors at final publication size.
+            "main_marker_edge_width": 0.55,
+            # Main plotted lines use a conservative 1.0 pt journal-scale stroke.
+            "main_line_width": 1.0,
+            # Dense time-series traces use a slightly lighter stroke while
+            # staying visible at 83 mm final width.
+            "timeseries_line_width": 0.8,
+            # Error bars stay lighter than primary data strokes but above a
+            # practical print hairline.
+            "error_line_width": 0.75,
+            # Cap size follows the generic baseline for RSC's near-default
+            # single-column width.
+            "error_cap_size": 2.0,
+            # Jitter points are reduced from generic baseline to avoid
+            # overplotting in one-column categorical plots.
+            "jitter_size": 12.0,
+            # Jitter outlines follow the marker edge width.
+            "jitter_line_width": 0.55,
+            # Bar outlines match the practical 0.5 pt print minimum assumption.
+            "bar_edge_width": 0.5,
+            # KDE resolution is raised above generic baseline for smoother
+            # distribution plots; this is a repo assumption, not an RSC spec.
+            "violin_kde_points": 192,
+            # Keep the generic violin width because RSC single columns are
+            # close to Graph Hub's default journal scale.
+            "violin_width": 0.5,
+            # RSC-specific default is explicit; viridis is perceptually uniform
+            # and already Graph Hub's fallback for unknown physics types.
+            "default_colormap": "viridis",
+        },
+    },
     "wiley": {
         "baseline": {
             # Wiley Advanced Materials-family figures commonly target 8.4 cm
