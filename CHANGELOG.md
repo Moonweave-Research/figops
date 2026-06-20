@@ -15,6 +15,27 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.7.0] - 2026-06-20
+
+### Added
+
+- Faceted rendering now supports fixed and free `facet_scales` options (#114).
+- Categorical plots accept explicit `category_order` and `facet_order` overrides while
+  preserving input order by default (#116).
+- Heatmaps support `annotate_values`, and single-series bar plots support
+  `bar_error_column` error bars (#118).
+
+### Changed
+
+- Nature Communications baseline styling adds marker-size tokens and axis margins to
+  prevent marker clipping (#113).
+- Violin plots use smoother KDE behavior while preserving the small-sample fallback (#115).
+
+### Fixed
+
+- Legend and title placement now avoids overlapping rendered plot content (#112).
+- Geometry diagnostics are tuned to reduce false-positive overlap warnings (#117).
+
 ## [0.6.0] - 2026-06-20
 
 ### Added
