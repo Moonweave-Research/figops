@@ -12,6 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from hub_core.geometry_diagnostics import diagnose_figure_geometry
 from plotting.bridge_renderer import (
     BridgeFigureSpec,
     MultiPanelSpec,
@@ -29,6 +30,12 @@ from plotting.bridge_renderer import (
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _geometry_check(result: dict, name: str) -> dict:
+    matches = [check for check in result["checks"] if check["name"] == name]
+    assert matches, f"no geometry check named {name}"
+    return matches[0]
 
 
 class BridgeRendererUnitTest(unittest.TestCase):
@@ -717,6 +724,112 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertAlmostEqual(fig_h_mm * pos.height, 55.0, places=1)
         finally:
             plt.close(fig)
+
+    def test_top_outside_legend_with_title_has_clear_chrome_geometry(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_top_legend_title_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = tmpdir_path / "multi_series.csv"
+            with csv_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = DictWriter(handle, fieldnames=["x", "y", "series"])
+                writer.writeheader()
+                writer.writerows(
+                    [
+                        {"x": 0, "y": 1.0, "series": "Alpha"},
+                        {"x": 1, "y": 1.8, "series": "Alpha"},
+                        {"x": 0, "y": 1.4, "series": "Beta"},
+                        {"x": 1, "y": 2.2, "series": "Beta"},
+                        {"x": 0, "y": 1.8, "series": "Gamma"},
+                        {"x": 1, "y": 2.6, "series": "Gamma"},
+                    ]
+                )
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "multi_series.png"),
+                plot_type="line",
+                x_column="x",
+                y_column="y",
+                title="Multi-series xy",
+                series_column="series",
+                legend_layout="top_outside",
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                ax = fig.axes[0]
+                fig.canvas.draw()
+                observed["geometry"] = diagnose_figure_geometry(
+                    fig,
+                    [ax],
+                    layout_locked=hasattr(fig, "_graph_hub_layout_lock"),
+                )
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                render_bridge_figure(spec)
+
+            artist_check = _geometry_check(observed["geometry"], "artist_overlaps")
+            legend_title_pairs = [
+                pair
+                for pair in artist_check["data"]["overlaps"]
+                if {pair["a"].split(":", 1)[0], pair["b"].split(":", 1)[0]} == {"legend", "title"}
+            ]
+            self.assertEqual([], legend_title_pairs)
+            self.assertTrue(_geometry_check(observed["geometry"], "axis_label_title_overlap")["passed"])
+
+    def test_broken_axis_top_outside_legend_with_title_has_clear_chrome_geometry(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_broken_top_legend_title_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = tmpdir_path / "broken_series.csv"
+            with csv_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = DictWriter(handle, fieldnames=["x", "y", "series"])
+                writer.writeheader()
+                writer.writerows(
+                    [
+                        {"x": 1, "y": 10, "series": "Alpha"},
+                        {"x": 2, "y": 18, "series": "Alpha"},
+                        {"x": 3, "y": 22, "series": "Alpha"},
+                        {"x": 1, "y": 900, "series": "Beta"},
+                        {"x": 2, "y": 940, "series": "Beta"},
+                        {"x": 3, "y": 970, "series": "Beta"},
+                        {"x": 1, "y": 920, "series": "Gamma"},
+                        {"x": 2, "y": 960, "series": "Gamma"},
+                        {"x": 3, "y": 990, "series": "Gamma"},
+                    ]
+                )
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "broken_series.png"),
+                plot_type="line",
+                x_column="x",
+                y_column="y",
+                title="Broken-axis response",
+                series_column="series",
+                legend_layout="top_outside",
+                y_break_range=(100.0, 800.0),
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                ax_top = [ax for ax in fig.axes if ax.get_visible()][0]
+                fig.canvas.draw()
+                observed["geometry"] = diagnose_figure_geometry(
+                    fig,
+                    [ax_top],
+                    layout_locked=hasattr(fig, "_graph_hub_layout_lock"),
+                )
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                render_bridge_figure(spec)
+
+            artist_check = _geometry_check(observed["geometry"], "artist_overlaps")
+            legend_title_pairs = [
+                pair
+                for pair in artist_check["data"]["overlaps"]
+                if {pair["a"].split(":", 1)[0], pair["b"].split(":", 1)[0]} == {"legend", "title"}
+            ]
+            self.assertEqual([], legend_title_pairs)
+            self.assertTrue(_geometry_check(observed["geometry"], "axis_label_title_overlap")["passed"])
 
     def test_multipanel_bridge_panels_do_not_override_composite_canvas(self):
         with tempfile.TemporaryDirectory(prefix="bridge_multi_") as tmpdir:

@@ -174,6 +174,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
                 _apply_axes_metadata(ax, spec)
                 ax.set_title(spec.title)
                 _apply_layout(fig, ax, spec)
+                _separate_top_legend_title(ax, spec)
             save_journal_fig(fig, output_path)
         finally:
             plt.close(fig)
@@ -795,6 +796,7 @@ def _render_broken_axis_plot(fig, points: list[dict], spec: BridgeFigureSpec) ->
     ax_bot.set_xlabel(spec.x_axis_label or spec.x_column)
     ax_top.set_ylabel(spec.y_axis_label or spec.y_column)
     ax_top.set_title(spec.title)
+    _separate_top_legend_title(ax_top, spec)
 
 
 def _make_broken_y_axes(fig, points: list[dict], break_range: tuple[float, float] | None):
@@ -1211,6 +1213,32 @@ def _display_label(value: object, *, compress_labels: bool = True) -> str:
 def _apply_axes_metadata(ax, spec: BridgeFigureSpec) -> None:
     ax.set_xlabel(spec.x_axis_label or spec.x_column)
     ax.set_ylabel(spec.y_axis_label or spec.y_column)
+
+
+def _separate_top_legend_title(ax, spec: BridgeFigureSpec) -> None:
+    if not spec.title or _resolved_legend_layout(spec) != "top_outside":
+        return
+    legend = ax.get_legend()
+    if legend is None:
+        return
+
+    fig = ax.figure
+    pad_px = float(plt.rcParams.get("axes.titlepad", 6.0)) * fig.dpi / 72.0
+    for _ in range(2):
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        title_bb = ax.title.get_window_extent(renderer)
+        legend_bb = legend.get_window_extent(renderer)
+        overlap_width = min(title_bb.x1, legend_bb.x1) - max(title_bb.x0, legend_bb.x0)
+        overlap_height = min(title_bb.y1, legend_bb.y1) - max(title_bb.y0, legend_bb.y0)
+        if overlap_width <= 0 or overlap_height <= 0:
+            return
+
+        axes_height = ax.get_window_extent(renderer).height
+        if axes_height <= 0:
+            return
+        title_x, title_y = ax.title.get_position()
+        ax.set_title(ax.title.get_text(), x=title_x, y=title_y + (overlap_height + pad_px) / axes_height)
 
 
 def _find_best_legend_location(ax) -> dict:
