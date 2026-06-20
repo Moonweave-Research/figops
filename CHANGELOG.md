@@ -15,6 +15,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.11.1] - 2026-06-21
+
+### Changed
+
+- Aligned the `nature` track figure column widths to Nature Communications
+  (single 88 mm, double 180 mm), matching the project's Nature Communications
+  baseline target (#135).
+
 ## [0.11.0] - 2026-06-21
 
 ### Added
