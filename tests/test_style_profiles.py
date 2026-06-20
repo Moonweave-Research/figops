@@ -7,6 +7,7 @@ from themes.style_profiles import (
     LINESTYLE_CYCLE,
     MARKER_CYCLE,
     get_profile_tokens,
+    get_render_style_tokens,
     get_series_style,
     list_profiles,
     resolve_profile_name,
@@ -68,6 +69,22 @@ class TestProfileResolution(unittest.TestCase):
         self.assertIsInstance(tokens, dict)
         self.assertEqual(key, "baseline")
         self.assertIn("main_marker_size", tokens)
+
+    def test_nature_baseline_resolves_smaller_marker_tokens(self):
+        tokens, meta = get_render_style_tokens("nature", "baseline")
+
+        self.assertEqual(meta["target_format"], "nature")
+        self.assertEqual(meta["profile"], "baseline")
+        self.assertEqual(tokens["main_marker_size"], 3.2)
+        self.assertEqual(tokens["facet_marker_size"], 2.4)
+        self.assertLess(tokens["facet_marker_size"], tokens["main_marker_size"])
+
+    def test_science_baseline_keeps_profile_marker_size(self):
+        tokens, meta = get_render_style_tokens("science", "baseline")
+
+        self.assertEqual(meta["target_format"], "science")
+        self.assertEqual(meta["profile"], "baseline")
+        self.assertEqual(tokens["main_marker_size"], 5.0)
 
 
 if __name__ == "__main__":

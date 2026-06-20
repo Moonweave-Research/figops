@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from hub_core.geometry_diagnostics import diagnose_figure_geometry
+from hub_core.geometry_diagnostics import _marker_footprint_box_entries, diagnose_figure_geometry
 from plotting.bridge_renderer import (
     BridgeFigureSpec,
     MultiPanelSpec,
@@ -22,6 +22,7 @@ from plotting.bridge_renderer import (
     _display_label,
     _render_bar_plot,
     _render_heatmap_plot,
+    _render_plot,
     _render_xy_plot,
     _resolved_legend_layout,
     render_bridge_figure,
@@ -36,6 +37,20 @@ def _geometry_check(result: dict, name: str) -> dict:
     matches = [check for check in result["checks"] if check["name"] == name]
     assert matches, f"no geometry check named {name}"
     return matches[0]
+
+
+def _assert_marker_footprints_inside_axes(testcase: unittest.TestCase, fig, axes) -> None:
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    for ax in axes:
+        axes_box = ax.get_window_extent(renderer)
+        marker_boxes = _marker_footprint_box_entries(ax, fig)
+        testcase.assertTrue(marker_boxes)
+        for label, marker_box in marker_boxes:
+            testcase.assertGreaterEqual(marker_box.x0, axes_box.x0, label)
+            testcase.assertLessEqual(marker_box.x1, axes_box.x1, label)
+            testcase.assertGreaterEqual(marker_box.y0, axes_box.y0, label)
+            testcase.assertLessEqual(marker_box.y1, axes_box.y1, label)
 
 
 class BridgeRendererUnitTest(unittest.TestCase):
@@ -413,6 +428,79 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertEqual(observed["line_counts"], [1, 1, 1])
             self.assertEqual(observed["xlabels"], ["", "", "cycle"])
             self.assertEqual(observed["ylabels"], ["stress", "", "stress"])
+
+    def test_nature_single_panel_line_and_scatter_markers_are_token_sized_and_not_clipped(self):
+        points = [
+            {"x": 0.0, "y": 0.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": ""},
+            {"x": 1.0, "y": 1.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": ""},
+        ]
+
+        for plot_type, line in (("line", True), ("scatter", False)):
+            with self.subTest(plot_type=plot_type):
+                spec = BridgeFigureSpec(
+                    csv_path="unused.csv",
+                    output_path="unused.png",
+                    plot_type=plot_type,
+                    x_column="x",
+                    y_column="y",
+                    title="Edge points",
+                    target_format="nature",
+                    profile_name="baseline",
+                )
+                fig, ax = plt.subplots(figsize=(89 / 25.4, 71 / 25.4), dpi=100)
+                try:
+                    _render_xy_plot(ax, points, spec, line=line)
+                    if line:
+                        self.assertEqual({artist.get_markersize() for artist in ax.lines}, {3.2})
+                    else:
+                        scatter_sizes = {
+                            round(float(size), 4)
+                            for collection in ax.collections
+                            for size in collection.get_sizes()
+                        }
+                        self.assertEqual(scatter_sizes, {8.0425})
+                    _assert_marker_footprints_inside_axes(self, fig, [ax])
+                finally:
+                    plt.close(fig)
+
+    def test_nature_facet_markers_are_smaller_and_not_clipped_by_axes_edges(self):
+        points = []
+        for facet_idx in range(9):
+            for cycle, stress in ((0.0, float(facet_idx)), (1.0, float(facet_idx + 1))):
+                points.append(
+                    {
+                        "x": cycle,
+                        "y": stress,
+                        "label": "",
+                        "series": "",
+                        "yerr": None,
+                        "yerr_minus": None,
+                        "facet": f"facet {facet_idx}",
+                    }
+                )
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="facet",
+            x_column="cycle",
+            y_column="stress",
+            title="Facet stress",
+            facet_column="phase",
+            target_format="nature",
+            profile_name="baseline",
+        )
+
+        fig, ax = plt.subplots(figsize=(89 / 25.4, 71 / 25.4), dpi=100)
+        try:
+            _render_plot(ax, points, spec)
+            _apply_layout(fig, ax, spec)
+            axes = [facet_ax for facet_ax in fig.axes if facet_ax.get_visible()]
+            self.assertEqual(len(axes), 9)
+            line_marker_sizes = {line.get_markersize() for facet_ax in axes for line in facet_ax.lines}
+            self.assertEqual(line_marker_sizes, {2.4})
+            _assert_marker_footprints_inside_axes(self, fig, axes)
+        finally:
+            plt.close(fig)
 
     def test_facet_plot_type_matches_visual_regression_baseline(self):
         baseline = Path(__file__).parent / "fixtures" / "visual_regression" / "m4_2_facet_plot.png"

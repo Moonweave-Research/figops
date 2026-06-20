@@ -111,6 +111,17 @@ STYLE_PROFILES = {
     },
 }
 
+TARGET_FORMAT_PROFILE_TOKENS = {
+    "nature": {
+        "baseline": {
+            "main_marker_size": 3.2,
+            "facet_marker_size": 2.4,
+            "axis_marker_margin_fraction": 0.06,
+            "facet_axis_marker_margin_fraction": 0.16,
+        },
+    },
+}
+
 PROFILE_ALIASES = {
     "default": "baseline",
     "base": "baseline",
@@ -141,6 +152,14 @@ def get_style_profile(profile_name=None):
 def get_profile_tokens(profile_name=None):
     profile, key = get_style_profile(profile_name)
     return profile.get("tokens", {}), key
+
+
+def get_render_style_tokens(target_format="nature", profile_name=None):
+    target_key = str(target_format or "nature").strip().lower()
+    profile_tokens, profile_key = get_profile_tokens(profile_name)
+    tokens = deepcopy(profile_tokens)
+    tokens.update(TARGET_FORMAT_PROFILE_TOKENS.get(target_key, {}).get(profile_key, {}))
+    return tokens, {"target_format": target_key, "profile": profile_key}
 
 
 def get_profile_rc_overrides(profile_name=None):

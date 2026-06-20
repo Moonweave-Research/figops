@@ -36,7 +36,7 @@ from themes.journal_theme import (
     set_figure_size,
 )
 from themes.physics_colormap import resolve_colormap
-from themes.style_profiles import get_series_style
+from themes.style_profiles import get_render_style_tokens, get_series_style
 
 from .smart_layout import find_empty_quadrant
 
@@ -74,6 +74,31 @@ _FORMAT_FIGSIZE_MM: dict[str, tuple[float, float]] = {
 def _figsize_for_format(target_format: str) -> tuple[float, float]:
     w_mm, h_mm = _FORMAT_FIGSIZE_MM.get(target_format, (89, 71))
     return set_figure_size(w_mm, h_mm)
+
+
+def _marker_tokens(spec: BridgeFigureSpec, *, small_panel: bool = False) -> tuple[float, float, float | None]:
+    tokens, _meta = get_render_style_tokens(spec.target_format, spec.profile_name)
+    marker_size = float(tokens.get("main_marker_size", plt.rcParams["lines.markersize"]))
+    if small_panel:
+        marker_size = float(tokens.get("facet_marker_size", marker_size))
+    marker_edge_width = float(tokens.get("main_marker_edge_width", plt.rcParams["lines.markeredgewidth"]))
+    margin_key = "facet_axis_marker_margin_fraction" if small_panel else "axis_marker_margin_fraction"
+    marker_margin = tokens.get(margin_key)
+    if marker_margin is None and small_panel:
+        marker_margin = tokens.get("axis_marker_margin_fraction")
+    return marker_size, marker_edge_width, float(marker_margin) if marker_margin is not None else None
+
+
+def _scatter_marker_area(marker_size_pt: float) -> float:
+    return math.pi * (marker_size_pt / 2.0) ** 2
+
+
+def _apply_marker_axis_margin(ax, spec: BridgeFigureSpec, *, small_panel: bool = False) -> None:
+    _marker_size, _marker_edge_width, margin = _marker_tokens(spec, small_panel=small_panel)
+    if margin is None:
+        return
+    current_x, current_y = ax.margins()
+    ax.margins(x=max(float(current_x), margin), y=max(float(current_y), margin))
 
 
 def draw_zenith_plot(ax, x, y, label=None, kind="scatter", palette="Nature Energy", series_index=0, **kwargs):
@@ -584,9 +609,11 @@ def _annotate_points(
             )
 
 
-def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: bool) -> None:
+def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: bool, small_panel: bool = False) -> None:
     grouped = _group_points(points, spec)
     has_multi_series = any(key != "__single__" for key in grouped)
+    marker_size, marker_edge_width, _marker_margin = _marker_tokens(spec, small_panel=small_panel)
+    scatter_size = _scatter_marker_area(marker_size)
 
     for idx, (series_name, series_points) in enumerate(grouped.items()):
         xs = [point["x"] for point in series_points]
@@ -606,6 +633,8 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
                     fmt=sty["marker"],
                     linestyle=sty["linestyle"],
                     linewidth=1.2,
+                    markersize=marker_size,
+                    markeredgewidth=marker_edge_width,
                     capsize=cap_size,
                     capthick=cap_thick,
                     label=legend_label,
@@ -617,6 +646,8 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
                     marker=sty["marker"],
                     linestyle=sty["linestyle"],
                     linewidth=1.2,
+                    markersize=marker_size,
+                    markeredgewidth=marker_edge_width,
                     label=legend_label,
                 )
         else:
@@ -627,12 +658,21 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
                     yerr=yerr,
                     fmt=sty["marker"],
                     linestyle="none",
+                    markersize=marker_size,
+                    markeredgewidth=marker_edge_width,
                     capsize=cap_size,
                     capthick=cap_thick,
                     label=legend_label,
                 )
             else:
-                ax.scatter(xs, ys, s=24, marker=sty["marker"], label=legend_label)
+                ax.scatter(
+                    xs,
+                    ys,
+                    s=scatter_size,
+                    marker=sty["marker"],
+                    linewidths=marker_edge_width,
+                    label=legend_label,
+                )
 
         if spec.label_column:
             _annotate_points(
@@ -645,6 +685,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
 
     if has_multi_series:
         ax.legend(**_legend_kwargs(ax, spec, n_series=len(grouped)))
+    _apply_marker_axis_margin(ax, spec, small_panel=small_panel)
 
 
 def _has_statistical_overlays(spec: BridgeFigureSpec) -> bool:
@@ -878,6 +919,8 @@ def _draw_broken_xy_series(
 ) -> None:
     cap_size = spec.yerr_cap_width
     cap_thick = max(0.5, spec.yerr_cap_width * 0.4)
+    marker_size, marker_edge_width, _marker_margin = _marker_tokens(spec)
+    scatter_size = _scatter_marker_area(marker_size)
     if line:
         if yerr is not None:
             ax.errorbar(
@@ -887,6 +930,8 @@ def _draw_broken_xy_series(
                 fmt=sty["marker"],
                 linestyle=sty["linestyle"],
                 linewidth=1.2,
+                markersize=marker_size,
+                markeredgewidth=marker_edge_width,
                 capsize=cap_size,
                 capthick=cap_thick,
                 label=label,
@@ -898,6 +943,8 @@ def _draw_broken_xy_series(
                 marker=sty["marker"],
                 linestyle=sty["linestyle"],
                 linewidth=1.2,
+                markersize=marker_size,
+                markeredgewidth=marker_edge_width,
                 label=label,
             )
     elif yerr is not None:
@@ -907,12 +954,14 @@ def _draw_broken_xy_series(
             yerr=yerr,
             fmt=sty["marker"],
             linestyle="none",
+            markersize=marker_size,
+            markeredgewidth=marker_edge_width,
             capsize=cap_size,
             capthick=cap_thick,
             label=label,
         )
     else:
-        ax.scatter(xs, ys, s=24, marker=sty["marker"], label=label)
+        ax.scatter(xs, ys, s=scatter_size, marker=sty["marker"], linewidths=marker_edge_width, label=label)
 
 
 def _annotate_broken_axis_points(ax_top, ax_bot, series_points: list[dict], spec: BridgeFigureSpec) -> None:
@@ -1000,7 +1049,7 @@ def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         if shared_x is None:
             shared_x = facet_ax
             shared_y = facet_ax
-        _render_xy_plot(facet_ax, facet_points, spec, line=True)
+        _render_xy_plot(facet_ax, facet_points, spec, line=True, small_panel=True)
         facet_ax.set_title(_display_label(facet_name, compress_labels=spec.compress_labels))
         if row_idx == n_rows - 1:
             facet_ax.set_xlabel(spec.x_axis_label or spec.x_column)
