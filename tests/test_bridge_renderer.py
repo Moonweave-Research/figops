@@ -355,6 +355,13 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertTrue(Path(out).exists())
             self.assertEqual(observed["xtick_labels"], ["control", "treated"])
             self.assertGreaterEqual(len(observed["violin_bodies"]), 2)
+            self.assertTrue(
+                all(
+                    len(path.vertices) >= 500
+                    for body in observed["violin_bodies"]
+                    for path in body.get_paths()
+                )
+            )
             self.assertEqual(sum(len(collection.get_offsets()) for collection in observed["point_collections"]), 24)
 
     def test_box_plot_type_matches_visual_regression_baseline(self):

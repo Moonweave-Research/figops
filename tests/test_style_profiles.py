@@ -77,6 +77,9 @@ class TestProfileResolution(unittest.TestCase):
         self.assertEqual(meta["profile"], "baseline")
         self.assertEqual(tokens["main_marker_size"], 3.2)
         self.assertEqual(tokens["facet_marker_size"], 2.4)
+        self.assertEqual(tokens["violin_kde_points"], 256)
+        self.assertEqual(tokens["violin_kde_bw_method"], "scott")
+        self.assertEqual(tokens["violin_width"], 0.52)
         self.assertLess(tokens["facet_marker_size"], tokens["main_marker_size"])
 
     def test_science_baseline_keeps_profile_marker_size(self):
@@ -85,6 +88,7 @@ class TestProfileResolution(unittest.TestCase):
         self.assertEqual(meta["target_format"], "science")
         self.assertEqual(meta["profile"], "baseline")
         self.assertEqual(tokens["main_marker_size"], 5.0)
+        self.assertEqual(tokens["violin_kde_points"], 100)
 
 
 if __name__ == "__main__":

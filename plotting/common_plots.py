@@ -15,6 +15,11 @@ import numpy as np
 import pandas as pd
 
 _JITTER_HALF_WIDTH = 0.15
+_DEFAULT_VIOLIN_KDE_POINTS = 100
+_DEFAULT_VIOLIN_KDE_BW_METHOD = "scott"
+_DEFAULT_VIOLIN_WIDTH = 0.5
+_MIN_VIOLIN_KDE_POINTS = 16
+_ALLOWED_VIOLIN_KDE_BW_METHODS = {"scott", "silverman"}
 
 
 def _get_cycle_colors(n: int) -> list[str]:
@@ -45,6 +50,35 @@ def _warn_small_n(n: int, group_name: str, threshold: int = 10) -> None:
             "Individual data points should be shown per Nature guidelines.",
             stacklevel=3,
         )
+
+
+def _validate_violin_kde_points(kde_points: int) -> int:
+    points = int(kde_points)
+    if points < _MIN_VIOLIN_KDE_POINTS:
+        raise ValueError(f"violin_kde_points must be >= {_MIN_VIOLIN_KDE_POINTS}")
+    return points
+
+
+def _validate_violin_kde_bw_method(bw_method):
+    if bw_method is None or callable(bw_method):
+        return bw_method
+    if isinstance(bw_method, str):
+        normalized = bw_method.strip().lower()
+        if normalized not in _ALLOWED_VIOLIN_KDE_BW_METHODS:
+            allowed = ", ".join(sorted(_ALLOWED_VIOLIN_KDE_BW_METHODS))
+            raise ValueError(f"violin_kde_bw_method must be one of: {allowed}")
+        return normalized
+    bw_value = float(bw_method)
+    if bw_value <= 0:
+        raise ValueError("violin_kde_bw_method numeric value must be > 0")
+    return bw_value
+
+
+def _validate_violin_width(width: float) -> float:
+    width_value = float(width)
+    if width_value <= 0:
+        raise ValueError("violin_width must be > 0")
+    return width_value
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +262,9 @@ def plot_violin_with_points(
     ax: plt.Axes | None = None,
     palette: dict | None = None,
     min_n: int = 10,
+    kde_points: int = _DEFAULT_VIOLIN_KDE_POINTS,
+    kde_bw_method=_DEFAULT_VIOLIN_KDE_BW_METHOD,
+    violin_width: float = _DEFAULT_VIOLIN_WIDTH,
     seed: int = 42,
 ) -> tuple:
     """Violin plot with jitter overlay. Falls back to strip plot when n < min_n.
@@ -255,7 +292,15 @@ def plot_violin_with_points(
     dataset = [df[df[x_col] == cat][y_col].dropna().values for cat in categories]
     positions = list(range(len(categories)))
 
-    parts = ax.violinplot(dataset, positions=positions, showmeans=False, showextrema=False)
+    parts = ax.violinplot(
+        dataset,
+        positions=positions,
+        widths=_validate_violin_width(violin_width),
+        showmeans=False,
+        showextrema=False,
+        points=_validate_violin_kde_points(kde_points),
+        bw_method=_validate_violin_kde_bw_method(kde_bw_method),
+    )
     for i, body in enumerate(parts["bodies"]):
         color = _resolve_color(palette, categories[i], i, cycle_colors)
         body.set_facecolor(color)

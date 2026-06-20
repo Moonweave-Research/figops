@@ -1094,7 +1094,16 @@ def _render_box_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
 def _render_violin_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     from plotting.common_plots import plot_violin_with_points
 
-    plot_violin_with_points(_points_to_distribution_frame(points, spec), spec.x_column, spec.y_column, ax=ax)
+    tokens, _meta = get_render_style_tokens(spec.target_format, spec.profile_name)
+    plot_violin_with_points(
+        _points_to_distribution_frame(points, spec),
+        spec.x_column,
+        spec.y_column,
+        ax=ax,
+        kde_points=tokens["violin_kde_points"],
+        kde_bw_method=tokens["violin_kde_bw_method"],
+        violin_width=tokens["violin_width"],
+    )
 
 
 def _points_to_distribution_frame(points: list[dict], spec: BridgeFigureSpec):
