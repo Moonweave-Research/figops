@@ -312,6 +312,49 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertTrue(check["passed"])
         self.assertEqual(check["data"]["overlaps"], [])
 
+    def test_dense_legible_scatter_does_not_report_spurious_overlap_clutter(self):
+        fig, ax = plt.subplots(figsize=(3, 3), dpi=100)
+        x = np.linspace(0.0, 1.0, 24)
+        y = 0.5 + 0.08 * np.sin(np.linspace(0.0, 4.0 * np.pi, len(x)))
+        ax.scatter(x, y, s=225)
+
+        result = diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False)
+        marker_check = _check(result, "marker_marker_overlaps")
+        artist_check = _check(result, "artist_overlaps")
+
+        self.assertTrue(marker_check["passed"])
+        self.assertEqual(marker_check["data"]["overlaps"], [])
+        self.assertTrue(artist_check["passed"])
+        self.assertEqual(artist_check["data"]["overlaps"], [])
+
+    def test_multiseries_errorbars_do_not_report_spurious_marker_or_artist_overlaps(self):
+        fig, ax = plt.subplots(figsize=(4.8, 3.2), dpi=100)
+        x = np.arange(8)
+        for offset, phase in ((-0.12, 0.0), (0.0, 0.45), (0.12, 0.9)):
+            y = 1.0 + 0.18 * np.sin(x * 0.7 + phase)
+            ax.errorbar(x + offset, y, yerr=0.08, xerr=0.08, marker="o", markersize=6, capsize=4, linewidth=1.2)
+
+        result = diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False)
+        marker_check = _check(result, "marker_marker_overlaps")
+        artist_check = _check(result, "artist_overlaps")
+
+        self.assertTrue(marker_check["passed"])
+        self.assertEqual(marker_check["data"]["overlaps"], [])
+        self.assertTrue(artist_check["passed"])
+        self.assertEqual(artist_check["data"]["overlaps"], [])
+
+    def test_genuine_marker_marker_clutter_still_reports_overlap_fraction(self):
+        fig, ax = plt.subplots(figsize=(3, 3), dpi=100)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.scatter([0.50, 0.502, 0.504], [0.50, 0.50, 0.50], s=900)
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "marker_marker_overlaps")
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(check["data"]["overlaps"])
+        self.assertGreater(check["data"]["overlap_fraction"], 0.0)
+
     def test_marker_marker_overlaps_skip_when_marker_count_exceeds_cap(self):
         fig, ax = plt.subplots(figsize=(4, 4))
         xs = np.linspace(0.0, 1.0, MAX_TEXT_ARTISTS + 1)
@@ -680,7 +723,7 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertAlmostEqual(box.width, expected_diameter_px, places=4)
         self.assertAlmostEqual(box.height, expected_diameter_px, places=4)
 
-    def test_artist_overlaps_over_cap_skip_is_not_a_pass(self):
+    def test_data_only_marker_over_cap_does_not_skip_artist_overlaps(self):
         fig, ax = plt.subplots(figsize=(4, 4))
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
@@ -689,8 +732,9 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         ax.scatter(xs, ys, s=40)
         result = diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False)
         check = _check(result, "artist_overlaps")
-        self.assertIsNone(check["passed"])
-        self.assertTrue(check["detail"].startswith("skipped: artist count"))
+        self.assertTrue(check["passed"])
+        self.assertEqual(check["data"]["overlaps"], [])
+        self.assertEqual(check["data"]["candidate_pairs"], 0)
         self.assertIsInstance(result["passed"], bool)
 
     def test_box_vector_away_tie_break_is_deterministic(self):

@@ -31,12 +31,15 @@ TICK_CROWDING_WARN = 0.90
 DATA_OUTSIDE_AXES_WARN = 0.01
 LEGEND_OVERLAP_WARN = 0.05
 COLORBAR_OVERLAP_WARN = 0.02
-MARKER_MARKER_OVERLAP_WARN = 0.05
+MARKER_MARKER_OVERLAP_WARN = 0.55
+ARTIST_OVERLAP_WARN = 0.05
+POINT_MARKER_OVERLAP_WARN = 0.10
 TEXT_AXIS_EDGE_WARN_PX = 3.0
 
 _CROWDING_NEAR_LOW = 0.85
 _CROWDING_NEAR_HIGH = 0.95
 _MAX_REPORTED_PAIRS = 50
+_ERRORBAR_CAP_MARKERS = frozenset({"_", "|", 0, 1, 2, 3, 10, 11})
 
 _WARNING_ELIGIBLE = frozenset(
     {
@@ -158,6 +161,31 @@ def _overlap_fraction(box_a: Bbox, box_b: Bbox) -> float:
     if denom <= 0:
         return 0.0
     return float(_inter_area(box_a, box_b) / denom)
+
+
+def _circle_overlap_fraction(
+    center_a: tuple[float, float],
+    radius_a: float,
+    center_b: tuple[float, float],
+    radius_b: float,
+) -> float:
+    if radius_a <= 0 or radius_b <= 0:
+        return 0.0
+    distance = float(np.hypot(center_a[0] - center_b[0], center_a[1] - center_b[1]))
+    if distance >= radius_a + radius_b:
+        return 0.0
+    smaller_area = np.pi * min(radius_a, radius_b) ** 2
+    if smaller_area <= 0:
+        return 0.0
+    if distance <= abs(radius_a - radius_b):
+        return 1.0
+    term_a = radius_a**2 * np.arccos((distance**2 + radius_a**2 - radius_b**2) / (2 * distance * radius_a))
+    term_b = radius_b**2 * np.arccos((distance**2 + radius_b**2 - radius_a**2) / (2 * distance * radius_b))
+    term_c = 0.5 * np.sqrt(
+        max(0.0, (-distance + radius_a + radius_b) * (distance + radius_a - radius_b))
+        * max(0.0, (distance - radius_a + radius_b) * (distance + radius_a + radius_b))
+    )
+    return float((term_a + term_b - term_c) / smaller_area)
 
 
 def _overlap_severity(value: float) -> str:
@@ -666,9 +694,17 @@ def _blank_area_ratio(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any
     }
 
 
-def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox]]:
+def _marker_footprint_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox, tuple[float, float], float]]:
+    """Return marker footprints as display-space circles plus bounding boxes.
+
+    Adjacent dense-series markers can share a few pixels while remaining
+    legible, so marker-marker warnings use circle area overlap rather than bbox
+    contact. The 0.55 default threshold corresponds to equal-size centers being
+    closer than about one third of the marker diameter: severe pile-up, not
+    ordinary dense plotting.
+    """
     px_per_point = fig.dpi / 72.0
-    boxes: list[tuple[str, Bbox]] = []
+    entries: list[tuple[str, Bbox, tuple[float, float], float]] = []
     for collection_index, collection in enumerate(ax.collections):
         if not _is_paintable(collection) or not hasattr(collection, "get_sizes"):
             continue  # scatter-style PathCollection only; QuadMesh/pcolormesh has no markers
@@ -689,7 +725,7 @@ def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox
             else:
                 diameter_pt = 6.0
             radius_px = max(GEOM_EPS_PX, diameter_pt / 2 * px_per_point)
-            boxes.append(
+            entries.append(
                 (
                     f"marker:collection{collection_index}[{point_index}]",
                     Bbox.from_extents(
@@ -698,6 +734,8 @@ def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox
                         float(x_px) + radius_px,
                         float(y_px) + radius_px,
                     ),
+                    (float(x_px), float(y_px)),
+                    float(radius_px),
                 )
             )
     for line_index, line in enumerate(ax.get_lines()):
@@ -714,7 +752,7 @@ def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox
             continue
         radius_px = max(GEOM_EPS_PX, float(line.get_markersize()) / 2 * px_per_point)
         for point_index, (x_px, y_px) in enumerate(display):
-            boxes.append(
+            entries.append(
                 (
                     f"marker:line{line_index}[{point_index}]",
                     Bbox.from_extents(
@@ -723,9 +761,15 @@ def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox
                         float(x_px) + radius_px,
                         float(y_px) + radius_px,
                     ),
+                    (float(x_px), float(y_px)),
+                    float(radius_px),
                 )
             )
-    return boxes
+    return entries
+
+
+def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox]]:
+    return [(label, box) for label, box, _center, _radius in _marker_footprint_entries(ax, fig)]
 
 
 def _alpha_from_rgba_value(value: Any) -> float | None:
@@ -754,6 +798,8 @@ def _line_marker_is_paintable(line: Any) -> bool:
     marker = line.get_marker()
     if marker in {None, "", "None", "none", " "}:
         return False
+    if marker in _ERRORBAR_CAP_MARKERS:
+        return False
     if float(line.get_markersize()) <= 0:
         return False
     face_alpha = _alpha_from_rgba_value(line.get_markerfacecolor())
@@ -765,7 +811,7 @@ def _line_marker_is_paintable(line: Any) -> bool:
 
 def _marker_marker_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
     name = "marker_marker_overlaps"
-    markers = _marker_footprint_box_entries(ax, ax.figure)
+    markers = _marker_footprint_entries(ax, ax.figure)
     if len(markers) > MAX_TEXT_ARTISTS:
         return {
             "name": name,
@@ -774,11 +820,12 @@ def _marker_marker_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[st
             "data": {"axis_index": int(axis_index)},
         }
     overlaps: list[dict[str, Any]] = []
+    total_pairs = len(markers) * (len(markers) - 1) // 2
     for index_a in range(len(markers)):
-        label_a, box_a = markers[index_a]
+        label_a, _box_a, center_a, radius_a = markers[index_a]
         for index_b in range(index_a + 1, len(markers)):
-            label_b, box_b = markers[index_b]
-            overlap = _overlap_fraction(box_a, box_b)
+            label_b, _box_b, center_b, radius_b = markers[index_b]
+            overlap = _circle_overlap_fraction(center_a, radius_a, center_b, radius_b)
             if overlap <= MARKER_MARKER_OVERLAP_WARN:
                 continue
             overlaps.append(
@@ -798,12 +845,14 @@ def _marker_marker_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[st
     return {
         "name": name,
         "passed": len(overlaps) == 0,
-        "detail": f"{len(overlaps)} marker-marker overlaps (axis {axis_index})",
+        "detail": f"{len(overlaps)} severe marker-marker overlaps (axis {axis_index})",
         "data": {
             "axis_index": int(axis_index),
             "overlaps": overlaps,
             "overlaps_truncated": bool(truncated),
             "threshold": float(MARKER_MARKER_OVERLAP_WARN),
+            "overlap_fraction": float(len(overlaps) / total_pairs) if total_pairs else 0.0,
+            "total_pairs": int(total_pairs),
         },
     }
 
@@ -1132,11 +1181,14 @@ def _point_annotation_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict
         if _boxes_overlap(first[2], second[2]):
             pairs.append(sorted((int(first[0]), int(second[0]))))
 
-    marker_box = _marker_footprint_boxes(ax, ax.figure, renderer)
     marker_hits: list[int] = []
-    if marker_box is not None:
+    marker_entries = _marker_footprint_box_entries(ax, ax.figure)
+    if marker_entries:
         for index, _center, bb in measured:
-            if _boxes_overlap(bb, marker_box):
+            if any(
+                _overlap_fraction(bb, marker_box) > POINT_MARKER_OVERLAP_WARN
+                for _label, marker_box in marker_entries
+            ):
                 marker_hits.append(int(index))
 
     count = len(pairs) + len(marker_hits)
@@ -1236,38 +1288,75 @@ def _artist_overlap_candidates(ax: Axes, renderer: Any) -> list[tuple[str, Bbox]
     return [(label, box) for label, box, _artist in _artist_overlap_candidate_items(ax, renderer)]
 
 
+def _artist_candidate_kind(label: str) -> str:
+    if label.startswith("marker:"):
+        return "data"
+    if label.startswith("line:"):
+        return "data"
+    if label.startswith("patch:"):
+        return "data"
+    if label == "legend":
+        return "legend"
+    return "chrome"
+
+
+def _is_reportable_artist_overlap(
+    ax: Axes,
+    label_a: str,
+    box_a: Bbox,
+    artist_a: Any,
+    label_b: str,
+    box_b: Bbox,
+    artist_b: Any,
+) -> bool:
+    if _is_leader_connected_text_marker_pair(ax, label_a, box_a, artist_a, label_b, box_b, artist_b):
+        return False
+    kind_a = _artist_candidate_kind(label_a)
+    kind_b = _artist_candidate_kind(label_b)
+    # Data-data contacts are normal in dense plots and error bars. Dedicated
+    # checks handle severe marker pile-ups; generic artist overlaps stay focused
+    # on label/chrome/legend collisions that readers actually experience.
+    if kind_a == "data" and kind_b == "data":
+        return False
+    return True
+
+
 def _artist_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
     name = "artist_overlaps"
     candidates = _artist_overlap_candidate_items(ax, renderer)
-    if len(candidates) > MAX_TEXT_ARTISTS:
+
+    pair_candidates: list[tuple[int, int]] = []
+    for index_a in range(len(candidates)):
+        label_a, box_a, artist_a = candidates[index_a]
+        for index_b in range(index_a + 1, len(candidates)):
+            label_b, box_b, artist_b = candidates[index_b]
+            if _is_reportable_artist_overlap(ax, label_a, box_a, artist_a, label_b, box_b, artist_b):
+                pair_candidates.append((index_a, index_b))
+
+    if len(pair_candidates) > MAX_TEXT_ARTISTS:
         return {
             "name": name,
             "passed": None,
-            "detail": f"skipped: artist count {len(candidates)} exceeds cap {MAX_TEXT_ARTISTS}",
-            "data": {"axis_index": int(axis_index)},
+            "detail": f"skipped: reportable artist pair count {len(pair_candidates)} exceeds cap {MAX_TEXT_ARTISTS}",
+            "data": {"axis_index": int(axis_index), "candidate_pairs": int(len(pair_candidates))},
         }
 
     overlaps: list[dict[str, Any]] = []
-    for index_a in range(len(candidates)):
+    for index_a, index_b in pair_candidates:
         label_a, box_a, _artist_a = candidates[index_a]
-        area_a = _box_area(box_a)
-        for index_b in range(index_a + 1, len(candidates)):
-            label_b, box_b, _artist_b = candidates[index_b]
-            if _is_leader_connected_text_marker_pair(ax, label_a, box_a, _artist_a, label_b, box_b, _artist_b):
-                continue
-            inter = _inter_area(box_a, box_b)
-            if inter <= 0:
-                continue
-            denom = min(area_a, _box_area(box_b))
-            iou = float(inter / denom) if denom > 0 else 0.0
-            overlaps.append(
-                {
-                    "axes": int(axis_index),
-                    "a": label_a,
-                    "b": label_b,
-                    "iou": round(iou, 4),
-                }
-            )
+        label_b, box_b, _artist_b = candidates[index_b]
+        iou = _overlap_fraction(box_a, box_b)
+        if iou <= ARTIST_OVERLAP_WARN:
+            continue
+        overlaps.append(
+            {
+                "axes": int(axis_index),
+                "a": label_a,
+                "b": label_b,
+                "iou": round(iou, 4),
+                "severity": _overlap_severity(iou),
+            }
+        )
 
     truncated = False
     if len(overlaps) > _MAX_REPORTED_PAIRS:
@@ -1282,6 +1371,8 @@ def _artist_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]
             "axis_index": int(axis_index),
             "overlaps": overlaps,
             "overlaps_truncated": bool(truncated),
+            "threshold": float(ARTIST_OVERLAP_WARN),
+            "candidate_pairs": int(len(pair_candidates)),
         },
     }
 
