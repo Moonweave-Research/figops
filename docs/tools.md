@@ -1231,7 +1231,8 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                   "text_axis_edge_proximity",
                   "legend_marker_consistency",
                   "label_offset_consistency",
-                  "font_size_token_drift"
+                  "font_size_token_drift",
+                  "journal_compliance"
                 ],
                 "type": "string"
               },
@@ -1601,7 +1602,8 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
                   "text_axis_edge_proximity",
                   "legend_marker_consistency",
                   "label_offset_consistency",
-                  "font_size_token_drift"
+                  "font_size_token_drift",
+                  "journal_compliance"
                 ],
                 "type": "string"
               },

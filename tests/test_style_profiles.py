@@ -164,6 +164,25 @@ class TestProfileResolution(unittest.TestCase):
         self.assertEqual(tokens["violin_width"], 0.5)
         self.assertEqual(tokens["default_colormap"], "viridis")
 
+    def test_journal_compliance_tokens_resolve_for_each_track(self):
+        expected = {
+            "nature": {"min_font_size_pt": 5.0, "min_line_width_pt": 0.25, "max_figure_height_mm": 247.0},
+            "science": {"min_font_size_pt": 5.0, "min_line_width_pt": 0.5, "max_figure_height_mm": 234.0},
+            "acs": {"min_font_size_pt": 4.5, "min_line_width_pt": 0.5, "max_figure_height_mm": 233.0},
+            "wiley": {"min_font_size_pt": 5.0, "min_line_width_pt": 0.5, "max_figure_height_mm": 234.0},
+            "cell": {"min_font_size_pt": 6.0, "min_line_width_pt": 0.5, "max_figure_height_mm": 200.0},
+            "rsc": {"min_font_size_pt": 7.0, "min_line_width_pt": 0.5, "max_figure_height_mm": 233.0},
+            "elsevier": {"min_font_size_pt": 7.0, "min_line_width_pt": 0.5, "max_figure_height_mm": 234.0},
+        }
+
+        for target_format, expected_tokens in expected.items():
+            with self.subTest(target_format=target_format):
+                tokens, meta = get_render_style_tokens(target_format, "baseline")
+
+                self.assertEqual(meta["target_format"], target_format)
+                for key, expected_value in expected_tokens.items():
+                    self.assertEqual(tokens[key], expected_value)
+
 
 if __name__ == "__main__":
     unittest.main()

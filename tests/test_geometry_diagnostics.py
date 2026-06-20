@@ -82,6 +82,7 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
             "legend_marker_consistency",
             "label_offset_consistency",
             "font_size_token_drift",
+            "journal_compliance",
         }
         expected = all(c["passed"] for c in result["checks"] if c["name"] in warning_eligible)
         self.assertEqual(result["passed"], expected)
@@ -584,6 +585,53 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
 
         self.assertFalse(check["passed"])
         self.assertEqual(check["data"]["role_size_counts"]["axis"], 2)
+
+    def test_journal_compliance_passes_normal_publication_geometry(self):
+        fig, ax = plt.subplots(figsize=(57 / 25.4, 45.6 / 25.4))
+        ax.plot([0, 1, 2], [0, 1, 0], linewidth=0.9, label="A")
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        ax.legend()
+        compliance = {
+            "target_format": "science",
+            "min_font_size_pt": 5.0,
+            "min_line_width_pt": 0.5,
+            "max_figure_height_mm": 234.0,
+        }
+
+        check = _check(
+            diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False, journal_compliance=compliance),
+            "journal_compliance",
+        )
+
+        self.assertTrue(check["passed"])
+        self.assertEqual(check["data"]["target_format"], "science")
+        self.assertEqual(check["data"]["font_offenders"], [])
+        self.assertEqual(check["data"]["line_offenders"], [])
+        self.assertFalse(check["data"]["height_offender"])
+
+    def test_journal_compliance_reports_subfloor_and_overheight_output(self):
+        fig, ax = plt.subplots(figsize=(57 / 25.4, 250 / 25.4))
+        ax.plot([0, 1, 2], [0, 1, 0], linewidth=0.25, label="A")
+        ax.set_xlabel("x")
+        ax.xaxis.label.set_fontsize(4.0)
+        ax.legend(fontsize=4.0)
+        compliance = {
+            "target_format": "science",
+            "min_font_size_pt": 5.0,
+            "min_line_width_pt": 0.5,
+            "max_figure_height_mm": 234.0,
+        }
+
+        check = _check(
+            diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False, journal_compliance=compliance),
+            "journal_compliance",
+        )
+
+        self.assertFalse(check["passed"])
+        self.assertTrue(any(item["role"] == "axis" for item in check["data"]["font_offenders"]))
+        self.assertTrue(any(item["linewidth"] == 0.25 for item in check["data"]["line_offenders"]))
+        self.assertTrue(check["data"]["height_offender"])
 
     def test_annotation_cap(self):
         fig, ax = plt.subplots()
