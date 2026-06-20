@@ -233,6 +233,8 @@ def test_facet_plot_type_publishes_contract():
             "facet_column": {"type": "string"},
             "facet_scales": {"type": "string", "enum": ["fixed", "free"]},
             "facet_order": FACET_ORDER_SCHEMA,
+            "facet_ncols": {"type": "integer", "minimum": 1},
+            "facet_nrows": {"type": "integer", "minimum": 1},
         },
     }
     assert PLOT_TYPES["facet"].capabilities == {
@@ -245,6 +247,7 @@ def test_facet_plot_type_publishes_contract():
         "default_scales": "fixed",
         "free_scales": True,
         "supports_facet_order": True,
+        "supports_facet_grid_shape": True,
     }
 
 
@@ -258,6 +261,8 @@ def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
         "default": "fixed",
     }
     assert render_tool["inputSchema"]["properties"]["facet_order"] == FACET_ORDER_SCHEMA
+    assert render_tool["inputSchema"]["properties"]["facet_ncols"] == {"type": "integer", "minimum": 1}
+    assert render_tool["inputSchema"]["properties"]["facet_nrows"] == {"type": "integer", "minimum": 1}
 
     with tempfile.TemporaryDirectory(prefix="graphhub_facet_schema_") as tmpdir:
         data_path = Path(tmpdir) / "facet.csv"
@@ -271,6 +276,8 @@ def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
                 "facet_column": "phase",
                 "facet_scales": "free",
                 "facet_order": ["A", "B"],
+                "facet_ncols": 2,
+                "facet_nrows": 1,
                 "plot_type": "facet",
             },
             definitions,

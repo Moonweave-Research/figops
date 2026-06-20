@@ -1035,6 +1035,14 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "facet_column": {
       "type": "string"
     },
+    "facet_ncols": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "facet_nrows": {
+      "minimum": 1,
+      "type": "integer"
+    },
     "facet_order": {
       "items": {
         "type": "string"
@@ -2740,6 +2748,7 @@ Run a bounded project discovery and validation batch check with optional runtime
   "free_scales": true,
   "shares_axes": true,
   "supports_broken_axis": false,
+  "supports_facet_grid_shape": true,
   "supports_facet_order": true,
   "supports_faceting": true,
   "supports_series": true,
@@ -2754,6 +2763,14 @@ Run a bounded project discovery and validation batch check with optional runtime
   "properties": {
     "facet_column": {
       "type": "string"
+    },
+    "facet_ncols": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "facet_nrows": {
+      "minimum": 1,
+      "type": "integer"
     },
     "facet_order": {
       "items": {
@@ -2783,6 +2800,7 @@ Run a bounded project discovery and validation batch check with optional runtime
   "arguments": {
     "data_path": "/path/to/data.csv",
     "facet_column": "facet",
+    "facet_ncols": 2,
     "facet_order": [
       "control",
       "treated"
