@@ -8,6 +8,9 @@ from hub_core.mcp.transport import _validate_tool_arguments
 from hub_core.rendering import PLOT_TYPES, PlotType
 from plotting.bridge_renderer import BridgeFigureSpec
 
+CATEGORY_ORDER_SCHEMA = {"type": "array", "items": {"type": ["string", "number"]}}
+FACET_ORDER_SCHEMA = {"type": "array", "items": {"type": "string"}}
+
 
 def _noop_render(ax: Axes, points: list[dict], spec: BridgeFigureSpec) -> None:
     ax.set_title(spec.title)
@@ -112,10 +115,12 @@ def test_bar_plot_type_publishes_aggregate_contract():
         "type": "object",
         "properties": {
             "aggregate": {"type": "string", "enum": ["mean", "median"]},
+            "category_order": CATEGORY_ORDER_SCHEMA,
         },
     }
     assert PLOT_TYPES["bar"].capabilities["supports_replicate_aggregation"] is True
     assert PLOT_TYPES["bar"].capabilities["aggregate_methods"] == ["mean", "median"]
+    assert PLOT_TYPES["bar"].capabilities["supports_category_order"] is True
 
 
 def test_describe_surfaces_bar_aggregate_arg():
@@ -126,8 +131,11 @@ def test_describe_surfaces_bar_aggregate_arg():
         "type": "string",
         "enum": ["mean", "median"],
     }
+    assert described["bar"]["arg_schema"]["properties"]["category_order"] == CATEGORY_ORDER_SCHEMA
     assert described["bar"]["capabilities"]["supports_replicate_aggregation"] is True
+    assert described["bar"]["capabilities"]["supports_category_order"] is True
     assert described["bar"]["worked_example"]["arguments"]["aggregate"] == "mean"
+    assert described["bar"]["worked_example"]["arguments"]["category_order"] == ["day 0", "day 7", "day 14", "day 28"]
 
 
 def test_render_csv_schema_accepts_bar_aggregate_arg():
@@ -137,6 +145,7 @@ def test_render_csv_schema_accepts_bar_aggregate_arg():
         "type": "string",
         "enum": ["mean", "median"],
     }
+    assert render_tool["inputSchema"]["properties"]["category_order"] == CATEGORY_ORDER_SCHEMA
 
     with tempfile.TemporaryDirectory(prefix="graphhub_bar_aggregate_schema_") as tmpdir:
         data_path = Path(tmpdir) / "bar.csv"
@@ -149,6 +158,7 @@ def test_render_csv_schema_accepts_bar_aggregate_arg():
                 "y_column": "y",
                 "plot_type": "bar",
                 "aggregate": "mean",
+                "category_order": ["A", "B"],
             },
             definitions,
         )
@@ -163,6 +173,7 @@ def test_distribution_plot_types_publish_contracts():
         "properties": {
             "x_column": {"type": "string"},
             "y_column": {"type": "string"},
+            "category_order": CATEGORY_ORDER_SCHEMA,
         },
     }
     assert PLOT_TYPES["box"].capabilities == {
@@ -171,6 +182,7 @@ def test_distribution_plot_types_publish_contracts():
         "supports_broken_axis": False,
         "shows_individual_points": True,
         "warns_small_n": True,
+        "supports_category_order": True,
     }
     assert PLOT_TYPES["violin"].arg_schema == PLOT_TYPES["box"].arg_schema
     assert PLOT_TYPES["violin"].capabilities == {
@@ -180,6 +192,7 @@ def test_distribution_plot_types_publish_contracts():
         "shows_individual_points": True,
         "warns_small_n": True,
         "falls_back_for_small_n": True,
+        "supports_category_order": True,
     }
 
 
@@ -190,6 +203,7 @@ def test_facet_plot_type_publishes_contract():
         "properties": {
             "facet_column": {"type": "string"},
             "facet_scales": {"type": "string", "enum": ["fixed", "free"]},
+            "facet_order": FACET_ORDER_SCHEMA,
         },
     }
     assert PLOT_TYPES["facet"].capabilities == {
@@ -201,6 +215,7 @@ def test_facet_plot_type_publishes_contract():
         "shares_axes": True,
         "default_scales": "fixed",
         "free_scales": True,
+        "supports_facet_order": True,
     }
 
 
@@ -213,6 +228,7 @@ def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
         "enum": ["fixed", "free"],
         "default": "fixed",
     }
+    assert render_tool["inputSchema"]["properties"]["facet_order"] == FACET_ORDER_SCHEMA
 
     with tempfile.TemporaryDirectory(prefix="graphhub_facet_schema_") as tmpdir:
         data_path = Path(tmpdir) / "facet.csv"
@@ -225,6 +241,7 @@ def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
                 "y_column": "y",
                 "facet_column": "phase",
                 "facet_scales": "free",
+                "facet_order": ["A", "B"],
                 "plot_type": "facet",
             },
             definitions,

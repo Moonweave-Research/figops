@@ -1005,6 +1005,15 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "description": "Optional baseline figure path to compare the rendered output against.",
       "type": "string"
     },
+    "category_order": {
+      "items": {
+        "type": [
+          "string",
+          "number"
+        ]
+      },
+      "type": "array"
+    },
     "ci_band": {
       "type": "boolean"
     },
@@ -1018,6 +1027,12 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     },
     "facet_column": {
       "type": "string"
+    },
+    "facet_order": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
     },
     "facet_scales": {
       "default": "fixed",
@@ -2574,6 +2589,7 @@ Run a bounded project discovery and validation batch check with optional runtime
     "median"
   ],
   "supports_broken_axis": false,
+  "supports_category_order": true,
   "supports_replicate_aggregation": true,
   "supports_series": true,
   "supports_yerr": true
@@ -2591,6 +2607,15 @@ Run a bounded project discovery and validation batch check with optional runtime
         "median"
       ],
       "type": "string"
+    },
+    "category_order": {
+      "items": {
+        "type": [
+          "string",
+          "number"
+        ]
+      },
+      "type": "array"
     }
   },
   "type": "object"
@@ -2603,6 +2628,12 @@ Run a bounded project discovery and validation batch check with optional runtime
 {
   "arguments": {
     "aggregate": "mean",
+    "category_order": [
+      "day 0",
+      "day 7",
+      "day 14",
+      "day 28"
+    ],
     "data_path": "/path/to/data.csv",
     "job_id": "example-bar",
     "output_format": "png",
@@ -2624,6 +2655,7 @@ Run a bounded project discovery and validation batch check with optional runtime
 {
   "shows_individual_points": true,
   "supports_broken_axis": false,
+  "supports_category_order": true,
   "supports_series": false,
   "supports_yerr": false,
   "warns_small_n": true
@@ -2635,6 +2667,15 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "properties": {
+    "category_order": {
+      "items": {
+        "type": [
+          "string",
+          "number"
+        ]
+      },
+      "type": "array"
+    },
     "x_column": {
       "type": "string"
     },
@@ -2655,6 +2696,12 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
+    "category_order": [
+      "day 0",
+      "day 7",
+      "day 14",
+      "day 28"
+    ],
     "data_path": "/path/to/data.csv",
     "job_id": "example-box",
     "output_format": "png",
@@ -2679,6 +2726,7 @@ Run a bounded project discovery and validation batch check with optional runtime
   "free_scales": true,
   "shares_axes": true,
   "supports_broken_axis": false,
+  "supports_facet_order": true,
   "supports_faceting": true,
   "supports_series": true,
   "supports_yerr": true
@@ -2692,6 +2740,12 @@ Run a bounded project discovery and validation batch check with optional runtime
   "properties": {
     "facet_column": {
       "type": "string"
+    },
+    "facet_order": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
     },
     "facet_scales": {
       "enum": [
@@ -2715,6 +2769,10 @@ Run a bounded project discovery and validation batch check with optional runtime
   "arguments": {
     "data_path": "/path/to/data.csv",
     "facet_column": "facet",
+    "facet_order": [
+      "control",
+      "treated"
+    ],
     "job_id": "example-facet",
     "output_format": "png",
     "plot_type": "facet",
@@ -2905,6 +2963,7 @@ Run a bounded project discovery and validation batch check with optional runtime
   "falls_back_for_small_n": true,
   "shows_individual_points": true,
   "supports_broken_axis": false,
+  "supports_category_order": true,
   "supports_series": false,
   "supports_yerr": false,
   "warns_small_n": true
@@ -2916,6 +2975,15 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "properties": {
+    "category_order": {
+      "items": {
+        "type": [
+          "string",
+          "number"
+        ]
+      },
+      "type": "array"
+    },
     "x_column": {
       "type": "string"
     },
@@ -2936,6 +3004,12 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
+    "category_order": [
+      "day 0",
+      "day 7",
+      "day 14",
+      "day 28"
+    ],
     "data_path": "/path/to/data.csv",
     "job_id": "example-violin",
     "output_format": "png",

@@ -8,6 +8,7 @@ import csv
 import math
 import os
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -166,6 +167,8 @@ class BridgeFigureSpec:
     y_break_range: tuple[float, float] | None = None
     facet_column: str = ""
     facet_scales: str = "fixed"
+    category_order: tuple[float | str, ...] = ()
+    facet_order: tuple[str, ...] = ()
     aggregate: str = ""
     fit_line: bool = False
     ci_band: bool = False
@@ -572,6 +575,39 @@ def _group_points(points: list[dict], spec: BridgeFigureSpec) -> dict[str, list[
         key = point["series"] if spec.series_column and point["series"] else "__single__"
         grouped.setdefault(str(key), []).append(point)
     return grouped
+
+
+def _first_seen_values(values: Sequence[float | str]) -> list[float | str]:
+    ordered: list[float | str] = []
+    for value in values:
+        if value not in ordered:
+            ordered.append(value)
+    return ordered
+
+
+def _format_order_values(values: Sequence[float | str]) -> str:
+    return ", ".join(str(value) for value in values)
+
+
+def _resolve_explicit_order(
+    data_order: Sequence[float | str],
+    explicit_order: Sequence[float | str],
+    *,
+    field_name: str,
+) -> list[float | str]:
+    if not explicit_order:
+        return list(data_order)
+    explicit = list(explicit_order)
+    duplicates = [value for index, value in enumerate(explicit) if value in explicit[:index]]
+    if duplicates:
+        raise ValueError(f"{field_name} contains duplicate value(s): {_format_order_values(duplicates)}")
+    missing = [value for value in data_order if value not in explicit]
+    if missing:
+        raise ValueError(f"{field_name} is missing data category value(s): {_format_order_values(missing)}")
+    extra = [value for value in explicit if value not in data_order]
+    if extra:
+        raise ValueError(f"{field_name} includes value(s) not present in data: {_format_order_values(extra)}")
+    return explicit
 
 
 def _yerr_values(points: list[dict], spec: BridgeFigureSpec):
@@ -1039,6 +1075,11 @@ def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     fig = ax.figure
     ax.set_visible(False)
     grouped = _group_facet_points(points)
+    facet_names = _resolve_explicit_order(
+        list(grouped),
+        spec.facet_order,
+        field_name="facet_order",
+    )
     n_facets = len(grouped)
     n_cols = min(3, max(1, math.ceil(math.sqrt(n_facets))))
     n_rows = math.ceil(n_facets / n_cols)
@@ -1046,7 +1087,8 @@ def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     shared_y = None
     share_axes = spec.facet_scales == "fixed"
 
-    for idx, (facet_name, facet_points) in enumerate(grouped.items()):
+    for idx, facet_name in enumerate(facet_names):
+        facet_points = grouped[str(facet_name)]
         row_idx = idx // n_cols
         col_idx = idx % n_cols
         facet_ax = fig.add_subplot(
@@ -1088,7 +1130,13 @@ def _group_facet_points(points: list[dict]) -> dict[str, list[dict]]:
 def _render_box_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     from plotting.common_plots import plot_box_with_points
 
-    plot_box_with_points(_points_to_distribution_frame(points, spec), spec.x_column, spec.y_column, ax=ax)
+    plot_box_with_points(
+        _points_to_distribution_frame(points, spec),
+        spec.x_column,
+        spec.y_column,
+        ax=ax,
+        category_order=spec.category_order or None,
+    )
 
 
 def _render_violin_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
@@ -1100,6 +1148,7 @@ def _render_violin_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         spec.x_column,
         spec.y_column,
         ax=ax,
+        category_order=spec.category_order or None,
         kde_points=tokens["violin_kde_points"],
         kde_bw_method=tokens["violin_kde_bw_method"],
         violin_width=tokens["violin_width"],
@@ -1158,10 +1207,12 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     if aggregate and not has_multi_series:
         points = _aggregate_single_series_bar_points(points, aggregate)
         grouped = _group_points(points, spec)
-    categories: list[float | str] = []
-    for point in points:
-        if point["x"] not in categories:
-            categories.append(point["x"])
+    data_order = _first_seen_values([point["x"] for point in points])
+    categories = _resolve_explicit_order(
+        data_order,
+        spec.category_order,
+        field_name="category_order",
+    )
 
     base_positions = list(range(len(categories)))
     category_to_position = {category: index for index, category in enumerate(categories)}

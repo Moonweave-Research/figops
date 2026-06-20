@@ -58,6 +58,25 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
         ci_band = arguments.get("ci_band", False)
         significance_markers = arguments.get("significance_markers", ())
         aggregate = str(arguments.get("aggregate") or "").strip().lower()
+        try:
+            category_order = self._order_arg(arguments.get("category_order"), "category_order", allow_numbers=True)
+            facet_order = self._order_arg(arguments.get("facet_order"), "facet_order", allow_numbers=False)
+        except ValueError as exc:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid category ordering settings.",
+                errors=[str(exc)],
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Provide category_order/facet_order as arrays with explicit values.",
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=render_helpers._geometry_stub("no figure"),
+                layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
+            )
         raw_semantic_checks = arguments.get("semantic_checks", {})
         semantic_checks = {} if raw_semantic_checks is None else raw_semantic_checks
         if plot_type not in PLOT_TYPES:
@@ -335,6 +354,8 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                         "z_column": z_column,
                         "facet_column": facet_column,
                         "facet_scales": facet_scales,
+                        "category_order": category_order,
+                        "facet_order": facet_order,
                         "aggregate": aggregate,
                         "fit_line": fit_line,
                         "ci_band": ci_band,
@@ -563,6 +584,24 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
         if plot_type != "bar":
             return ["aggregate is only supported for plot_type 'bar'."]
         return []
+
+    @staticmethod
+    def _order_arg(raw_value: Any, field_name: str, *, allow_numbers: bool) -> tuple[str | float, ...]:
+        if raw_value is None:
+            return ()
+        if not isinstance(raw_value, (list, tuple)):
+            raise ValueError(f"{field_name} must be an array.")
+        values: list[str | float] = []
+        for index, item in enumerate(raw_value):
+            if isinstance(item, bool) or item is None:
+                raise ValueError(f"{field_name}[{index}] must be a string" + (" or number." if allow_numbers else "."))
+            if isinstance(item, str):
+                values.append(item.strip())
+            elif allow_numbers and isinstance(item, (int, float)):
+                values.append(float(item))
+            else:
+                raise ValueError(f"{field_name}[{index}] must be a string" + (" or number." if allow_numbers else "."))
+        return tuple(values)
 
     def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
         dry_run = bool(arguments.get("dry_run", False))

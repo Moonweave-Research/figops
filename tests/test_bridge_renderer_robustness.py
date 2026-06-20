@@ -396,6 +396,147 @@ class TestSingleSeriesBarDuplicateCategories(unittest.TestCase):
             plt.close(fig)
 
 
+class TestCategoricalAxisOrdering(unittest.TestCase):
+    def _timepoint_points(self, replicates: int = 1) -> list[dict]:
+        points = []
+        for category_index, category in enumerate(("day 0", "day 7", "day 14", "day 28")):
+            for replicate in range(replicates):
+                points.append(
+                    {
+                        "x": category,
+                        "y": float(category_index + replicate + 1),
+                        "z": None,
+                        "label": "",
+                        "series": "",
+                        "yerr": None,
+                        "yerr_minus": None,
+                        "facet": "",
+                    }
+                )
+        return points
+
+    def _tick_labels(self, ax) -> list[str]:
+        return [label.get_text() for label in ax.get_xticklabels()]
+
+    def test_categorical_plot_types_preserve_first_seen_category_order(self):
+        import matplotlib.pyplot as plt
+
+        from plotting.bridge_renderer import _render_bar_plot, _render_box_plot, _render_violin_plot
+
+        expected = ["day 0", "day 7", "day 14", "day 28"]
+        plot_cases = [
+            (_render_box_plot, self._timepoint_points(replicates=3)),
+            (_render_violin_plot, self._timepoint_points(replicates=10)),
+            (_render_bar_plot, self._timepoint_points()),
+        ]
+
+        for render, points in plot_cases:
+            fig, ax = plt.subplots()
+            try:
+                plot_type = render.__name__.removeprefix("_render_").removesuffix("_plot")
+                spec = _make_spec("unused.csv", plot_type=plot_type)
+                render(ax, points, spec)
+                self.assertEqual(self._tick_labels(ax), expected)
+            finally:
+                plt.close(fig)
+
+    def test_facet_panels_preserve_first_seen_facet_order(self):
+        import matplotlib.pyplot as plt
+
+        from plotting.bridge_renderer import _render_facet_plot
+
+        spec = _make_spec("unused.csv", plot_type="facet", facet_column="timepoint")
+        points = [
+            {
+                "x": float(index),
+                "y": float(index + 1),
+                "z": None,
+                "label": "",
+                "series": "",
+                "yerr": None,
+                "yerr_minus": None,
+                "facet": category,
+            }
+            for index, category in enumerate(("day 0", "day 7", "day 14", "day 28"))
+        ]
+
+        fig, ax = plt.subplots()
+        try:
+            _render_facet_plot(ax, points, spec)
+            panel_titles = [panel.get_title() for panel in fig.axes if panel.get_visible()]
+            self.assertEqual(panel_titles, ["day 0", "day 7", "day 14", "day 28"])
+        finally:
+            plt.close(fig)
+
+    def test_explicit_category_order_is_honored(self):
+        import matplotlib.pyplot as plt
+
+        from plotting.bridge_renderer import _render_bar_plot
+
+        spec = _make_spec(
+            "unused.csv",
+            plot_type="bar",
+            category_order=("day 28", "day 14", "day 7", "day 0"),
+        )
+        fig, ax = plt.subplots()
+        try:
+            _render_bar_plot(ax, self._timepoint_points(), spec)
+            self.assertEqual(self._tick_labels(ax), ["day 28", "day 14", "day 7", "day 0"])
+        finally:
+            plt.close(fig)
+
+    def test_explicit_category_order_missing_data_category_raises(self):
+        import matplotlib.pyplot as plt
+
+        from plotting.bridge_renderer import _render_bar_plot
+
+        spec = _make_spec(
+            "unused.csv",
+            plot_type="bar",
+            category_order=("day 0", "day 7", "day 28"),
+        )
+        fig, ax = plt.subplots()
+        try:
+            with self.assertRaises(ValueError) as ctx:
+                _render_bar_plot(ax, self._timepoint_points(), spec)
+            self.assertIn("category_order is missing data category value(s): day 14", str(ctx.exception))
+        finally:
+            plt.close(fig)
+
+    def test_explicit_facet_order_is_honored(self):
+        import matplotlib.pyplot as plt
+
+        from plotting.bridge_renderer import _render_facet_plot
+
+        spec = _make_spec(
+            "unused.csv",
+            plot_type="facet",
+            facet_column="timepoint",
+            facet_order=("day 28", "day 14", "day 7", "day 0"),
+        )
+        points = [
+            {
+                "x": float(index),
+                "y": float(index + 1),
+                "z": None,
+                "label": "",
+                "series": "",
+                "yerr": None,
+                "yerr_minus": None,
+                "facet": category,
+            }
+            for index, category in enumerate(("day 0", "day 7", "day 14", "day 28"))
+        ]
+
+        fig, ax = plt.subplots()
+        try:
+            _render_facet_plot(ax, points, spec)
+            panel_titles = [panel.get_title() for panel in fig.axes if panel.get_visible()]
+            self.assertEqual(panel_titles, ["day 28", "day 14", "day 7", "day 0"])
+        finally:
+            plt.close(fig)
+
+
 class TestDeterministicTimestamp(unittest.TestCase):
     def test_source_date_epoch_override(self):
         os.environ["SOURCE_DATE_EPOCH"] = "0"
