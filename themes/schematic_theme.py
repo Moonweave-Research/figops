@@ -22,7 +22,6 @@
 """
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch
 
 
 def _build_rc_settings(style: str, font_scale: float) -> dict:

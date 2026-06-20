@@ -143,7 +143,8 @@ class TestPlacePointLabels(unittest.TestCase):
 
         result = place_point_labels(ax, [0.5], [0.5], ["S70"], leader=False, initial_offset_px=1)
         fig.canvas.draw()
-        check = next(c for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"] if c["name"] == "artist_overlaps")
+        checks = diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"]
+        check = next(c for c in checks if c["name"] == "artist_overlaps")
 
         self.assertFalse(result["texts"][0]._graph_hub_leader_connected)
         self.assertFalse(check["passed"])
