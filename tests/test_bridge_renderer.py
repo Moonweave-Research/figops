@@ -635,6 +635,15 @@ class BridgeRendererUnitTest(unittest.TestCase):
         self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
+    def test_acs_bridge_figsize_uses_acs_single_column_width(self):
+        acs_w_in, acs_h_in = _figsize_for_format("acs")
+        nature_w_in, nature_h_in = _figsize_for_format("nature")
+
+        self.assertAlmostEqual(acs_w_in * 25.4, 82.55, places=4)
+        self.assertAlmostEqual(acs_h_in * 25.4, 66.04, places=4)
+        self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
+        self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
+
     def test_science_multipanel_draft_uses_aaas_column_width_tokens(self):
         spec = MultiPanelSpec(
             panels=(),
@@ -650,6 +659,25 @@ class BridgeRendererUnitTest(unittest.TestCase):
         try:
             width_mm, height_mm = (value * 25.4 for value in fig.get_size_inches())
             self.assertAlmostEqual(width_mm, 120.0, places=4)
+            self.assertAlmostEqual(height_mm, 40.0, places=4)
+        finally:
+            plt.close(fig)
+
+    def test_acs_multipanel_draft_uses_acs_column_width_tokens(self):
+        spec = MultiPanelSpec(
+            panels=(),
+            output_path="unused.png",
+            rows=1,
+            cols=1,
+            target_format="acs",
+            column_width="double",
+            panel_height_mm=40.0,
+        )
+
+        fig = _render_multipanel_draft(spec)
+        try:
+            width_mm, height_mm = (value * 25.4 for value in fig.get_size_inches())
+            self.assertAlmostEqual(width_mm, 177.8, places=4)
             self.assertAlmostEqual(height_mm, 40.0, places=4)
         finally:
             plt.close(fig)
