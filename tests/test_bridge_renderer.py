@@ -749,7 +749,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
         self.assertAlmostEqual(science_w_in * 25.4, 57.0, places=4)
         self.assertAlmostEqual(science_h_in * 25.4, 45.6, places=4)
-        self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
+        self.assertAlmostEqual(nature_w_in * 25.4, 88.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
     def test_acs_bridge_figsize_uses_acs_single_column_width(self):
@@ -758,7 +758,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
         self.assertAlmostEqual(acs_w_in * 25.4, 84.67, places=4)
         self.assertAlmostEqual(acs_h_in * 25.4, 67.736, places=4)
-        self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
+        self.assertAlmostEqual(nature_w_in * 25.4, 88.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
     def test_wiley_bridge_figsize_uses_wiley_single_column_width(self):
@@ -767,7 +767,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
         self.assertAlmostEqual(wiley_w_in * 25.4, 85.0, places=4)
         self.assertAlmostEqual(wiley_h_in * 25.4, 68.0, places=4)
-        self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
+        self.assertAlmostEqual(nature_w_in * 25.4, 88.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
     def test_cell_bridge_figsize_uses_cell_press_single_column_width(self):
@@ -776,7 +776,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
         self.assertAlmostEqual(cell_w_in * 25.4, 85.0, places=4)
         self.assertAlmostEqual(cell_h_in * 25.4, 68.0, places=4)
-        self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
+        self.assertAlmostEqual(nature_w_in * 25.4, 88.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
     def test_rsc_bridge_figsize_uses_rsc_single_column_width(self):
@@ -785,7 +785,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
         self.assertAlmostEqual(rsc_w_in * 25.4, 83.0, places=4)
         self.assertAlmostEqual(rsc_h_in * 25.4, 66.4, places=4)
-        self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
+        self.assertAlmostEqual(nature_w_in * 25.4, 88.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
     def test_elsevier_bridge_figsize_uses_elsevier_single_column_width(self):
@@ -794,7 +794,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
         self.assertAlmostEqual(elsevier_w_in * 25.4, 90.0, places=4)
         self.assertAlmostEqual(elsevier_h_in * 25.4, 72.0, places=4)
-        self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
+        self.assertAlmostEqual(nature_w_in * 25.4, 88.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
     def test_science_multipanel_draft_uses_aaas_column_width_tokens(self):
@@ -1554,7 +1554,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
             fig = mock_save.call_args.args[0]
             fig_w_mm, fig_h_mm = (value * 25.4 for value in fig.get_size_inches())
-            self.assertAlmostEqual(fig_w_mm, 183.0, places=1)
+            self.assertAlmostEqual(fig_w_mm, 180.0, places=1)
             self.assertAlmostEqual(fig_h_mm, 65.0, places=1)
             self.assertFalse(hasattr(fig, "_graph_hub_layout_lock"))
 
@@ -1601,7 +1601,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             axes = [ax for ax in fig.axes if ax.get_visible()]
             self.assertEqual(len(axes), 2)
             fig_w_mm, fig_h_mm = (value * 25.4 for value in fig.get_size_inches())
-            self.assertAlmostEqual(fig_w_mm, 183.0, places=1)
+            self.assertAlmostEqual(fig_w_mm, 180.0, places=1)
             self.assertAlmostEqual(fig_h_mm, 65.0, places=1)
             self.assertTrue(hasattr(fig, "_graph_hub_layout_lock"))
             for ax in axes:

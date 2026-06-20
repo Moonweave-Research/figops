@@ -61,25 +61,25 @@ class TestManuscriptCompose(unittest.TestCase):
             fig = mock_save.call_args.args[0]
             fig_w_mm, fig_h_mm = (v * 25.4 for v in fig.get_size_inches())
 
-            # fig dimensions: 183 x (65*2 + 5) = 183 x 135
-            self.assertAlmostEqual(fig_w_mm, 183.0, places=1)
+            # fig dimensions: 180 x (65*2 + 5) = 180 x 135
+            self.assertAlmostEqual(fig_w_mm, 180.0, places=1)
             self.assertAlmostEqual(fig_h_mm, 135.0, places=1)
 
             axes = [ax for ax in fig.axes if ax.get_visible()]
             self.assertEqual(len(axes), 4)
 
-            # cell_w = (183 - 5) / 2 = 89, standard box = 70x55mm
+            # cell_w = (180 - 5) / 2 = 87.5, standard box = 70x55mm
             # margins: left=14, right=5, bottom=12, top=8
-            # left_extra = 19 * 14/19 = 14, bottom_extra = 10 * 12/20 = 6
-            # col=1 cell_left = 1*(89+5) = 94, ax_left = 94+14 = 108
+            # left_extra = 17.5 * 14/19 = 12.9, bottom_extra = 10 * 12/20 = 6
+            # col=1 cell_left = 1*(87.5+5) = 92.5, ax_left = 92.5+12.9 = 105.4
             # row=0 cell_bottom = 135 - 1*65 - 0*5 = 70, ax_bottom = 70+6 = 76
             # row=1 cell_bottom = 135 - 2*65 - 1*5 = 0, ax_bottom = 0+6 = 6
             expected_positions_mm = [
                 # (ax_left_mm, ax_bottom_mm, ax_width_mm, ax_height_mm) for each panel
-                (14.0,   76.0, 70.0, 55.0),   # row=0, col=0
-                (108.0,  76.0, 70.0, 55.0),   # row=0, col=1
-                (14.0,    6.0, 70.0, 55.0),   # row=1, col=0
-                (108.0,   6.0, 70.0, 55.0),   # row=1, col=1
+                (12.9, 76.0, 70.0, 55.0),   # row=0, col=0
+                (105.4, 76.0, 70.0, 55.0),  # row=0, col=1
+                (12.9, 6.0, 70.0, 55.0),    # row=1, col=0
+                (105.4, 6.0, 70.0, 55.0),   # row=1, col=1
             ]
 
             for ax, (exp_left_mm, exp_bottom_mm, exp_w_mm, exp_h_mm) in zip(

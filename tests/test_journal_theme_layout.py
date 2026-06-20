@@ -247,6 +247,9 @@ class JournalThemeLayoutTest(unittest.TestCase):
     def test_existing_track_render_tokens_are_unchanged(self):
         expected = {
             "nature": {
+                "figure_width_mm": 88.0,
+                "figure_height_mm": 71.0,
+                "figure_column_widths_mm": {"single": 88.0, "double": 180.0, "full": 180.0},
                 "main_marker_size": 3.2,
                 "facet_marker_size": 2.4,
                 "axis_marker_margin_fraction": 0.06,
