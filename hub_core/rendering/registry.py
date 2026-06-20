@@ -96,6 +96,7 @@ _DISTRIBUTION_ARG_SCHEMA = {
     "properties": {
         "x_column": {"type": "string"},
         "y_column": {"type": "string"},
+        "category_order": {"type": "array", "items": {"type": ["string", "number"]}},
     },
 }
 
@@ -114,6 +115,7 @@ _BAR_ARG_SCHEMA = {
     "type": "object",
     "properties": {
         "aggregate": {"type": "string", "enum": ["mean", "median"]},
+        "category_order": {"type": "array", "items": {"type": ["string", "number"]}},
     },
 }
 
@@ -124,6 +126,7 @@ _FACET_ARG_SCHEMA = {
     "properties": {
         "facet_column": {"type": "string"},
         "facet_scales": {"type": "string", "enum": ["fixed", "free"]},
+        "facet_order": {"type": "array", "items": {"type": "string"}},
     },
 }
 
@@ -136,6 +139,7 @@ PLOT_TYPES: dict[str, PlotType] = {
         capabilities=_common_capabilities(
             supports_broken_axis=False,
             supports_replicate_aggregation=True,
+            supports_category_order=True,
             aggregate_methods=["mean", "median"],
         ),
     ),
@@ -196,6 +200,7 @@ PLOT_TYPES: dict[str, PlotType] = {
             supports_broken_axis=False,
             shows_individual_points=True,
             warns_small_n=True,
+            supports_category_order=True,
         ),
     ),
     "violin": PlotType(
@@ -209,6 +214,7 @@ PLOT_TYPES: dict[str, PlotType] = {
             shows_individual_points=True,
             warns_small_n=True,
             falls_back_for_small_n=True,
+            supports_category_order=True,
         ),
     ),
     "facet": PlotType(
@@ -222,6 +228,7 @@ PLOT_TYPES: dict[str, PlotType] = {
             shares_axes=True,
             default_scales="fixed",
             free_scales=True,
+            supports_facet_order=True,
         ),
     ),
 }

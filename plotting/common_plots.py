@@ -9,6 +9,7 @@ High-level visualization utilities (Lean Version - No Seaborn Dependency)
 """
 
 import warnings
+from collections.abc import Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -81,6 +82,32 @@ def _validate_violin_width(width: float) -> float:
     return width_value
 
 
+def _display_values(values: Sequence[object]) -> str:
+    return ", ".join(str(value) for value in values)
+
+
+def _first_seen_categories(values: pd.Series) -> list:
+    return list(pd.unique(values))
+
+
+def _category_order(values: pd.Series, category_order: Sequence[object] | None = None) -> list:
+    data_order = _first_seen_categories(values)
+    if category_order is None:
+        return data_order
+
+    explicit = list(category_order)
+    duplicates = [value for index, value in enumerate(explicit) if value in explicit[:index]]
+    if duplicates:
+        raise ValueError(f"category_order contains duplicate value(s): {_display_values(duplicates)}")
+    missing = [value for value in data_order if value not in explicit]
+    if missing:
+        raise ValueError(f"category_order is missing data category value(s): {_display_values(missing)}")
+    extra = [value for value in explicit if value not in data_order]
+    if extra:
+        raise ValueError(f"category_order includes value(s) not present in data: {_display_values(extra)}")
+    return explicit
+
+
 # ---------------------------------------------------------------------------
 # Existing helpers
 # ---------------------------------------------------------------------------
@@ -104,7 +131,7 @@ def plot_grouped_summary(df, x_col, y_col, ax=None, palette=None, show_jitter=Tr
     rng = np.random.default_rng(seed)
     fig, ax = _ensure_axes(ax)
 
-    categories = sorted(df[x_col].unique())
+    categories = _category_order(df[x_col])
     x_pos = np.arange(len(categories))
     cycle_colors = _get_cycle_colors(len(categories))
 
@@ -164,6 +191,7 @@ def plot_strip_with_mean(
     show_mean: bool = True,
     show_median: bool = False,
     error_type: str = "sd",
+    category_order: Sequence[object] | None = None,
     seed: int = 42,
 ) -> tuple:
     """Individual data points (jitter) + mean/median markers + error bars.
@@ -178,7 +206,7 @@ def plot_strip_with_mean(
     rng = np.random.default_rng(seed)
     fig, ax = _ensure_axes(ax)
 
-    categories = sorted(df[x_col].unique())
+    categories = _category_order(df[x_col], category_order)
     x_pos = np.arange(len(categories))
     cycle_colors = _get_cycle_colors(len(categories))
 
@@ -216,13 +244,14 @@ def plot_box_with_points(
     y_col: str,
     ax: plt.Axes | None = None,
     palette: dict | None = None,
+    category_order: Sequence[object] | None = None,
     seed: int = 42,
 ) -> tuple:
     """Box plot with individual data points overlaid for small-n transparency."""
     rng = np.random.default_rng(seed)
     fig, ax = _ensure_axes(ax)
 
-    categories = sorted(df[x_col].unique())
+    categories = _category_order(df[x_col], category_order)
     dataset = [df[df[x_col] == cat][y_col].dropna().values for cat in categories]
     positions = list(range(len(categories)))
     cycle_colors = _get_cycle_colors(len(categories))
@@ -265,6 +294,7 @@ def plot_violin_with_points(
     kde_points: int = _DEFAULT_VIOLIN_KDE_POINTS,
     kde_bw_method=_DEFAULT_VIOLIN_KDE_BW_METHOD,
     violin_width: float = _DEFAULT_VIOLIN_WIDTH,
+    category_order: Sequence[object] | None = None,
     seed: int = 42,
 ) -> tuple:
     """Violin plot with jitter overlay. Falls back to strip plot when n < min_n.
@@ -273,7 +303,7 @@ def plot_violin_with_points(
     function automatically delegates to ``plot_strip_with_mean`` when any
     group has fewer than *min_n* observations.
     """
-    categories = sorted(df[x_col].unique())
+    categories = _category_order(df[x_col], category_order)
     group_sizes = {cat: len(df[df[x_col] == cat][y_col].dropna()) for cat in categories}
 
     if any(n < min_n for n in group_sizes.values()):
@@ -283,7 +313,7 @@ def plot_violin_with_points(
             "falling back to strip plot (violin unreliable for small n).",
             stacklevel=2,
         )
-        return plot_strip_with_mean(df, x_col, y_col, ax=ax, palette=palette, seed=seed)
+        return plot_strip_with_mean(df, x_col, y_col, ax=ax, palette=palette, category_order=categories, seed=seed)
 
     rng = np.random.default_rng(seed)
     fig, ax = _ensure_axes(ax)

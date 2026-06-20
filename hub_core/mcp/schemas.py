@@ -186,6 +186,10 @@ def _plot_type_example(name: str, arg_schema: dict[str, Any]) -> dict[str, Any]:
         arguments["z_column"] = "z"
     if "facet_column" in arg_schema.get("required", []):
         arguments["facet_column"] = "facet"
+    if "category_order" in arg_schema.get("properties", {}):
+        arguments["category_order"] = ["day 0", "day 7", "day 14", "day 28"]
+    if "facet_order" in arg_schema.get("properties", {}):
+        arguments["facet_order"] = ["control", "treated"]
     if "aggregate" in arg_schema.get("properties", {}):
         arguments["aggregate"] = "mean"
     if "fit_line" in arg_schema.get("properties", {}):
@@ -377,6 +381,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "z_column": {"type": "string"},
                     "facet_column": {"type": "string"},
                     "facet_scales": {"type": "string", "enum": ["fixed", "free"], "default": "fixed"},
+                    "category_order": {"type": "array", "items": {"type": ["string", "number"]}},
+                    "facet_order": {"type": "array", "items": {"type": "string"}},
                     "aggregate": {"type": "string", "enum": ["mean", "median"]},
                     "fit_line": {"type": "boolean"},
                     "ci_band": {"type": "boolean"},
