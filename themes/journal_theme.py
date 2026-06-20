@@ -127,7 +127,10 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     # use readable 7 pt body/axis text and 6.5 pt ticks as a Graph Hub
     # assumption that stays within the established small-text floor.
     "rsc": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    "elsevier": FontTokens(tag=8.5, label=7.0, annot=7.0, legend=7.0, axis=8.0, tick=7.0),
+    # Elsevier figure guidance supports Arial/Helvetica-style sans-serif text;
+    # use readable 7 pt body/axis text and 6.5 pt ticks as a Graph Hub
+    # assumption that stays within the established small-text floor.
+    "elsevier": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
     # Wiley/Advanced Materials-family artwork uses readable sans-serif labels;
     # keep 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
     "wiley": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
@@ -361,13 +364,32 @@ STYLE_PRESETS["rsc"].update(
 STYLE_PRESETS["elsevier"] = copy.deepcopy(STYLE_PRESETS["nature"])
 STYLE_PRESETS["elsevier"].update(
     {
-        "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
-        "mathtext.fontset": "dejavuserif",
-        "axes.labelsize": 8.0,
-        "axes.titlesize": 8.5,
-        "xtick.labelsize": 7.0,
-        "ytick.labelsize": 7.0,
+        # Elsevier artwork commonly accepts Arial/Helvetica-style sans-serif
+        # lettering; prefer Arial first to match author-facing guidance.
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"],
+        "mathtext.fontset": "custom",
+        "mathtext.rm": "Arial",
+        "mathtext.it": "Arial:italic",
+        "mathtext.bf": "Arial:bold",
+        # Use readable 7 pt final-size body text. 6.5 pt ticks are a Graph Hub
+        # assumption for dense axes while respecting the local min-size floor.
+        "font.size": 7.0,
+        "axes.titlesize": 7.5,
+        "axes.labelsize": 7.0,
+        "legend.fontsize": 7.0,
+        "xtick.labelsize": 6.5,
+        "ytick.labelsize": 6.5,
+        # Elsevier column widths are the broadest journal anchors in this set;
+        # use slightly stronger primary strokes while staying publication-scale.
+        "axes.linewidth": 0.65,
+        "lines.linewidth": 1.05,
+        "lines.markersize": 3.6,
+        "lines.markeredgewidth": 0.6,
+        "xtick.major.width": 0.65,
+        "ytick.major.width": 0.65,
+        "xtick.direction": "out",
+        "ytick.direction": "out",
     }
 )
 

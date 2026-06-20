@@ -186,9 +186,9 @@ def test_acs_tick_direction():
     assert STYLE_PRESETS['acs']['ytick.direction'] == 'out'
 
 
-def test_elsevier_serif_font():
-    assert STYLE_PRESETS['elsevier']['font.family'] == 'serif'
-    assert STYLE_PRESETS['elsevier']['mathtext.fontset'] == 'dejavuserif'
+def test_elsevier_sans_serif_font():
+    assert STYLE_PRESETS['elsevier']['font.family'] == 'sans-serif'
+    assert STYLE_PRESETS['elsevier']['font.sans-serif'][0] == 'Arial'
 
 
 def test_science_no_box():

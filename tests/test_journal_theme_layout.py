@@ -157,6 +157,41 @@ class JournalThemeLayoutTest(unittest.TestCase):
         self.assertEqual(tokens.axis, 7.0)
         self.assertEqual(tokens.tick, 6.5)
 
+    def test_elsevier_font_tokens_use_readable_sans_serif_scale(self):
+        tokens = font_tokens("elsevier")
+
+        self.assertEqual(tokens.tag, 8.0)
+        self.assertEqual(tokens.label, 7.0)
+        self.assertEqual(tokens.annot, 7.0)
+        self.assertEqual(tokens.legend, 7.0)
+        self.assertEqual(tokens.axis, 7.0)
+        self.assertEqual(tokens.tick, 6.5)
+
+    def test_elsevier_render_tokens_use_elsevier_column_and_marker_values(self):
+        tokens, meta = get_render_style_tokens("elsevier", "baseline")
+
+        self.assertEqual(meta, {"target_format": "elsevier", "profile": "baseline"})
+        self.assertEqual(tokens["figure_width_mm"], 90.0)
+        self.assertEqual(tokens["figure_height_mm"], 72.0)
+        self.assertEqual(tokens["figure_column_widths_mm"]["single"], 90.0)
+        self.assertEqual(tokens["figure_column_widths_mm"]["one_half"], 140.0)
+        self.assertEqual(tokens["figure_column_widths_mm"]["double"], 190.0)
+        self.assertEqual(tokens["figure_column_widths_mm"]["full"], 190.0)
+        self.assertEqual(tokens["figure_column_widths_mm"]["triple"], 190.0)
+        self.assertEqual(tokens["main_marker_size"], 3.6)
+        self.assertEqual(tokens["facet_marker_size"], 2.8)
+        self.assertEqual(tokens["main_marker_edge_width"], 0.6)
+        self.assertEqual(tokens["main_line_width"], 1.05)
+        self.assertEqual(tokens["timeseries_line_width"], 0.9)
+        self.assertEqual(tokens["error_line_width"], 0.8)
+        self.assertEqual(tokens["error_cap_size"], 2.2)
+        self.assertEqual(tokens["jitter_size"], 13.0)
+        self.assertEqual(tokens["jitter_line_width"], 0.6)
+        self.assertEqual(tokens["bar_edge_width"], 0.55)
+        self.assertEqual(tokens["violin_kde_points"], 192)
+        self.assertEqual(tokens["violin_width"], 0.5)
+        self.assertEqual(tokens["default_colormap"], "viridis")
+
     def test_rsc_render_tokens_use_rsc_column_and_marker_values(self):
         tokens, meta = get_render_style_tokens("rsc", "baseline")
 
@@ -296,6 +331,30 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 "violin_width": 0.5,
                 "default_colormap": "viridis",
             },
+            "rsc": {
+                "figure_width_mm": 83.0,
+                "figure_height_mm": 66.4,
+                "figure_column_widths_mm": {
+                    "single": 83.0,
+                    "one_half": 171.0,
+                    "double": 171.0,
+                    "full": 171.0,
+                    "triple": 171.0,
+                },
+                "main_marker_size": 3.3,
+                "facet_marker_size": 2.5,
+                "main_marker_edge_width": 0.55,
+                "main_line_width": 1.0,
+                "timeseries_line_width": 0.8,
+                "error_line_width": 0.75,
+                "error_cap_size": 2.0,
+                "jitter_size": 12.0,
+                "jitter_line_width": 0.55,
+                "bar_edge_width": 0.5,
+                "violin_kde_points": 192,
+                "violin_width": 0.5,
+                "default_colormap": "viridis",
+            },
         }
 
         for target_format, expected_tokens in expected.items():
@@ -406,6 +465,27 @@ class JournalThemeLayoutTest(unittest.TestCase):
             self.assertEqual(plt.rcParams["lines.linewidth"], 1.0)
             self.assertEqual(plt.rcParams["lines.markersize"], 3.3)
             self.assertEqual(plt.rcParams["lines.markeredgewidth"], 0.55)
+            self.assertEqual(plt.rcParams["xtick.direction"], "out")
+            self.assertEqual(plt.rcParams["ytick.direction"], "out")
+        finally:
+            plt.rcParams.update(saved_rc)
+
+    def test_apply_elsevier_theme_uses_distinct_sans_serif_rc_values(self):
+        saved_rc = plt.rcParams.copy()
+        try:
+            apply_journal_theme("elsevier")
+
+            self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
+            self.assertEqual(plt.rcParams["font.sans-serif"][0], "Arial")
+            self.assertEqual(plt.rcParams["font.size"], 7.0)
+            self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
+            self.assertEqual(plt.rcParams["legend.fontsize"], 7.0)
+            self.assertEqual(plt.rcParams["xtick.labelsize"], 6.5)
+            self.assertEqual(plt.rcParams["ytick.labelsize"], 6.5)
+            self.assertEqual(plt.rcParams["axes.linewidth"], 0.65)
+            self.assertEqual(plt.rcParams["lines.linewidth"], 1.05)
+            self.assertEqual(plt.rcParams["lines.markersize"], 3.6)
+            self.assertEqual(plt.rcParams["lines.markeredgewidth"], 0.6)
             self.assertEqual(plt.rcParams["xtick.direction"], "out")
             self.assertEqual(plt.rcParams["ytick.direction"], "out")
         finally:

@@ -282,6 +282,62 @@ TARGET_FORMAT_PROFILE_TOKENS = {
             "default_colormap": "viridis",
         },
     },
+    "elsevier": {
+        "baseline": {
+            # Elsevier figure-preparation anchors: single-column artwork is
+            # commonly prepared around 90 mm final width.
+            "figure_width_mm": 90.0,
+            # Height is a Graph Hub assumption, preserving the existing 0.80
+            # width:height bridge-render ratio for Elsevier's 90 mm column.
+            "figure_height_mm": 72.0,
+            # Elsevier anchors: 90 mm single column, 140 mm 1.5-column, and
+            # 190 mm double/full width.
+            "figure_column_widths_mm": {
+                "single": 90.0,
+                "one_half": 140.0,
+                "double": 190.0,
+                "full": 190.0,
+                "triple": 190.0,
+            },
+            # Elsevier's single-column canvas is larger than the other journal
+            # singles here, so 3.6 pt markers remain readable without crowding.
+            "main_marker_size": 3.6,
+            # Facet markers stay below the main marker size to avoid crowding
+            # in subdivided Elsevier panels.
+            "facet_marker_size": 2.8,
+            # Marker edges stay above hairline weight and match the slightly
+            # larger Elsevier marker scale.
+            "main_marker_edge_width": 0.6,
+            # Main plotted lines use a conservative 1.05 pt journal-scale
+            # stroke for the wider Elsevier canvas.
+            "main_line_width": 1.05,
+            # Dense time-series traces use a lighter stroke than the main line
+            # while remaining visible at 90 mm final width.
+            "timeseries_line_width": 0.9,
+            # Error bars stay lighter than primary data strokes but above a
+            # practical print hairline.
+            "error_line_width": 0.8,
+            # Slightly wider caps match the larger Elsevier column scale.
+            "error_cap_size": 2.2,
+            # Jitter points are smaller than the generic baseline but scaled a
+            # bit above ACS/RSC for Elsevier's wider single column.
+            "jitter_size": 13.0,
+            # Jitter outlines follow the marker edge width.
+            "jitter_line_width": 0.6,
+            # Bar outlines stay above a practical print hairline without
+            # overpowering fills.
+            "bar_edge_width": 0.55,
+            # KDE resolution is raised above generic baseline for smoother
+            # distribution plots; this is a repo assumption, not an Elsevier spec.
+            "violin_kde_points": 192,
+            # Keep the generic violin width because Elsevier single columns are
+            # close to Graph Hub's default journal scale.
+            "violin_width": 0.5,
+            # Elsevier-specific default is explicit; viridis is perceptually
+            # uniform and already Graph Hub's fallback for unknown physics types.
+            "default_colormap": "viridis",
+        },
+    },
     "wiley": {
         "baseline": {
             # Wiley Advanced Materials-family figures commonly target 8.4 cm
