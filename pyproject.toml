@@ -1,6 +1,6 @@
 [project]
 name = "graph-making-hub"
-version = "0.7.0"
+version = "0.8.0"
 description = "Reproducible plotting and analysis pipeline for research projects"
 readme = "README.md"
 requires-python = ">=3.12"

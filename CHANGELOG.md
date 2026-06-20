@@ -15,6 +15,21 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.8.0] - 2026-06-20
+
+### Added
+
+- Per-journal style tracks now provide distinct figure widths, font scales,
+  marker tokens, and colormaps for Science / AAAS (55 / 120 / 183 mm), ACS
+  (82.55 / 177.8 mm), and Wiley / Advanced Materials (84 / 174 mm) (#120,
+  #121, #122).
+
+### Changed
+
+- Smart legend placement is now collision-aware across journal tracks and
+  relocates legends, including a top-outside fallback, when the preferred
+  position would overlap plotted data (#123).
+
 ## [0.7.0] - 2026-06-20
 
 ### Added
