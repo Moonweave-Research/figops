@@ -19,6 +19,14 @@ _STATISTICAL_OVERLAY_PLOT_TYPES = {"line", "scatter", "xy"}
 _BAR_AGGREGATE_METHODS = {"mean", "median"}
 
 
+def _optional_positive_int_arg(value: Any, name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be a positive integer.")
+    return value
+
+
 class McpRenderToolsMixin(McpRenderToolSupportMixin):
     """Graph rendering MCP tool handlers."""
     def render_csv_graph(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -60,20 +68,26 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
         aggregate = str(arguments.get("aggregate") or "").strip().lower()
         raw_annotate_values = arguments.get("annotate_values", False)
         raw_bar_error_column = arguments.get("bar_error_column", "")
+        raw_facet_ncols = arguments.get("facet_ncols")
+        raw_facet_nrows = arguments.get("facet_nrows")
         try:
             category_order = self._order_arg(arguments.get("category_order"), "category_order", allow_numbers=True)
             facet_order = self._order_arg(arguments.get("facet_order"), "facet_order", allow_numbers=False)
+            facet_ncols = _optional_positive_int_arg(raw_facet_ncols, "facet_ncols")
+            facet_nrows = _optional_positive_int_arg(raw_facet_nrows, "facet_nrows")
         except ValueError as exc:
             return self._envelope(
                 "graphhub.render_csv_graph",
                 arguments,
                 status="error",
-                summary="Render request has invalid category ordering settings.",
+                summary="Render request has invalid facet/category layout settings.",
                 errors=[str(exc)],
                 manual_review_needed=True,
                 is_dry_run=dry_run,
                 failure_stage="CONFIG",
-                resolution_hint="Provide category_order/facet_order as arrays with explicit values.",
+                resolution_hint=(
+                    "Provide category_order/facet_order arrays and positive integer facet_ncols/facet_nrows."
+                ),
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=render_helpers._geometry_stub("no figure"),
@@ -414,6 +428,8 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                         "z_column": z_column,
                         "facet_column": facet_column,
                         "facet_scales": facet_scales,
+                        "facet_ncols": facet_ncols,
+                        "facet_nrows": facet_nrows,
                         "category_order": category_order,
                         "facet_order": facet_order,
                         "aggregate": aggregate,

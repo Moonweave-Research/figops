@@ -191,6 +191,8 @@ def _plot_type_example(name: str, arg_schema: dict[str, Any]) -> dict[str, Any]:
         arguments["category_order"] = ["day 0", "day 7", "day 14", "day 28"]
     if "facet_order" in arg_schema.get("properties", {}):
         arguments["facet_order"] = ["control", "treated"]
+    if "facet_ncols" in arg_schema.get("properties", {}):
+        arguments["facet_ncols"] = 2
     if "aggregate" in arg_schema.get("properties", {}):
         arguments["aggregate"] = "mean"
     if "bar_error_column" in arg_schema.get("properties", {}):
@@ -388,6 +390,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "facet_scales": {"type": "string", "enum": ["fixed", "free"], "default": "fixed"},
                     "category_order": {"type": "array", "items": {"type": ["string", "number"]}},
                     "facet_order": {"type": "array", "items": {"type": "string"}},
+                    "facet_ncols": {"type": "integer", "minimum": 1},
+                    "facet_nrows": {"type": "integer", "minimum": 1},
                     "aggregate": {"type": "string", "enum": ["mean", "median"]},
                     "bar_error_column": {"type": "string"},
                     "annotate_values": {"type": "boolean", "default": False},

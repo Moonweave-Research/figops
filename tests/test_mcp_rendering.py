@@ -1015,6 +1015,50 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn(result["status"], {"ok", "warning"})
             self.assertIs(captured["annotate_values"], True)
 
+    def test_render_csv_graph_forwards_facet_grid_shape_controls(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "facet.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                "x,y,phase\n0,1,A\n1,2,A\n0,3,B\n1,4,B\n0,5,C\n1,6,C\n0,7,D\n1,8,D\n",
+                encoding="utf-8",
+            )
+            runtime_root = tmp_root / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "facet_column": "phase",
+                        "plot_type": "facet",
+                        "facet_ncols": 4,
+                        "facet_nrows": 1,
+                        "job_id": "render-facet-grid",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["facet_ncols"], 4)
+            self.assertEqual(captured["facet_nrows"], 1)
+
     def test_render_csv_graph_rejects_heatmap_without_z_column(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_grid_csv(Path(tmpdir) / "input" / "grid.csv")

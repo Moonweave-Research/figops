@@ -135,6 +135,8 @@ _FACET_ARG_SCHEMA = {
         "facet_column": {"type": "string"},
         "facet_scales": {"type": "string", "enum": ["fixed", "free"]},
         "facet_order": {"type": "array", "items": {"type": "string"}},
+        "facet_ncols": {"type": "integer", "minimum": 1},
+        "facet_nrows": {"type": "integer", "minimum": 1},
     },
 }
 
@@ -239,6 +241,7 @@ PLOT_TYPES: dict[str, PlotType] = {
             default_scales="fixed",
             free_scales=True,
             supports_facet_order=True,
+            supports_facet_grid_shape=True,
         ),
     ),
 }

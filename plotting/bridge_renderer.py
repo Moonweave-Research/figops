@@ -197,6 +197,8 @@ class BridgeFigureSpec:
     y_break_range: tuple[float, float] | None = None
     facet_column: str = ""
     facet_scales: str = "fixed"
+    facet_ncols: int | None = None
+    facet_nrows: int | None = None
     category_order: tuple[float | str, ...] = ()
     facet_order: tuple[str, ...] = ()
     aggregate: str = ""
@@ -1144,12 +1146,12 @@ def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         spec.facet_order,
         field_name="facet_order",
     )
-    n_facets = len(grouped)
-    n_cols = min(3, max(1, math.ceil(math.sqrt(n_facets))))
-    n_rows = math.ceil(n_facets / n_cols)
+    n_facets = len(facet_names)
+    n_rows, n_cols = _resolve_facet_grid(n_facets, spec)
     shared_x = None
     shared_y = None
     share_axes = spec.facet_scales == "fixed"
+    facet_axes = []
 
     for idx, facet_name in enumerate(facet_names):
         facet_points = grouped[str(facet_name)]
@@ -1162,6 +1164,7 @@ def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
             sharex=shared_x if share_axes else None,
             sharey=shared_y if share_axes else None,
         )
+        facet_axes.append(facet_ax)
         if share_axes and shared_x is None:
             shared_x = facet_ax
             shared_y = facet_ax
@@ -1179,8 +1182,55 @@ def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         if facet_ax.get_legend() is not None:
             facet_ax.get_legend().remove()
 
+    if share_axes and (spec.facet_ncols is not None or spec.facet_nrows is not None or n_cols > 3):
+        _expand_shared_facet_limits_for_markers(facet_axes, spec)
+
     if spec.title:
         fig.suptitle(spec.title)
+
+
+def _resolve_facet_grid(n_facets: int, spec: BridgeFigureSpec) -> tuple[int, int]:
+    n_cols = _optional_positive_int(spec.facet_ncols, "facet_ncols")
+    n_rows = _optional_positive_int(spec.facet_nrows, "facet_nrows")
+    if n_cols is not None and n_rows is not None:
+        if n_cols * n_rows < n_facets:
+            raise ValueError(
+                f"facet_ncols * facet_nrows must hold {n_facets} facets; got {n_cols} * {n_rows}."
+            )
+        return n_rows, n_cols
+    if n_cols is not None:
+        return math.ceil(n_facets / n_cols), n_cols
+    if n_rows is not None:
+        return n_rows, math.ceil(n_facets / n_rows)
+
+    # Automatic facets use a square-ish grid, now capped at five columns. This
+    # preserves compact defaults for small facet counts while allowing larger
+    # sets to avoid the old narrow three-column hard cap.
+    auto_cols = min(5, max(1, math.ceil(math.sqrt(n_facets))))
+    return math.ceil(n_facets / auto_cols), auto_cols
+
+
+def _optional_positive_int(value: int | None, name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def _expand_shared_facet_limits_for_markers(axes, spec: BridgeFigureSpec) -> None:
+    _marker_size, _marker_edge_width, margin = _marker_tokens(spec, small_panel=True)
+    if margin is None or not axes:
+        return
+    margin *= 3.0
+    x_min, x_max = axes[0].get_xlim()
+    y_min, y_max = axes[0].get_ylim()
+    x_span = x_max - x_min
+    y_span = y_max - y_min
+    if x_span > 0:
+        axes[0].set_xlim(x_min - x_span * margin, x_max + x_span * margin)
+    if y_span > 0:
+        axes[0].set_ylim(y_min - y_span * margin, y_max + y_span * margin)
 
 
 def _group_facet_points(points: list[dict]) -> dict[str, list[dict]]:

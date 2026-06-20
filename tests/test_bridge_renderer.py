@@ -57,6 +57,16 @@ def _assert_marker_footprints_inside_axes(testcase: unittest.TestCase, fig, axes
             testcase.assertLessEqual(marker_box.y1, axes_box.y1, label)
 
 
+def _subplot_grid_shape(axes) -> tuple[int, int]:
+    visible = [ax for ax in axes if ax.get_visible()]
+    assert visible, "no visible axes"
+    n_rows, n_cols, *_ = visible[0].get_subplotspec().get_geometry()
+    for ax in visible:
+        rows, cols, *_ = ax.get_subplotspec().get_geometry()
+        assert (rows, cols) == (n_rows, n_cols)
+    return int(n_rows), int(n_cols)
+
+
 def _legend_diagnostic(result: dict) -> dict:
     return _geometry_check(result, "legend_data_collision")
 
@@ -106,6 +116,34 @@ class BridgeRendererUnitTest(unittest.TestCase):
             writer.writeheader()
             writer.writerows(rows)
         return csv_path
+
+    def _facet_points(self, n_facets: int, *, n_points: int = 3) -> list[dict]:
+        points = []
+        for facet_idx in range(n_facets):
+            for idx in range(n_points):
+                points.append(
+                    {
+                        "x": float(idx),
+                        "y": float(facet_idx) + idx * 0.2,
+                        "label": "",
+                        "series": "",
+                        "yerr": None,
+                        "yerr_minus": None,
+                        "facet": f"facet {facet_idx}",
+                    }
+                )
+        return points
+
+    def _render_facet_grid(self, points: list[dict], spec: BridgeFigureSpec):
+        fig, ax = plt.subplots(figsize=(89 / 25.4, 71 / 25.4), dpi=100)
+        try:
+            _render_plot(ax, points, spec)
+            _apply_layout(fig, ax, spec)
+            axes = [facet_ax for facet_ax in fig.axes if facet_ax.get_visible()]
+            return fig, axes
+        except Exception:
+            plt.close(fig)
+            raise
 
     def _cross_track_collision_points(self) -> list[dict]:
         series_defs = {
@@ -874,20 +912,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             plt.close(fig)
 
     def test_nature_facet_markers_are_smaller_and_not_clipped_by_axes_edges(self):
-        points = []
-        for facet_idx in range(9):
-            for cycle, stress in ((0.0, float(facet_idx)), (1.0, float(facet_idx + 1))):
-                points.append(
-                    {
-                        "x": cycle,
-                        "y": stress,
-                        "label": "",
-                        "series": "",
-                        "yerr": None,
-                        "yerr_minus": None,
-                        "facet": f"facet {facet_idx}",
-                    }
-                )
+        points = self._facet_points(9, n_points=2)
         spec = BridgeFigureSpec(
             csv_path="unused.csv",
             output_path="unused.png",
@@ -900,11 +925,8 @@ class BridgeRendererUnitTest(unittest.TestCase):
             profile_name="baseline",
         )
 
-        fig, ax = plt.subplots(figsize=(89 / 25.4, 71 / 25.4), dpi=100)
+        fig, axes = self._render_facet_grid(points, spec)
         try:
-            _render_plot(ax, points, spec)
-            _apply_layout(fig, ax, spec)
-            axes = [facet_ax for facet_ax in fig.axes if facet_ax.get_visible()]
             self.assertEqual(len(axes), 9)
             line_marker_sizes = {line.get_markersize() for facet_ax in axes for line in facet_ax.lines}
             self.assertEqual(line_marker_sizes, {2.4})
@@ -912,6 +934,100 @@ class BridgeRendererUnitTest(unittest.TestCase):
             y_limits = {tuple(round(value, 10) for value in facet_ax.get_ylim()) for facet_ax in axes}
             self.assertEqual(len(x_limits), 1)
             self.assertEqual(len(y_limits), 1)
+            _assert_marker_footprints_inside_axes(self, fig, axes)
+        finally:
+            plt.close(fig)
+
+    def test_facet_ncols_controls_subplot_grid_columns(self):
+        points = self._facet_points(7)
+        for requested_cols, expected_rows in ((2, 4), (4, 2)):
+            with self.subTest(requested_cols=requested_cols):
+                spec = BridgeFigureSpec(
+                    csv_path="unused.csv",
+                    output_path="unused.png",
+                    plot_type="facet",
+                    x_column="cycle",
+                    y_column="stress",
+                    title="Facet stress",
+                    facet_column="phase",
+                    target_format="nature",
+                    profile_name="baseline",
+                    facet_ncols=requested_cols,
+                )
+
+                fig, axes = self._render_facet_grid(points, spec)
+                try:
+                    self.assertEqual(_subplot_grid_shape(axes), (expected_rows, requested_cols))
+                    _assert_marker_footprints_inside_axes(self, fig, axes)
+                finally:
+                    plt.close(fig)
+
+    def test_facet_nrows_controls_subplot_grid_rows(self):
+        points = self._facet_points(7)
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="facet",
+            x_column="cycle",
+            y_column="stress",
+            title="Facet stress",
+            facet_column="phase",
+            target_format="nature",
+            profile_name="baseline",
+            facet_nrows=2,
+        )
+
+        fig, axes = self._render_facet_grid(points, spec)
+        try:
+            self.assertEqual(_subplot_grid_shape(axes), (2, 4))
+            _assert_marker_footprints_inside_axes(self, fig, axes)
+        finally:
+            plt.close(fig)
+
+    def test_facet_layout_rejects_invalid_explicit_grid(self):
+        points = self._facet_points(7)
+        for overrides, message in (
+            ({"facet_ncols": 0}, "facet_ncols must be a positive integer"),
+            ({"facet_nrows": "2"}, "facet_nrows must be a positive integer"),
+            ({"facet_ncols": 3, "facet_nrows": 2}, "must hold 7 facets"),
+        ):
+            with self.subTest(overrides=overrides):
+                spec = BridgeFigureSpec(
+                    csv_path="unused.csv",
+                    output_path="unused.png",
+                    plot_type="facet",
+                    x_column="cycle",
+                    y_column="stress",
+                    title="Facet stress",
+                    facet_column="phase",
+                    target_format="nature",
+                    profile_name="baseline",
+                    **overrides,
+                )
+                fig, ax = plt.subplots(figsize=(89 / 25.4, 71 / 25.4), dpi=100)
+                try:
+                    with self.assertRaisesRegex(ValueError, message):
+                        _render_plot(ax, points, spec)
+                finally:
+                    plt.close(fig)
+
+    def test_facet_auto_layout_can_exceed_three_columns_for_large_facet_sets(self):
+        points = self._facet_points(16)
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="facet",
+            x_column="cycle",
+            y_column="stress",
+            title="Facet stress",
+            facet_column="phase",
+            target_format="nature",
+            profile_name="baseline",
+        )
+
+        fig, axes = self._render_facet_grid(points, spec)
+        try:
+            self.assertEqual(_subplot_grid_shape(axes), (4, 4))
             _assert_marker_footprints_inside_axes(self, fig, axes)
         finally:
             plt.close(fig)
