@@ -123,6 +123,7 @@ _FACET_ARG_SCHEMA = {
     "required": ["facet_column"],
     "properties": {
         "facet_column": {"type": "string"},
+        "facet_scales": {"type": "string", "enum": ["fixed", "free"]},
     },
 }
 
@@ -219,6 +220,8 @@ PLOT_TYPES: dict[str, PlotType] = {
             supports_faceting=True,
             base_plot_type="line",
             shares_axes=True,
+            default_scales="fixed",
+            free_scales=True,
         ),
     ),
 }

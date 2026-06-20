@@ -429,6 +429,73 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertEqual(observed["xlabels"], ["", "", "cycle"])
             self.assertEqual(observed["ylabels"], ["stress", "", "stress"])
 
+    def test_facet_plot_type_uses_shared_axis_limits_by_default(self):
+        points = [
+            {"x": 0.0, "y": 1.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "A"},
+            {"x": 1.0, "y": 2.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "A"},
+            {"x": 10.0, "y": 100.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "B"},
+            {"x": 20.0, "y": 120.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "B"},
+            {"x": -5.0, "y": -20.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "C"},
+            {"x": -4.0, "y": -10.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "C"},
+        ]
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="facet",
+            x_column="cycle",
+            y_column="stress",
+            title="Facet stress",
+            facet_column="phase",
+            target_format="nature",
+            profile_name="baseline",
+        )
+
+        fig, ax = plt.subplots(figsize=(89 / 25.4, 71 / 25.4), dpi=100)
+        try:
+            _render_plot(ax, points, spec)
+            _apply_layout(fig, ax, spec)
+            axes = [facet_ax for facet_ax in fig.axes if facet_ax.get_visible()]
+            self.assertEqual(len(axes), 3)
+            x_limits = {tuple(round(value, 10) for value in facet_ax.get_xlim()) for facet_ax in axes}
+            y_limits = {tuple(round(value, 10) for value in facet_ax.get_ylim()) for facet_ax in axes}
+            self.assertEqual(len(x_limits), 1)
+            self.assertEqual(len(y_limits), 1)
+            _assert_marker_footprints_inside_axes(self, fig, axes)
+        finally:
+            plt.close(fig)
+
+    def test_facet_plot_type_can_opt_into_free_axis_limits(self):
+        points = [
+            {"x": 0.0, "y": 1.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "A"},
+            {"x": 1.0, "y": 2.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "A"},
+            {"x": 10.0, "y": 100.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "B"},
+            {"x": 20.0, "y": 120.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "B"},
+        ]
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="facet",
+            x_column="cycle",
+            y_column="stress",
+            title="Facet stress",
+            facet_column="phase",
+            facet_scales="free",
+            target_format="nature",
+            profile_name="baseline",
+        )
+
+        fig, ax = plt.subplots(figsize=(89 / 25.4, 71 / 25.4), dpi=100)
+        try:
+            _render_plot(ax, points, spec)
+            axes = [facet_ax for facet_ax in fig.axes if facet_ax.get_visible()]
+            self.assertEqual(len(axes), 2)
+            x_limits = {tuple(round(value, 10) for value in facet_ax.get_xlim()) for facet_ax in axes}
+            y_limits = {tuple(round(value, 10) for value in facet_ax.get_ylim()) for facet_ax in axes}
+            self.assertEqual(len(x_limits), 2)
+            self.assertEqual(len(y_limits), 2)
+        finally:
+            plt.close(fig)
+
     def test_nature_single_panel_line_and_scatter_markers_are_token_sized_and_not_clipped(self):
         points = [
             {"x": 0.0, "y": 0.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": ""},
@@ -498,6 +565,10 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertEqual(len(axes), 9)
             line_marker_sizes = {line.get_markersize() for facet_ax in axes for line in facet_ax.lines}
             self.assertEqual(line_marker_sizes, {2.4})
+            x_limits = {tuple(round(value, 10) for value in facet_ax.get_xlim()) for facet_ax in axes}
+            y_limits = {tuple(round(value, 10) for value in facet_ax.get_ylim()) for facet_ax in axes}
+            self.assertEqual(len(x_limits), 1)
+            self.assertEqual(len(y_limits), 1)
             _assert_marker_footprints_inside_axes(self, fig, axes)
         finally:
             plt.close(fig)

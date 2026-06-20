@@ -1019,6 +1019,14 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "facet_column": {
       "type": "string"
     },
+    "facet_scales": {
+      "default": "fixed",
+      "enum": [
+        "fixed",
+        "free"
+      ],
+      "type": "string"
+    },
     "fit_line": {
       "type": "boolean"
     },
@@ -2667,6 +2675,8 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "base_plot_type": "line",
+  "default_scales": "fixed",
+  "free_scales": true,
   "shares_axes": true,
   "supports_broken_axis": false,
   "supports_faceting": true,
@@ -2681,6 +2691,13 @@ Run a bounded project discovery and validation batch check with optional runtime
 {
   "properties": {
     "facet_column": {
+      "type": "string"
+    },
+    "facet_scales": {
+      "enum": [
+        "fixed",
+        "free"
+      ],
       "type": "string"
     }
   },

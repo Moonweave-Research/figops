@@ -53,6 +53,7 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
         target_format = str(arguments.get("target_format") or "nature").strip().lower()
         profile = str(arguments.get("profile") or DEFAULT_PROFILE).strip() or DEFAULT_PROFILE
         output_format = str(arguments.get("output_format") or "png").strip().lower().lstrip(".")
+        facet_scales = str(arguments.get("facet_scales") or "fixed").strip().lower()
         fit_line = arguments.get("fit_line", False)
         ci_band = arguments.get("ci_band", False)
         significance_markers = arguments.get("significance_markers", ())
@@ -143,6 +144,22 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 is_dry_run=dry_run,
                 failure_stage="CONFIG",
                 resolution_hint="Provide facet_column for facet plot_type.",
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=render_helpers._geometry_stub("no figure"),
+                layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
+            )
+        if facet_scales not in {"fixed", "free"}:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid facet settings.",
+                errors=["facet_scales must be 'fixed' or 'free'."],
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Use facet_scales='fixed' for shared axes or facet_scales='free' for independent axes.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=render_helpers._geometry_stub("no figure"),
@@ -317,6 +334,7 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                         "y_column": y_column,
                         "z_column": z_column,
                         "facet_column": facet_column,
+                        "facet_scales": facet_scales,
                         "aggregate": aggregate,
                         "fit_line": fit_line,
                         "ci_band": ci_band,

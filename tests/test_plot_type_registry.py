@@ -189,6 +189,7 @@ def test_facet_plot_type_publishes_contract():
         "required": ["facet_column"],
         "properties": {
             "facet_column": {"type": "string"},
+            "facet_scales": {"type": "string", "enum": ["fixed", "free"]},
         },
     }
     assert PLOT_TYPES["facet"].capabilities == {
@@ -198,6 +199,8 @@ def test_facet_plot_type_publishes_contract():
         "supports_faceting": True,
         "base_plot_type": "line",
         "shares_axes": True,
+        "default_scales": "fixed",
+        "free_scales": True,
     }
 
 
@@ -205,6 +208,11 @@ def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
     definitions = list_tool_definitions()
     render_tool = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
     assert render_tool["inputSchema"]["properties"]["facet_column"] == {"type": "string"}
+    assert render_tool["inputSchema"]["properties"]["facet_scales"] == {
+        "type": "string",
+        "enum": ["fixed", "free"],
+        "default": "fixed",
+    }
 
     with tempfile.TemporaryDirectory(prefix="graphhub_facet_schema_") as tmpdir:
         data_path = Path(tmpdir) / "facet.csv"
@@ -216,6 +224,7 @@ def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
                 "x_column": "x",
                 "y_column": "y",
                 "facet_column": "phase",
+                "facet_scales": "free",
                 "plot_type": "facet",
             },
             definitions,
