@@ -275,6 +275,63 @@ TARGET_FORMAT_PROFILE_TOKENS = {
             "default_colormap": "viridis",
         },
     },
+    "cell": {
+        "baseline": {
+            # Cell Press figure-preparation anchors: single-column artwork is
+            # commonly prepared at ~85 mm final width.
+            "figure_width_mm": 85.0,
+            # Height is a Graph Hub assumption, preserving the existing 0.80
+            # width:height bridge-render ratio for Cell's 85 mm single column.
+            "figure_height_mm": 68.0,
+            # Cell Press anchors: 85 mm single column, 114 mm 1.5-column, and
+            # 174 mm double/full width. Graph Hub's standard slots are single,
+            # double, full, and triple; one_half records the 1.5-column anchor.
+            "figure_column_widths_mm": {
+                "single": 85.0,
+                "one_half": 114.0,
+                "double": 174.0,
+                "full": 174.0,
+                "triple": 174.0,
+            },
+            # Cell's single-column width is close to ACS/Wiley, so use the same
+            # readable 3.4 pt main marker without cloning Nature's smaller mark.
+            "main_marker_size": 3.4,
+            # Facet markers stay below the main marker size to prevent crowding
+            # in subdivided Cell Press panels.
+            "facet_marker_size": 2.6,
+            # Marker edges stay above hairline weight while preserving symbol
+            # interiors at final publication size.
+            "main_marker_edge_width": 0.55,
+            # Main plotted lines use a conservative 1.0 pt journal-scale stroke.
+            "main_line_width": 1.0,
+            # Dense time-series traces get a slightly lighter stroke than the
+            # main line token while staying visible in 85 mm columns.
+            "timeseries_line_width": 0.85,
+            # Error bars follow the repo's readable journal stroke scale and
+            # stay below the primary data stroke.
+            "error_line_width": 0.8,
+            # Cap size follows the generic baseline for Cell's near-default
+            # single-column width.
+            "error_cap_size": 2.0,
+            # Jitter points are reduced from generic baseline to avoid
+            # overplotting while remaining visible at Cell figure scale.
+            "jitter_size": 12.0,
+            # Jitter outlines follow the marker edge width.
+            "jitter_line_width": 0.55,
+            # Bar outlines are slightly heavier than Science's compact track
+            # for Cell's larger column widths.
+            "bar_edge_width": 0.55,
+            # KDE resolution is raised above generic baseline for smoother
+            # distribution plots; this is a repo assumption, not a Cell spec.
+            "violin_kde_points": 192,
+            # Keep the generic violin width because Cell single columns are
+            # close to Graph Hub's default journal scale.
+            "violin_width": 0.5,
+            # Cell-specific default is explicit; viridis is perceptually
+            # uniform and already Graph Hub's fallback for unknown physics types.
+            "default_colormap": "viridis",
+        },
+    },
 }
 
 PROFILE_ALIASES = {
