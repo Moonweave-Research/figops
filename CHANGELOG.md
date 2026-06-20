@@ -15,6 +15,19 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.9.0] - 2026-06-20
+
+### Added
+
+- Per-journal style tracks now cover Cell Press (single 85 mm, 1.5-column
+  114 mm, double 174 mm), RSC (single 83 mm, double 171 mm), and Elsevier
+  (single 90 mm, 1.5-column 140 mm, double 190 mm), each with distinct
+  widths, sans-serif font scale, marker / line tokens, and viridis default
+  colormap (#125, #126, #127).
+- Distinct style tracks now exist for all seven journal `target_format`
+  profiles: nature, science, acs, wiley, cell, rsc, and elsevier (#125,
+  #126, #127).
+
 ## [0.8.0] - 2026-06-20
 
 ### Added
