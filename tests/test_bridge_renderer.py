@@ -644,6 +644,15 @@ class BridgeRendererUnitTest(unittest.TestCase):
         self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
         self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
 
+    def test_wiley_bridge_figsize_uses_wiley_single_column_width(self):
+        wiley_w_in, wiley_h_in = _figsize_for_format("wiley")
+        nature_w_in, nature_h_in = _figsize_for_format("nature")
+
+        self.assertAlmostEqual(wiley_w_in * 25.4, 84.0, places=4)
+        self.assertAlmostEqual(wiley_h_in * 25.4, 67.2, places=4)
+        self.assertAlmostEqual(nature_w_in * 25.4, 89.0, places=4)
+        self.assertAlmostEqual(nature_h_in * 25.4, 71.0, places=4)
+
     def test_science_multipanel_draft_uses_aaas_column_width_tokens(self):
         spec = MultiPanelSpec(
             panels=(),
@@ -678,6 +687,25 @@ class BridgeRendererUnitTest(unittest.TestCase):
         try:
             width_mm, height_mm = (value * 25.4 for value in fig.get_size_inches())
             self.assertAlmostEqual(width_mm, 177.8, places=4)
+            self.assertAlmostEqual(height_mm, 40.0, places=4)
+        finally:
+            plt.close(fig)
+
+    def test_wiley_multipanel_draft_uses_wiley_column_width_tokens(self):
+        spec = MultiPanelSpec(
+            panels=(),
+            output_path="unused.png",
+            rows=1,
+            cols=1,
+            target_format="wiley",
+            column_width="double",
+            panel_height_mm=40.0,
+        )
+
+        fig = _render_multipanel_draft(spec)
+        try:
+            width_mm, height_mm = (value * 25.4 for value in fig.get_size_inches())
+            self.assertAlmostEqual(width_mm, 174.0, places=4)
             self.assertAlmostEqual(height_mm, 40.0, places=4)
         finally:
             plt.close(fig)

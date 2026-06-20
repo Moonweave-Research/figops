@@ -218,7 +218,7 @@ def test_wiley_preset_loads():
     assert "wiley" in STYLE_PRESETS
     preset = STYLE_PRESETS["wiley"]
     assert preset["axes.labelsize"] == 7.0
-    assert preset["axes.titlesize"] == 8.0
+    assert preset["axes.titlesize"] == 7.5
     assert preset["savefig.dpi"] == 600
 
 
@@ -246,7 +246,7 @@ def test_cell_tick_direction():
 
 def test_wiley_line_width():
     assert STYLE_PRESETS["wiley"]["lines.linewidth"] == 1.0
-    assert STYLE_PRESETS["wiley"]["axes.linewidth"] == 1.0
+    assert STYLE_PRESETS["wiley"]["axes.linewidth"] == 0.7
 
 
 def test_cell_line_width():

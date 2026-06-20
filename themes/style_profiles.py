@@ -226,6 +226,55 @@ TARGET_FORMAT_PROFILE_TOKENS = {
             "default_colormap": "viridis",
         },
     },
+    "wiley": {
+        "baseline": {
+            # Wiley Advanced Materials-family figures commonly target 8.4 cm
+            # single-column artwork; store widths in Graph Hub's mm tokens.
+            "figure_width_mm": 84.0,
+            # Height is a Graph Hub assumption, preserving the existing 0.80
+            # width:height bridge-render ratio for Wiley's 84 mm single column.
+            "figure_height_mm": 67.2,
+            # Wiley Advanced Materials-family anchors: 8.4 cm single column and
+            # 17.4 cm double column; no separate triple width is modeled here.
+            "figure_column_widths_mm": {"single": 84.0, "double": 174.0, "full": 174.0},
+            # Wiley single-column width is close to ACS/Nature but slightly
+            # broader than ACS; use a 3.5 pt marker for compact readability.
+            "main_marker_size": 3.5,
+            # Facet markers stay smaller than the main marker size to prevent
+            # crowding in multi-panel Advanced Materials-style figures.
+            "facet_marker_size": 2.7,
+            # Marker edges are kept above hairline weight while preserving
+            # symbol interiors at final publication size.
+            "main_marker_edge_width": 0.55,
+            # Main plotted lines use a conservative 1.0 pt journal-scale stroke.
+            "main_line_width": 1.0,
+            # Dense time-series traces get a slightly lighter stroke than the
+            # main line token while staying visible in 84 mm columns.
+            "timeseries_line_width": 0.85,
+            # Error bars follow the repo's readable journal stroke scale.
+            "error_line_width": 0.8,
+            # Cap size follows the generic baseline for Wiley's near-default
+            # single-column width.
+            "error_cap_size": 2.0,
+            # Jitter points are reduced from generic baseline to avoid
+            # overplotting while remaining visible at Wiley figure scale.
+            "jitter_size": 12.5,
+            # Jitter outlines follow the marker edge width.
+            "jitter_line_width": 0.55,
+            # Bar outlines are slightly heavier than Science's compact track
+            # for Wiley's larger column widths.
+            "bar_edge_width": 0.55,
+            # KDE resolution is raised above generic baseline for smoother
+            # distribution plots; this is a repo assumption, not a Wiley spec.
+            "violin_kde_points": 192,
+            # Keep the generic violin width because Wiley single columns are
+            # close to Graph Hub's default journal scale.
+            "violin_width": 0.5,
+            # Wiley-specific default is explicit; viridis is perceptually
+            # uniform and already Graph Hub's fallback for unknown physics types.
+            "default_colormap": "viridis",
+        },
+    },
 }
 
 PROFILE_ALIASES = {
