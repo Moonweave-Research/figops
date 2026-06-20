@@ -9,8 +9,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from hub_core.scaffold import DEFAULT_DIAGRAM_PY, DEFAULT_PLOT_PY, DEFAULT_PROJECT_CONTEXT_PY
 from hub_core.geometry_diagnostics import diagnose_figure_geometry
+from hub_core.scaffold import DEFAULT_DIAGRAM_PY, DEFAULT_PLOT_PY, DEFAULT_PROJECT_CONTEXT_PY
 from themes.journal_theme import (
     TIFF_AUTO_PRESETS,
     _active_font_token_sizes,
@@ -30,6 +30,12 @@ def _axes_box_mm(fig, ax):
 
 
 class JournalThemeLayoutTest(unittest.TestCase):
+    def setUp(self):
+        self._saved_rc = plt.rcParams.copy()
+
+    def tearDown(self):
+        plt.rcParams.update(self._saved_rc)
+
     def test_panel_label_places_readable_corner_label_with_default_box(self):
         fig, ax = plt.subplots()
         try:
@@ -100,6 +106,35 @@ class JournalThemeLayoutTest(unittest.TestCase):
         self.assertEqual(tokens["legend"], 6.0)
         self.assertEqual(tokens.as_dict()["axis"], 7.0)
 
+    def test_science_font_tokens_use_aaas_sans_serif_scale(self):
+        tokens = font_tokens("science")
+
+        self.assertEqual(tokens.tag, 8.0)
+        self.assertEqual(tokens.label, 7.0)
+        self.assertEqual(tokens.annot, 7.0)
+        self.assertEqual(tokens.legend, 7.0)
+        self.assertEqual(tokens.axis, 7.0)
+        self.assertEqual(tokens.tick, 6.5)
+
+    def test_apply_science_theme_uses_distinct_sans_serif_rc_values(self):
+        saved_rc = plt.rcParams.copy()
+        try:
+            apply_journal_theme("science")
+
+            self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
+            self.assertEqual(plt.rcParams["font.sans-serif"][0], "Helvetica")
+            self.assertEqual(plt.rcParams["font.size"], 7.0)
+            self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
+            self.assertEqual(plt.rcParams["legend.fontsize"], 7.0)
+            self.assertEqual(plt.rcParams["xtick.labelsize"], 6.5)
+            self.assertEqual(plt.rcParams["ytick.labelsize"], 6.5)
+            self.assertEqual(plt.rcParams["lines.linewidth"], 0.9)
+            self.assertEqual(plt.rcParams["lines.markersize"], 3.0)
+            self.assertFalse(plt.rcParams["xtick.top"])
+            self.assertFalse(plt.rcParams["ytick.right"])
+        finally:
+            plt.rcParams.update(saved_rc)
+
     def test_font_tokens_apply_profile_font_overrides(self):
         tokens = font_tokens("nature_surfur", profile_name="resistance_premium")
 
@@ -150,7 +185,9 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 fig,
                 [ax],
                 layout_locked=False,
-                font_token_sizes=list(font_tokens("nature_surfur", profile_name="resistance_premium").as_dict().values()),
+                font_token_sizes=list(
+                    font_tokens("nature_surfur", profile_name="resistance_premium").as_dict().values()
+                ),
             )
             drift = next(check for check in result["checks"] if check["name"] == "font_size_token_drift")
             self.assertTrue(drift["passed"])
@@ -225,7 +262,9 @@ class JournalThemeLayoutTest(unittest.TestCase):
             self.assertNotEqual(before, after)
             fig.canvas.draw()
             check = next(
-                c for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"] if c["name"] == "artist_overlaps"
+                c
+                for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"]
+                if c["name"] == "artist_overlaps"
             )
             self.assertTrue(check["passed"])
         finally:
@@ -245,7 +284,9 @@ class JournalThemeLayoutTest(unittest.TestCase):
             self.assertTrue(any(getattr(patch, "_graph_hub_leader_patch", False) for patch in ax.patches))
             fig.canvas.draw()
             check = next(
-                c for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"] if c["name"] == "artist_overlaps"
+                c
+                for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"]
+                if c["name"] == "artist_overlaps"
             )
             self.assertTrue(check["passed"])
         finally:
@@ -337,7 +378,9 @@ class JournalThemeLayoutTest(unittest.TestCase):
             self.assertNotEqual(before, text.get_position())
             fig.canvas.draw()
             check = next(
-                c for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"] if c["name"] == "artist_overlaps"
+                c
+                for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"]
+                if c["name"] == "artist_overlaps"
             )
             self.assertTrue(check["passed"])
         finally:
@@ -354,7 +397,9 @@ class JournalThemeLayoutTest(unittest.TestCase):
             self.assertNotEqual(first.get_position(), second.get_position())
             fig.canvas.draw()
             check = next(
-                c for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"] if c["name"] == "artist_overlaps"
+                c
+                for c in diagnose_figure_geometry(fig, [ax], layout_locked=False)["checks"]
+                if c["name"] == "artist_overlaps"
             )
             self.assertTrue(check["passed"])
         finally:

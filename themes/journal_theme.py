@@ -116,7 +116,10 @@ class FontTokens:
 
 _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     "nature": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
-    "science": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
+    # Science/AAAS figure guidance uses Helvetica/Arial-family lettering and
+    # compact final-size labels; 7 pt body/axis text with 6.5 pt ticks is a
+    # Graph Hub assumption that keeps above the repo's existing small-text floor.
+    "science": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
     "acs": FontTokens(tag=8.0, label=6.5, annot=6.5, legend=7.0, axis=7.5, tick=6.0),
     "rsc": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
     "elsevier": FontTokens(tag=8.5, label=7.0, annot=7.0, legend=7.0, axis=8.0, tick=7.0),
@@ -256,6 +259,29 @@ STYLE_PRESETS = {
 STYLE_PRESETS["science"] = copy.deepcopy(STYLE_PRESETS["nature"])
 STYLE_PRESETS["science"].update(
     {
+        # Science/AAAS asks for Helvetica/Arial-style sans-serif lettering;
+        # prefer Helvetica first, then keep Arial and portable fallbacks.
+        "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans", "Liberation Sans"],
+        "mathtext.rm": "Helvetica",
+        "mathtext.it": "Helvetica:italic",
+        "mathtext.bf": "Helvetica:bold",
+        # Science final artwork should use compact, consistent lettering.
+        # 7 pt is guideline-aligned; 6.5 pt ticks are an explicit repo
+        # assumption to keep dense axes legible without exceeding small panels.
+        "font.size": 7.0,
+        "axes.titlesize": 7.5,
+        "axes.labelsize": 7.0,
+        "legend.fontsize": 7.0,
+        "xtick.labelsize": 6.5,
+        "ytick.labelsize": 6.5,
+        # Science line-art stroke assumptions: light enough for 55 mm figures,
+        # still above hairline-like rendering in exported vector/raster files.
+        "axes.linewidth": 0.5,
+        "grid.linewidth": 0.3,
+        "lines.linewidth": 0.9,
+        "lines.markersize": 3.0,
+        "lines.markeredgewidth": 0.5,
+        "patch.linewidth": 0.45,
         "xtick.top": False,  # Science: no box, only left+bottom axes
         "ytick.right": False,
     }

@@ -73,8 +73,27 @@ _FORMAT_FIGSIZE_MM: dict[str, tuple[float, float]] = {
 
 
 def _figsize_for_format(target_format: str) -> tuple[float, float]:
+    tokens, _meta = get_render_style_tokens(target_format, "baseline")
+    if "figure_width_mm" in tokens:
+        w_mm = float(tokens["figure_width_mm"])
+        h_mm = float(tokens.get("figure_height_mm", w_mm * 0.8))
+        return set_figure_size(w_mm, h_mm)
     w_mm, h_mm = _FORMAT_FIGSIZE_MM.get(target_format, (89, 71))
     return set_figure_size(w_mm, h_mm)
+
+
+def _column_width_mm(target_format: str, column_width: str, profile_name: str = "baseline") -> float:
+    width_key = str(column_width or "double").strip().lower()
+    tokens, _meta = get_render_style_tokens(target_format, profile_name)
+    column_widths = tokens.get("figure_column_widths_mm")
+    if isinstance(column_widths, dict) and width_key in column_widths:
+        return float(column_widths[width_key])
+    return float(DOUBLE_COLUMN if width_key == "double" else SINGLE_COLUMN)
+
+
+def _default_colormap(spec: BridgeFigureSpec) -> str:
+    tokens, _meta = get_render_style_tokens(spec.target_format, spec.profile_name)
+    return str(tokens.get("default_colormap", "viridis"))
 
 
 def _marker_tokens(spec: BridgeFigureSpec, *, small_panel: bool = False) -> tuple[float, float, float | None]:
@@ -257,7 +276,9 @@ class MultiPanelSpec:
     rows, cols:
         Grid dimensions.
     column_width:
-        ``"single"`` (89 mm) or ``"double"`` (183 mm).
+        Target-format column key. Nature/default use ``"single"`` (89 mm) or
+        ``"double"`` (183 mm); formats with explicit style tokens may also
+        define values such as ``"full"`` or ``"triple"``.
     panel_height_mm:
         Height of each row in mm.
     panel_labels:
@@ -326,7 +347,7 @@ def render_multipanel_figure(spec: MultiPanelSpec) -> str:
 
 
 def _render_multipanel_draft(spec: MultiPanelSpec):
-    col_mm = DOUBLE_COLUMN if spec.column_width == "double" else SINGLE_COLUMN
+    col_mm = _column_width_mm(spec.target_format, spec.column_width, spec.profile_name)
     fig_w_in = mm_to_inch(col_mm)
     fig_h_in = mm_to_inch(spec.panel_height_mm * spec.rows)
 
@@ -367,7 +388,7 @@ def _validated_compose_mode(spec: MultiPanelSpec) -> str:
 
 
 def _render_multipanel_manuscript(spec: MultiPanelSpec):
-    fig_w_mm = DOUBLE_COLUMN if spec.column_width == "double" else SINGLE_COLUMN
+    fig_w_mm = _column_width_mm(spec.target_format, spec.column_width, spec.profile_name)
     fig_h_mm = (spec.panel_height_mm * spec.rows) + (spec.gutter_v_mm * max(spec.rows - 1, 0))
     fig = plt.figure(figsize=(mm_to_inch(fig_w_mm), mm_to_inch(fig_h_mm)))
     setattr(
@@ -1054,7 +1075,7 @@ def _render_heatmap_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None
             stacklevel=2,
         )
 
-    cmap = resolve_colormap(spec.physics_type)
+    cmap = resolve_colormap(spec.physics_type, fallback=_default_colormap(spec))
     mesh = ax.pcolormesh(xs, ys, grid, cmap=cmap, shading="auto")
     if spec.annotate_values:
         _annotate_heatmap_values(ax, xs, ys, grid, mesh)
