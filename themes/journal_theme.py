@@ -120,7 +120,9 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     # compact final-size labels; 7 pt body/axis text with 6.5 pt ticks is a
     # Graph Hub assumption that keeps above the repo's existing small-text floor.
     "science": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    "acs": FontTokens(tag=8.0, label=6.5, annot=6.5, legend=7.0, axis=7.5, tick=6.0),
+    # ACS artwork guidance permits small final lettering, but this track uses
+    # readable 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
+    "acs": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
     "rsc": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
     "elsevier": FontTokens(tag=8.5, label=7.0, annot=7.0, legend=7.0, axis=8.0, tick=7.0),
     "wiley": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
@@ -290,9 +292,30 @@ STYLE_PRESETS["science"].update(
 STYLE_PRESETS["acs"] = copy.deepcopy(STYLE_PRESETS["nature"])
 STYLE_PRESETS["acs"].update(
     {
-        "xtick.direction": "out",  # ACS: tick outside
+        # ACS artwork guidance recommends Arial/Helvetica-style lettering;
+        # prefer Helvetica first, then Arial and portable fallbacks.
+        "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans", "Liberation Sans"],
+        "mathtext.rm": "Helvetica",
+        "mathtext.it": "Helvetica:italic",
+        "mathtext.bf": "Helvetica:bold",
+        # Use readable 7 pt final-size text; ACS allows smaller lettering in
+        # some journals, but Graph Hub keeps this track above the local floor.
+        "font.size": 7.0,
+        "axes.titlesize": 7.5,
+        "axes.labelsize": 7.0,
+        "legend.fontsize": 7.0,
+        "xtick.labelsize": 6.5,
+        "ytick.labelsize": 6.5,
+        # ACS line-art guidance uses 0.5 pt as a practical minimum; these values
+        # stay above that while matching ACS column-scale plots.
+        "axes.linewidth": 0.6,
+        "grid.linewidth": 0.3,
+        "lines.linewidth": 1.0,
+        "lines.markersize": 3.4,
+        "lines.markeredgewidth": 0.55,
+        "patch.linewidth": 0.5,
+        "xtick.direction": "out",  # ACS: outward ticks
         "ytick.direction": "out",
-        "axes.labelsize": 7.5,  # ACS: 7-8pt range
     }
 )
 

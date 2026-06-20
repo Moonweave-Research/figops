@@ -176,6 +176,56 @@ TARGET_FORMAT_PROFILE_TOKENS = {
             "default_colormap": "viridis",
         },
     },
+    "acs": {
+        "baseline": {
+            # ACS artwork guidance uses one-column graphics around 3.25 in;
+            # convert directly to millimetres for Graph Hub's width tokens.
+            "figure_width_mm": 82.55,
+            # Height is a Graph Hub assumption, preserving the existing 0.80
+            # width:height bridge-render ratio for ACS's 82.55 mm single column.
+            "figure_height_mm": 66.04,
+            # ACS journal artwork is commonly prepared for one-column (~3.25 in)
+            # and two-column (~7 in) widths; no separate triple width is assumed.
+            "figure_column_widths_mm": {"single": 82.55, "double": 177.8, "full": 177.8},
+            # ACS single-column figures are close to Nature's width but often
+            # carry chemical/spectral detail; use a modest 3.4 pt marker.
+            "main_marker_size": 3.4,
+            # Facet markers stay below the main marker size to avoid crowding
+            # in subdivided ACS figure panels.
+            "facet_marker_size": 2.6,
+            # ACS line-art guidance sets a 0.5 pt minimum; 0.55 pt marker edges
+            # keep symbols visible without exceeding compact final artwork.
+            "main_marker_edge_width": 0.55,
+            # Main plotted lines use 1.0 pt, comfortably above ACS's 0.5 pt
+            # minimum while matching the repo's existing journal scale.
+            "main_line_width": 1.0,
+            # Time-series traces use the repo baseline 0.8 pt for dense spectra
+            # and response curves in ACS-sized columns.
+            "timeseries_line_width": 0.8,
+            # Error bars stay above the ACS 0.5 pt minimum while remaining
+            # lighter than primary data strokes.
+            "error_line_width": 0.75,
+            # Cap size follows the generic baseline because ACS width is near
+            # the repo's default single-column scale.
+            "error_cap_size": 2.0,
+            # Jitter points are smaller than the generic baseline to avoid
+            # overplotting in ACS one-column categorical plots.
+            "jitter_size": 12.0,
+            # Jitter outlines follow the ACS marker edge width.
+            "jitter_line_width": 0.55,
+            # Bar outlines match the ACS line-art minimum.
+            "bar_edge_width": 0.5,
+            # KDE resolution is raised above generic baseline for smoother
+            # ACS distribution plots; this is a repo assumption, not an ACS spec.
+            "violin_kde_points": 192,
+            # Keep the generic violin width for ACS because its single column is
+            # near Graph Hub's default journal scale.
+            "violin_width": 0.5,
+            # ACS-specific default is explicit; viridis is perceptually uniform
+            # and already Graph Hub's fallback for unknown physics types.
+            "default_colormap": "viridis",
+        },
+    },
 }
 
 PROFILE_ALIASES = {
