@@ -250,5 +250,5 @@ def test_wiley_line_width():
 
 
 def test_cell_line_width():
-    assert STYLE_PRESETS["cell"]["lines.linewidth"] == 0.75
-    assert STYLE_PRESETS["cell"]["axes.linewidth"] == 0.75
+    assert STYLE_PRESETS["cell"]["lines.linewidth"] == 1.0
+    assert STYLE_PRESETS["cell"]["axes.linewidth"] == 0.65

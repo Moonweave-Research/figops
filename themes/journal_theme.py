@@ -128,7 +128,10 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     # Wiley/Advanced Materials-family artwork uses readable sans-serif labels;
     # keep 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
     "wiley": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    "cell": FontTokens(tag=7.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
+    # Cell Press figure guidance uses Helvetica/Arial-family sans-serif text;
+    # use readable 7 pt body/axis lettering with 6.5 pt ticks as a Graph Hub
+    # assumption that stays within the repo's established small-text floor.
+    "cell": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
     "nature_surfur": FontTokens(tag=6.0, label=5.0, annot=6.0, legend=6.0, axis=7.0, tick=6.0),
     "ppt": FontTokens(tag=16.0, label=12.0, annot=12.0, legend=12.0, axis=14.0, tick=12.0),
     "default": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
@@ -379,14 +382,30 @@ STYLE_PRESETS["wiley"].update(
 STYLE_PRESETS["cell"] = copy.deepcopy(STYLE_PRESETS["nature"])
 STYLE_PRESETS["cell"].update(
     {
+        # Cell Press production guidance asks for clear sans-serif lettering;
+        # prefer Helvetica first, then Arial and portable fallbacks.
         "font.family": "sans-serif",
-        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"],
-        "axes.titlesize": 7.0,
+        "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans", "Liberation Sans"],
+        "mathtext.rm": "Helvetica",
+        "mathtext.it": "Helvetica:italic",
+        "mathtext.bf": "Helvetica:bold",
+        # Use readable final-size text across Cell-family figures. 7 pt
+        # body/axis labels are a repo assumption aligned with the local floor.
+        "font.size": 7.0,
+        "axes.titlesize": 7.5,
         "axes.labelsize": 7.0,
-        "lines.linewidth": 0.75,
-        "axes.linewidth": 0.75,
-        "xtick.major.width": 0.75,
-        "ytick.major.width": 0.75,
+        "legend.fontsize": 7.0,
+        "xtick.labelsize": 6.5,
+        "ytick.labelsize": 6.5,
+        # Cell Press column widths are near ACS/Wiley; keep primary line art at
+        # 1.0 pt and axes at 0.65 pt so exported lines stay above hairline
+        # weight without making the frame heavier than the data.
+        "lines.linewidth": 1.0,
+        "lines.markersize": 3.4,
+        "lines.markeredgewidth": 0.55,
+        "axes.linewidth": 0.65,
+        "xtick.major.width": 0.65,
+        "ytick.major.width": 0.65,
         "xtick.direction": "out",
         "ytick.direction": "out",
         "xtick.top": False,

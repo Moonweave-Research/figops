@@ -21,6 +21,7 @@ from themes.journal_theme import (
     panel_label,
     save_journal_fig,
 )
+from themes.style_profiles import get_render_style_tokens
 
 
 def _axes_box_mm(fig, ax):
@@ -136,6 +137,116 @@ class JournalThemeLayoutTest(unittest.TestCase):
         self.assertEqual(tokens.axis, 7.0)
         self.assertEqual(tokens.tick, 6.5)
 
+    def test_cell_font_tokens_use_readable_sans_serif_scale(self):
+        tokens = font_tokens("cell")
+
+        self.assertEqual(tokens.tag, 8.0)
+        self.assertEqual(tokens.label, 7.0)
+        self.assertEqual(tokens.annot, 7.0)
+        self.assertEqual(tokens.legend, 7.0)
+        self.assertEqual(tokens.axis, 7.0)
+        self.assertEqual(tokens.tick, 6.5)
+
+    def test_cell_render_tokens_use_cell_press_column_and_marker_values(self):
+        tokens, meta = get_render_style_tokens("cell", "baseline")
+
+        self.assertEqual(meta, {"target_format": "cell", "profile": "baseline"})
+        self.assertEqual(tokens["figure_width_mm"], 85.0)
+        self.assertEqual(tokens["figure_height_mm"], 68.0)
+        self.assertEqual(tokens["figure_column_widths_mm"]["single"], 85.0)
+        self.assertEqual(tokens["figure_column_widths_mm"]["one_half"], 114.0)
+        self.assertEqual(tokens["figure_column_widths_mm"]["double"], 174.0)
+        self.assertEqual(tokens["figure_column_widths_mm"]["full"], 174.0)
+        self.assertEqual(tokens["figure_column_widths_mm"]["triple"], 174.0)
+        self.assertEqual(tokens["main_marker_size"], 3.4)
+        self.assertEqual(tokens["facet_marker_size"], 2.6)
+        self.assertEqual(tokens["main_marker_edge_width"], 0.55)
+        self.assertEqual(tokens["main_line_width"], 1.0)
+        self.assertEqual(tokens["timeseries_line_width"], 0.85)
+        self.assertEqual(tokens["error_line_width"], 0.8)
+        self.assertEqual(tokens["error_cap_size"], 2.0)
+        self.assertEqual(tokens["jitter_size"], 12.0)
+        self.assertEqual(tokens["jitter_line_width"], 0.55)
+        self.assertEqual(tokens["bar_edge_width"], 0.55)
+        self.assertEqual(tokens["violin_kde_points"], 192)
+        self.assertEqual(tokens["violin_width"], 0.5)
+        self.assertEqual(tokens["default_colormap"], "viridis")
+
+    def test_existing_track_render_tokens_are_unchanged(self):
+        expected = {
+            "nature": {
+                "main_marker_size": 3.2,
+                "facet_marker_size": 2.4,
+                "axis_marker_margin_fraction": 0.06,
+                "facet_axis_marker_margin_fraction": 0.16,
+                "violin_kde_points": 256,
+                "violin_kde_bw_method": "scott",
+                "violin_width": 0.52,
+            },
+            "science": {
+                "figure_width_mm": 55.0,
+                "figure_height_mm": 44.0,
+                "figure_column_widths_mm": {"single": 55.0, "double": 120.0, "full": 183.0, "triple": 183.0},
+                "main_marker_size": 3.0,
+                "facet_marker_size": 2.2,
+                "main_marker_edge_width": 0.5,
+                "main_line_width": 0.9,
+                "timeseries_line_width": 0.75,
+                "error_line_width": 0.7,
+                "error_cap_size": 1.8,
+                "jitter_size": 10.0,
+                "jitter_line_width": 0.5,
+                "bar_edge_width": 0.45,
+                "violin_kde_points": 192,
+                "violin_width": 0.48,
+                "default_colormap": "viridis",
+            },
+            "acs": {
+                "figure_width_mm": 82.55,
+                "figure_height_mm": 66.04,
+                "figure_column_widths_mm": {"single": 82.55, "double": 177.8, "full": 177.8},
+                "main_marker_size": 3.4,
+                "facet_marker_size": 2.6,
+                "main_marker_edge_width": 0.55,
+                "main_line_width": 1.0,
+                "timeseries_line_width": 0.8,
+                "error_line_width": 0.75,
+                "error_cap_size": 2.0,
+                "jitter_size": 12.0,
+                "jitter_line_width": 0.55,
+                "bar_edge_width": 0.5,
+                "violin_kde_points": 192,
+                "violin_width": 0.5,
+                "default_colormap": "viridis",
+            },
+            "wiley": {
+                "figure_width_mm": 84.0,
+                "figure_height_mm": 67.2,
+                "figure_column_widths_mm": {"single": 84.0, "double": 174.0, "full": 174.0},
+                "main_marker_size": 3.5,
+                "facet_marker_size": 2.7,
+                "main_marker_edge_width": 0.55,
+                "main_line_width": 1.0,
+                "timeseries_line_width": 0.85,
+                "error_line_width": 0.8,
+                "error_cap_size": 2.0,
+                "jitter_size": 12.5,
+                "jitter_line_width": 0.55,
+                "bar_edge_width": 0.55,
+                "violin_kde_points": 192,
+                "violin_width": 0.5,
+                "default_colormap": "viridis",
+            },
+        }
+
+        for target_format, expected_tokens in expected.items():
+            with self.subTest(target_format=target_format):
+                tokens, meta = get_render_style_tokens(target_format, "baseline")
+
+                self.assertEqual(meta, {"target_format": target_format, "profile": "baseline"})
+                for key, expected_value in expected_tokens.items():
+                    self.assertEqual(tokens[key], expected_value)
+
     def test_apply_science_theme_uses_distinct_sans_serif_rc_values(self):
         saved_rc = plt.rcParams.copy()
         try:
@@ -194,6 +305,29 @@ class JournalThemeLayoutTest(unittest.TestCase):
             self.assertEqual(plt.rcParams["lines.markeredgewidth"], 0.55)
             self.assertEqual(plt.rcParams["xtick.direction"], "in")
             self.assertEqual(plt.rcParams["ytick.direction"], "in")
+        finally:
+            plt.rcParams.update(saved_rc)
+
+    def test_apply_cell_theme_uses_distinct_sans_serif_rc_values(self):
+        saved_rc = plt.rcParams.copy()
+        try:
+            apply_journal_theme("cell")
+
+            self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
+            self.assertEqual(plt.rcParams["font.sans-serif"][0], "Helvetica")
+            self.assertEqual(plt.rcParams["font.size"], 7.0)
+            self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
+            self.assertEqual(plt.rcParams["legend.fontsize"], 7.0)
+            self.assertEqual(plt.rcParams["xtick.labelsize"], 6.5)
+            self.assertEqual(plt.rcParams["ytick.labelsize"], 6.5)
+            self.assertEqual(plt.rcParams["axes.linewidth"], 0.65)
+            self.assertEqual(plt.rcParams["lines.linewidth"], 1.0)
+            self.assertEqual(plt.rcParams["lines.markersize"], 3.4)
+            self.assertEqual(plt.rcParams["lines.markeredgewidth"], 0.55)
+            self.assertEqual(plt.rcParams["xtick.direction"], "out")
+            self.assertEqual(plt.rcParams["ytick.direction"], "out")
+            self.assertFalse(plt.rcParams["xtick.top"])
+            self.assertFalse(plt.rcParams["ytick.right"])
         finally:
             plt.rcParams.update(saved_rc)
 
