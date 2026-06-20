@@ -58,6 +58,8 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
         ci_band = arguments.get("ci_band", False)
         significance_markers = arguments.get("significance_markers", ())
         aggregate = str(arguments.get("aggregate") or "").strip().lower()
+        raw_annotate_values = arguments.get("annotate_values", False)
+        raw_bar_error_column = arguments.get("bar_error_column", "")
         try:
             category_order = self._order_arg(arguments.get("category_order"), "category_order", allow_numbers=True)
             facet_order = self._order_arg(arguments.get("facet_order"), "facet_order", allow_numbers=False)
@@ -72,6 +74,39 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 is_dry_run=dry_run,
                 failure_stage="CONFIG",
                 resolution_hint="Provide category_order/facet_order as arrays with explicit values.",
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=render_helpers._geometry_stub("no figure"),
+                layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
+            )
+        annotate_values = raw_annotate_values
+        bar_error_column = ""
+        render_arg_errors: list[str] = []
+        if not isinstance(annotate_values, bool):
+            render_arg_errors.append("annotate_values must be a boolean.")
+            annotate_values = False
+        elif annotate_values and plot_type != "heatmap":
+            render_arg_errors.append("annotate_values is only supported for plot_type 'heatmap'.")
+        if raw_bar_error_column is not None and raw_bar_error_column != "":
+            if not isinstance(raw_bar_error_column, str):
+                render_arg_errors.append("bar_error_column must be a string.")
+            else:
+                bar_error_column = raw_bar_error_column.strip()
+                if not bar_error_column:
+                    render_arg_errors.append("bar_error_column must be a non-empty string when provided.")
+                elif plot_type != "bar":
+                    render_arg_errors.append("bar_error_column is only supported for plot_type 'bar'.")
+        if render_arg_errors:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid plot argument settings.",
+                errors=render_arg_errors,
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Use annotate_values only with heatmap and bar_error_column only with bar plots.",
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 geometry_diagnostics=render_helpers._geometry_stub("no figure"),
@@ -217,6 +252,31 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 geometry_diagnostics=render_helpers._geometry_stub("no figure"),
                 layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
             )
+        if bar_error_column:
+            try:
+                semantic_checks = self._semantic_checks_with_bar_error_column(
+                    semantic_checks,
+                    y_column=y_column,
+                    bar_error_column=bar_error_column,
+                )
+            except ValueError as exc:
+                return self._envelope(
+                    "graphhub.render_csv_graph",
+                    arguments,
+                    status="error",
+                    summary="Render request has conflicting bar error column settings.",
+                    errors=[str(exc)],
+                    manual_review_needed=True,
+                    is_dry_run=dry_run,
+                    failure_stage="CONFIG",
+                    resolution_hint="Remove the conflicting semantic_checks entry or align it with bar_error_column.",
+                    artifact_status="failed",
+                    baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                    geometry_diagnostics=render_helpers._geometry_stub("no figure"),
+                    layout_report=render_helpers._layout_report_from_geometry(
+                        render_helpers._geometry_stub("no figure")
+                    ),
+                )
         config = self._render_project_config(
             target_format=target_format,
             profile=profile,
@@ -357,6 +417,8 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                         "category_order": category_order,
                         "facet_order": facet_order,
                         "aggregate": aggregate,
+                        "annotate_values": annotate_values,
+                        "yerr_column": bar_error_column,
                         "fit_line": fit_line,
                         "ci_band": ci_band,
                         "significance_markers": significance_markers,
@@ -584,6 +646,30 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
         if plot_type != "bar":
             return ["aggregate is only supported for plot_type 'bar'."]
         return []
+
+    @staticmethod
+    def _semantic_checks_with_bar_error_column(
+        semantic_checks: dict[str, Any],
+        *,
+        y_column: str,
+        bar_error_column: str,
+    ) -> dict[str, Any]:
+        merged = {
+            str(column): dict(checks) if isinstance(checks, dict) else checks
+            for column, checks in semantic_checks.items()
+        }
+        y_checks = merged.get(y_column, {})
+        if not isinstance(y_checks, dict):
+            raise ValueError(f"semantic_checks for '{y_column}' must be an object when bar_error_column is set.")
+        declared = {"column": bar_error_column, "source": bar_error_column}
+        existing = y_checks.get("error_bar_source")
+        if existing is not None and existing != declared:
+            raise ValueError(
+                f"bar_error_column '{bar_error_column}' conflicts with semantic_checks['{y_column}'].error_bar_source."
+            )
+        y_checks["error_bar_source"] = declared
+        merged[y_column] = y_checks
+        return merged
 
     @staticmethod
     def _order_arg(raw_value: Any, field_name: str, *, allow_numbers: bool) -> tuple[str | float, ...]:

@@ -115,12 +115,14 @@ def test_bar_plot_type_publishes_aggregate_contract():
         "type": "object",
         "properties": {
             "aggregate": {"type": "string", "enum": ["mean", "median"]},
+            "bar_error_column": {"type": "string"},
             "category_order": CATEGORY_ORDER_SCHEMA,
         },
     }
     assert PLOT_TYPES["bar"].capabilities["supports_replicate_aggregation"] is True
     assert PLOT_TYPES["bar"].capabilities["aggregate_methods"] == ["mean", "median"]
     assert PLOT_TYPES["bar"].capabilities["supports_category_order"] is True
+    assert PLOT_TYPES["bar"].capabilities["supports_single_series_error_column"] is True
 
 
 def test_describe_surfaces_bar_aggregate_arg():
@@ -131,10 +133,13 @@ def test_describe_surfaces_bar_aggregate_arg():
         "type": "string",
         "enum": ["mean", "median"],
     }
+    assert described["bar"]["arg_schema"]["properties"]["bar_error_column"] == {"type": "string"}
     assert described["bar"]["arg_schema"]["properties"]["category_order"] == CATEGORY_ORDER_SCHEMA
     assert described["bar"]["capabilities"]["supports_replicate_aggregation"] is True
     assert described["bar"]["capabilities"]["supports_category_order"] is True
+    assert described["bar"]["capabilities"]["supports_single_series_error_column"] is True
     assert described["bar"]["worked_example"]["arguments"]["aggregate"] == "mean"
+    assert described["bar"]["worked_example"]["arguments"]["bar_error_column"] == "sem"
     assert described["bar"]["worked_example"]["arguments"]["category_order"] == ["day 0", "day 7", "day 14", "day 28"]
 
 
@@ -145,11 +150,12 @@ def test_render_csv_schema_accepts_bar_aggregate_arg():
         "type": "string",
         "enum": ["mean", "median"],
     }
+    assert render_tool["inputSchema"]["properties"]["bar_error_column"] == {"type": "string"}
     assert render_tool["inputSchema"]["properties"]["category_order"] == CATEGORY_ORDER_SCHEMA
 
     with tempfile.TemporaryDirectory(prefix="graphhub_bar_aggregate_schema_") as tmpdir:
         data_path = Path(tmpdir) / "bar.csv"
-        data_path.write_text("x,y\nA,1\nA,3\nB,2\nB,4\n", encoding="utf-8")
+        data_path.write_text("x,y,sem\nA,1,0.1\nA,3,0.2\nB,2,0.3\nB,4,0.4\n", encoding="utf-8")
         errors = _validate_tool_arguments(
             "graphhub.render_csv_graph",
             {
@@ -158,12 +164,35 @@ def test_render_csv_schema_accepts_bar_aggregate_arg():
                 "y_column": "y",
                 "plot_type": "bar",
                 "aggregate": "mean",
+                "bar_error_column": "sem",
                 "category_order": ["A", "B"],
             },
             definitions,
         )
 
     assert errors == []
+
+
+def test_heatmap_plot_type_publishes_annotation_contract():
+    assert PLOT_TYPES["heatmap"].arg_schema == {
+        "type": "object",
+        "required": ["z_column"],
+        "properties": {"annotate_values": {"type": "boolean", "default": False}},
+    }
+    assert PLOT_TYPES["heatmap"].capabilities["supports_value_annotations"] is True
+
+    surface = describe_graphhub_surface()
+    described = {plot_type["name"]: plot_type for plot_type in surface["plot_types"]}
+    assert described["heatmap"]["arg_schema"]["properties"]["annotate_values"] == {
+        "type": "boolean",
+        "default": False,
+    }
+    assert described["heatmap"]["capabilities"]["supports_value_annotations"] is True
+    assert described["heatmap"]["worked_example"]["arguments"]["annotate_values"] is True
+
+    definitions = list_tool_definitions()
+    render_tool = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
+    assert render_tool["inputSchema"]["properties"]["annotate_values"] == {"type": "boolean", "default": False}
 
 
 def test_distribution_plot_types_publish_contracts():

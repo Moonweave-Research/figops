@@ -114,6 +114,18 @@ class BridgeRendererUnitTest(unittest.TestCase):
             writer.writerows(rows)
         return csv_path
 
+    def _write_bar_error_csv(self, root: Path, name: str) -> Path:
+        csv_path = root / name
+        rows = [
+            {"condition": "control", "value": 1.2, "sem": 0.1},
+            {"condition": "treated", "value": 2.4, "sem": 0.2},
+        ]
+        with csv_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = DictWriter(handle, fieldnames=["condition", "value", "sem"])
+            writer.writeheader()
+            writer.writerows(rows)
+        return csv_path
+
     def test_display_label_uses_shared_compression_rules(self):
         raw = "Coated Sample_Noa_None_Aligned"
         compressed = _display_label(raw)
@@ -287,6 +299,81 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertEqual(fig.axes[1].get_ylabel(), "z")
         finally:
             plt.close(fig)
+
+    def test_heatmap_plot_does_not_annotate_cell_values_by_default(self):
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="heatmap",
+            x_column="x",
+            y_column="y",
+            z_column="z",
+            title="heatmap",
+        )
+        points = [
+            {"x": 0.0, "y": 0.0, "z": 1.0, "label": "", "series": "", "yerr": None},
+            {"x": 1.0, "y": 0.0, "z": 2.0, "label": "", "series": "", "yerr": None},
+        ]
+
+        fig, ax = plt.subplots()
+        try:
+            _render_heatmap_plot(ax, points, spec)
+            self.assertEqual([text.get_text() for text in ax.texts], [])
+        finally:
+            plt.close(fig)
+
+    def test_heatmap_plot_annotates_cell_values_with_contrast(self):
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="heatmap",
+            x_column="x",
+            y_column="y",
+            z_column="z",
+            title="heatmap",
+            annotate_values=True,
+        )
+        points = [
+            {"x": 0.0, "y": 0.0, "z": 0.0, "label": "", "series": "", "yerr": None},
+            {"x": 1.0, "y": 0.0, "z": 1000.0, "label": "", "series": "", "yerr": None},
+        ]
+
+        fig, ax = plt.subplots()
+        try:
+            _render_heatmap_plot(ax, points, spec)
+            labels = [text.get_text() for text in ax.texts]
+            colors = [text.get_color() for text in ax.texts]
+            self.assertEqual(labels, ["0", "1e+03"])
+            self.assertEqual(colors, ["white", "black"])
+        finally:
+            plt.close(fig)
+
+    def test_single_series_bar_renders_declared_error_column(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_bar_yerr_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_bar_error_csv(tmpdir_path, "bar.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "bar.png"),
+                plot_type="bar",
+                x_column="condition",
+                y_column="value",
+                yerr_column="sem",
+                title="bar",
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                ax = fig.axes[0]
+                observed["line_count"] = len(ax.lines)
+                observed["bar_count"] = len(ax.patches)
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                render_bridge_figure(spec)
+
+            self.assertEqual(observed["bar_count"], 2)
+            self.assertGreater(observed["line_count"], 0)
 
     def test_box_plot_type_renders_csv_distribution_with_points(self):
         with tempfile.TemporaryDirectory(prefix="bridge_box_") as tmpdir:

@@ -115,8 +115,16 @@ _BAR_ARG_SCHEMA = {
     "type": "object",
     "properties": {
         "aggregate": {"type": "string", "enum": ["mean", "median"]},
+        "bar_error_column": {"type": "string"},
         "category_order": {"type": "array", "items": {"type": ["string", "number"]}},
     },
+}
+
+
+_HEATMAP_ARG_SCHEMA = {
+    "type": "object",
+    "required": ["z_column"],
+    "properties": {"annotate_values": {"type": "boolean", "default": False}},
 }
 
 
@@ -140,6 +148,7 @@ PLOT_TYPES: dict[str, PlotType] = {
             supports_broken_axis=False,
             supports_replicate_aggregation=True,
             supports_category_order=True,
+            supports_single_series_error_column=True,
             aggregate_methods=["mean", "median"],
         ),
     ),
@@ -182,12 +191,13 @@ PLOT_TYPES: dict[str, PlotType] = {
     "heatmap": PlotType(
         name="heatmap",
         render=_render_heatmap,
-        arg_schema={"type": "object", "required": ["z_column"]},
+        arg_schema=_HEATMAP_ARG_SCHEMA,
         capabilities=_common_capabilities(
             supports_series=False,
             supports_yerr=False,
             supports_broken_axis=False,
             supports_z=True,
+            supports_value_annotations=True,
         ),
     ),
     "box": PlotType(

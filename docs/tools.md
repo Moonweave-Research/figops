@@ -1001,6 +1001,13 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       ],
       "type": "string"
     },
+    "annotate_values": {
+      "default": false,
+      "type": "boolean"
+    },
+    "bar_error_column": {
+      "type": "string"
+    },
     "baseline_path": {
       "description": "Optional baseline figure path to compare the rendered output against.",
       "type": "string"
@@ -2592,6 +2599,7 @@ Run a bounded project discovery and validation batch check with optional runtime
   "supports_category_order": true,
   "supports_replicate_aggregation": true,
   "supports_series": true,
+  "supports_single_series_error_column": true,
   "supports_yerr": true
 }
 ```
@@ -2606,6 +2614,9 @@ Run a bounded project discovery and validation batch check with optional runtime
         "mean",
         "median"
       ],
+      "type": "string"
+    },
+    "bar_error_column": {
       "type": "string"
     },
     "category_order": {
@@ -2628,6 +2639,7 @@ Run a bounded project discovery and validation batch check with optional runtime
 {
   "arguments": {
     "aggregate": "mean",
+    "bar_error_column": "sem",
     "category_order": [
       "day 0",
       "day 7",
@@ -2793,6 +2805,7 @@ Run a bounded project discovery and validation batch check with optional runtime
 {
   "supports_broken_axis": false,
   "supports_series": false,
+  "supports_value_annotations": true,
   "supports_yerr": false,
   "supports_z": true
 }
@@ -2802,6 +2815,12 @@ Run a bounded project discovery and validation batch check with optional runtime
 
 ```json
 {
+  "properties": {
+    "annotate_values": {
+      "default": false,
+      "type": "boolean"
+    }
+  },
   "required": [
     "z_column"
   ],
@@ -2814,6 +2833,7 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
+    "annotate_values": true,
     "data_path": "/path/to/data.csv",
     "job_id": "example-heatmap",
     "output_format": "png",

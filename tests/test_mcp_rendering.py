@@ -72,6 +72,20 @@ def _write_grid_csv(path: Path) -> Path:
     return path
 
 
+def _write_bar_error_csv(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["condition", "value", "sem"])
+        writer.writeheader()
+        writer.writerows(
+            [
+                {"condition": "control", "value": 1.2, "sem": 0.1},
+                {"condition": "treated", "value": 2.4, "sem": 0.2},
+            ]
+        )
+    return path
+
+
 def _write_project_render_fixture(root: Path, name: str = "01_Project") -> Path:
     project = root / name
     (project / "hub_scripts").mkdir(parents=True, exist_ok=True)
@@ -964,6 +978,43 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             csv_check = config["data_contract"]["csv_checks"][0]
             self.assertEqual(csv_check["required_columns"], ["x", "y", "z"])
 
+    def test_render_csv_graph_forwards_heatmap_value_annotations(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = _write_grid_csv(tmp_root / "input" / "grid.csv")
+            runtime_root = tmp_root / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "z_column": "z",
+                        "plot_type": "heatmap",
+                        "annotate_values": True,
+                        "job_id": "render-heatmap-annotated",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertIs(captured["annotate_values"], True)
+
     def test_render_csv_graph_rejects_heatmap_without_z_column(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_grid_csv(Path(tmpdir) / "input" / "grid.csv")
@@ -979,6 +1030,71 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "CONFIG")
             self.assertIn("z_column", result["errors"][0])
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_graph_forwards_single_series_bar_error_column(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = _write_bar_error_csv(tmp_root / "input" / "bar.csv")
+            runtime_root = tmp_root / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "graphhub.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "condition",
+                        "y_column": "value",
+                        "plot_type": "bar",
+                        "bar_error_column": "sem",
+                        "job_id": "render-bar-yerr",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["yerr_column"], "sem")
+            config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
+            csv_check = config["data_contract"]["csv_checks"][0]
+            self.assertEqual(
+                csv_check["semantic_checks"],
+                {"value": {"error_bar_source": {"column": "sem", "source": "sem"}}},
+            )
+
+    def test_render_csv_graph_rejects_missing_bar_error_column(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "bar",
+                    "bar_error_column": "sem",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertTrue(any("error_bar_source" in error and "sem" in error for error in result["errors"]))
             self.assertFalse((runtime_root / "mcp_jobs").exists())
 
     def test_render_csv_graph_rejects_invalid_statistical_overlay_args(self):
