@@ -192,6 +192,10 @@ def _plot_type_example(name: str, arg_schema: dict[str, Any]) -> dict[str, Any]:
         arguments["facet_order"] = ["control", "treated"]
     if "aggregate" in arg_schema.get("properties", {}):
         arguments["aggregate"] = "mean"
+    if "bar_error_column" in arg_schema.get("properties", {}):
+        arguments["bar_error_column"] = "sem"
+    if "annotate_values" in arg_schema.get("properties", {}):
+        arguments["annotate_values"] = True
     if "fit_line" in arg_schema.get("properties", {}):
         arguments["fit_line"] = True
         arguments["ci_band"] = True
@@ -384,6 +388,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "category_order": {"type": "array", "items": {"type": ["string", "number"]}},
                     "facet_order": {"type": "array", "items": {"type": "string"}},
                     "aggregate": {"type": "string", "enum": ["mean", "median"]},
+                    "bar_error_column": {"type": "string"},
+                    "annotate_values": {"type": "boolean", "default": False},
                     "fit_line": {"type": "boolean"},
                     "ci_band": {"type": "boolean"},
                     "significance_markers": {"type": "array", "items": {"type": "object"}},

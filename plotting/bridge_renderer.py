@@ -170,6 +170,7 @@ class BridgeFigureSpec:
     category_order: tuple[float | str, ...] = ()
     facet_order: tuple[str, ...] = ()
     aggregate: str = ""
+    annotate_values: bool = False
     fit_line: bool = False
     ci_band: bool = False
     significance_markers: tuple[dict, ...] = ()
@@ -1055,9 +1056,40 @@ def _render_heatmap_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None
 
     cmap = resolve_colormap(spec.physics_type)
     mesh = ax.pcolormesh(xs, ys, grid, cmap=cmap, shading="auto")
+    if spec.annotate_values:
+        _annotate_heatmap_values(ax, xs, ys, grid, mesh)
     colorbar = ax.figure.colorbar(mesh, ax=ax)
     colorbar.ax._graph_hub_role = "colorbar"  # positive tag for geometry-diagnostics classification
     colorbar.set_label(spec.z_column)
+
+
+def _format_heatmap_annotation_value(value: float) -> str:
+    return f"{value:.3g}"
+
+
+def _heatmap_annotation_color(mesh, value: float) -> str:
+    rgba = mesh.cmap(mesh.norm(value))
+    red, green, blue = rgba[:3]
+    luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+    return "black" if luminance >= 0.5 else "white"
+
+
+def _annotate_heatmap_values(ax, xs: Sequence[float | str], ys: Sequence[float | str], grid, mesh) -> None:
+    for row, y_value in enumerate(ys):
+        for column, x_value in enumerate(xs):
+            value = float(grid[row, column])
+            if not math.isfinite(value):
+                continue
+            ax.text(
+                x_value,
+                y_value,
+                _format_heatmap_annotation_value(value),
+                ha="center",
+                va="center",
+                color=_heatmap_annotation_color(mesh, value),
+                fontsize="small",
+                zorder=5,
+            )
 
 
 def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
