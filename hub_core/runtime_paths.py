@@ -35,7 +35,9 @@ def _preview_temp_dir():
         if value:
             return _abspath(value)
     if os.name == "nt":
-        return _abspath(os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp"))
+        return _abspath(
+            os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp")
+        )
     return os.path.abspath(os.sep + "tmp")
 
 

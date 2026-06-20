@@ -5,7 +5,6 @@ from pathlib import Path
 
 from hub_core.uv_runtime import build_uv_environment, resolve_uv_project_environment
 
-
 HUB_ROOT = Path(__file__).resolve().parent.parent
 
 

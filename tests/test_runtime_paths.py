@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from hub_core.runtime_paths import preview_runtime_root, resolve_runtime_root
 from hub_core.error_dumper import dump_pipeline_failure
 from hub_core.execution_log import write_execution_log
+from hub_core.runtime_paths import preview_runtime_root, resolve_runtime_root
 from hub_core.visual_regression import write_check_all_report
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
