@@ -830,6 +830,9 @@ Summarize one project config without running analysis, plotting, or report write
     "resolution_hint": {
       "type": "string"
     },
+    "sample_registry_summary": {
+      "type": "object"
+    },
     "script_output": {
       "items": {
         "type": "string"

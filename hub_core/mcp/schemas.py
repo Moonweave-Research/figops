@@ -396,6 +396,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "style_summary": {"type": "object"},
                     "folder_role_summary": {"type": "object"},
                     "experimental_conditions_summary": {"type": "object"},
+                    "sample_registry_summary": {"type": "object"},
                     "normalization_needed": {"type": "boolean"},
                 }
             ),
