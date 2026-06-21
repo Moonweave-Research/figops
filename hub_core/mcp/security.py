@@ -170,7 +170,8 @@ class McpSecurityMixin:
         raw = Path(raw_path).expanduser()
         raw_absolute = raw if raw.is_absolute() else self.research_root / raw
         path = raw_absolute.resolve()
-        if not any(self._is_relative_to(path, root) for root in self.allowed_data_roots):
+        containing_roots = tuple(root for root in self.allowed_data_roots if self._is_relative_to(path, root))
+        if not containing_roots:
             allowed = ", ".join(str(root) for root in self.allowed_data_roots)
             raise ValueError(f"{field_name} must stay under an allowed data root: {allowed}.")
         current = Path(raw_absolute.anchor)
@@ -178,9 +179,10 @@ class McpSecurityMixin:
             current = current / part
             if current.is_symlink():
                 target = current.resolve()
-                parent = current.parent.resolve()
-                for root in self.allowed_data_roots:
-                    if self._is_relative_to(parent, root) and self._is_relative_to(target, root):
+                for root in containing_roots:
+                    if target == root or self._is_relative_to(target, root):
+                        raise ValueError(f"{field_name} must not include symlinked path components.")
+                    if not self._is_relative_to(root, target):
                         raise ValueError(f"{field_name} must not include symlinked path components.")
         return path
 
