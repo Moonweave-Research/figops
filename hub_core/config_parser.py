@@ -259,6 +259,75 @@ def _validate_linear_fit_check_config(errors, *, column: str, raw_check: object)
         errors.append(f"Semantic linear_fit.tolerance for '{column}' must be a non-negative finite number.")
 
 
+def _validate_experimental_conditions(errors: list[str], experimental_conditions: object) -> None:
+    if experimental_conditions is None:
+        return
+    if not isinstance(experimental_conditions, dict):
+        errors.append("experimental_conditions must be a mapping.")
+        return
+
+    common = experimental_conditions.get("common", {})
+    if common is not None and not isinstance(common, dict):
+        errors.append("experimental_conditions.common must be a mapping when provided.")
+
+    conditions = experimental_conditions.get("conditions", [])
+    seen_condition_ids: set[str] = set()
+    if conditions is None:
+        conditions = []
+    if not isinstance(conditions, list):
+        errors.append("experimental_conditions.conditions must be a list when provided.")
+    else:
+        for index, condition in enumerate(conditions, 1):
+            if not isinstance(condition, dict):
+                errors.append(f"experimental_conditions.conditions[{index}] must be a mapping.")
+                continue
+            condition_id = condition.get("id")
+            if not isinstance(condition_id, str) or not condition_id.strip():
+                errors.append(
+                    f"experimental_conditions.conditions[{index}].id is required and must be a non-empty string."
+                )
+            else:
+                normalized_id = condition_id.strip()
+                if normalized_id in seen_condition_ids:
+                    errors.append(f"Duplicate experimental_conditions.conditions id: '{normalized_id}'.")
+                seen_condition_ids.add(normalized_id)
+
+            description = condition.get("description")
+            if description is not None and not isinstance(description, str):
+                errors.append(f"experimental_conditions.conditions[{index}].description must be a string.")
+
+            parameters = condition.get("parameters", {})
+            if parameters is not None and not isinstance(parameters, dict):
+                errors.append(
+                    f"experimental_conditions.conditions[{index}].parameters must be a mapping when provided."
+                )
+                continue
+            if isinstance(parameters, dict):
+                samples = parameters.get("samples")
+                if samples is not None and not isinstance(samples, list):
+                    errors.append(f"experimental_conditions.conditions[{index}].parameters.samples must be a list.")
+                batch = parameters.get("batch")
+                if batch is not None and not isinstance(batch, str):
+                    errors.append(f"experimental_conditions.conditions[{index}].parameters.batch must be a string.")
+
+    equipment = experimental_conditions.get("equipment", [])
+    if equipment is None:
+        equipment = []
+    if not isinstance(equipment, list):
+        errors.append("experimental_conditions.equipment must be a list when provided.")
+    else:
+        for index, item in enumerate(equipment, 1):
+            if not isinstance(item, dict):
+                errors.append(f"experimental_conditions.equipment[{index}] must be a mapping.")
+                continue
+            name = item.get("name")
+            if name is not None and not isinstance(name, str):
+                errors.append(f"experimental_conditions.equipment[{index}].name must be a string.")
+            role = item.get("role")
+            if role is not None and not isinstance(role, str):
+                errors.append(f"experimental_conditions.equipment[{index}].role must be a string.")
+
+
 def _is_scalar_flag_value(value: object) -> bool:
     return isinstance(value, (str, bool, int, float)) and not (isinstance(value, float) and math.isnan(value))
 
@@ -669,6 +738,8 @@ def validate_config(config):
             errors.append("project.role 'master' must not define figures; use execution modules.")
         if config.get("diagrams"):
             errors.append("project.role 'master' must not define diagrams; use execution modules.")
+
+    _validate_experimental_conditions(errors, config.get("experimental_conditions"))
 
     visual_style = config.get("visual_style", {})
     if visual_style is None:

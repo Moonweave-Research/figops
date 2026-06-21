@@ -743,6 +743,9 @@ Summarize one project config without running analysis, plotting, or report write
       },
       "type": "array"
     },
+    "experimental_conditions_summary": {
+      "type": "object"
+    },
     "failure_stage": {
       "type": "string"
     },
