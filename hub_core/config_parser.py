@@ -1152,6 +1152,10 @@ def validate_config(config):
             data_contract.get("require_canonical_docs"), bool
         ):
             errors.append("data_contract.require_canonical_docs must be a boolean.")
+        if "forbid_todo_placeholders" in data_contract and not isinstance(
+            data_contract.get("forbid_todo_placeholders"), bool
+        ):
+            errors.append("data_contract.forbid_todo_placeholders must be a boolean.")
         _validate_raw_integrity_config(errors, data_contract.get("raw_integrity"))
         csv_checks = data_contract.get("csv_checks", [])
         if csv_checks is None:

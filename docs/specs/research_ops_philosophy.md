@@ -26,6 +26,8 @@ Tier 2 is complete.
 
 1. Naming and quarantine-zone validation. Status: done.
 2. Canonical-docs precedence registry. Status: done.
-3. Config TODO/placeholder checks.
+3. Config TODO/placeholder checks. Status: done.
+
+Tier 3 is complete. The research-operations philosophy enforcement plan for Tiers 1-3 is complete.
 
 Applying this philosophy to an existing research project is a separate migration step. That migration must be explicit, opt-in, and non-destructive.

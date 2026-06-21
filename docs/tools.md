@@ -826,6 +826,9 @@ Summarize one project config without running analysis, plotting, or report write
     "pipeline_steps": {
       "type": "object"
     },
+    "placeholder_report": {
+      "type": "object"
+    },
     "project_metadata": {
       "properties": {
         "config_path": {
@@ -1035,6 +1038,9 @@ Run read-only config, data contract, style, and lockfile checks without executin
     },
     "operation_id": {
       "type": "string"
+    },
+    "placeholder_report": {
+      "type": "object"
     },
     "raw_integrity_status": {
       "type": "object"
