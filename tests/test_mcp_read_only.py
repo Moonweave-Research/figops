@@ -64,6 +64,31 @@ data_contract:
 """
 
 
+def test_write_tools_env_opt_in_survives_server_main_config_overlay(monkeypatch, tmp_path):
+    research_root = tmp_path / "research"
+    runtime_root = tmp_path / "runtime"
+
+    monkeypatch.setenv("GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED", "1")
+    env_config = McpServerConfig.from_env().overlay(
+        hub_path=HUB_ROOT,
+        research_root=research_root,
+        runtime_root=runtime_root,
+        write_tools_enabled=None,
+    )
+    env_server = GraphHubMCPServer(config=env_config)
+    assert env_server.write_tools_enabled is True
+
+    monkeypatch.delenv("GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED")
+    default_config = McpServerConfig.from_env().overlay(
+        hub_path=HUB_ROOT,
+        research_root=research_root,
+        runtime_root=runtime_root,
+        write_tools_enabled=None,
+    )
+    default_server = GraphHubMCPServer(config=default_config)
+    assert default_server.write_tools_enabled is False
+
+
 def _snapshot_files(root: Path) -> dict[str, tuple[int, int]]:
     snapshot = {}
     for current_root, dirs, files in os.walk(root):

@@ -39,7 +39,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     configure_logging()
-    config = McpServerConfig(
+    config = McpServerConfig.from_env().overlay(
         hub_path=args.hub_path,
         research_root=args.research_root,
         runtime_root=args.runtime_root,
