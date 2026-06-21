@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from hub_core.adapters import SurfurConventions
-from hub_core.project_discovery import ProjectDiscoveryService
+from hub_core.project_discovery import ProjectDiscoveryService, get_discoverable_projects
 
 VALID_CONFIG = """
 project:
@@ -117,6 +117,43 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
             by_path = {project.path: project for project in projects}
             self.assertEqual(by_path[".worktrees/feature/02_Worktree"].classification, "ephemeral")
             self.assertEqual(by_path["[Athena]/bridge_jobs/job1/hub_project"].classification, "ephemeral")
+
+    def test_quarantine_zone_projects_are_listed_but_not_runnable_by_default(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            quarantine_paths = [
+                "_archive/Old_Project",
+                "_quarantine/Suspect_Project",
+                "_cross_validation/Cross_Check",
+                "legacy_old/Legacy_Project",
+                "old_legacy/Legacy_Project",
+                "planning.bak_260607/Bak_Project",
+            ]
+            for rel_path in quarantine_paths:
+                self._write_config(root / rel_path, rel_path)
+            self._write_config(root / "01_Normal", "Normal Project")
+
+            projects = ProjectDiscoveryService(root).discover(max_depth=4)
+            runnable = get_discoverable_projects(root, max_depth=4)
+
+            by_path = {project.path: project for project in projects}
+            for rel_path in quarantine_paths:
+                self.assertEqual(by_path[rel_path].classification, "quarantine")
+                self.assertTrue(by_path[rel_path].valid)
+            self.assertEqual(by_path["01_Normal"].classification, "official")
+
+            runnable_paths = {project["path"] for project in runnable}
+            self.assertNotIn("_archive/Old_Project", runnable_paths)
+            self.assertEqual(runnable_paths, {"01_Normal"})
+
+    def test_include_quarantine_opts_quarantine_projects_back_into_runnable_surface(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            self._write_config(root / "_archive" / "Old_Project", "Old Project")
+
+            runnable = get_discoverable_projects(root, max_depth=3, include_quarantine=True)
+
+            self.assertEqual([project["path"] for project in runnable], ["_archive/Old_Project"])
 
     def test_nested_researchos_ephemeral_paths_are_classified_from_workspace_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:

@@ -474,6 +474,44 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
                 )
             )
 
+    def test_validate_project_naming_lint_warns_without_failing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = self._write_project(root, "저항 측정/26013_bad_date")
+
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
+            validated = self._call(
+                server,
+                "graphhub.validate_project",
+                {"project_path": str(project), "include_naming_lint": True},
+            )
+            inspected = self._call(
+                server,
+                "graphhub.inspect_project",
+                {"project_path": str(project), "include_naming_lint": True},
+            )
+
+            self.assertTrue(validated["valid"])
+            self.assertEqual(validated["config_errors"], [])
+            self.assertTrue(validated["naming_lint"]["warnings"])
+            self.assertEqual(inspected["naming_lint"], validated["naming_lint"])
+            self.assertTrue(any("YYMMDD" in warning for warning in validated["warnings"]))
+
+    def test_validate_project_naming_lint_accepts_conforming_names(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = self._write_project(root, "저항 측정/260130/PET_control")
+
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
+            validated = self._call(
+                server,
+                "graphhub.validate_project",
+                {"project_path": str(project), "include_naming_lint": True},
+            )
+
+            self.assertTrue(validated["valid"])
+            self.assertEqual(validated["naming_lint"]["warnings"], [])
+
     def test_json_rpc_tools_list_and_call_return_structured_content(self):
         server = GraphHubMCPServer()
 

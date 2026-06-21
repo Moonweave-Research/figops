@@ -478,6 +478,10 @@ Discover Graph Hub project configs without executing scripts or writing files.
       "default": true,
       "type": "boolean"
     },
+    "include_quarantine": {
+      "default": false,
+      "type": "boolean"
+    },
     "include_worktrees": {
       "default": false,
       "type": "boolean"
@@ -675,6 +679,10 @@ Summarize one project config without running analysis, plotting, or report write
     }
   ],
   "properties": {
+    "include_naming_lint": {
+      "default": false,
+      "type": "boolean"
+    },
     "max_depth": {
       "default": 4,
       "maximum": 12,
@@ -803,6 +811,9 @@ Summarize one project config without running analysis, plotting, or report write
       },
       "type": "array"
     },
+    "naming_lint": {
+      "type": "object"
+    },
     "normalization_needed": {
       "type": "boolean"
     },
@@ -904,6 +915,10 @@ Run read-only config, data contract, style, and lockfile checks without executin
     }
   ],
   "properties": {
+    "include_naming_lint": {
+      "default": false,
+      "type": "boolean"
+    },
     "max_depth": {
       "default": 4,
       "maximum": 12,
@@ -1008,6 +1023,9 @@ Run read-only config, data contract, style, and lockfile checks without executin
         "type": "string"
       },
       "type": "array"
+    },
+    "naming_lint": {
+      "type": "object"
     },
     "operation_id": {
       "type": "string"
@@ -2512,6 +2530,10 @@ Run a bounded project discovery and validation batch check with optional runtime
       "type": "boolean"
     },
     "include_legacy": {
+      "default": false,
+      "type": "boolean"
+    },
+    "include_quarantine": {
       "default": false,
       "type": "boolean"
     },

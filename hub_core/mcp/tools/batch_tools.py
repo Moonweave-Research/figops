@@ -132,6 +132,7 @@ class McpBatchToolsMixin:
         include_legacy = bool(arguments.get("include_legacy", False))
         include_worktrees = bool(arguments.get("include_worktrees", False))
         include_ephemeral = bool(arguments.get("include_ephemeral", False))
+        include_quarantine = bool(arguments.get("include_quarantine", False))
         dry_run = bool(arguments.get("dry_run", True))
         batch_id = self._render_job_id(arguments.get("batch_id") or f"batch-{uuid.uuid4().hex[:12]}")
         batch_root = self._mcp_jobs_root() / batch_id
@@ -231,6 +232,7 @@ class McpBatchToolsMixin:
                 include_legacy=include_legacy,
                 include_worktrees=include_worktrees,
                 include_ephemeral=include_ephemeral,
+                include_quarantine=include_quarantine,
                 previously_checked=previously_checked,
             )
             if skip_reason:
@@ -377,6 +379,7 @@ class McpBatchToolsMixin:
         include_legacy: bool,
         include_worktrees: bool,
         include_ephemeral: bool,
+        include_quarantine: bool,
         previously_checked: set[str],
     ) -> str:
         if project.project_id in previously_checked:
@@ -387,6 +390,8 @@ class McpBatchToolsMixin:
             return "" if include_ephemeral else "ephemeral_project"
         if project.classification == "legacy" and not include_legacy:
             return "legacy_project"
+        if project.classification == "quarantine" and not include_quarantine:
+            return "quarantine_project"
         if not project.valid and not include_invalid:
             return "invalid_config"
         return ""

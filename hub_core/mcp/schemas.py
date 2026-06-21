@@ -374,6 +374,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "include_invalid": {"type": "boolean", "default": True},
                     "include_worktrees": {"type": "boolean", "default": False},
                     "include_ephemeral": {"type": "boolean", "default": False},
+                    "include_quarantine": {"type": "boolean", "default": False},
                     "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
                 }
             ),
@@ -382,7 +383,12 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ToolDefinition(
             "graphhub.inspect_project",
             "Summarize one project config without running analysis, plotting, or report writers.",
-            {**_object_schema(project_selector), "oneOf": selector_one_of},
+            {
+                **_object_schema(
+                    {**project_selector, "include_naming_lint": {"type": "boolean", "default": False}}
+                ),
+                "oneOf": selector_one_of,
+            },
             _standard_output_schema(
                 {
                     "project_metadata": project_metadata_schema,
@@ -399,6 +405,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "experimental_conditions_summary": {"type": "object"},
                     "sample_registry_summary": {"type": "object"},
                     "raw_integrity_status": {"type": "object"},
+                    "naming_lint": {"type": "object"},
                     "normalization_needed": {"type": "boolean"},
                 }
             ),
@@ -407,7 +414,13 @@ def list_tool_definitions() -> list[dict[str, Any]]:
             "graphhub.validate_project",
             "Run read-only config, data contract, style, and lockfile checks without executing scripts.",
             {
-                **_object_schema({**project_selector, "strict_lock": {"type": "boolean", "default": False}}),
+                **_object_schema(
+                    {
+                        **project_selector,
+                        "strict_lock": {"type": "boolean", "default": False},
+                        "include_naming_lint": {"type": "boolean", "default": False},
+                    }
+                ),
                 "oneOf": selector_one_of,
             },
             _standard_output_schema(
@@ -418,6 +431,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "lockfile_status": {"type": "object"},
                     "style_errors": {"type": "array", "items": {"type": "string"}},
                     "raw_integrity_status": {"type": "object"},
+                    "naming_lint": {"type": "object"},
                     "recommended_next_action": {"type": "string"},
                 }
             ),
@@ -623,6 +637,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "include_legacy": {"type": "boolean", "default": False},
                     "include_worktrees": {"type": "boolean", "default": False},
                     "include_ephemeral": {"type": "boolean", "default": False},
+                    "include_quarantine": {"type": "boolean", "default": False},
                     "dry_run": {"type": "boolean", "default": True},
                     "batch_id": {"type": "string"},
                     "resume_manifest_path": {"type": "string"},
