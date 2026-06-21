@@ -15,6 +15,24 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.14.0] - 2026-06-21
+
+### Added
+
+- Research-operations philosophy Tier 3 hygiene, documented in
+  `docs/specs/research_ops_philosophy.md`, completes research-ops philosophy
+  Tiers 1-3.
+- Quarantine and archive zone recognition now excludes `_archive`,
+  `_quarantine`, `_cross_validation`, `legacy_*`, `*_legacy`, and `*.bak*`
+  paths from runnable discovery by default, with `include_quarantine` opt-in
+  and advisory naming-convention linting (#145).
+- Machine-readable ordered `canonical_docs` precedence registry adds
+  existence checks, advisory by default with opt-in `require_canonical_docs`
+  strict mode (#146).
+- Config placeholder detection now catches TODO, FIXME, TBD, and related
+  placeholders as advisory findings, with opt-in `forbid_todo_placeholders`
+  strict mode (#147).
+
 ## [0.13.0] - 2026-06-21
 
 ### Added
