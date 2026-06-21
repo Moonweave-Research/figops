@@ -20,6 +20,7 @@ from hub_core.config_parser import (
     project_role,
     validate_config,
 )
+from hub_core.config_placeholders import placeholder_message, placeholder_report
 from hub_core.mcp.schemas import describe_graphhub_surface
 from hub_core.naming_lint import empty_naming_lint, lint_project_naming
 from hub_core.project_discovery import ProjectDiscoveryService
@@ -146,6 +147,7 @@ class McpReadToolsMixin:
         diagram_outputs = self._outputs(diagrams)
         naming_lint = self._naming_lint(project_path, enabled=bool(arguments.get("include_naming_lint", False)))
         canonical_registry = canonical_docs_registry(project_path, config)
+        placeholders = placeholder_report(config)
 
         return self._envelope(
             "graphhub.inspect_project",
@@ -186,6 +188,7 @@ class McpReadToolsMixin:
             raw_integrity_status=self._raw_integrity_status(project_path, config),
             naming_lint=naming_lint,
             canonical_docs_registry=canonical_registry,
+            placeholder_report=placeholders,
             normalization_needed=loaded["config_relpath"] == "scripts/project_config.yaml",
         )
 
@@ -210,6 +213,10 @@ class McpReadToolsMixin:
             canonical_docs_warning = missing_canonical_doc_message(canonical_registry["missing"])
             if canonical_registry["required"]:
                 config_errors.append(canonical_docs_warning)
+        placeholders = placeholder_report(config)
+        placeholder_warning = placeholder_message(placeholders) if placeholders["detected"] else ""
+        if placeholder_warning and placeholders["strict"]:
+            config_errors.append(placeholder_warning)
 
         data_contract_errors = [error for error in config_errors if error.startswith("data_contract.")]
         style_errors = [
@@ -235,6 +242,8 @@ class McpReadToolsMixin:
             warnings.append(raw_integrity_warning)
         if canonical_docs_warning and not canonical_registry["required"]:
             warnings.append(canonical_docs_warning)
+        if placeholder_warning and not placeholders["strict"]:
+            warnings.append(placeholder_warning)
         warnings.extend(naming_lint["warnings"])
         warnings.extend(render_environment_warnings)
         status = "warning" if warnings else "ok"
@@ -259,6 +268,7 @@ class McpReadToolsMixin:
             raw_integrity_status=raw_integrity_status,
             naming_lint=naming_lint,
             canonical_docs_registry=canonical_registry,
+            placeholder_report=placeholders,
             recommended_next_action=next_action,
         )
 
