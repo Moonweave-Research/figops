@@ -55,7 +55,7 @@ class ProjectDiscoveryService:
 
     def discover(self, max_depth: int = 4) -> list[DiscoveredProject]:
         max_depth = max(1, int(max_depth or 1))
-        discovered: list[DiscoveredProject] = []
+        discovered: dict[str, DiscoveredProject] = {}
 
         for current_root, dirs, _files in os.walk(self.root_dir, followlinks=True):
             current_path = Path(current_root)
@@ -76,12 +76,19 @@ class ProjectDiscoveryService:
             project = self._build_project(current_path, config_path)
             if project.classification == "ephemeral" and not self._include_ephemeral_path(project.path):
                 continue
-            discovered.append(project)
+            discovered[project.path] = project
+            if project.role == "master":
+                for folder_entry in self._build_master_folder_entries(
+                    current_path,
+                    max_depth=max_depth,
+                    master_depth=depth,
+                ):
+                    discovered.setdefault(folder_entry.path, folder_entry)
             if project.role != "master":
                 dirs[:] = []
 
         return sorted(
-            discovered,
+            discovered.values(),
             key=lambda item: (
                 item.classification == "ephemeral",
                 item.classification == "invalid",
@@ -131,6 +138,89 @@ class ProjectDiscoveryService:
             classification=classification,
             target_format=target_format,
         )
+
+    def _build_master_folder_entries(
+        self,
+        master_path: Path,
+        *,
+        max_depth: int,
+        master_depth: int,
+    ) -> list[DiscoveredProject]:
+        from .config_parser import folder_role_map, load_config, project_modules
+
+        config, _config_path, _config_hash = load_config(str(master_path))
+        if not isinstance(config, dict):
+            return []
+        declared_roles = folder_role_map(config)
+        if not declared_roles:
+            return []
+
+        module_paths = {Path(path).as_posix().strip("/") for path in project_modules(config)}
+        prefix_paths = self._folder_role_prefixes(set(declared_roles) | module_paths)
+        entries: dict[str, DiscoveredProject] = {}
+
+        for rel_folder, role in declared_roles.items():
+            folder_path = master_path / Path(rel_folder)
+            rel_project = self._relative_path(folder_path)
+            if not folder_path.is_dir() or master_depth + len(Path(rel_folder).parts) > max_depth:
+                continue
+            entries[rel_project] = self._build_configless_folder_entry(
+                folder_path,
+                role=role,
+                classification="folder_role",
+            )
+
+        for child in sorted(master_path.iterdir(), key=lambda path: path.name.lower()):
+            if not child.is_dir():
+                continue
+            if child.name in DEFAULT_EXCLUDED_DIRS or child.name in {".git", ".venv"}:
+                continue
+            if self._find_config_path(child):
+                continue
+            rel_from_master = child.relative_to(master_path).as_posix()
+            if rel_from_master in declared_roles or rel_from_master in prefix_paths:
+                continue
+            rel_project = self._relative_path(child)
+            entries.setdefault(
+                rel_project,
+                self._build_configless_folder_entry(
+                    child,
+                    role="unclassified",
+                    classification="unclassified",
+                ),
+            )
+
+        return list(entries.values())
+
+    def _build_configless_folder_entry(
+        self,
+        folder_path: Path,
+        *,
+        role: str,
+        classification: str,
+    ) -> DiscoveredProject:
+        rel_project = self._relative_path(folder_path)
+        return DiscoveredProject(
+            project_id=self._stable_project_id(folder_path),
+            name=folder_path.name,
+            path=rel_project,
+            config="",
+            config_path="",
+            role=role,
+            valid=True,
+            errors=(),
+            classification=classification,
+            target_format="",
+        )
+
+    @staticmethod
+    def _folder_role_prefixes(paths: set[str]) -> set[str]:
+        prefixes: set[str] = set()
+        for raw_path in paths:
+            parts = Path(raw_path).parts
+            for index in range(1, len(parts)):
+                prefixes.add(Path(*parts[:index]).as_posix())
+        return prefixes
 
     def _classify(self, rel_project: str, rel_config: str, valid: bool) -> str:
         if self._is_ephemeral_path(rel_project):
@@ -231,7 +321,7 @@ def get_discoverable_projects(
     ):
         if not project["valid"]:
             continue
-        if project.get("role") == "master":
+        if project.get("role") != "module" or not project.get("config_path"):
             continue
         projects.append(
             {

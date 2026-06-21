@@ -269,13 +269,28 @@ def list_tool_definitions() -> list[dict[str, Any]]:
     }
     job_id_arg = {"type": "string", "description": "Stable render job ID; auto-generated when omitted."}
     project_role_schema = {"type": "string", "enum": ["master", "module"]}
+    discovery_role_schema = {
+        "type": "string",
+        "enum": [
+            "archive",
+            "docs",
+            "exploratory",
+            "master",
+            "module",
+            "raw_reservoir",
+            "reference",
+            "support",
+            "theory",
+            "unclassified",
+        ],
+    }
     listed_project_schema = {
         "type": "object",
         "properties": {
             "project_id": {"type": "string"},
             "project_root": {"type": "string"},
             "config_path": {"type": "string"},
-            "role": project_role_schema,
+            "role": discovery_role_schema,
             "status": {"type": "string"},
             "errors": {"type": "array", "items": {"type": "string"}},
             "declared_figures": {"type": "integer"},
@@ -379,6 +394,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "missing_inputs": {"type": "array", "items": {"type": "string"}},
                     "missing_outputs": {"type": "array", "items": {"type": "string"}},
                     "style_summary": {"type": "object"},
+                    "folder_role_summary": {"type": "object"},
                     "normalization_needed": {"type": "boolean"},
                 }
             ),

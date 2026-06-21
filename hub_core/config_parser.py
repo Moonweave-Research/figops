@@ -39,6 +39,16 @@ ALLOWED_PREFETCH_ADAPTERS = {"none", "noop", "off", "gdrive"}
 ALLOWED_ATHENA_ADAPTERS = {"none", "null", "off", "legacy", "on"}
 ALLOWED_CONVENTIONS_ADAPTERS = {"none", "generic", "surfur"}
 ALLOWED_PROJECT_ROLES = {"master", "module"}
+ALLOWED_FOLDER_ROLES = {
+    "module",
+    "raw_reservoir",
+    "reference",
+    "theory",
+    "exploratory",
+    "docs",
+    "support",
+    "archive",
+}
 DEFAULT_PROJECT_ROLE = "module"
 CONFIG_FILE_CANDIDATES = (
     "project_config.yaml",
@@ -483,6 +493,20 @@ def project_modules(config):
     return [str(module).strip() for module in modules if isinstance(module, str) and module.strip()]
 
 
+def folder_role_map(config):
+    folder_roles = config.get("folder_roles", {}) if isinstance(config, dict) else {}
+    if not isinstance(folder_roles, dict):
+        return {}
+    result = {}
+    for raw_path, raw_role in folder_roles.items():
+        if isinstance(raw_path, str) and isinstance(raw_role, str):
+            path = raw_path.strip().strip("/\\")
+            role = raw_role.strip().lower()
+            if path and role:
+                result[path.replace("\\", "/")] = role
+    return result
+
+
 def master_execution_error(config):
     modules = project_modules(config)
     module_list = ", ".join(modules) if modules else "none declared"
@@ -599,6 +623,42 @@ def validate_config(config):
                 errors.append(f"modules[{i}] must be a relative path, got absolute path '{module_path}'.")
             elif ".." in module_path.replace("\\", "/").split("/"):
                 errors.append(f"modules[{i}] must not contain path traversal '..': '{module_path}'.")
+
+    folder_roles = config.get("folder_roles", {})
+    if folder_roles is None:
+        folder_roles = {}
+    normalized_folder_roles = {}
+    if not isinstance(folder_roles, dict):
+        errors.append("folder_roles must be a mapping of relative folder paths to folder roles when provided.")
+    else:
+        for raw_path, raw_folder_role in folder_roles.items():
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                errors.append("folder_roles keys must be non-empty relative paths.")
+                continue
+            folder_path = raw_path.strip().strip("/\\").replace("\\", "/")
+            if not folder_path:
+                errors.append("folder_roles keys must be non-empty relative paths.")
+                continue
+            if os.path.isabs(raw_path):
+                errors.append(f"folder_roles.{raw_path} must be a relative path.")
+            elif ".." in folder_path.split("/"):
+                errors.append(f"folder_roles.{raw_path} must not contain path traversal '..'.")
+            if not isinstance(raw_folder_role, str) or raw_folder_role.strip().lower() not in ALLOWED_FOLDER_ROLES:
+                allowed = ", ".join(sorted(ALLOWED_FOLDER_ROLES))
+                errors.append(
+                    f"Invalid folder_roles.{raw_path}: '{raw_folder_role}'. Allowed values: {allowed}."
+                )
+                continue
+            normalized_folder_roles[folder_path] = raw_folder_role.strip().lower()
+
+    module_paths = {module_path.strip().strip("/\\").replace("\\", "/") for module_path in project_modules(config)}
+    for module_path in sorted(module_paths):
+        mapped_role = normalized_folder_roles.get(module_path)
+        if mapped_role and mapped_role != "module":
+            errors.append(
+                f"modules entry '{module_path}' conflicts with folder_roles role '{mapped_role}'. "
+                "Module paths must not be assigned a non-module folder role."
+            )
 
     if role == "master":
         pipeline = config.get("pipeline", {})

@@ -589,8 +589,16 @@ Discover Graph Hub project configs without executing scripts or writing files.
           },
           "role": {
             "enum": [
+              "archive",
+              "docs",
+              "exploratory",
               "master",
-              "module"
+              "module",
+              "raw_reservoir",
+              "reference",
+              "support",
+              "theory",
+              "unclassified"
             ],
             "type": "string"
           },
@@ -743,6 +751,9 @@ Summarize one project config without running analysis, plotting, or report write
         "type": "string"
       },
       "type": "array"
+    },
+    "folder_role_summary": {
+      "type": "object"
     },
     "folder_structure_status": {
       "type": "object"
