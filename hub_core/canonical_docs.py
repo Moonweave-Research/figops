@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .config_parser import module_default_contract_bool
+
 
 def canonical_docs_registry(project_path: str | Path, config: dict[str, Any]) -> dict[str, Any]:
     docs = []
@@ -49,8 +51,7 @@ def canonical_docs_entries(config: dict[str, Any]) -> list[dict[str, str]]:
 
 
 def require_canonical_docs(config: dict[str, Any]) -> bool:
-    data_contract = config.get("data_contract", {}) if isinstance(config, dict) else {}
-    return isinstance(data_contract, dict) and data_contract.get("require_canonical_docs") is True
+    return module_default_contract_bool(config, "require_canonical_docs")
 
 
 def missing_canonical_doc_message(missing: list[str]) -> str:
