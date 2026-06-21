@@ -15,6 +15,40 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.16.0] - 2026-06-22
+
+### Added
+
+- `project.status: active | legacy`. Legacy projects are excluded from the
+  runnable/render/research-ops-enforcement surface while remaining discoverable
+  and inspectable, so superseded measurement projects can be retired without
+  deleting or renaming their data (#161).
+- Opt-in `GRAPH_HUB_MCP_STRICT_DATA_ROOTS` to require explicitly listed MCP data
+  roots, and `GRAPH_HUB_RUNTIME_ROOT` as a launcher-compatible fallback for
+  runtime storage root selection (#160).
+
+### Changed
+
+- Journal compliance floors (minimum font size, line width, figure height) now
+  apply under every profile rather than only `baseline`, and explicit per-artist
+  sub-floor sizes are clamped to the floor at draw time with a warning instead of
+  being emitted silently (#159).
+- `doctor` now performs real research_root/runtime_root filesystem checks and
+  labels write tools as "enabled (not execution-verified)"; broad-data-root
+  detection covers multi-user parent directories such as `/Users` and `/home`
+  (#160).
+
+### Fixed
+
+- Geometry diagnostics no longer report `passed: true` when every eligible check
+  was skipped (now reports `None`); bar plots with replicate aggregation plus an
+  error column no longer crash (standard error is recomputed); `category_order`
+  is rejected for plot types that do not support it instead of being silently
+  ignored; `artists_outside_axes` reports an informational crop fraction on
+  explicit limits instead of passing clean (#159).
+- Documentation drift corrected across `docs/architecture.md`, `docs/ROADMAP.md`,
+  `AGENTS.md`, and `task.md` to match the shipped v0.15.0 reality (#157).
+
 ## [0.15.0] - 2026-06-21
 
 ### Changed
