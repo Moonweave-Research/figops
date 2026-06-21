@@ -8,8 +8,8 @@ Out of scope: enterprise governance bloat. This includes approval gates, contrib
 
 ## Tier 1
 
-1. Master/module boundary enforcement: a master manifest coordinates execution modules but is not itself runnable.
-2. Folder role taxonomy and re-run-surface filtering: project folders must declare their operational role, and only runnable surfaces appear in re-run sets.
+1. Master/module boundary enforcement: a master manifest coordinates execution modules but is not itself runnable. Status: done.
+2. Folder role taxonomy and re-run-surface filtering: project folders declare their operational role, and only module configs appear in runnable re-run sets. Status: done.
 3. `experimental_conditions` schema and validation: experiments declare their conditions in machine-checkable form.
 
 ## Tier 2

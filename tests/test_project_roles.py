@@ -42,6 +42,25 @@ def _minimal_master_config(name: str = "Master Demo") -> list[str]:
     ]
 
 
+def _master_config_with_folder_roles(name: str = "Master Demo") -> list[str]:
+    return [
+        "project:",
+        f"  name: {name}",
+        "  role: master",
+        "modules:",
+        "  - modules/experiment_a",
+        "folder_roles:",
+        "  raw reservoir: raw_reservoir",
+        "  references: reference",
+        "  mechanism proofs: theory",
+        "  docs: docs",
+        "  archive: archive",
+        "  fixture support: support",
+        "visual_style:",
+        "  target_format: nature",
+    ]
+
+
 class ProjectRoleConfigValidationTest(unittest.TestCase):
     def test_config_without_role_defaults_to_module(self):
         with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
@@ -83,6 +102,32 @@ class ProjectRoleConfigValidationTest(unittest.TestCase):
         self.assertIn("pipeline", combined)
         self.assertIn("figures", combined)
 
+    def test_unknown_folder_role_fails_validation(self):
+        config = {
+            "project": {"name": "Bad Folder Role", "role": "master"},
+            "folder_roles": {"raw reservoir": "cold_storage"},
+            "visual_style": {"target_format": "nature"},
+        }
+
+        errors = validate_config(config)
+
+        self.assertTrue(any("folder_roles" in error and "cold_storage" in error for error in errors))
+
+    def test_modules_conflict_with_non_module_folder_role(self):
+        config = {
+            "project": {"name": "Conflicting Role", "role": "master"},
+            "modules": ["modules/experiment_a"],
+            "folder_roles": {"modules/experiment_a": "reference"},
+            "visual_style": {"target_format": "nature"},
+        }
+
+        errors = validate_config(config)
+
+        combined = " ".join(errors)
+        self.assertIn("modules/experiment_a", combined)
+        self.assertIn("conflicts", combined)
+        self.assertIn("reference", combined)
+
 
 class ProjectRoleDiscoveryTest(unittest.TestCase):
     def test_discovery_surfaces_role_and_excludes_master_from_runnable_projects(self):
@@ -103,6 +148,74 @@ class ProjectRoleDiscoveryTest(unittest.TestCase):
         self.assertEqual(by_name["Experiment A"]["role"], "module")
         self.assertEqual({project["name"] for project in runnable}, {"Experiment A"})
         self.assertEqual(runnable[0]["role"], "module")
+
+    def test_master_folder_roles_classify_configless_folders_and_filter_runnable_surface(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
+            root = Path(tmpdir)
+            master = root / "study_master"
+            module = master / "modules" / "experiment_a"
+            master.mkdir()
+            module.mkdir(parents=True)
+            for dirname in (
+                "raw reservoir",
+                "references",
+                "mechanism proofs",
+                "docs",
+                "archive",
+                "fixture support",
+            ):
+                (master / dirname).mkdir()
+            _write_config(master, _master_config_with_folder_roles("Study Master"))
+            _write_config(module, _minimal_module_config("Experiment A"))
+
+            discovered = discover_projects_with_status(root, max_depth=4)
+            runnable = get_discoverable_projects(root, max_depth=4)
+
+        by_path = {project["path"]: project for project in discovered}
+        self.assertEqual(by_path["study_master"]["role"], "master")
+        self.assertEqual(by_path["study_master/modules/experiment_a"]["role"], "module")
+        self.assertEqual(by_path["study_master/raw reservoir"]["role"], "raw_reservoir")
+        self.assertEqual(by_path["study_master/references"]["role"], "reference")
+        self.assertEqual(by_path["study_master/mechanism proofs"]["role"], "theory")
+        self.assertEqual(by_path["study_master/docs"]["role"], "docs")
+        self.assertEqual(by_path["study_master/archive"]["role"], "archive")
+        self.assertEqual(by_path["study_master/fixture support"]["role"], "support")
+        self.assertEqual({project["path"] for project in runnable}, {"study_master/modules/experiment_a"})
+
+    def test_configless_undeclared_folder_is_unclassified_and_not_runnable(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
+            root = Path(tmpdir)
+            master = root / "study_master"
+            module = master / "modules" / "experiment_a"
+            master.mkdir()
+            module.mkdir(parents=True)
+            (master / "notes").mkdir()
+            _write_config(master, _master_config_with_folder_roles("Study Master"))
+            _write_config(module, _minimal_module_config("Experiment A"))
+
+            discovered = discover_projects_with_status(root, max_depth=4)
+            runnable = get_discoverable_projects(root, max_depth=4)
+
+        by_path = {project["path"]: project for project in discovered}
+        self.assertEqual(by_path["study_master/notes"]["role"], "unclassified")
+        self.assertEqual({project["path"] for project in runnable}, {"study_master/modules/experiment_a"})
+
+    def test_master_without_folder_roles_keeps_t1_1_discovery_behavior(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
+            root = Path(tmpdir)
+            master = root / "study_master"
+            module = master / "modules" / "experiment_a"
+            master.mkdir()
+            module.mkdir(parents=True)
+            (master / "notes").mkdir()
+            _write_config(master, _minimal_master_config("Study Master"))
+            _write_config(module, _minimal_module_config("Experiment A"))
+
+            discovered = discover_projects_with_status(root, max_depth=4)
+            runnable = get_discoverable_projects(root, max_depth=4)
+
+        self.assertNotIn("study_master/notes", {project["path"] for project in discovered})
+        self.assertEqual({project["path"] for project in runnable}, {"study_master/modules/experiment_a"})
 
     def test_mcp_list_and_inspect_surface_project_role(self):
         with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
@@ -125,6 +238,32 @@ class ProjectRoleDiscoveryTest(unittest.TestCase):
         self.assertEqual(listed_by_root["study_master"]["role"], "master")
         self.assertEqual(listed_by_root["study_master/modules/experiment_a"]["role"], "module")
         self.assertEqual(inspected["project_metadata"]["role"], "master")
+
+    def test_mcp_list_and_master_inspect_surface_folder_role_classification(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
+            root = Path(tmpdir)
+            master = root / "study_master"
+            module = master / "modules" / "experiment_a"
+            master.mkdir()
+            module.mkdir(parents=True)
+            (master / "raw reservoir").mkdir()
+            (master / "notes").mkdir()
+            _write_config(master, _master_config_with_folder_roles("Study Master"))
+            _write_config(module, _minimal_module_config("Experiment A"))
+            server = GraphHubMCPServer(research_root=root)
+
+            listed = server.call_tool("graphhub.list_projects", {"max_depth": 4})["structuredContent"]["projects"]
+            inspected = server.call_tool(
+                "graphhub.inspect_project",
+                {"project_path": "study_master"},
+            )["structuredContent"]
+
+        listed_by_root = {project["project_root"]: project for project in listed}
+        self.assertEqual(listed_by_root["study_master/raw reservoir"]["role"], "raw_reservoir")
+        self.assertEqual(listed_by_root["study_master/notes"]["role"], "unclassified")
+        folder_roles = inspected["folder_role_summary"]
+        self.assertEqual(folder_roles["declared"]["raw reservoir"], "raw_reservoir")
+        self.assertIn("notes", folder_roles["unclassified"])
 
 
 class ProjectRoleExecutionBoundaryTest(unittest.TestCase):

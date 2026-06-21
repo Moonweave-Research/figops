@@ -12,8 +12,10 @@ from hub_core.config_parser import (
     ALLOWED_TARGET_FORMATS,
     ConfigMigrationError,
     find_config_path,
+    folder_role_map,
     migrate_config,
     normalize_project_defaults,
+    project_modules,
     project_role,
     validate_config,
 )
@@ -170,6 +172,7 @@ class McpReadToolsMixin:
                 "font_scale": visual_style.get("font_scale", 1.0),
                 "profile": visual_style.get("profile", DEFAULT_PROFILE),
             },
+            folder_role_summary=self._folder_role_summary(project_path, config),
             normalization_needed=loaded["config_relpath"] == "scripts/project_config.yaml",
         )
 
@@ -224,6 +227,18 @@ class McpReadToolsMixin:
         )
 
     def _serialize_project(self, project: Any) -> dict[str, Any]:
+        if not project.config_path:
+            return {
+                "project_id": project.project_id,
+                "project_root": project.path,
+                "config_path": "",
+                "role": project.role,
+                "status": self._project_status(project),
+                "errors": list(project.errors),
+                "declared_figures": 0,
+                "declared_diagrams": 0,
+                "target_format": "",
+            }
         if Path(project.config_path).is_symlink():
             return {
                 "project_id": project.project_id,
@@ -262,9 +277,47 @@ class McpReadToolsMixin:
             return "invalid"
         if getattr(project, "role", "module") == "master":
             return "master"
+        if project.classification in {"folder_role", "unclassified"}:
+            return project.classification
         if project.classification in {"legacy", "ephemeral"}:
             return project.classification
         return "valid"
+
+    @staticmethod
+    def _folder_role_summary(project_path: Path, config: dict[str, Any]) -> dict[str, Any]:
+        if project_role(config) != "master":
+            return {"declared": {}, "modules": [], "unclassified": [], "note": ""}
+        declared = folder_role_map(config)
+        modules = project_modules(config)
+        unclassified: list[str] = []
+        if declared:
+            declared_or_prefix = set(declared) | set(modules)
+            prefixes: set[str] = set()
+            for raw_path in declared_or_prefix:
+                parts = Path(raw_path).parts
+                for index in range(1, len(parts)):
+                    prefixes.add(Path(*parts[:index]).as_posix())
+            try:
+                children = sorted(project_path.iterdir(), key=lambda path: path.name.lower())
+            except OSError:
+                children = []
+            for child in children:
+                if not child.is_dir() or find_config_path(str(child)):
+                    continue
+                rel_child = child.relative_to(project_path).as_posix()
+                if rel_child not in declared and rel_child not in prefixes:
+                    unclassified.append(rel_child)
+        return {
+            "declared": declared,
+            "modules": modules,
+            "unclassified": unclassified,
+            "note": (
+                "Only module project configs are runnable; non-module and unclassified folders are excluded "
+                "from the re-run surface."
+                if declared
+                else "No folder_roles declared; T1.1 master/module discovery behavior applies."
+            ),
+        }
 
     @staticmethod
     def _validation_summary(config_path: Path) -> dict[str, Any]:
