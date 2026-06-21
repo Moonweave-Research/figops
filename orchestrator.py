@@ -60,6 +60,7 @@ from hub_core import (
 from hub_core.adapters import select_adapters
 from hub_core.cache_manager import collect_signatures
 from hub_core.logging import configure_logging, get_logger
+from hub_core.raw_integrity import raw_integrity_config, raw_integrity_drift_message, verify_raw_integrity
 
 logger = get_logger(__name__)
 
@@ -401,6 +402,16 @@ def main():
         if project_role(config) == "master":
             logger.error("❌ Error: %s", master_execution_error(config))
             return 1
+        if raw_integrity_config(config) is not None:
+            raw_integrity_status = verify_raw_integrity(project_path, config)
+            if not raw_integrity_status["ok"]:
+                message = "; ".join(
+                    raw_integrity_status.get("errors") or [raw_integrity_drift_message(raw_integrity_status)]
+                )
+                if raw_integrity_status.get("mode") == "strict":
+                    logger.error("❌ Error: %s", message)
+                    return 1
+                logger.warning("⚠️  Warning: %s", message)
 
         if args.preset:
             _apply_cli_preset(config, args.preset)

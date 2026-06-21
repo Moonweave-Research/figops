@@ -18,7 +18,9 @@ Tier 1 is complete.
 
 1. Sample registry across modules. Status: done.
 2. Figure-data-claim traceability manifest. Status: done.
-3. Raw data immutability and provenance enforcement.
+3. Raw data immutability and provenance enforcement. Status: done.
+
+Tier 2 is complete.
 
 ## Tier 3
 
