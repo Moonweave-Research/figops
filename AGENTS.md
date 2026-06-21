@@ -27,6 +27,7 @@ Coordinate end-to-end planning, implementation, and verification across the modu
 2. **Fail-Fast Enforcement**: Pipeline must exit on script absence, semantic validation failure, or environment mismatch.
 3. **Data Provenance**: Every run must output Git/config/environment hashes for reproducibility. DVC is not part of the current required runtime surface.
 4. **Cloud-Native Awareness**: Use the Prefetcher (`ensure_local_files`) for any input file to prevent GDrive sync deadlocks.
+5. **Research-Ops Enforcement**: Tier 1-3 research-ops rules enforce by default for `project.role: module` projects, with explicit `false` opt-outs for scoped relaxation. `project.status: legacy` is supported for legacy projects.
 
 ---
 
@@ -35,7 +36,7 @@ Coordinate end-to-end planning, implementation, and verification across the modu
 Orchestrator injects the following vars:
 - `RESEARCH_HUB_PATH`: Absolute path to the hub.
 - `PROJECT_ROOT`: Absolute path to the active research project.
-- `THEME_FORMAT`: `nature | science | ppt | default`
+- `THEME_FORMAT`: `nature | nature_surfur | science | ppt | default | acs | rsc | elsevier | wiley | cell`. The live source of truth is `ALLOWED_TARGET_FORMATS` in `hub_core/config_parser.py`; agents can also call `graphhub.list_styles` or consult generated `docs/tools.md`.
 - `THEME_SCALE`: Font scaling factor.
 - `THEME_PROFILE`: Active style profile name.
 
@@ -138,6 +139,27 @@ report warnings through `graphhub.health`.
   (`generic` or `surfur`). Default is generic.
 - `ATHENA_PATH`: path used only by the opt-in legacy Athena bridge.
 
+### Runtime / diagnostic env vars
+
+These variables are runtime knobs or diagnostics transport, not MCP
+trust-boundary inputs. Do not add them to `ROOT_ADAPTER_SECURITY_ENV_VARS`
+unless they start widening roots, write access, or adapter trust.
+
+- `GRAPH_HUB_LOG_LEVEL`: selects Graph Hub logging verbosity; default is
+  `WARNING`.
+- `GEOMETRY_DIAGNOSTICS_OUT`: render-scoped sidecar path used for geometry
+  diagnostics output.
+- `GEOMETRY_DIAGNOSTICS_DEADLINE`: render-scoped absolute epoch deadline used
+  by geometry diagnostics to skip work when the render budget is nearly
+  exhausted.
+- `MPLBACKEND`: matplotlib backend. Render paths default it to `Agg` when a
+  headless environment needs a non-interactive backend.
+- `GRAPH_HUB_INPUTS`: path-list of resolved analysis input files injected for
+  scaffolded analysis scripts.
+- `GRAPH_HUB_ALLOW_EMPTY_ANALYSIS`: explicit scaffold escape hatch; when set
+  to `1`, generated analysis templates may write empty bootstrap data with a
+  warning instead of failing on missing inputs.
+
 ---
 
-**Last Update**: 2026-06-07 (independent repo cleanup, uv/Docker alignment, retired DVC wording)
+**Last Update**: 2026-06-21 (v0.15.0 docs drift correction; MCP decomposition, style enum, research-ops, and env docs aligned)
