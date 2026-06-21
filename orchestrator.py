@@ -38,6 +38,7 @@ from hub_core import (
     parse_sweep_config,
     print_provenance,
     project_role,
+    project_status,
     prompt_numeric_selection,
     rerun_in_docker,
     run_analysis,
@@ -401,6 +402,9 @@ def main():
             return 1
         if project_role(config) == "master":
             logger.error("❌ Error: %s", master_execution_error(config))
+            return 1
+        if project_status(config) == "legacy":
+            logger.error("❌ Error: project is marked legacy; rendering is disabled for retired projects.")
             return 1
         research_ops = validate_research_ops_contract(project_path, config)
         if research_ops["errors"]:

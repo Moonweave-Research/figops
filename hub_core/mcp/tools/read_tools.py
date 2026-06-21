@@ -19,6 +19,7 @@ from hub_core.config_parser import (
     normalize_project_defaults,
     project_modules,
     project_role,
+    project_status,
     validate_config,
 )
 from hub_core.config_placeholders import placeholder_report
@@ -158,6 +159,7 @@ class McpReadToolsMixin:
             project_metadata={
                 "name": project.get("name") or project_path.name,
                 "role": project_role(config),
+                "status": project_status(config),
                 "project_root": self._display_path(project_path),
                 "config_path": loaded["config_relpath"],
             },
@@ -201,7 +203,17 @@ class McpReadToolsMixin:
         config = loaded["config"] if isinstance(loaded["config"], dict) else {}
         if isinstance(config, dict):
             config_errors = validate_config(config)
-        research_ops = validate_research_ops_contract(project_path, config)
+        lifecycle_status = project_status(config)
+        if lifecycle_status == "legacy":
+            research_ops = {
+                "errors": [],
+                "warnings": [],
+                "raw_integrity_status": self._legacy_raw_integrity_status(config),
+                "canonical_docs_registry": canonical_docs_registry(project_path, config),
+                "placeholder_report": placeholder_report(config),
+            }
+        else:
+            research_ops = validate_research_ops_contract(project_path, config)
         config_errors.extend(research_ops["errors"])
         raw_integrity_status = research_ops["raw_integrity_status"]
         canonical_registry = research_ops["canonical_docs_registry"]
@@ -215,7 +227,9 @@ class McpReadToolsMixin:
         ]
         lockfile_status = self._lockfile_status(project_path, config, strict=bool(arguments.get("strict_lock", False)))
         valid = not config_errors and lockfile_status["valid"]
-        if valid:
+        if valid and lifecycle_status == "legacy":
+            next_action = "legacy_render_disabled"
+        elif valid:
             next_action = "ready_for_render"
         elif style_errors:
             next_action = "fix_style_contract"
@@ -230,6 +244,8 @@ class McpReadToolsMixin:
         warnings.extend(research_ops["warnings"])
         warnings.extend(naming_lint["warnings"])
         warnings.extend(render_environment_warnings)
+        if valid and lifecycle_status == "legacy":
+            warnings.append("Project is marked legacy; rendering is disabled for retired projects.")
         status = "warning" if warnings else "ok"
         if valid and warnings:
             summary = "Project config is valid with advisory warnings."
@@ -253,6 +269,7 @@ class McpReadToolsMixin:
             naming_lint=naming_lint,
             canonical_docs_registry=canonical_registry,
             placeholder_report=placeholders,
+            project_status=lifecycle_status,
             recommended_next_action=next_action,
         )
 
@@ -264,6 +281,8 @@ class McpReadToolsMixin:
                 "config_path": "",
                 "role": project.role,
                 "status": self._project_status(project),
+                "project_status": getattr(project, "status", "active"),
+                "classification": project.classification,
                 "errors": list(project.errors),
                 "declared_figures": 0,
                 "declared_diagrams": 0,
@@ -275,6 +294,8 @@ class McpReadToolsMixin:
                 "project_root": project.path,
                 "config_path": project.config,
                 "status": "invalid",
+                "project_status": "active",
+                "classification": "invalid",
                 "errors": ["Project config is a symlink and is not exposed through MCP resources."],
                 "role": "module",
                 "declared_figures": 0,
@@ -295,6 +316,8 @@ class McpReadToolsMixin:
             "config_path": project.config,
             "role": project.role,
             "status": self._project_status(project),
+            "project_status": project_status(config),
+            "classification": project.classification,
             "errors": list(project.errors),
             "declared_figures": len(figures),
             "declared_diagrams": len(diagrams),
@@ -305,6 +328,8 @@ class McpReadToolsMixin:
     def _project_status(project: Any) -> str:
         if not project.valid:
             return "invalid"
+        if getattr(project, "status", "active") == "legacy":
+            return "legacy"
         if getattr(project, "role", "module") == "master":
             return "master"
         if project.classification in {"folder_role", "unclassified"}:
@@ -314,6 +339,22 @@ class McpReadToolsMixin:
         if project.classification == "quarantine":
             return project.classification
         return "valid"
+
+    @staticmethod
+    def _legacy_raw_integrity_status(config: dict[str, Any]) -> dict[str, Any]:
+        configured = raw_integrity_config(config) is not None
+        return {
+            "configured": configured,
+            "sealed": False,
+            "ok": True,
+            "manifest_path": "",
+            "mode": "legacy_exempt" if configured else "",
+            "sealed_at": "",
+            "modified": [],
+            "added": [],
+            "removed": [],
+            "errors": [],
+        }
 
     @staticmethod
     def _folder_role_summary(project_path: Path, config: dict[str, Any]) -> dict[str, Any]:

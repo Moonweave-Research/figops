@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 
 from hub_core.adapters import select_adapters
-from hub_core.config_parser import master_execution_error, project_role, validate_config
+from hub_core.config_parser import master_execution_error, project_role, project_status, validate_config
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.tools.render_support import McpRenderToolSupportMixin
 from hub_core.rendering import PLOT_TYPES
@@ -764,6 +764,20 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                     errors=[master_execution_error(config)],
                     failure_stage="CONFIG",
                     resolution_hint="Select a declared execution module and render from that module project.",
+                )
+            if project_status(config) == "legacy":
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project is marked legacy; rendering is disabled for retired projects.",
+                    errors=["project is marked legacy; rendering is disabled for retired projects."],
+                    failure_stage="CONFIG",
+                    resolution_hint=(
+                        "Keep the retired project inspectable with inspect_project/validate_project, "
+                        "or set project.status to active before rendering."
+                    ),
                 )
             research_ops = validate_research_ops_contract(project_path, config)
             if research_ops["errors"]:
