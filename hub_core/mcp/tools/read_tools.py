@@ -165,6 +165,7 @@ class McpReadToolsMixin:
             pipeline_steps={"analysis": len(analysis_steps)},
             figure_outputs=figure_outputs,
             diagram_outputs=diagram_outputs,
+            figure_traceability_matrix=self._traceability_matrix(figures),
             missing_inputs=self._missing_inputs(project_path, analysis_steps),
             missing_outputs=self._missing_paths(project_path, figure_outputs + diagram_outputs),
             style_summary={
@@ -347,6 +348,27 @@ class McpReadToolsMixin:
             if isinstance(sample, dict) and isinstance(sample.get("sample_id"), str) and sample["sample_id"].strip()
         ]
         return {"sample_count": len(sample_ids), "sample_ids": sample_ids}
+
+    @staticmethod
+    def _traceability_matrix(figures: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        matrix = []
+        for index, figure in enumerate(figures, 1):
+            figure_id = figure.get("id")
+            inputs = figure.get("inputs", [])
+            samples = figure.get("samples", [])
+            conditions = figure.get("conditions", [])
+            matrix.append(
+                {
+                    "id": figure_id if isinstance(figure_id, str) and figure_id.strip() else f"Figure{index}",
+                    "claim": figure.get("claim") if isinstance(figure.get("claim"), str) else "",
+                    "script": figure.get("script") if isinstance(figure.get("script"), str) else "",
+                    "inputs": inputs if isinstance(inputs, list) else [],
+                    "samples": samples if isinstance(samples, list) else [],
+                    "conditions": conditions if isinstance(conditions, list) else [],
+                    "output": figure.get("output") if isinstance(figure.get("output"), str) else "",
+                }
+            )
+        return matrix
 
     @staticmethod
     def _validation_summary(config_path: Path) -> dict[str, Any]:

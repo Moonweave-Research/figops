@@ -405,6 +405,19 @@ def _condition_sample_references(experimental_conditions: object) -> set[str]:
     return sample_refs
 
 
+def _experimental_condition_ids(experimental_conditions: object) -> set[str] | None:
+    if not isinstance(experimental_conditions, dict) or "conditions" not in experimental_conditions:
+        return None
+    conditions = experimental_conditions.get("conditions", [])
+    if not isinstance(conditions, list):
+        return set()
+    return {
+        condition["id"].strip()
+        for condition in conditions
+        if isinstance(condition, dict) and isinstance(condition.get("id"), str) and condition["id"].strip()
+    }
+
+
 def _is_scalar_flag_value(value: object) -> bool:
     return isinstance(value, (str, bool, int, float)) and not (isinstance(value, float) and math.isnan(value))
 
@@ -990,12 +1003,23 @@ def validate_config(config):
                             f"(analysis must be '{norm_policy['analysis_lang']}')."
                         )
 
+    traceability_contract = config.get("data_contract", {})
+    require_figure_traceability = (
+        traceability_contract.get("require_figure_traceability", False) is True
+        if isinstance(traceability_contract, dict)
+        else False
+    )
+    condition_ids = _experimental_condition_ids(config.get("experimental_conditions"))
+
     _validate_visual_outputs(
         errors,
         config.get("figures", []),
         section_name="figures",
         norm_policy=norm_policy,
         preset_names=preset_names,
+        sample_ids=sample_ids,
+        condition_ids=condition_ids,
+        require_traceability=require_figure_traceability,
     )
     _validate_visual_outputs(
         errors,
@@ -1003,6 +1027,9 @@ def validate_config(config):
         section_name="diagrams",
         norm_policy=norm_policy,
         preset_names=preset_names,
+        sample_ids=sample_ids,
+        condition_ids=condition_ids,
+        require_traceability=False,
     )
 
     execution = config.get("execution", {})
@@ -1043,6 +1070,10 @@ def validate_config(config):
     if not isinstance(data_contract, dict):
         errors.append("Invalid 'data_contract' section (must be a mapping).")
     else:
+        if "require_figure_traceability" in data_contract and not isinstance(
+            data_contract.get("require_figure_traceability"), bool
+        ):
+            errors.append("data_contract.require_figure_traceability must be a boolean.")
         csv_checks = data_contract.get("csv_checks", [])
         if csv_checks is None:
             csv_checks = []
@@ -1460,6 +1491,9 @@ def _validate_visual_outputs(
     section_name,
     norm_policy,
     preset_names: set | None = None,
+    sample_ids: set[str] | None = None,
+    condition_ids: set[str] | None = None,
+    require_traceability: bool = False,
 ):
     if items is None:
         items = []
@@ -1481,6 +1515,66 @@ def _validate_visual_outputs(
 
         if not isinstance(output, str) or not output.strip():
             errors.append(f"{section_name}[{i}].output is required for output verification.")
+
+        claim = item.get("claim")
+        if claim is not None and (not isinstance(claim, str) or not claim.strip()):
+            errors.append(f"{section_name}[{i}].claim must be a non-empty string when provided.")
+
+        trace_samples = item.get("samples", [])
+        if trace_samples is None:
+            trace_samples = []
+        if not isinstance(trace_samples, list):
+            errors.append(f"{section_name}[{i}].samples must be a list when provided.")
+            trace_samples = []
+        else:
+            valid_trace_samples = []
+            for sample_index, sample in enumerate(trace_samples, 1):
+                if not isinstance(sample, str) or not sample.strip():
+                    errors.append(f"{section_name}[{i}].samples[{sample_index}] must be a non-empty string.")
+                    continue
+                valid_trace_samples.append(sample.strip())
+            if sample_ids is not None:
+                unknown_samples = sorted(sample for sample in valid_trace_samples if sample not in sample_ids)
+                if unknown_samples:
+                    errors.append(
+                        f"{section_name}[{i}].samples references unknown sample_id(s): "
+                        f"{', '.join(unknown_samples)}."
+                    )
+
+        trace_conditions = item.get("conditions", [])
+        if trace_conditions is None:
+            trace_conditions = []
+        if not isinstance(trace_conditions, list):
+            errors.append(f"{section_name}[{i}].conditions must be a list when provided.")
+            trace_conditions = []
+        else:
+            valid_trace_conditions = []
+            for condition_index, condition in enumerate(trace_conditions, 1):
+                if not isinstance(condition, str) or not condition.strip():
+                    errors.append(f"{section_name}[{i}].conditions[{condition_index}] must be a non-empty string.")
+                    continue
+                valid_trace_conditions.append(condition.strip())
+            if condition_ids is not None:
+                unknown_conditions = sorted(
+                    condition for condition in valid_trace_conditions if condition not in condition_ids
+                )
+                if unknown_conditions:
+                    errors.append(
+                        f"{section_name}[{i}].conditions references unknown condition id(s): "
+                        f"{', '.join(unknown_conditions)}."
+                    )
+
+        if require_traceability:
+            missing = []
+            if not isinstance(claim, str) or not claim.strip():
+                missing.append("claim")
+            if sample_ids is not None and not trace_samples:
+                missing.append("samples")
+            if missing:
+                figure_id = item.get("id") if isinstance(item.get("id"), str) and item.get("id").strip() else f"#{i}"
+                missing_text = ", ".join(f"missing {field}" for field in missing)
+                errors.append(f"{section_name}[{i}] '{figure_id}' {missing_text} for traceability.")
+
         inputs = item.get("inputs", None)
         if inputs is not None and not isinstance(inputs, list):
             errors.append(f"{section_name}[{i}].inputs must be a list.")
