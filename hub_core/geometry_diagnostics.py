@@ -105,10 +105,11 @@ def diagnose_figure_geometry(
         checks.append(_journal_compliance(fig, data_axes, journal_compliance))
 
     # passed is None marks an informational skip (e.g. over-cap); never count it as a pass.
-    passed = all(c["passed"] for c in checks if c["name"] in _WARNING_ELIGIBLE and c["passed"] is not None)
+    evaluated = [c["passed"] for c in checks if c["name"] in _WARNING_ELIGIBLE and c["passed"] is not None]
+    passed = None if not evaluated else all(evaluated)
     return {
         "schema_version": SCHEMA_VERSION,
-        "passed": bool(passed),
+        "passed": None if passed is None else bool(passed),
         "checks": checks,
         "warnings": [],
     }
@@ -390,13 +391,6 @@ def _artists_outside_axes(ax: Axes, renderer: Any, axis_index: int) -> dict[str,
             "detail": "skipped: no data artists",
             "data": {"axis_index": int(axis_index)},
         }
-    if ax.get_autoscalex_on() is False and ax.get_autoscaley_on() is False:
-        return {
-            "name": name,
-            "passed": True,
-            "detail": "skipped: explicit limits (intentional zoom/crop)",
-            "data": {"axis_index": int(axis_index)},
-        }
     data_bb = ax.transData.transform_bbox(data_lim)
     axes_bb = ax.get_window_extent(renderer)
     data_area = _box_area(data_bb)
@@ -404,6 +398,13 @@ def _artists_outside_axes(ax: Axes, renderer: Any, axis_index: int) -> dict[str,
         outside_frac = _degenerate_outside_fraction(data_bb, axes_bb)
     else:
         outside_frac = float(1 - _inter_area(data_bb, axes_bb) / data_area)
+    if ax.get_autoscalex_on() is False or ax.get_autoscaley_on() is False:
+        return {
+            "name": name,
+            "passed": None,
+            "detail": f"informational: explicit limits crop data by {outside_frac * 100:.1f}% (axis {axis_index})",
+            "data": {"axis_index": int(axis_index), "outside_fraction": outside_frac},
+        }
     return {
         "name": name,
         "passed": bool(outside_frac <= DATA_OUTSIDE_AXES_WARN),
