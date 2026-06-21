@@ -15,6 +15,22 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.13.0] - 2026-06-21
+
+### Added
+
+- Research-operations philosophy Tier 2 traceability and provenance,
+  documented in `docs/specs/research_ops_philosophy.md`, adds an opt-in
+  `sample_registry` with unique sample ids and condition-reference integrity
+  validation (#141).
+- Figure, data, and claim traceability now supports figure `claim`,
+  `samples`, and `conditions` metadata with registry / condition reference
+  validation, opt-in `require_figure_traceability`, and an inspect
+  traceability matrix (#142).
+- Opt-in raw-data immutability via `data_contract.raw_integrity` now supports
+  sha256 manifest seal / verify, orchestrator preflight warn / strict modes,
+  and inspect status reporting (#143).
+
 ## [0.12.0] - 2026-06-21
 
 ### Added
