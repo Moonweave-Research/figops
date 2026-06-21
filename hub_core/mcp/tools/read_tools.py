@@ -174,6 +174,7 @@ class McpReadToolsMixin:
             },
             folder_role_summary=self._folder_role_summary(project_path, config),
             experimental_conditions_summary=self._experimental_conditions_summary(config),
+            sample_registry_summary=self._sample_registry_summary(config),
             normalization_needed=loaded["config_relpath"] == "scripts/project_config.yaml",
         )
 
@@ -334,6 +335,18 @@ class McpReadToolsMixin:
             if isinstance(condition, dict) and isinstance(condition.get("id"), str) and condition["id"].strip()
         ]
         return {"condition_count": len(condition_ids), "condition_ids": condition_ids}
+
+    @staticmethod
+    def _sample_registry_summary(config: dict[str, Any]) -> dict[str, Any]:
+        sample_registry = config.get("sample_registry", [])
+        if not isinstance(sample_registry, list):
+            return {"sample_count": 0, "sample_ids": []}
+        sample_ids = [
+            sample["sample_id"].strip()
+            for sample in sample_registry
+            if isinstance(sample, dict) and isinstance(sample.get("sample_id"), str) and sample["sample_id"].strip()
+        ]
+        return {"sample_count": len(sample_ids), "sample_ids": sample_ids}
 
     @staticmethod
     def _validation_summary(config_path: Path) -> dict[str, Any]:

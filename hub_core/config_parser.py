@@ -328,6 +328,83 @@ def _validate_experimental_conditions(errors: list[str], experimental_conditions
                 errors.append(f"experimental_conditions.equipment[{index}].role must be a string.")
 
 
+def _validate_sample_registry(errors: list[str], sample_registry: object) -> set[str] | None:
+    if sample_registry is None:
+        return None
+    if not isinstance(sample_registry, list):
+        errors.append("sample_registry must be a list when provided.")
+        return set()
+
+    sample_ids: set[str] = set()
+    for index, sample in enumerate(sample_registry, 1):
+        if not isinstance(sample, dict):
+            errors.append(f"sample_registry[{index}] must be a mapping.")
+            continue
+
+        sample_id = sample.get("sample_id")
+        if not isinstance(sample_id, str) or not sample_id.strip():
+            errors.append(f"sample_registry[{index}].sample_id is required and must be a non-empty string.")
+        else:
+            normalized_id = sample_id.strip()
+            if normalized_id in sample_ids:
+                errors.append(f"Duplicate sample_registry sample_id: '{normalized_id}'.")
+            sample_ids.add(normalized_id)
+
+        composition = sample.get("composition")
+        if composition is not None and (
+            isinstance(composition, bool) or not isinstance(composition, (str, int, float))
+        ):
+            errors.append(f"sample_registry[{index}].composition must be a string or number.")
+
+        for key in ("material", "batch", "fabrication_date", "status", "notes"):
+            value = sample.get(key)
+            if value is not None and not isinstance(value, str):
+                errors.append(f"sample_registry[{index}].{key} must be a string.")
+
+        raw_paths = sample.get("raw_paths")
+        if raw_paths is None:
+            continue
+        if not isinstance(raw_paths, list):
+            errors.append(f"sample_registry[{index}].raw_paths must be a list when provided.")
+            continue
+        for path_index, raw_path in enumerate(raw_paths, 1):
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                errors.append(f"sample_registry[{index}].raw_paths[{path_index}] must be a non-empty relative path.")
+                continue
+            if os.path.isabs(raw_path):
+                errors.append(
+                    f"sample_registry[{index}].raw_paths[{path_index}] must be a relative path; "
+                    "absolute path is not allowed."
+                )
+            elif ".." in raw_path.replace("\\", "/").split("/"):
+                errors.append(f"sample_registry[{index}].raw_paths[{path_index}] must not contain path traversal '..'.")
+
+    return sample_ids
+
+
+def _condition_sample_references(experimental_conditions: object) -> set[str]:
+    if not isinstance(experimental_conditions, dict):
+        return set()
+    conditions = experimental_conditions.get("conditions", [])
+    if not isinstance(conditions, list):
+        return set()
+
+    sample_refs: set[str] = set()
+    for condition in conditions:
+        if not isinstance(condition, dict):
+            continue
+        parameters = condition.get("parameters", {})
+        if not isinstance(parameters, dict):
+            continue
+        samples = parameters.get("samples", [])
+        if not isinstance(samples, list):
+            continue
+        for sample in samples:
+            if isinstance(sample, str) and sample.strip():
+                sample_refs.add(sample.strip())
+    return sample_refs
+
+
 def _is_scalar_flag_value(value: object) -> bool:
     return isinstance(value, (str, bool, int, float)) and not (isinstance(value, float) and math.isnan(value))
 
@@ -740,6 +817,14 @@ def validate_config(config):
             errors.append("project.role 'master' must not define diagrams; use execution modules.")
 
     _validate_experimental_conditions(errors, config.get("experimental_conditions"))
+    sample_ids = _validate_sample_registry(errors, config.get("sample_registry"))
+    if sample_ids is not None:
+        unknown_sample_ids = sorted(_condition_sample_references(config.get("experimental_conditions")) - sample_ids)
+        if unknown_sample_ids:
+            errors.append(
+                "Unknown sample_id(s) referenced by experimental_conditions.conditions[].parameters.samples: "
+                f"{', '.join(unknown_sample_ids)}."
+            )
 
     visual_style = config.get("visual_style", {})
     if visual_style is None:
