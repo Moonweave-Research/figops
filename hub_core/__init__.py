@@ -13,6 +13,7 @@ from .config_parser import (
     parse_comparison_config,
     parse_sweep_config,
     project_role,
+    project_status,
 )
 from .data_contract import validate_data_contract, validate_data_contract_preflight
 from .data_regression import check_golden_regression, freeze_golden_dataset
@@ -57,6 +58,7 @@ __all__ = [
     "parse_sweep_config",
     "print_provenance",
     "project_role",
+    "project_status",
     "prompt_numeric_selection",
     "rerun_in_docker",
     "run_analysis",

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
+from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_PROJECT_STATUSES, ALLOWED_TARGET_FORMATS
 from hub_core.data_contract import SEMANTIC_CHECK_DEFINITIONS
 from hub_core.domain_analysis import list_domain_helper_descriptions
 from hub_core.rendering import PLOT_TYPES
@@ -269,6 +269,11 @@ def list_tool_definitions() -> list[dict[str, Any]]:
     }
     job_id_arg = {"type": "string", "description": "Stable render job ID; auto-generated when omitted."}
     project_role_schema = {"type": "string", "enum": ["master", "module"]}
+    project_status_schema = {"type": "string", "enum": sorted(ALLOWED_PROJECT_STATUSES)}
+    discovery_classification_schema = {
+        "type": "string",
+        "enum": ["ephemeral", "folder_role", "invalid", "legacy", "official", "quarantine", "unclassified"],
+    }
     discovery_role_schema = {
         "type": "string",
         "enum": [
@@ -292,6 +297,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
             "config_path": {"type": "string"},
             "role": discovery_role_schema,
             "status": {"type": "string"},
+            "project_status": project_status_schema,
+            "classification": discovery_classification_schema,
             "errors": {"type": "array", "items": {"type": "string"}},
             "declared_figures": {"type": "integer"},
             "declared_diagrams": {"type": "integer"},
@@ -303,6 +310,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         "properties": {
             "name": {"type": "string"},
             "role": project_role_schema,
+            "status": project_status_schema,
             "project_root": {"type": "string"},
             "config_path": {"type": "string"},
         },
@@ -436,6 +444,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "naming_lint": {"type": "object"},
                     "canonical_docs_registry": {"type": "object"},
                     "placeholder_report": {"type": "object"},
+                    "project_status": project_status_schema,
                     "recommended_next_action": {"type": "string"},
                 }
             ),

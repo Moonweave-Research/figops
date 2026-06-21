@@ -570,6 +570,18 @@ Discover Graph Hub project configs without executing scripts or writing files.
     "projects": {
       "items": {
         "properties": {
+          "classification": {
+            "enum": [
+              "ephemeral",
+              "folder_role",
+              "invalid",
+              "legacy",
+              "official",
+              "quarantine",
+              "unclassified"
+            ],
+            "type": "string"
+          },
           "config_path": {
             "type": "string"
           },
@@ -589,6 +601,13 @@ Discover Graph Hub project configs without executing scripts or writing files.
             "type": "string"
           },
           "project_root": {
+            "type": "string"
+          },
+          "project_status": {
+            "enum": [
+              "active",
+              "legacy"
+            ],
             "type": "string"
           },
           "role": {
@@ -846,6 +865,13 @@ Summarize one project config without running analysis, plotting, or report write
             "module"
           ],
           "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "legacy"
+          ],
+          "type": "string"
         }
       },
       "type": "object"
@@ -1041,6 +1067,13 @@ Run read-only config, data contract, style, and lockfile checks without executin
     },
     "placeholder_report": {
       "type": "object"
+    },
+    "project_status": {
+      "enum": [
+        "active",
+        "legacy"
+      ],
+      "type": "string"
     },
     "raw_integrity_status": {
       "type": "object"

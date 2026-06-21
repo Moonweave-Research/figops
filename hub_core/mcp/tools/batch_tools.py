@@ -388,7 +388,9 @@ class McpBatchToolsMixin:
             if project.path.startswith(".worktrees/"):
                 return "" if include_worktrees else "ephemeral_project"
             return "" if include_ephemeral else "ephemeral_project"
-        if project.classification == "legacy" and not include_legacy:
+        if (
+            project.classification == "legacy" or getattr(project, "status", "active") == "legacy"
+        ) and not include_legacy:
             return "legacy_project"
         if project.classification == "quarantine" and not include_quarantine:
             return "quarantine_project"
@@ -408,6 +410,7 @@ class McpBatchToolsMixin:
             "project_id": project.project_id,
             "project_root": project.path,
             "classification": project.classification,
+            "project_status": getattr(project, "status", "active"),
             "target_format": project.target_format,
             "valid": bool(validation.get("valid")),
             "status": validation.get("status", "error"),
@@ -420,6 +423,7 @@ class McpBatchToolsMixin:
             "project_id": project.project_id,
             "project_root": project.path,
             "classification": project.classification,
+            "project_status": getattr(project, "status", "active"),
             "target_format": project.target_format,
             "valid": bool(project.valid),
             "reason": reason,

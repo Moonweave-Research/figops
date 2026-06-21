@@ -39,6 +39,7 @@ ALLOWED_PREFETCH_ADAPTERS = {"none", "noop", "off", "gdrive"}
 ALLOWED_ATHENA_ADAPTERS = {"none", "null", "off", "legacy", "on"}
 ALLOWED_CONVENTIONS_ADAPTERS = {"none", "generic", "surfur"}
 ALLOWED_PROJECT_ROLES = {"master", "module"}
+ALLOWED_PROJECT_STATUSES = {"active", "legacy"}
 ALLOWED_RAW_INTEGRITY_MODES = {"warn", "strict"}
 ALLOWED_FOLDER_ROLES = {
     "module",
@@ -51,6 +52,7 @@ ALLOWED_FOLDER_ROLES = {
     "archive",
 }
 DEFAULT_PROJECT_ROLE = "module"
+DEFAULT_PROJECT_STATUS = "active"
 CONFIG_FILE_CANDIDATES = (
     "project_config.yaml",
     os.path.join("scripts", "project_config.yaml"),
@@ -803,6 +805,17 @@ def project_role(config):
     return role if role else DEFAULT_PROJECT_ROLE
 
 
+def project_status(config):
+    project = config.get("project") if isinstance(config, dict) else {}
+    if not isinstance(project, dict):
+        return DEFAULT_PROJECT_STATUS
+    status = project.get("status", DEFAULT_PROJECT_STATUS)
+    if not isinstance(status, str):
+        return DEFAULT_PROJECT_STATUS
+    status = status.strip().lower()
+    return status if status else DEFAULT_PROJECT_STATUS
+
+
 def data_contract_bool(config: dict, key: str) -> bool | None:
     data_contract = config.get("data_contract", {}) if isinstance(config, dict) else {}
     if not isinstance(data_contract, dict):
@@ -854,6 +867,10 @@ def normalize_project_defaults(config):
             project["role"] = DEFAULT_PROJECT_ROLE
         elif isinstance(project.get("role"), str):
             project["role"] = project["role"].strip().lower()
+        if "status" not in project:
+            project["status"] = DEFAULT_PROJECT_STATUS
+        elif isinstance(project.get("status"), str):
+            project["status"] = project["status"].strip().lower()
     return config
 
 
@@ -861,6 +878,7 @@ def _load_project_metadata(config_path, fallback_name):
     metadata = {
         "name": fallback_name,
         "role": DEFAULT_PROJECT_ROLE,
+        "status": DEFAULT_PROJECT_STATUS,
         "valid": False,
         "errors": [],
     }
@@ -888,6 +906,7 @@ def _load_project_metadata(config_path, fallback_name):
         project_section = {}
     metadata["name"] = project_section.get("name", fallback_name)
     metadata["role"] = project_role(conf_data)
+    metadata["status"] = project_status(conf_data)
     metadata["errors"] = validate_config(conf_data)
     metadata["valid"] = len(metadata["errors"]) == 0
     return metadata
@@ -942,6 +961,10 @@ def validate_config(config):
             errors.append(f"Invalid project.role: '{raw_role}'. Allowed values: {allowed}.")
         else:
             role = raw_role.strip().lower() or DEFAULT_PROJECT_ROLE
+        raw_status = project.get("status", DEFAULT_PROJECT_STATUS)
+        if not isinstance(raw_status, str) or raw_status.strip().lower() not in ALLOWED_PROJECT_STATUSES:
+            allowed = ", ".join(sorted(ALLOWED_PROJECT_STATUSES))
+            errors.append(f"Invalid project.status: '{raw_status}'. Allowed values: {allowed}.")
 
     modules = config.get("modules", [])
     if modules is None:
@@ -1914,6 +1937,7 @@ def list_projects(root_dir, recursive=True, max_depth=4):
                 project["name"],
                 project["path"],
                 project.get("role", "-"),
+                project.get("status", "-"),
                 project.get("classification", "-"),
                 project.get("target_format", "-"),
                 _resolve_operational_state(operational_states, project["path"]),
@@ -1923,7 +1947,7 @@ def list_projects(root_dir, recursive=True, max_depth=4):
 
     ui_table(
         title=f"🏛️ Research Projects (depth <= {max_depth})",
-        columns=["Project Name", "Path", "Role", "Class", "Style", "Op State", "Status"],
+        columns=["Project Name", "Path", "Role", "Lifecycle", "Class", "Style", "Op State", "Status"],
         rows=rows,
     )
 

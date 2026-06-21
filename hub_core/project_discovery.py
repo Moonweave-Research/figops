@@ -19,6 +19,7 @@ class DiscoveredProject:
     config: str
     config_path: str
     role: str
+    status: str
     valid: bool
     errors: tuple[str, ...]
     classification: str
@@ -32,6 +33,7 @@ class DiscoveredProject:
             "config": self.config,
             "config_path": self.config_path,
             "role": self.role,
+            "status": self.status,
             "valid": self.valid,
             "errors": list(self.errors),
             "classification": self.classification,
@@ -136,6 +138,7 @@ class ProjectDiscoveryService:
             config=rel_config,
             config_path=str(config_path),
             role=str(metadata["role"]),
+            status=str(metadata["status"]),
             valid=valid,
             errors=tuple(metadata["errors"]),
             classification=classification,
@@ -210,6 +213,7 @@ class ProjectDiscoveryService:
             config="",
             config_path="",
             role=role,
+            status="active",
             valid=True,
             errors=(),
             classification=classification,
@@ -335,6 +339,8 @@ def get_discoverable_projects(
             continue
         if project.get("role") != "module" or not project.get("config_path"):
             continue
+        if project.get("status") == "legacy":
+            continue
         if project.get("classification") == "quarantine" and not include_quarantine:
             continue
         projects.append(
@@ -344,6 +350,7 @@ def get_discoverable_projects(
                 "path": project["path"],
                 "config": project["config"],
                 "role": project["role"],
+                "status": project["status"],
                 "classification": project["classification"],
                 "target_format": project["target_format"],
             }
