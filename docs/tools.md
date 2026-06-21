@@ -833,6 +833,9 @@ Summarize one project config without running analysis, plotting, or report write
       },
       "type": "object"
     },
+    "raw_integrity_status": {
+      "type": "object"
+    },
     "resolution_hint": {
       "type": "string"
     },
@@ -1008,6 +1011,9 @@ Run read-only config, data contract, style, and lockfile checks without executin
     },
     "operation_id": {
       "type": "string"
+    },
+    "raw_integrity_status": {
+      "type": "object"
     },
     "recommended_next_action": {
       "type": "string"

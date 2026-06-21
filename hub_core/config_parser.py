@@ -39,6 +39,7 @@ ALLOWED_PREFETCH_ADAPTERS = {"none", "noop", "off", "gdrive"}
 ALLOWED_ATHENA_ADAPTERS = {"none", "null", "off", "legacy", "on"}
 ALLOWED_CONVENTIONS_ADAPTERS = {"none", "generic", "surfur"}
 ALLOWED_PROJECT_ROLES = {"master", "module"}
+ALLOWED_RAW_INTEGRITY_MODES = {"warn", "strict"}
 ALLOWED_FOLDER_ROLES = {
     "module",
     "raw_reservoir",
@@ -403,6 +404,45 @@ def _condition_sample_references(experimental_conditions: object) -> set[str]:
             if isinstance(sample, str) and sample.strip():
                 sample_refs.add(sample.strip())
     return sample_refs
+
+
+def _validate_raw_integrity_config(errors: list[str], raw_integrity: object) -> None:
+    if raw_integrity is None:
+        return
+    if not isinstance(raw_integrity, dict):
+        errors.append("data_contract.raw_integrity must be a mapping when provided.")
+        return
+
+    manifest = raw_integrity.get("manifest", "raw/.raw_manifest.json")
+    if not isinstance(manifest, str) or not manifest.strip():
+        errors.append("data_contract.raw_integrity.manifest must be a non-empty relative path.")
+    else:
+        _validate_relative_path_value(errors, "data_contract.raw_integrity.manifest", manifest)
+
+    mode = raw_integrity.get("mode", "warn")
+    if not isinstance(mode, str) or mode.strip().lower() not in ALLOWED_RAW_INTEGRITY_MODES:
+        allowed = ", ".join(sorted(ALLOWED_RAW_INTEGRITY_MODES))
+        errors.append(f"data_contract.raw_integrity.mode must be one of: {allowed}.")
+
+    paths = raw_integrity.get("paths", ["raw/"])
+    if paths is None:
+        paths = ["raw/"]
+    if not isinstance(paths, list):
+        errors.append("data_contract.raw_integrity.paths must be a list of relative paths when provided.")
+        return
+    for index, path in enumerate(paths, 1):
+        if not isinstance(path, str) or not path.strip():
+            errors.append(f"data_contract.raw_integrity.paths[{index}] must be a non-empty relative path.")
+            continue
+        _validate_relative_path_value(errors, f"data_contract.raw_integrity.paths[{index}]", path)
+
+
+def _validate_relative_path_value(errors: list[str], field_name: str, path: str) -> None:
+    normalized = path.strip().replace("\\", "/")
+    if os.path.isabs(path):
+        errors.append(f"{field_name} must be a relative path, got absolute path '{path}'.")
+    elif ".." in normalized.split("/"):
+        errors.append(f"{field_name} must not contain path traversal '..': '{path}'.")
 
 
 def _experimental_condition_ids(experimental_conditions: object) -> set[str] | None:
@@ -1074,6 +1114,7 @@ def validate_config(config):
             data_contract.get("require_figure_traceability"), bool
         ):
             errors.append("data_contract.require_figure_traceability must be a boolean.")
+        _validate_raw_integrity_config(errors, data_contract.get("raw_integrity"))
         csv_checks = data_contract.get("csv_checks", [])
         if csv_checks is None:
             csv_checks = []

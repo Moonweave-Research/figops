@@ -21,6 +21,7 @@ from hub_core.config_parser import (
 )
 from hub_core.mcp.schemas import describe_graphhub_surface
 from hub_core.project_discovery import ProjectDiscoveryService
+from hub_core.raw_integrity import raw_integrity_config, raw_integrity_drift_message, verify_raw_integrity
 from themes.style_packs import list_style_packs
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
 
@@ -176,6 +177,7 @@ class McpReadToolsMixin:
             folder_role_summary=self._folder_role_summary(project_path, config),
             experimental_conditions_summary=self._experimental_conditions_summary(config),
             sample_registry_summary=self._sample_registry_summary(config),
+            raw_integrity_status=self._raw_integrity_status(project_path, config),
             normalization_needed=loaded["config_relpath"] == "scripts/project_config.yaml",
         )
 
@@ -186,6 +188,14 @@ class McpReadToolsMixin:
         config = loaded["config"] if isinstance(loaded["config"], dict) else {}
         if isinstance(config, dict):
             config_errors = validate_config(config)
+        raw_integrity_status = self._raw_integrity_status(project_path, config)
+        raw_integrity_warning = ""
+        if raw_integrity_status["configured"] and not raw_integrity_status["ok"]:
+            raw_integrity_warning = "; ".join(
+                raw_integrity_status.get("errors") or [raw_integrity_drift_message(raw_integrity_status)]
+            )
+            if raw_integrity_status.get("mode") == "strict":
+                config_errors.append(raw_integrity_warning)
 
         data_contract_errors = [error for error in config_errors if error.startswith("data_contract.")]
         style_errors = [
@@ -206,6 +216,8 @@ class McpReadToolsMixin:
 
         render_environment_warnings = self._project_context_render_warnings(project_path)
         warnings = [] if valid else ["Project validation reported warnings or errors."]
+        if raw_integrity_warning and raw_integrity_status.get("mode") != "strict":
+            warnings.append(raw_integrity_warning)
         warnings.extend(render_environment_warnings)
         status = "warning" if warnings else "ok"
         if valid and render_environment_warnings:
@@ -226,6 +238,7 @@ class McpReadToolsMixin:
             data_contract_errors=data_contract_errors,
             lockfile_status=lockfile_status,
             style_errors=style_errors,
+            raw_integrity_status=raw_integrity_status,
             recommended_next_action=next_action,
         )
 
@@ -348,6 +361,23 @@ class McpReadToolsMixin:
             if isinstance(sample, dict) and isinstance(sample.get("sample_id"), str) and sample["sample_id"].strip()
         ]
         return {"sample_count": len(sample_ids), "sample_ids": sample_ids}
+
+    @staticmethod
+    def _raw_integrity_status(project_path: Path, config: dict[str, Any]) -> dict[str, Any]:
+        if raw_integrity_config(config) is None:
+            return {
+                "configured": False,
+                "sealed": False,
+                "ok": True,
+                "manifest_path": "",
+                "mode": "",
+                "sealed_at": "",
+                "modified": [],
+                "added": [],
+                "removed": [],
+                "errors": [],
+            }
+        return verify_raw_integrity(project_path, config)
 
     @staticmethod
     def _traceability_matrix(figures: list[dict[str, Any]]) -> list[dict[str, Any]]:

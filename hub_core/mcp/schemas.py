@@ -398,6 +398,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "folder_role_summary": {"type": "object"},
                     "experimental_conditions_summary": {"type": "object"},
                     "sample_registry_summary": {"type": "object"},
+                    "raw_integrity_status": {"type": "object"},
                     "normalization_needed": {"type": "boolean"},
                 }
             ),
@@ -416,6 +417,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "data_contract_errors": {"type": "array", "items": {"type": "string"}},
                     "lockfile_status": {"type": "object"},
                     "style_errors": {"type": "array", "items": {"type": "string"}},
+                    "raw_integrity_status": {"type": "object"},
                     "recommended_next_action": {"type": "string"},
                 }
             ),
