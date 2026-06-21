@@ -389,6 +389,80 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             self.assertNotIn(broad_root, strict_server.allowed_data_roots)
             self.assertTrue(any("refused broad data root" in warning for warning in strict_health["warnings"]))
 
+    def test_allowed_data_roots_strict_data_mode_requires_explicit_roots(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_strict_data_") as tmpdir:
+            root = Path(tmpdir) / "research"
+            root.mkdir()
+            runtime_root = Path(tmpdir) / "runtime"
+            runtime_root.mkdir()
+            explicit_root = Path(tmpdir) / "explicit"
+            explicit_root.mkdir()
+            implicit_data = root / "implicit.csv"
+            implicit_data.write_text("x,y\n1,2\n", encoding="utf-8")
+            explicit_data = explicit_root / "explicit.csv"
+            explicit_data.write_text("x,y\n1,2\n", encoding="utf-8")
+
+            with unittest.mock.patch.dict(
+                os.environ,
+                {
+                    "GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS": str(explicit_root),
+                    "GRAPH_HUB_MCP_STRICT_DATA_ROOTS": "1",
+                },
+                clear=False,
+            ):
+                server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            self.assertNotIn(root.resolve(), server.allowed_data_roots)
+            self.assertIn(runtime_root.resolve(), server.allowed_data_roots)
+            self.assertIn(explicit_root.resolve(), server.allowed_data_roots)
+            self.assertEqual(
+                server._resolve_allowed_data_path(str(explicit_data), field_name="data_path"),
+                explicit_data.resolve(),
+            )
+            with self.assertRaisesRegex(ValueError, "allowed data root"):
+                server._resolve_allowed_data_path(str(implicit_data), field_name="data_path")
+
+    def test_allowed_data_roots_strict_data_mode_warns_without_explicit_roots(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_strict_data_") as tmpdir:
+            root = Path(tmpdir) / "research"
+            root.mkdir()
+            runtime_root = Path(tmpdir) / "runtime"
+            runtime_root.mkdir()
+
+            with unittest.mock.patch.dict(
+                os.environ,
+                {
+                    "GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS": "",
+                    "GRAPH_HUB_MCP_STRICT_DATA_ROOTS": "1",
+                },
+                clear=False,
+            ):
+                server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+                health = self._call(server, "graphhub.health")
+
+            self.assertNotIn(root.resolve(), server.allowed_data_roots)
+            self.assertTrue(any("GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS" in warning for warning in health["warnings"]))
+
+    def test_allowed_data_roots_warn_for_multi_user_parent_root(self):
+        multi_user_root = Path("/Users") if os.name != "nt" and Path("/Users").is_dir() else Path("/home")
+        if not multi_user_root.is_dir():
+            self.skipTest("No standard multi-user parent root is available on this platform.")
+
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_multi_user_root_") as tmpdir:
+            root = Path(tmpdir)
+            runtime_root = root / "runtime"
+
+            with unittest.mock.patch.dict(
+                os.environ,
+                {"GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS": str(multi_user_root)},
+                clear=False,
+            ):
+                server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+                health = self._call(server, "graphhub.health")
+
+            self.assertIn(multi_user_root.resolve(), server.allowed_data_roots)
+            self.assertTrue(any("multi-user parent" in warning for warning in health["warnings"]))
+
     def test_default_allowed_data_roots_keep_data_paths_contained(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_containment_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"

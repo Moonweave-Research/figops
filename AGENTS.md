@@ -116,6 +116,7 @@ report warnings through `graphhub.health`.
   warn by default. Set `GRAPH_HUB_MCP_STRICT_ROOTS=1` to refuse broad roots.
 - `GRAPH_HUB_MCP_STRICT_ROOTS`: refuses broad roots listed in
   `GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS` when set to `1`, `true`, `yes`, or `on`.
+- `GRAPH_HUB_MCP_STRICT_DATA_ROOTS`: requires explicit MCP data roots when enabled.
 - `GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED`: enables MCP tools that write files or
   execute render jobs. It defaults closed when unset.
 - `GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES`: limits MCP CSV render input size.
@@ -123,6 +124,7 @@ report warnings through `graphhub.health`.
 - `RESEARCH_HUB_RUNTIME_ROOT` / `RESEARCH_HUB_RUNTIME_HOME`: select where MCP
   jobs, manifests, logs, and generated artifacts are stored. Runtime access
   must stay under the resolved runtime root.
+- `GRAPH_HUB_RUNTIME_ROOT`: launcher-compatible fallback for runtime storage root selection.
 - `RESEARCH_HUB_PATH`: tells project scripts where to import Graph Hub helpers.
   The launcher must point it at this repository, not at a user-controlled path.
 - `PROJECT_ROOT`: points project scripts at the active project or runtime

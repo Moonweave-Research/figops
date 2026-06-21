@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from hub_core.runtime_paths import runtime_root_env_override
+
 ROOT_ADAPTER_SECURITY_ENV_VARS = frozenset(
     {
         "ATHENA_PATH",
@@ -12,9 +14,11 @@ ROOT_ADAPTER_SECURITY_ENV_VARS = frozenset(
         "GRAPH_HUB_CONVENTIONS_ADAPTER",
         "GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS",
         "GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES",
+        "GRAPH_HUB_MCP_STRICT_DATA_ROOTS",
         "GRAPH_HUB_MCP_STRICT_ROOTS",
         "GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED",
         "GRAPH_HUB_PREFETCH_ADAPTER",
+        "GRAPH_HUB_RUNTIME_ROOT",
         "PROJECT_ROOT",
         "RESEARCH_HUB_PATH",
         "RESEARCH_HUB_RUNTIME_HOME",
@@ -31,6 +35,7 @@ class McpServerConfig:
     write_tools_enabled: bool | None = None
     allowed_data_roots: tuple[str | os.PathLike, ...] = ()
     strict_roots: bool | None = None
+    strict_data_roots: bool | None = None
 
     @classmethod
     def from_mapping(cls, values: dict[str, Any] | None) -> McpServerConfig:
@@ -52,6 +57,9 @@ class McpServerConfig:
         strict_roots = values.get("strict_roots")
         if strict_roots is not None and not isinstance(strict_roots, bool):
             raise TypeError("MCP server config strict_roots must be a boolean.")
+        strict_data_roots = values.get("strict_data_roots")
+        if strict_data_roots is not None and not isinstance(strict_data_roots, bool):
+            raise TypeError("MCP server config strict_data_roots must be a boolean.")
 
         return cls(
             hub_path=values.get("hub_path"),
@@ -60,11 +68,12 @@ class McpServerConfig:
             write_tools_enabled=write_tools_enabled,
             allowed_data_roots=tuple(allowed_data_roots),
             strict_roots=strict_roots,
+            strict_data_roots=strict_data_roots,
         )
 
     @classmethod
     def from_env(cls) -> McpServerConfig:
-        runtime_root = os.environ.get("RESEARCH_HUB_RUNTIME_ROOT") or os.environ.get("RESEARCH_HUB_RUNTIME_HOME")
+        runtime_root = runtime_root_env_override()
         allowed_data_roots = tuple(
             item.strip()
             for item in os.environ.get("GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS", "").split(os.pathsep)
@@ -77,6 +86,7 @@ class McpServerConfig:
             write_tools_enabled=_env_bool("GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED"),
             allowed_data_roots=allowed_data_roots,
             strict_roots=_env_bool("GRAPH_HUB_MCP_STRICT_ROOTS"),
+            strict_data_roots=_env_bool("GRAPH_HUB_MCP_STRICT_DATA_ROOTS"),
         )
 
     def overlay(self, **overrides: Any) -> McpServerConfig:
@@ -87,6 +97,7 @@ class McpServerConfig:
             "write_tools_enabled": self.write_tools_enabled,
             "allowed_data_roots": self.allowed_data_roots,
             "strict_roots": self.strict_roots,
+            "strict_data_roots": self.strict_data_roots,
         }
         for key, value in overrides.items():
             if value is not None:

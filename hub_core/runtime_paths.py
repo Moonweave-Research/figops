@@ -68,9 +68,19 @@ def _repo_runtime_root_from_symlink():
     return None
 
 
+def runtime_root_env_override():
+    # Server storage precedence is explicit and backward-compatible:
+    # RESEARCH_HUB_RUNTIME_ROOT > RESEARCH_HUB_RUNTIME_HOME > GRAPH_HUB_RUNTIME_ROOT.
+    return (
+        os.environ.get("RESEARCH_HUB_RUNTIME_ROOT")
+        or os.environ.get("RESEARCH_HUB_RUNTIME_HOME")
+        or os.environ.get("GRAPH_HUB_RUNTIME_ROOT")
+    )
+
+
 def preview_runtime_root():
     """Return the preferred runtime root path without creating or probing directories."""
-    override = os.environ.get("RESEARCH_HUB_RUNTIME_ROOT") or os.environ.get("RESEARCH_HUB_RUNTIME_HOME")
+    override = runtime_root_env_override()
     candidates = []
     if override:
         candidates.append(override)
@@ -91,7 +101,7 @@ def preview_runtime_root():
 def runtime_root_lookup_candidates():
     """Return runtime root candidates for metadata lookups without creating directories."""
     candidates = []
-    override = os.environ.get("RESEARCH_HUB_RUNTIME_ROOT") or os.environ.get("RESEARCH_HUB_RUNTIME_HOME")
+    override = runtime_root_env_override()
     if override:
         candidates.append(override)
     repo_runtime_root = _repo_runtime_root_from_symlink()
@@ -115,7 +125,7 @@ def runtime_root_lookup_candidates():
 
 
 def resolve_runtime_root():
-    override = os.environ.get("RESEARCH_HUB_RUNTIME_ROOT") or os.environ.get("RESEARCH_HUB_RUNTIME_HOME")
+    override = runtime_root_env_override()
     candidates = []
     if override:
         candidates.append(override)
