@@ -420,6 +420,27 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             self.assertEqual(result["status"], "error")
             self.assertIn("project_path must stay under", result["errors"][0])
 
+    def test_inspect_project_reports_duplicate_config_keys(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            research_root = Path(tmpdir) / "research"
+            project = research_root / "Project"
+            project.mkdir(parents=True)
+            (project / "project_config.yaml").write_text(
+                """
+project:
+  name: First
+project:
+  name: Second
+""",
+                encoding="utf-8",
+            )
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=Path(tmpdir) / "runtime")
+
+            result = self._call(server, "graphhub.inspect_project", {"project_path": str(project)})
+
+            self.assertEqual(result["status"], "error")
+            self.assertIn("Duplicate key 'project'", result["errors"][0])
+
     def test_list_projects_preserves_legacy_and_ephemeral_statuses(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"

@@ -100,6 +100,7 @@ class _UniqueKeySafeLoader(yaml.SafeLoader):
 
 
 def _construct_mapping_no_duplicates(loader, node, deep=False):
+    loader.flatten_mapping(node)
     mapping = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=deep)
@@ -117,6 +118,10 @@ _UniqueKeySafeLoader.add_constructor(
 
 def _load_yaml_with_unique_keys(raw_text: str):
     return yaml.load(raw_text, Loader=_UniqueKeySafeLoader)
+
+
+def load_yaml_with_unique_keys(raw_text: str):
+    return _load_yaml_with_unique_keys(raw_text)
 
 
 def _schema_version_key(version: str) -> tuple[int, ...]:
@@ -175,6 +180,84 @@ def migrate_config(config):
 
     migrated["schema_version"] = CURRENT_CONFIG_SCHEMA_VERSION
     return migrated
+
+
+KNOWN_TOP_LEVEL_CONFIG_KEYS = {
+    "assemblies",
+    "canonical_docs",
+    "comparison",
+    "data_contract",
+    "diagrams",
+    "environment",
+    "execution",
+    "experimental_conditions",
+    "figures",
+    "folder_roles",
+    "golden_metrics",
+    "language_policy",
+    "modules",
+    "pipeline",
+    "presets",
+    "project",
+    "sample_registry",
+    "schema_version",
+    "sweep",
+    "visual_style",
+}
+
+
+def _top_level_key_fingerprint(key: str) -> str:
+    return "".join(ch.lower() for ch in key if ch.isalnum())
+
+
+def _levenshtein_distance(left: str, right: str) -> int:
+    if left == right:
+        return 0
+    if not left:
+        return len(right)
+    if not right:
+        return len(left)
+
+    previous = list(range(len(right) + 1))
+    for left_index, left_char in enumerate(left, 1):
+        current = [left_index]
+        for right_index, right_char in enumerate(right, 1):
+            current.append(
+                min(
+                    previous[right_index] + 1,
+                    current[right_index - 1] + 1,
+                    previous[right_index - 1] + (left_char != right_char),
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def _top_level_key_suggestion(raw_key: object) -> str | None:
+    if not isinstance(raw_key, str) or raw_key in KNOWN_TOP_LEVEL_CONFIG_KEYS:
+        return None
+
+    fingerprint = _top_level_key_fingerprint(raw_key)
+    for known_key in sorted(KNOWN_TOP_LEVEL_CONFIG_KEYS):
+        if fingerprint == _top_level_key_fingerprint(known_key):
+            return known_key
+
+    candidates = []
+    raw_lower = raw_key.lower()
+    for known_key in KNOWN_TOP_LEVEL_CONFIG_KEYS:
+        distance = _levenshtein_distance(raw_lower, known_key.lower())
+        if distance <= 2:
+            candidates.append((distance, known_key))
+    if not candidates:
+        return None
+    return sorted(candidates)[0][1]
+
+
+def _validate_top_level_key_near_misses(errors: list[str], config: dict) -> None:
+    for key in config:
+        suggestion = _top_level_key_suggestion(key)
+        if suggestion is not None:
+            errors.append(f"Unknown top-level key '{key}' — did you mean '{suggestion}'?")
 
 
 def _validate_grouped_check_config(errors, *, column: str, check_name: str, raw_check: object) -> None:
@@ -803,6 +886,8 @@ def validate_config(config):
 
     if not isinstance(config, dict):
         return ["Config root must be a YAML mapping/object."]
+
+    _validate_top_level_key_near_misses(errors, config)
 
     schema_version = config.get("schema_version")
     if schema_version is not None:

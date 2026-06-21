@@ -14,6 +14,7 @@ from hub_core.config_parser import (
     ConfigMigrationError,
     find_config_path,
     folder_role_map,
+    load_yaml_with_unique_keys,
     migrate_config,
     normalize_project_defaults,
     project_modules,
@@ -446,7 +447,7 @@ class McpReadToolsMixin:
         if not config_path.exists():
             return {"checked": False, "valid": None, "errors": []}
         try:
-            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config = load_yaml_with_unique_keys(config_path.read_text(encoding="utf-8"))
             config = migrate_config(config)
             config = normalize_project_defaults(config)
         except (OSError, yaml.YAMLError) as exc:
@@ -474,7 +475,7 @@ class McpReadToolsMixin:
             }
         try:
             raw_text = config_path.read_text(encoding="utf-8")
-            config = yaml.safe_load(raw_text)
+            config = load_yaml_with_unique_keys(raw_text)
             config = migrate_config(config)
             config = normalize_project_defaults(config)
         except yaml.YAMLError as exc:

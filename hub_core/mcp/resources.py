@@ -8,7 +8,7 @@ from urllib.parse import unquote, urlsplit
 
 import yaml
 
-from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
+from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS, load_yaml_with_unique_keys
 from hub_core.project_discovery import ProjectDiscoveryService
 from themes.style_packs import list_style_packs
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
@@ -178,7 +178,7 @@ class McpResourcesMixin:
             if not isinstance(raw_config, str):
                 continue
             try:
-                config = yaml.safe_load(raw_config) or {}
+                config = load_yaml_with_unique_keys(raw_config) or {}
             except yaml.YAMLError:
                 break
             visual_style = config.get("visual_style") if isinstance(config.get("visual_style"), dict) else {}
