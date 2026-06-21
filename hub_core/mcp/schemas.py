@@ -391,6 +391,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "pipeline_steps": {"type": "object"},
                     "figure_outputs": {"type": "array", "items": {"type": "string"}},
                     "diagram_outputs": {"type": "array", "items": {"type": "string"}},
+                    "figure_traceability_matrix": {"type": "array", "items": {"type": "object"}},
                     "missing_inputs": {"type": "array", "items": {"type": "string"}},
                     "missing_outputs": {"type": "array", "items": {"type": "string"}},
                     "style_summary": {"type": "object"},

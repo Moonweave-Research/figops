@@ -755,6 +755,12 @@ Summarize one project config without running analysis, plotting, or report write
       },
       "type": "array"
     },
+    "figure_traceability_matrix": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
     "folder_role_summary": {
       "type": "object"
     },
