@@ -147,6 +147,23 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 geometry_diagnostics=render_helpers._geometry_stub("no figure"),
                 layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
             )
+        category_order_errors = self._category_order_arg_errors(plot_type=plot_type, category_order=category_order)
+        if category_order_errors:
+            return self._envelope(
+                "graphhub.render_csv_graph",
+                arguments,
+                status="error",
+                summary="Render request has invalid category ordering settings.",
+                errors=category_order_errors,
+                manual_review_needed=True,
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Use category_order only with plot types that support categorical x ordering.",
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                geometry_diagnostics=render_helpers._geometry_stub("no figure"),
+                layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("no figure")),
+            )
         overlay_errors = self._statistical_overlay_arg_errors(
             plot_type=plot_type,
             fit_line=fit_line,
@@ -652,6 +669,15 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                 "statistical overlays are only supported for plot_type 'line', 'scatter', or 'xy'."
             )
         return errors
+
+    @staticmethod
+    def _category_order_arg_errors(*, plot_type: str, category_order: tuple[float | str, ...]) -> list[str]:
+        if not category_order:
+            return []
+        capabilities = PLOT_TYPES[plot_type].capabilities
+        if not capabilities.get("supports_category_order", False):
+            return [f"category_order is not supported for plot_type '{plot_type}'."]
+        return []
 
     @staticmethod
     def _bar_aggregate_arg_errors(*, plot_type: str, aggregate: str) -> list[str]:

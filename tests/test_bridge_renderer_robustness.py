@@ -331,6 +331,17 @@ class TestAsymmetricLowerErrorNotDropped(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    def test_none_error_values_are_skipped(self):
+        from plotting.bridge_renderer import _yerr_values
+
+        spec = _make_spec("unused.csv", yerr_column="err")
+        points = [
+            {"x": 0.0, "y": 1.0, "z": None, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+            {"x": 1.0, "y": 2.0, "z": None, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+        ]
+
+        self.assertIsNone(_yerr_values(points, spec))
+
 
 class TestHeatmapZColumnGuard(unittest.TestCase):
     """Regression: heatmap with empty z_column rendered an all-NaN blank figure silently."""
@@ -392,6 +403,28 @@ class TestSingleSeriesBarDuplicateCategories(unittest.TestCase):
                 warnings.simplefilter("always")
                 _render_bar_plot(ax, points, spec)
                 self.assertTrue(any("duplicate" in str(x.message).lower() for x in w))
+        finally:
+            plt.close(fig)
+
+    def test_aggregate_with_error_column_recomputes_sem(self):
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        from plotting.bridge_renderer import _render_bar_plot
+
+        spec = _make_spec("unused.csv", plot_type="bar", yerr_column="sem", aggregate="mean")
+        points = [
+            {"x": "A", "y": 1.0, "z": None, "label": "", "series": "", "yerr": 0.1, "yerr_minus": None},
+            {"x": "A", "y": 3.0, "z": None, "label": "", "series": "", "yerr": 0.2, "yerr_minus": None},
+            {"x": "B", "y": 2.0, "z": None, "label": "", "series": "", "yerr": 0.3, "yerr_minus": None},
+            {"x": "B", "y": 4.0, "z": None, "label": "", "series": "", "yerr": 0.4, "yerr_minus": None},
+        ]
+        fig, ax = plt.subplots()
+        try:
+            _render_bar_plot(ax, points, spec)
+            self.assertEqual([bar.get_height() for bar in ax.patches], [2.0, 3.0])
+            error_segments = [segment for collection in ax.collections for segment in collection.get_segments()]
+            self.assertTrue(any(np.isclose(np.ptp(segment[:, 1]), 2.0) for segment in error_segments))
         finally:
             plt.close(fig)
 
@@ -503,6 +536,28 @@ class TestCategoricalAxisOrdering(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    def test_string_category_order_matches_numeric_x_values(self):
+        import matplotlib.pyplot as plt
+
+        from plotting.bridge_renderer import _render_bar_plot
+
+        spec = _make_spec("unused.csv", plot_type="bar", category_order=("2", "1"))
+        points = [
+            {"x": 1.0, "y": 10.0, "z": None, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+            {"x": 2.0, "y": 20.0, "z": None, "label": "", "series": "", "yerr": None, "yerr_minus": None},
+        ]
+        fig, ax = plt.subplots()
+        try:
+            _render_bar_plot(ax, points, spec)
+            self.assertEqual(self._tick_labels(ax), ["2.0", "1.0"])
+            ordered_heights = [
+                bar.get_height()
+                for bar in sorted(ax.patches, key=lambda patch: patch.get_x() + patch.get_width() / 2)
+            ]
+            self.assertEqual(ordered_heights, [20.0, 10.0])
+        finally:
+            plt.close(fig)
+
     def test_explicit_facet_order_is_honored(self):
         import matplotlib.pyplot as plt
 
@@ -535,6 +590,19 @@ class TestCategoricalAxisOrdering(unittest.TestCase):
             self.assertEqual(panel_titles, ["day 28", "day 14", "day 7", "day 0"])
         finally:
             plt.close(fig)
+
+    def test_auto_facet_grid_warns_for_many_rows(self):
+        from plotting.bridge_renderer import _resolve_facet_grid
+
+        spec = _make_spec("unused.csv", plot_type="facet")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            rows, cols = _resolve_facet_grid(31, spec)
+
+        self.assertEqual((rows, cols), (7, 5))
+        self.assertTrue(
+            any("facet" in str(item.message).lower() and "rows" in str(item.message).lower() for item in caught)
+        )
 
 
 class TestDeterministicTimestamp(unittest.TestCase):

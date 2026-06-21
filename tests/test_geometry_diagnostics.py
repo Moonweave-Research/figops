@@ -3,6 +3,7 @@ import json
 import os
 import time
 import unittest
+from unittest.mock import patch
 
 import matplotlib
 
@@ -139,21 +140,23 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertTrue(_check(result, "tick_label_crowding")["passed"])
 
     def test_outside_axes_gating(self):
-        # (a) explicit limits tighter than data -> skip
+        # (a) explicit limits tighter than data -> informational crop report
         fig_a, ax_a = plt.subplots()
         ax_a.plot([0, 10], [0, 10])
         ax_a.set_xlim(2, 4)
         ax_a.set_ylim(2, 4)
         check_a = _check(diagnose_figure_geometry(_drawn(fig_a), [ax_a], layout_locked=False), "artists_outside_axes")
-        self.assertTrue(check_a["passed"])
-        self.assertTrue(check_a["detail"].startswith("skipped: explicit limits"))
+        self.assertIsNone(check_a["passed"])
+        self.assertIn("explicit limits", check_a["detail"])
+        self.assertGreater(check_a["data"]["outside_fraction"], 0.0)
 
-        # (b) autoscale on + genuine overflow
+        # (b) partial explicit limits also report the measured crop without failing open
         fig_b, ax_b = plt.subplots()
         ax_b.plot([0, 1], [0, 1])
         ax_b.set_xlim(0, 0.25)  # leave y autoscaled, force x overflow
         check_b = _check(diagnose_figure_geometry(_drawn(fig_b), [ax_b], layout_locked=False), "artists_outside_axes")
-        self.assertFalse(check_b["passed"])
+        self.assertIsNone(check_b["passed"])
+        self.assertGreater(check_b["data"]["outside_fraction"], 0.0)
 
         # (c) bare subplots -> no data artists
         fig_c, ax_c = plt.subplots()
@@ -632,6 +635,33 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertTrue(any(item["role"] == "axis" for item in check["data"]["font_offenders"]))
         self.assertTrue(any(item["linewidth"] == 0.25 for item in check["data"]["line_offenders"]))
         self.assertTrue(check["data"]["height_offender"])
+
+    def test_all_skipped_warning_eligible_checks_report_unknown_overall_status(self):
+        fig, ax = plt.subplots()
+        ax.plot([0, 1], [0, 1])
+        for index in range(MAX_TEXT_ARTISTS + 1):
+            ax.annotate(str(index), (index / 500, index / 500))
+
+        with patch("hub_core.geometry_diagnostics._WARNING_ELIGIBLE", frozenset({"point_annotation_overlaps"})):
+            result = diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False)
+
+        self.assertIsNone(result["passed"])
+        skipped = [
+            check for check in result["checks"] if check["name"] in {"point_annotation_overlaps", "artist_overlaps"}
+        ]
+        self.assertTrue(any(check["passed"] is None for check in skipped))
+
+    def test_artists_outside_axes_reports_informational_fraction_with_explicit_limits(self):
+        fig, ax = plt.subplots()
+        ax.plot([0, 100], [0, 100])
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "artists_outside_axes")
+
+        self.assertIsNone(check["passed"])
+        self.assertIn("explicit limits", check["detail"])
+        self.assertGreater(check["data"]["outside_fraction"], 0.0)
 
     def test_annotation_cap(self):
         fig, ax = plt.subplots()

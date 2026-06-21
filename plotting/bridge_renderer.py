@@ -632,7 +632,7 @@ def _resolve_explicit_order(
 ) -> list[float | str]:
     if not explicit_order:
         return list(data_order)
-    explicit = list(explicit_order)
+    explicit = [_normalize_order_value(value, data_order) for value in explicit_order]
     duplicates = [value for index, value in enumerate(explicit) if value in explicit[:index]]
     if duplicates:
         raise ValueError(f"{field_name} contains duplicate value(s): {_format_order_values(duplicates)}")
@@ -645,19 +645,55 @@ def _resolve_explicit_order(
     return explicit
 
 
+def _normalize_order_value(value: float | str, data_order: Sequence[float | str]) -> float | str:
+    if value in data_order:
+        return value
+    if any(isinstance(item, float) for item in data_order):
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            pass
+        else:
+            if numeric in data_order:
+                return numeric
+    text = str(value)
+    if text in data_order:
+        return text
+    return value
+
+
+def _optional_error_float(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(number):
+        return None
+    return number
+
+
 def _yerr_values(points: list[dict], spec: BridgeFigureSpec):
     if not spec.yerr_column and not spec.yerr_minus_column:
         return None
     if spec.yerr_minus_column:
         import numpy as np
 
-        minus = [float(point["yerr_minus"]) for point in points]
+        minus = [_optional_error_float(point.get("yerr_minus")) for point in points]
+        if any(value is None for value in minus):
+            return None
         # When only the lower (minus) column is configured, mirror it onto the upper
         # bound so the configured error data is never silently dropped (symmetric from
         # the minus values). With both columns present, use them as asymmetric bounds.
-        plus = [float(point["yerr"]) for point in points] if spec.yerr_column else minus
+        plus = [_optional_error_float(point.get("yerr")) for point in points] if spec.yerr_column else minus
+        if any(value is None for value in plus):
+            return None
         return np.array([minus, plus])
-    return [float(point["yerr"]) for point in points]
+    yerr = [_optional_error_float(point.get("yerr")) for point in points]
+    if any(value is None for value in yerr):
+        return None
+    return yerr
 
 
 def _annotate_points(
@@ -1207,7 +1243,14 @@ def _resolve_facet_grid(n_facets: int, spec: BridgeFigureSpec) -> tuple[int, int
     # preserves compact defaults for small facet counts while allowing larger
     # sets to avoid the old narrow three-column hard cap.
     auto_cols = min(5, max(1, math.ceil(math.sqrt(n_facets))))
-    return math.ceil(n_facets / auto_cols), auto_cols
+    auto_rows = math.ceil(n_facets / auto_cols)
+    if auto_rows > 5:
+        warnings.warn(
+            f"bridge_renderer: automatic facet grid has {auto_rows} rows for {n_facets} facets; "
+            "set facet_ncols/facet_nrows to control large layouts",
+            stacklevel=2,
+        )
+    return auto_rows, auto_cols
 
 
 def _optional_positive_int(value: int | None, name: str) -> int | None:
@@ -1307,7 +1350,7 @@ def _aggregate_single_series_bar_points(points: list[dict], method: str) -> list
         representative = dict(category_points[0])
         representative["x"] = category
         representative["y"] = y_value
-        representative["yerr"] = None
+        representative["yerr"] = float(np.std(values, ddof=1) / math.sqrt(len(values))) if len(values) > 1 else 0.0
         representative["yerr_minus"] = None
         representative["label"] = ""
         aggregated.append(representative)
