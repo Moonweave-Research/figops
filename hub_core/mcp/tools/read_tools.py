@@ -7,7 +7,16 @@ from typing import Any
 
 import yaml
 
-from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS, find_config_path, validate_config
+from hub_core.config_parser import (
+    ALLOWED_OUTPUT_FORMATS,
+    ALLOWED_TARGET_FORMATS,
+    ConfigMigrationError,
+    find_config_path,
+    migrate_config,
+    normalize_project_defaults,
+    project_role,
+    validate_config,
+)
 from hub_core.mcp.schemas import describe_graphhub_surface
 from hub_core.project_discovery import ProjectDiscoveryService
 from themes.style_packs import list_style_packs
@@ -135,6 +144,7 @@ class McpReadToolsMixin:
             summary=f"Inspected project config at {loaded['config_relpath']}.",
             project_metadata={
                 "name": project.get("name") or project_path.name,
+                "role": project_role(config),
                 "project_root": self._display_path(project_path),
                 "config_path": loaded["config_relpath"],
             },
@@ -221,6 +231,7 @@ class McpReadToolsMixin:
                 "config_path": project.config,
                 "status": "invalid",
                 "errors": ["Project config is a symlink and is not exposed through MCP resources."],
+                "role": "module",
                 "declared_figures": 0,
                 "declared_diagrams": 0,
                 "target_format": "",
@@ -237,6 +248,7 @@ class McpReadToolsMixin:
             "project_id": project.project_id,
             "project_root": project.path,
             "config_path": project.config,
+            "role": project.role,
             "status": self._project_status(project),
             "errors": list(project.errors),
             "declared_figures": len(figures),
@@ -248,6 +260,8 @@ class McpReadToolsMixin:
     def _project_status(project: Any) -> str:
         if not project.valid:
             return "invalid"
+        if getattr(project, "role", "module") == "master":
+            return "master"
         if project.classification in {"legacy", "ephemeral"}:
             return project.classification
         return "valid"
@@ -258,7 +272,11 @@ class McpReadToolsMixin:
             return {"checked": False, "valid": None, "errors": []}
         try:
             config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config = migrate_config(config)
+            config = normalize_project_defaults(config)
         except (OSError, yaml.YAMLError) as exc:
+            return {"checked": True, "valid": False, "errors": [str(exc)]}
+        except ConfigMigrationError as exc:
             return {"checked": True, "valid": False, "errors": [str(exc)]}
         errors = validate_config(config)
         return {"checked": True, "valid": not errors, "errors": errors}
@@ -282,12 +300,21 @@ class McpReadToolsMixin:
         try:
             raw_text = config_path.read_text(encoding="utf-8")
             config = yaml.safe_load(raw_text)
+            config = migrate_config(config)
+            config = normalize_project_defaults(config)
         except yaml.YAMLError as exc:
             return {
                 "config": None,
                 "config_path": str(config_path),
                 "config_relpath": "",
                 "errors": [f"Invalid YAML: {exc}"],
+            }
+        except ConfigMigrationError as exc:
+            return {
+                "config": None,
+                "config_path": str(config_path),
+                "config_relpath": os.path.relpath(config_path, project_path),
+                "errors": [str(exc)],
             }
         except OSError as exc:
             return {
