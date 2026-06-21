@@ -15,6 +15,20 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.12.0] - 2026-06-21
+
+### Added
+
+- Research-operations philosophy enforcement Tier 1, documented in
+  `docs/specs/research_ops_philosophy.md`, now distinguishes `project.role`
+  master and module projects and refuses master-root execution (#137).
+- Machine-readable `folder_roles` taxonomy classifies raw reservoirs,
+  reference, theory, docs, support, and archive folders, then filters them out
+  of the re-run surface so only runnable project areas remain (#138).
+- Structural validation now covers `experimental_conditions`, which were
+  previously ignored, including unique condition ids and inspect-surfaced
+  summaries (#139).
+
 ## [0.11.1] - 2026-06-21
 
 ### Changed
