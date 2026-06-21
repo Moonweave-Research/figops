@@ -621,6 +621,25 @@ class JournalThemeLayoutTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    def test_save_journal_fig_clamps_explicit_subfloor_artists_before_save(self):
+        apply_journal_theme("science")
+        fig, ax = plt.subplots(figsize=(mm_to_inch(57.0), mm_to_inch(45.6)))
+        line = ax.plot([0, 1, 2], [0, 1, 0], linewidth=0.1, label="thin")[0]
+        text = ax.text(0.5, 0.5, "tiny", fontsize=2.0)
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_artist_clamp_") as tmpdir:
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always")
+                    save_journal_fig(fig, Path(tmpdir) / "clamped.png", dpi=150)
+
+            self.assertEqual(text.get_fontsize(), 5.0)
+            self.assertEqual(line.get_linewidth(), 0.5)
+            self.assertTrue(
+                any("journal compliance" in str(item.message) and "artist" in str(item.message) for item in caught)
+            )
+        finally:
+            plt.close(fig)
+
     def test_profile_font_overrides_are_allowed_tokens(self):
         apply_journal_theme("nature_surfur", profile_name="resistance_premium")
         fig, ax = plt.subplots()
