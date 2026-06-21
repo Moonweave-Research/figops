@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import orchestrator
-from hub_core.config_parser import load_config, validate_config
+from hub_core.config_parser import load_config, project_status, validate_config
 from hub_core.mcp import GraphHubMCPServer
 from hub_core.project_discovery import discover_projects_with_status, get_discoverable_projects
 
@@ -73,6 +73,8 @@ class ProjectRoleConfigValidationTest(unittest.TestCase):
         self.assertIsNotNone(loaded_path)
         self.assertIsNotNone(config_hash)
         self.assertEqual(config["project"]["role"], "module")
+        self.assertEqual(config["project"]["status"], "active")
+        self.assertEqual(project_status(config), "active")
         self.assertEqual(validate_config(config), [])
 
     def test_invalid_project_role_fails_validation(self):
@@ -84,6 +86,16 @@ class ProjectRoleConfigValidationTest(unittest.TestCase):
         errors = validate_config(config)
 
         self.assertTrue(any("project.role" in error and "master" in error and "module" in error for error in errors))
+
+    def test_invalid_project_status_fails_validation(self):
+        config = {
+            "project": {"name": "Bad Status", "status": "retired"},
+            "visual_style": {"target_format": "nature"},
+        }
+
+        errors = validate_config(config)
+
+        self.assertTrue(any("project.status" in error and "active" in error and "legacy" in error for error in errors))
 
     def test_master_config_with_runnable_surface_fails_validation(self):
         config = {
@@ -182,6 +194,39 @@ class ProjectRoleDiscoveryTest(unittest.TestCase):
         self.assertEqual(by_path["study_master/fixture support"]["role"], "support")
         self.assertEqual({project["path"] for project in runnable}, {"study_master/modules/experiment_a"})
 
+    def test_legacy_status_is_surfaced_but_excluded_from_runnable_projects(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
+            root = Path(tmpdir)
+            active = root / "active_module"
+            legacy = root / "retired_module"
+            active.mkdir()
+            legacy.mkdir()
+            _write_config(active, _minimal_module_config("Active Module"))
+            _write_config(
+                legacy,
+                [
+                    "project:",
+                    "  name: Legacy Module",
+                    "  status: legacy",
+                    "visual_style:",
+                    "  target_format: nature",
+                    "language_policy:",
+                    "  allow_nonstandard: true",
+                    "  analysis_lang: python",
+                    "  plot_lang: python",
+                ],
+            )
+
+            discovered = discover_projects_with_status(root, max_depth=2)
+            runnable = get_discoverable_projects(root, max_depth=2)
+
+        by_path = {project["path"]: project for project in discovered}
+        self.assertEqual(by_path["active_module"]["status"], "active")
+        self.assertEqual(by_path["retired_module"]["status"], "legacy")
+        self.assertEqual(by_path["retired_module"]["classification"], "official")
+        self.assertEqual({project["path"] for project in runnable}, {"active_module"})
+        self.assertEqual(runnable[0]["status"], "active")
+
     def test_configless_undeclared_folder_is_unclassified_and_not_runnable(self):
         with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
             root = Path(tmpdir)
@@ -238,6 +283,50 @@ class ProjectRoleDiscoveryTest(unittest.TestCase):
         self.assertEqual(listed_by_root["study_master"]["role"], "master")
         self.assertEqual(listed_by_root["study_master/modules/experiment_a"]["role"], "module")
         self.assertEqual(inspected["project_metadata"]["role"], "master")
+
+    def test_mcp_list_inspect_and_validate_surface_legacy_status(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
+            root = Path(tmpdir)
+            legacy = root / "retired_module"
+            legacy.mkdir()
+            _write_config(
+                legacy,
+                [
+                    "project:",
+                    "  name: Legacy Module",
+                    "  status: legacy",
+                    "visual_style:",
+                    "  target_format: nature",
+                    "language_policy:",
+                    "  allow_nonstandard: true",
+                    "  analysis_lang: python",
+                    "  plot_lang: python",
+                    "experimental_conditions:",
+                    "  conditions:",
+                    "    - id: old_run",
+                    "      parameters:",
+                    "        voltage_V: TODO",
+                ],
+            )
+            server = GraphHubMCPServer(research_root=root)
+
+            listed = server.call_tool("graphhub.list_projects", {"max_depth": 2})["structuredContent"]["projects"]
+            inspected = server.call_tool(
+                "graphhub.inspect_project",
+                {"project_path": "retired_module"},
+            )["structuredContent"]
+            validated = server.call_tool(
+                "graphhub.validate_project",
+                {"project_path": "retired_module"},
+            )["structuredContent"]
+
+        listed_by_root = {project["project_root"]: project for project in listed}
+        self.assertEqual(listed_by_root["retired_module"]["status"], "legacy")
+        self.assertEqual(listed_by_root["retired_module"]["classification"], "official")
+        self.assertEqual(inspected["project_metadata"]["status"], "legacy")
+        self.assertEqual(validated["project_status"], "legacy")
+        self.assertTrue(validated["valid"])
+        self.assertEqual(validated["config_errors"], [])
 
     def test_mcp_list_and_master_inspect_surface_folder_role_classification(self):
         with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:

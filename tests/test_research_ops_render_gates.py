@@ -151,3 +151,65 @@ class ResearchOpsRenderGateTest(unittest.TestCase):
 
         self.assertEqual(rc, 1)
         self.assertIn("Missing canonical doc", " ".join(str(call) for call in log_error.mock_calls))
+
+    def test_mcp_render_refuses_legacy_project_before_research_ops_enforcement(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_render_ops_") as tmpdir:
+            root = Path(tmpdir)
+            project = root / "legacy_module"
+            config = _module_config()
+            config["project"]["status"] = "legacy"
+            config["canonical_docs"] = ["docs/missing.md"]
+            config["experimental_conditions"] = {
+                "conditions": [{"id": "old_run", "parameters": {"voltage_V": "TODO"}}]
+            }
+            _write_project(project, config)
+            server = GraphHubMCPServer(research_root=root, runtime_root=root / "runtime", write_tools_enabled=True)
+
+            response = server.call_tool(
+                "graphhub.render_project_figure",
+                {"project_path": "legacy_module", "figure_id": "fig1", "dry_run": True},
+            )
+            result = response["structuredContent"]
+
+        self.assertTrue(response["isError"])
+        self.assertEqual(result["status"], "error")
+        combined = " ".join([result["summary"], *result["errors"]]).lower()
+        self.assertIn("legacy", combined)
+        self.assertIn("rendering is disabled", combined)
+        self.assertNotIn("missing canonical doc", combined)
+        self.assertNotIn("todo", combined)
+
+    def test_cli_render_refuses_legacy_project_before_research_ops_enforcement(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_render_ops_") as tmpdir:
+            root = Path(tmpdir)
+            project = root / "legacy_module"
+            config = _module_config()
+            config["project"]["status"] = "legacy"
+            config["canonical_docs"] = ["docs/missing.md"]
+            config["experimental_conditions"] = {
+                "conditions": [{"id": "old_run", "parameters": {"voltage_V": "TODO"}}]
+            }
+            _write_project(project, config)
+            argv = ["orchestrator.py", "--project", str(project), "--step", "plot"]
+
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch.object(sys, "argv", argv),
+                patch("orchestrator.get_hub_path", return_value=str(root)),
+                patch("orchestrator.get_research_root", return_value=str(root)),
+                patch("orchestrator.run_preflight_check"),
+                patch(
+                    "orchestrator.validate_environment_locks",
+                    side_effect=AssertionError("legacy render should not reach environment validation"),
+                ),
+                patch("orchestrator.run_plots", side_effect=AssertionError("legacy render should not execute")),
+                patch("orchestrator.logger.error") as log_error,
+            ):
+                rc = orchestrator.main()
+
+        self.assertEqual(rc, 1)
+        log_text = " ".join(str(call) for call in log_error.mock_calls).lower()
+        self.assertIn("legacy", log_text)
+        self.assertIn("rendering is disabled", log_text)
+        self.assertNotIn("missing canonical doc", log_text)
+        self.assertNotIn("todo", log_text)
