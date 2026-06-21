@@ -184,6 +184,15 @@ class TestProfileResolution(unittest.TestCase):
                 for key, expected_value in expected_tokens.items():
                     self.assertEqual(tokens[key], expected_value)
 
+    def test_journal_compliance_tokens_resolve_for_non_baseline_profile(self):
+        baseline_tokens, _baseline_meta = get_render_style_tokens("science", "baseline")
+        profile_tokens, profile_meta = get_render_style_tokens("science", "resistance_premium")
+
+        self.assertEqual(profile_meta["target_format"], "science")
+        self.assertEqual(profile_meta["profile"], "resistance_premium")
+        for key in ("min_font_size_pt", "min_line_width_pt", "max_figure_height_mm"):
+            self.assertEqual(profile_tokens[key], baseline_tokens[key])
+
 
 if __name__ == "__main__":
     unittest.main()

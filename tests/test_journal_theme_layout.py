@@ -585,6 +585,42 @@ class JournalThemeLayoutTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    def test_non_baseline_profile_clamps_and_reports_journal_compliance(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            apply_journal_theme("science", font_scale=0.1, profile_name="resistance_premium")
+
+        self.assertGreaterEqual(plt.rcParams["font.size"], 5.0)
+        self.assertGreaterEqual(plt.rcParams["lines.linewidth"], 0.5)
+        self.assertTrue(any("journal compliance" in str(item.message) for item in caught))
+
+        fig, ax = plt.subplots(figsize=(mm_to_inch(57.0), mm_to_inch(45.6)))
+        ax.plot([0, 1, 2], [0, 1, 0], label="A")
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        ax.legend()
+        try:
+            with tempfile.TemporaryDirectory(prefix="journal_compliance_profile_") as tmpdir:
+                out_path = Path(tmpdir) / "science.png"
+                sidecar_path = Path(tmpdir) / "geometry.json"
+                prior = os.environ.get("GEOMETRY_DIAGNOSTICS_OUT")
+                os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = str(sidecar_path)
+                try:
+                    save_journal_fig(fig, out_path, dpi=150)
+                finally:
+                    if prior is None:
+                        os.environ.pop("GEOMETRY_DIAGNOSTICS_OUT", None)
+                    else:
+                        os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = prior
+                payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+                compliance = next(check for check in payload["checks"] if check["name"] == "journal_compliance")
+                self.assertTrue(compliance["passed"])
+                self.assertEqual(compliance["data"]["target_format"], "science")
+                self.assertEqual(compliance["data"]["min_font_size_pt"], 5.0)
+                self.assertEqual(compliance["data"]["min_line_width_pt"], 0.5)
+        finally:
+            plt.close(fig)
+
     def test_profile_font_overrides_are_allowed_tokens(self):
         apply_journal_theme("nature_surfur", profile_name="resistance_premium")
         fig, ax = plt.subplots()
