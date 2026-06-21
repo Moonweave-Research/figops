@@ -6,6 +6,15 @@ visual_style:
   target_format: nature
   profile: baseline
 
+sample_registry:
+  - sample_id: SYN_RESPONSE
+
+experimental_conditions:
+  conditions:
+    - id: synthetic_response_fixture
+      parameters:
+        samples: [SYN_RESPONSE]
+
 data_contract:
   csv_checks:
     - path: results/data/response_curve.csv
@@ -23,3 +32,6 @@ figures:
     script: hub_scripts/plot_response_curve.py
     inputs: ["results/data/response_curve.csv"]
     output: results/figures/FigSynthetic_Response.png
+    claim: Synthetic response remains within the expected bounded fixture range.
+    samples: [SYN_RESPONSE]
+    conditions: [synthetic_response_fixture]

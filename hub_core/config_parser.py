@@ -199,6 +199,8 @@ KNOWN_TOP_LEVEL_CONFIG_KEYS = {
     "pipeline",
     "presets",
     "project",
+    "raw_integrity",
+    "regression",
     "sample_registry",
     "schema_version",
     "sweep",
@@ -801,6 +803,21 @@ def project_role(config):
     return role if role else DEFAULT_PROJECT_ROLE
 
 
+def data_contract_bool(config: dict, key: str) -> bool | None:
+    data_contract = config.get("data_contract", {}) if isinstance(config, dict) else {}
+    if not isinstance(data_contract, dict):
+        return None
+    value = data_contract.get(key)
+    return value if isinstance(value, bool) else None
+
+
+def module_default_contract_bool(config: dict, key: str) -> bool:
+    explicit = data_contract_bool(config, key)
+    if explicit is not None:
+        return explicit
+    return project_role(config) == DEFAULT_PROJECT_ROLE
+
+
 def project_modules(config):
     modules = config.get("modules", []) if isinstance(config, dict) else []
     if not isinstance(modules, list):
@@ -1162,12 +1179,7 @@ def validate_config(config):
                             f"(analysis must be '{norm_policy['analysis_lang']}')."
                         )
 
-    traceability_contract = config.get("data_contract", {})
-    require_figure_traceability = (
-        traceability_contract.get("require_figure_traceability", False) is True
-        if isinstance(traceability_contract, dict)
-        else False
-    )
+    require_figure_traceability = module_default_contract_bool(config, "require_figure_traceability")
     condition_ids = _experimental_condition_ids(config.get("experimental_conditions"))
 
     _validate_visual_outputs(
@@ -1732,12 +1744,17 @@ def _validate_visual_outputs(
                         f"{', '.join(unknown_conditions)}."
                     )
 
-        if require_traceability:
+        has_traceability_declaration = any(
+            key in item and item.get(key) is not None for key in ("claim", "samples", "conditions")
+        )
+        if require_traceability and has_traceability_declaration:
             missing = []
             if not isinstance(claim, str) or not claim.strip():
                 missing.append("claim")
-            if sample_ids is not None and not trace_samples:
+            if not trace_samples:
                 missing.append("samples")
+            if not trace_conditions:
+                missing.append("conditions")
             if missing:
                 figure_id = item.get("id") if isinstance(item.get("id"), str) and item.get("id").strip() else f"#{i}"
                 missing_text = ", ".join(f"missing {field}" for field in missing)

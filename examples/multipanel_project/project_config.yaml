@@ -6,6 +6,15 @@ visual_style:
   target_format: nature
   profile: baseline
 
+sample_registry:
+  - sample_id: SYN_MULTIPANEL
+
+experimental_conditions:
+  conditions:
+    - id: synthetic_multipanel_fixture
+      parameters:
+        samples: [SYN_MULTIPANEL]
+
 figures:
   - id: FigSynthetic_Multipanel
     title: Synthetic three-panel publication plate
@@ -15,3 +24,6 @@ figures:
       - assets/panel_distribution.svg
       - assets/panel_summary.svg
     output: results/figures/FigSynthetic_Multipanel.svg
+    claim: Synthetic panels assemble into a traceable publication plate fixture.
+    samples: [SYN_MULTIPANEL]
+    conditions: [synthetic_multipanel_fixture]

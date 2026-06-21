@@ -8,17 +8,18 @@ from hub_core.config_parser import validate_config
 from hub_core.mcp import GraphHubMCPServer
 
 
-def _config(mode: str = "warn") -> dict:
+def _config(mode: str | None = "warn") -> dict:
+    raw_integrity = {
+        "manifest": "raw/.raw_manifest.json",
+        "paths": ["raw/"],
+    }
+    if mode is not None:
+        raw_integrity["mode"] = mode
     return {
         "project": {"name": "Raw Integrity Demo"},
         "visual_style": {"target_format": "nature"},
-        "data_contract": {
-            "raw_integrity": {
-                "manifest": "raw/.raw_manifest.json",
-                "mode": mode,
-                "paths": ["raw/"],
-            }
-        },
+        "data_contract": {"raw_integrity": raw_integrity},
+        "figures": [{"id": "fig1", "script": "plot.py", "output": "results/fig1.png"}],
     }
 
 
@@ -96,6 +97,86 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
         self.assertEqual(verify_result["added"], ["raw/new.csv"])
         self.assertTrue(validated["valid"])
         self.assertTrue(any("raw_integrity drift" in warning for warning in validated["warnings"]))
+
+    def test_drift_fails_validation_by_default_for_module_when_mode_absent(self):
+        from hub_core.raw_integrity import seal_raw_integrity
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_raw_integrity_") as tmpdir:
+            project_dir = Path(tmpdir)
+            config = _config(mode=None)
+            _write_config(project_dir, config)
+            _write_raw(project_dir, "raw/data.csv", "x,y\n1,2\n")
+            seal_raw_integrity(project_dir, config)
+            _write_raw(project_dir, "raw/data.csv", "x,y\n1,99\n")
+            server = GraphHubMCPServer(research_root=project_dir.parent)
+
+            validated = server.call_tool(
+                "graphhub.validate_project",
+                {"project_path": project_dir.name},
+            )["structuredContent"]
+
+        self.assertFalse(validated["valid"])
+        self.assertTrue(any("raw_integrity drift" in error for error in validated["config_errors"]))
+
+    def test_explicit_warn_opt_out_keeps_module_raw_drift_advisory(self):
+        from hub_core.raw_integrity import seal_raw_integrity
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_raw_integrity_") as tmpdir:
+            project_dir = Path(tmpdir)
+            config = _config(mode="warn")
+            _write_config(project_dir, config)
+            _write_raw(project_dir, "raw/data.csv", "x,y\n1,2\n")
+            seal_raw_integrity(project_dir, config)
+            _write_raw(project_dir, "raw/data.csv", "x,y\n1,99\n")
+            server = GraphHubMCPServer(research_root=project_dir.parent)
+
+            validated = server.call_tool(
+                "graphhub.validate_project",
+                {"project_path": project_dir.name},
+            )["structuredContent"]
+
+        self.assertTrue(validated["valid"])
+        self.assertTrue(any("raw_integrity drift" in warning for warning in validated["warnings"]))
+
+    def test_unsealed_raw_integrity_has_no_default_enforcement_effect(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_raw_integrity_") as tmpdir:
+            project_dir = Path(tmpdir)
+            config = _config(mode=None)
+            _write_config(project_dir, config)
+            _write_raw(project_dir, "raw/data.csv", "x,y\n1,2\n")
+            server = GraphHubMCPServer(research_root=project_dir.parent)
+
+            validated = server.call_tool(
+                "graphhub.validate_project",
+                {"project_path": project_dir.name},
+            )["structuredContent"]
+
+        self.assertTrue(validated["valid"])
+        self.assertEqual(validated["config_errors"], [])
+        self.assertFalse(validated["raw_integrity_status"]["sealed"])
+
+    def test_master_raw_drift_is_not_enforced_by_module_default(self):
+        from hub_core.raw_integrity import seal_raw_integrity
+
+        with tempfile.TemporaryDirectory(prefix="graphhub_raw_integrity_") as tmpdir:
+            project_dir = Path(tmpdir)
+            config = _config(mode=None)
+            config["project"]["role"] = "master"
+            config["figures"] = []
+            config["modules"] = ["modules/experiment_a"]
+            _write_config(project_dir, config)
+            _write_raw(project_dir, "raw/data.csv", "x,y\n1,2\n")
+            seal_raw_integrity(project_dir, config)
+            _write_raw(project_dir, "raw/data.csv", "x,y\n1,99\n")
+            server = GraphHubMCPServer(research_root=project_dir.parent)
+
+            validated = server.call_tool(
+                "graphhub.validate_project",
+                {"project_path": project_dir.name},
+            )["structuredContent"]
+
+        self.assertTrue(validated["valid"])
+        self.assertFalse(any("raw_integrity drift" in error for error in validated["config_errors"]))
 
     def test_removed_raw_file_is_detected(self):
         from hub_core.raw_integrity import seal_raw_integrity, verify_raw_integrity

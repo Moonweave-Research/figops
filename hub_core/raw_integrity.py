@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .config_parser import DEFAULT_PROJECT_ROLE, project_role
+
 DEFAULT_RAW_INTEGRITY = {
     "manifest": "raw/.raw_manifest.json",
     "mode": "warn",
@@ -25,6 +27,8 @@ def raw_integrity_config(config: dict[str, Any]) -> dict[str, Any] | None:
         return None
     merged = dict(DEFAULT_RAW_INTEGRITY)
     merged.update(raw_integrity)
+    if "mode" not in raw_integrity or raw_integrity.get("mode") is None:
+        merged["mode"] = "strict" if project_role(config) == DEFAULT_PROJECT_ROLE else DEFAULT_RAW_INTEGRITY["mode"]
     if isinstance(merged.get("mode"), str):
         merged["mode"] = merged["mode"].strip().lower()
     if "paths" not in raw_integrity or raw_integrity.get("paths") is None:
@@ -81,8 +85,8 @@ def verify_raw_integrity(project_dir: str | Path, config: dict[str, Any]) -> dic
                 "manifest_path": str(manifest_path),
                 "mode": str(raw_cfg.get("mode", "warn")),
                 "sealed": False,
-                "ok": False,
-                "errors": [f"raw_integrity manifest not found: {manifest_path}"],
+                "ok": True,
+                "errors": [],
             }
         )
         return result

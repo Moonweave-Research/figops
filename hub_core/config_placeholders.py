@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .config_parser import module_default_contract_bool
+
 _TOKEN_START_RE = re.compile(r"^(TODO|FIXME|TBD|XXX|\?\?\?)(?:$|[\s:_-])", re.IGNORECASE)
 _TOKEN_END_RE = re.compile(r"(?:^|[\s:_-])(TODO|FIXME|TBD|XXX|\?\?\?)$", re.IGNORECASE)
 _ANGLE_START_RE = re.compile(r"^<[^<>\n]+>(?:$|[\s:/_-])")
@@ -22,8 +24,7 @@ def placeholder_report(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def forbid_todo_placeholders(config: dict[str, Any]) -> bool:
-    data_contract = config.get("data_contract", {}) if isinstance(config, dict) else {}
-    return isinstance(data_contract, dict) and data_contract.get("forbid_todo_placeholders") is True
+    return module_default_contract_bool(config, "forbid_todo_placeholders")
 
 
 def placeholder_message(report: dict[str, Any]) -> str:

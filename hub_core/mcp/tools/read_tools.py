@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from hub_core.canonical_docs import canonical_docs_registry, missing_canonical_doc_message
+from hub_core.canonical_docs import canonical_docs_registry
 from hub_core.config_parser import (
     ALLOWED_OUTPUT_FORMATS,
     ALLOWED_TARGET_FORMATS,
@@ -21,11 +21,12 @@ from hub_core.config_parser import (
     project_role,
     validate_config,
 )
-from hub_core.config_placeholders import placeholder_message, placeholder_report
+from hub_core.config_placeholders import placeholder_report
 from hub_core.mcp.schemas import describe_graphhub_surface
 from hub_core.naming_lint import empty_naming_lint, lint_project_naming
 from hub_core.project_discovery import ProjectDiscoveryService
-from hub_core.raw_integrity import raw_integrity_config, raw_integrity_drift_message, verify_raw_integrity
+from hub_core.raw_integrity import raw_integrity_config, verify_raw_integrity
+from hub_core.research_ops_enforcement import validate_research_ops_contract
 from themes.style_packs import list_style_packs
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
 
@@ -200,24 +201,11 @@ class McpReadToolsMixin:
         config = loaded["config"] if isinstance(loaded["config"], dict) else {}
         if isinstance(config, dict):
             config_errors = validate_config(config)
-        raw_integrity_status = self._raw_integrity_status(project_path, config)
-        raw_integrity_warning = ""
-        if raw_integrity_status["configured"] and not raw_integrity_status["ok"]:
-            raw_integrity_warning = "; ".join(
-                raw_integrity_status.get("errors") or [raw_integrity_drift_message(raw_integrity_status)]
-            )
-            if raw_integrity_status.get("mode") == "strict":
-                config_errors.append(raw_integrity_warning)
-        canonical_registry = canonical_docs_registry(project_path, config)
-        canonical_docs_warning = ""
-        if canonical_registry["declared"] and canonical_registry["missing"]:
-            canonical_docs_warning = missing_canonical_doc_message(canonical_registry["missing"])
-            if canonical_registry["required"]:
-                config_errors.append(canonical_docs_warning)
-        placeholders = placeholder_report(config)
-        placeholder_warning = placeholder_message(placeholders) if placeholders["detected"] else ""
-        if placeholder_warning and placeholders["strict"]:
-            config_errors.append(placeholder_warning)
+        research_ops = validate_research_ops_contract(project_path, config)
+        config_errors.extend(research_ops["errors"])
+        raw_integrity_status = research_ops["raw_integrity_status"]
+        canonical_registry = research_ops["canonical_docs_registry"]
+        placeholders = research_ops["placeholder_report"]
 
         data_contract_errors = [error for error in config_errors if error.startswith("data_contract.")]
         style_errors = [
@@ -239,12 +227,7 @@ class McpReadToolsMixin:
         render_environment_warnings = self._project_context_render_warnings(project_path)
         naming_lint = self._naming_lint(project_path, enabled=bool(arguments.get("include_naming_lint", False)))
         warnings = [] if valid else ["Project validation reported warnings or errors."]
-        if raw_integrity_warning and raw_integrity_status.get("mode") != "strict":
-            warnings.append(raw_integrity_warning)
-        if canonical_docs_warning and not canonical_registry["required"]:
-            warnings.append(canonical_docs_warning)
-        if placeholder_warning and not placeholders["strict"]:
-            warnings.append(placeholder_warning)
+        warnings.extend(research_ops["warnings"])
         warnings.extend(naming_lint["warnings"])
         warnings.extend(render_environment_warnings)
         status = "warning" if warnings else "ok"

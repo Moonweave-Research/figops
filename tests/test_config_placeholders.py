@@ -21,7 +21,7 @@ def _write_project(project_dir: Path, config: dict) -> None:
 
 
 class ConfigPlaceholderMCPTest(unittest.TestCase):
-    def test_placeholder_strings_warn_without_failing_by_default(self):
+    def test_placeholder_strings_fail_by_default_for_module(self):
         with tempfile.TemporaryDirectory(prefix="graphhub_placeholders_") as tmpdir:
             root = Path(tmpdir)
             project = root / "module"
@@ -38,8 +38,7 @@ class ConfigPlaceholderMCPTest(unittest.TestCase):
 
             result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
 
-        self.assertTrue(result["valid"])
-        self.assertEqual(result["config_errors"], [])
+        self.assertFalse(result["valid"])
         report = result["placeholder_report"]
         self.assertEqual(
             {item["path"] for item in report["placeholders"]},
@@ -49,6 +48,39 @@ class ConfigPlaceholderMCPTest(unittest.TestCase):
                 "experimental_conditions.common.sample_note",
             },
         )
+        self.assertTrue(any("Config placeholder" in error for error in result["config_errors"]))
+
+    def test_explicit_false_opt_out_keeps_placeholders_advisory_for_module(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_placeholders_") as tmpdir:
+            root = Path(tmpdir)
+            project = root / "module"
+            config = _base_config()
+            config["data_contract"] = {"forbid_todo_placeholders": False}
+            config["experimental_conditions"] = {"common": {"voltage_V": "TODO"}}
+            _write_project(project, config)
+            server = GraphHubMCPServer(research_root=root)
+
+            result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
+
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["config_errors"], [])
+        self.assertTrue(any("Config placeholder" in warning for warning in result["warnings"]))
+
+    def test_master_placeholders_are_not_enforced_by_module_default(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_placeholders_") as tmpdir:
+            root = Path(tmpdir)
+            project = root / "master"
+            config = _base_config()
+            config["project"]["role"] = "master"
+            config["modules"] = ["modules/experiment_a"]
+            config["experimental_conditions"] = {"common": {"voltage_V": "TODO"}}
+            _write_project(project, config)
+            server = GraphHubMCPServer(research_root=root)
+
+            result = server.call_tool("graphhub.validate_project", {"project_path": "master"})["structuredContent"]
+
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["config_errors"], [])
         self.assertTrue(any("Config placeholder" in warning for warning in result["warnings"]))
 
     def test_forbid_todo_placeholders_escalates_to_validation_error(self):

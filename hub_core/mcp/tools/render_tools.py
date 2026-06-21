@@ -13,6 +13,7 @@ from hub_core.config_parser import master_execution_error, project_role, validat
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.tools.render_support import McpRenderToolSupportMixin
 from hub_core.rendering import PLOT_TYPES
+from hub_core.research_ops_enforcement import validate_research_ops_contract
 from themes.style_profiles import DEFAULT_PROFILE
 
 _STATISTICAL_OVERLAY_PLOT_TYPES = {"line", "scatter", "xy"}
@@ -737,6 +738,18 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                     errors=[master_execution_error(config)],
                     failure_stage="CONFIG",
                     resolution_hint="Select a declared execution module and render from that module project.",
+                )
+            research_ops = validate_research_ops_contract(project_path, config)
+            if research_ops["errors"]:
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project research-ops contract failed for rendering.",
+                    errors=research_ops["errors"],
+                    failure_stage="CONFIG",
+                    resolution_hint="Fix declared research-ops contracts or set an explicit opt-out before rendering.",
                 )
             figures = self._project_figure_entries(config)
             selected, selection_errors = self._select_project_figure(
