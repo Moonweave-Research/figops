@@ -173,6 +173,7 @@ class McpReadToolsMixin:
                 "profile": visual_style.get("profile", DEFAULT_PROFILE),
             },
             folder_role_summary=self._folder_role_summary(project_path, config),
+            experimental_conditions_summary=self._experimental_conditions_summary(config),
             normalization_needed=loaded["config_relpath"] == "scripts/project_config.yaml",
         )
 
@@ -318,6 +319,21 @@ class McpReadToolsMixin:
                 else "No folder_roles declared; T1.1 master/module discovery behavior applies."
             ),
         }
+
+    @staticmethod
+    def _experimental_conditions_summary(config: dict[str, Any]) -> dict[str, Any]:
+        experimental_conditions = config.get("experimental_conditions")
+        if not isinstance(experimental_conditions, dict):
+            return {"condition_count": 0, "condition_ids": []}
+        conditions = experimental_conditions.get("conditions", [])
+        if not isinstance(conditions, list):
+            return {"condition_count": 0, "condition_ids": []}
+        condition_ids = [
+            condition["id"].strip()
+            for condition in conditions
+            if isinstance(condition, dict) and isinstance(condition.get("id"), str) and condition["id"].strip()
+        ]
+        return {"condition_count": len(condition_ids), "condition_ids": condition_ids}
 
     @staticmethod
     def _validation_summary(config_path: Path) -> dict[str, Any]:

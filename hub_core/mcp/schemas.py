@@ -395,6 +395,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "missing_outputs": {"type": "array", "items": {"type": "string"}},
                     "style_summary": {"type": "object"},
                     "folder_role_summary": {"type": "object"},
+                    "experimental_conditions_summary": {"type": "object"},
                     "normalization_needed": {"type": "boolean"},
                 }
             ),
