@@ -20,6 +20,7 @@ from hub_core.config_parser import (
     validate_config,
 )
 from hub_core.mcp.schemas import describe_graphhub_surface
+from hub_core.naming_lint import empty_naming_lint, lint_project_naming
 from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.raw_integrity import raw_integrity_config, raw_integrity_drift_message, verify_raw_integrity
 from themes.style_packs import list_style_packs
@@ -97,12 +98,14 @@ class McpReadToolsMixin:
         include_invalid = bool(arguments.get("include_invalid", True))
         include_worktrees = bool(arguments.get("include_worktrees", False))
         include_ephemeral = bool(arguments.get("include_ephemeral", False))
+        include_quarantine = bool(arguments.get("include_quarantine", False))
         max_depth = self._max_depth(arguments.get("max_depth", 4))
 
         projects = ProjectDiscoveryService(
             root,
             include_worktrees=include_worktrees,
             include_ephemeral=include_ephemeral,
+            include_quarantine=include_quarantine,
         ).discover(max_depth=max_depth)
         if not include_invalid:
             projects = [project for project in projects if project.valid]
@@ -140,6 +143,7 @@ class McpReadToolsMixin:
         csv_checks = self._list_section(config.get("data_contract", {}), "csv_checks")
         figure_outputs = self._outputs(figures)
         diagram_outputs = self._outputs(diagrams)
+        naming_lint = self._naming_lint(project_path, enabled=bool(arguments.get("include_naming_lint", False)))
 
         return self._envelope(
             "graphhub.inspect_project",
@@ -178,6 +182,7 @@ class McpReadToolsMixin:
             experimental_conditions_summary=self._experimental_conditions_summary(config),
             sample_registry_summary=self._sample_registry_summary(config),
             raw_integrity_status=self._raw_integrity_status(project_path, config),
+            naming_lint=naming_lint,
             normalization_needed=loaded["config_relpath"] == "scripts/project_config.yaml",
         )
 
@@ -215,13 +220,15 @@ class McpReadToolsMixin:
             next_action = "fix_project_config"
 
         render_environment_warnings = self._project_context_render_warnings(project_path)
+        naming_lint = self._naming_lint(project_path, enabled=bool(arguments.get("include_naming_lint", False)))
         warnings = [] if valid else ["Project validation reported warnings or errors."]
         if raw_integrity_warning and raw_integrity_status.get("mode") != "strict":
             warnings.append(raw_integrity_warning)
+        warnings.extend(naming_lint["warnings"])
         warnings.extend(render_environment_warnings)
         status = "warning" if warnings else "ok"
-        if valid and render_environment_warnings:
-            summary = "Project config is valid with render environment warnings."
+        if valid and warnings:
+            summary = "Project config is valid with advisory warnings."
         elif valid:
             summary = "Project config is valid."
         else:
@@ -239,6 +246,7 @@ class McpReadToolsMixin:
             lockfile_status=lockfile_status,
             style_errors=style_errors,
             raw_integrity_status=raw_integrity_status,
+            naming_lint=naming_lint,
             recommended_next_action=next_action,
         )
 
@@ -296,6 +304,8 @@ class McpReadToolsMixin:
         if project.classification in {"folder_role", "unclassified"}:
             return project.classification
         if project.classification in {"legacy", "ephemeral"}:
+            return project.classification
+        if project.classification == "quarantine":
             return project.classification
         return "valid"
 
@@ -378,6 +388,15 @@ class McpReadToolsMixin:
                 "errors": [],
             }
         return verify_raw_integrity(project_path, config)
+
+    def _naming_lint(self, project_path: Path, *, enabled: bool) -> dict[str, Any]:
+        if not enabled:
+            return empty_naming_lint()
+        try:
+            lint_path = project_path.resolve().relative_to(self.research_root)
+        except ValueError:
+            lint_path = project_path.name
+        return lint_project_naming(lint_path)
 
     @staticmethod
     def _traceability_matrix(figures: list[dict[str, Any]]) -> list[dict[str, Any]]:

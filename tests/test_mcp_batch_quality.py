@@ -120,6 +120,7 @@ class BatchQualityMCPTest(unittest.TestCase):
         self.assertIn("dry_run", schema["properties"])
         self.assertIn("batch_id", schema["properties"])
         self.assertIn("resume_manifest_path", schema["properties"])
+        self.assertIn("include_quarantine", schema["properties"])
 
     def test_render_csv_graph_reports_preflight_passed_artifact_status(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
@@ -200,6 +201,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             self._write_legacy_project(root, "03_Legacy")
             self._write_project(root, ".worktrees/feature/04_Worktree")
             self._write_project(root, "[Athena]/bridge_jobs/job-1/05_Bridge")
+            self._write_project(root, "_archive/06_Archived")
             before = _snapshot_files(root)
             runtime_root = Path(tmpdir) / "runtime"
             with patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "surfur"}, clear=False):
@@ -218,8 +220,28 @@ class BatchQualityMCPTest(unittest.TestCase):
             self.assertEqual(skipped["03_Legacy"], "legacy_project")
             self.assertEqual(skipped[".worktrees/feature/04_Worktree"], "ephemeral_project")
             self.assertEqual(skipped["[Athena]/bridge_jobs/job-1/05_Bridge"], "ephemeral_project")
+            self.assertEqual(skipped["_archive/06_Archived"], "quarantine_project")
             self.assertEqual(_snapshot_files(root), before)
             self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_batch_check_can_include_quarantine_projects_explicitly(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            self._write_project(root, "_archive/06_Archived")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "graphhub.batch_check",
+                {"root": str(root), "max_depth": 4, "dry_run": True, "include_quarantine": True},
+            )
+
+            self.assertEqual(
+                [item["project_root"] for item in result["checked_projects"]],
+                ["_archive/06_Archived"],
+            )
+            self.assertEqual(result["skipped_projects"], [])
 
     def test_batch_check_apply_writes_runtime_manifest_not_source_tree(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:

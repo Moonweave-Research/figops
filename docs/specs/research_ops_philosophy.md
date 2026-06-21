@@ -24,7 +24,7 @@ Tier 2 is complete.
 
 ## Tier 3
 
-1. Naming and quarantine-zone validation.
+1. Naming and quarantine-zone validation. Status: done.
 2. Canonical-docs precedence registry.
 3. Config TODO/placeholder checks.
 

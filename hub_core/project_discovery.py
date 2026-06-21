@@ -46,11 +46,13 @@ class ProjectDiscoveryService:
         *,
         include_worktrees: bool = False,
         include_ephemeral: bool = False,
+        include_quarantine: bool = False,
         conventions=None,
     ) -> None:
         self.root_dir = Path(root_dir).expanduser().resolve()
         self.include_worktrees = include_worktrees
         self.include_ephemeral = include_ephemeral
+        self.include_quarantine = include_quarantine
         self.conventions = conventions if conventions is not None else select_adapters({}).conventions
 
     def discover(self, max_depth: int = 4) -> list[DiscoveredProject]:
@@ -91,6 +93,7 @@ class ProjectDiscoveryService:
             discovered.values(),
             key=lambda item: (
                 item.classification == "ephemeral",
+                item.classification == "quarantine",
                 item.classification == "invalid",
                 not item.valid,
                 item.name.lower(),
@@ -225,6 +228,8 @@ class ProjectDiscoveryService:
     def _classify(self, rel_project: str, rel_config: str, valid: bool) -> str:
         if self._is_ephemeral_path(rel_project):
             return "ephemeral"
+        if self._is_quarantine_path(rel_project):
+            return "quarantine"
         if not valid:
             return "invalid"
         if rel_config == "scripts/project_config.yaml":
@@ -240,6 +245,9 @@ class ProjectDiscoveryService:
 
     def _is_ephemeral_path(self, rel_project: str) -> bool:
         return self.conventions.is_ephemeral_project_path(rel_project)
+
+    def _is_quarantine_path(self, rel_project: str) -> bool:
+        return self.conventions.is_quarantine_project_path(rel_project)
 
     def _relative_path(self, path: Path) -> str:
         try:
@@ -292,12 +300,14 @@ def discover_projects_with_status(
     max_depth: int = 4,
     include_worktrees: bool = False,
     include_ephemeral: bool = False,
+    include_quarantine: bool = False,
     conventions=None,
 ) -> list[dict]:
     service = ProjectDiscoveryService(
         root_dir,
         include_worktrees=include_worktrees,
         include_ephemeral=include_ephemeral,
+        include_quarantine=include_quarantine,
         conventions=conventions,
     )
     return [project.to_dict() for project in service.discover(max_depth=max_depth)]
@@ -309,6 +319,7 @@ def get_discoverable_projects(
     max_depth: int = 4,
     include_worktrees: bool = False,
     include_ephemeral: bool = False,
+    include_quarantine: bool = False,
     conventions=None,
 ) -> list[dict]:
     projects = []
@@ -317,11 +328,14 @@ def get_discoverable_projects(
         max_depth=max_depth,
         include_worktrees=include_worktrees,
         include_ephemeral=include_ephemeral,
+        include_quarantine=include_quarantine,
         conventions=conventions,
     ):
         if not project["valid"]:
             continue
         if project.get("role") != "module" or not project.get("config_path"):
+            continue
+        if project.get("classification") == "quarantine" and not include_quarantine:
             continue
         projects.append(
             {
