@@ -258,6 +258,14 @@ def _snapshot_tree(root: Path) -> dict[str, tuple[int, int]]:
     return snapshot
 
 
+@contextlib.contextmanager
+def _without_runtime_root_env():
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("RESEARCH_HUB_RUNTIME_ROOT", None)
+        os.environ.pop("RESEARCH_HUB_RUNTIME_HOME", None)
+        yield
+
+
 class RenderCSVGraphMCPTest(unittest.TestCase):
     def _call(self, server: GraphHubMCPServer, tool_name: str, arguments: dict | None = None) -> dict:
         response = server.call_tool(tool_name, arguments or {})
@@ -295,7 +303,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             runtime_root = Path(tmpdir) / "runtime"
 
-            with patch("hub_core.mcp.security.preview_runtime_root", return_value=str(runtime_root)):
+            with (
+                _without_runtime_root_env(),
+                patch("hub_core.mcp.security.preview_runtime_root", return_value=str(runtime_root)),
+            ):
                 server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             self.assertEqual(server.runtime_root, runtime_root.resolve())
@@ -308,6 +319,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             runtime_root = Path(tmpdir) / "runtime"
 
             with (
+                _without_runtime_root_env(),
                 patch("hub_core.mcp.security.preview_runtime_root", return_value=str(preview_root)),
                 patch("hub_core.mcp.security.resolve_runtime_root", return_value=str(runtime_root)),
             ):
@@ -334,6 +346,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             with (
                 patch.dict(os.environ, {"GRAPH_HUB_PREFETCH_ADAPTER": "gdrive"}, clear=False),
+                _without_runtime_root_env(),
                 patch("hub_core.mcp.security.resolve_runtime_root", return_value=str(runtime_root)),
                 patch("hub_core.adapters.prefetch.ensure_local_files", side_effect=noisy_prefetch),
                 contextlib.redirect_stdout(stdout),
@@ -357,6 +370,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             runtime_root = Path(tmpdir) / "runtime"
 
             with (
+                _without_runtime_root_env(),
                 patch("hub_core.mcp.security.preview_runtime_root", return_value=str(preview_root)),
                 patch("hub_core.mcp.security.resolve_runtime_root", return_value=str(runtime_root)),
                 patch(
