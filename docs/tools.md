@@ -718,6 +718,9 @@ Summarize one project config without running analysis, plotting, or report write
       },
       "type": "array"
     },
+    "canonical_docs_registry": {
+      "type": "object"
+    },
     "created_paths": {
       "items": {
         "type": "string"
@@ -957,6 +960,9 @@ Run read-only config, data contract, style, and lockfile checks without executin
         "type": "string"
       },
       "type": "array"
+    },
+    "canonical_docs_registry": {
+      "type": "object"
     },
     "config_errors": {
       "items": {

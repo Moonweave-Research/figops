@@ -406,6 +406,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "sample_registry_summary": {"type": "object"},
                     "raw_integrity_status": {"type": "object"},
                     "naming_lint": {"type": "object"},
+                    "canonical_docs_registry": {"type": "object"},
                     "normalization_needed": {"type": "boolean"},
                 }
             ),
@@ -432,6 +433,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "style_errors": {"type": "array", "items": {"type": "string"}},
                     "raw_integrity_status": {"type": "object"},
                     "naming_lint": {"type": "object"},
+                    "canonical_docs_registry": {"type": "object"},
                     "recommended_next_action": {"type": "string"},
                 }
             ),

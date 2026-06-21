@@ -7,6 +7,7 @@ from typing import Any
 
 import yaml
 
+from hub_core.canonical_docs import canonical_docs_registry, missing_canonical_doc_message
 from hub_core.config_parser import (
     ALLOWED_OUTPUT_FORMATS,
     ALLOWED_TARGET_FORMATS,
@@ -144,6 +145,7 @@ class McpReadToolsMixin:
         figure_outputs = self._outputs(figures)
         diagram_outputs = self._outputs(diagrams)
         naming_lint = self._naming_lint(project_path, enabled=bool(arguments.get("include_naming_lint", False)))
+        canonical_registry = canonical_docs_registry(project_path, config)
 
         return self._envelope(
             "graphhub.inspect_project",
@@ -183,6 +185,7 @@ class McpReadToolsMixin:
             sample_registry_summary=self._sample_registry_summary(config),
             raw_integrity_status=self._raw_integrity_status(project_path, config),
             naming_lint=naming_lint,
+            canonical_docs_registry=canonical_registry,
             normalization_needed=loaded["config_relpath"] == "scripts/project_config.yaml",
         )
 
@@ -201,6 +204,12 @@ class McpReadToolsMixin:
             )
             if raw_integrity_status.get("mode") == "strict":
                 config_errors.append(raw_integrity_warning)
+        canonical_registry = canonical_docs_registry(project_path, config)
+        canonical_docs_warning = ""
+        if canonical_registry["declared"] and canonical_registry["missing"]:
+            canonical_docs_warning = missing_canonical_doc_message(canonical_registry["missing"])
+            if canonical_registry["required"]:
+                config_errors.append(canonical_docs_warning)
 
         data_contract_errors = [error for error in config_errors if error.startswith("data_contract.")]
         style_errors = [
@@ -224,6 +233,8 @@ class McpReadToolsMixin:
         warnings = [] if valid else ["Project validation reported warnings or errors."]
         if raw_integrity_warning and raw_integrity_status.get("mode") != "strict":
             warnings.append(raw_integrity_warning)
+        if canonical_docs_warning and not canonical_registry["required"]:
+            warnings.append(canonical_docs_warning)
         warnings.extend(naming_lint["warnings"])
         warnings.extend(render_environment_warnings)
         status = "warning" if warnings else "ok"
@@ -247,6 +258,7 @@ class McpReadToolsMixin:
             style_errors=style_errors,
             raw_integrity_status=raw_integrity_status,
             naming_lint=naming_lint,
+            canonical_docs_registry=canonical_registry,
             recommended_next_action=next_action,
         )
 
