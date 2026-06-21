@@ -15,6 +15,29 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.15.0] - 2026-06-21
+
+### Changed
+
+- Research-operations rules now enforce by default for `project.role: module`
+  projects across both CLI and MCP render paths: raw-integrity drift blocks
+  renders, placeholders are forbidden, declared figure traceability chains are
+  validated, and declared canonical docs must exist. Explicit `false` opt-outs
+  remain available for scoped relaxation (#151).
+
+### Fixed
+
+- MCP server startup now honors the documented
+  `GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED` environment variable by seeding server
+  config from `McpServerConfig.from_env()` (#149).
+- MCP rendering tests now isolate `RESEARCH_HUB_RUNTIME_ROOT` so runtime-root
+  state does not leak across test runs (#149).
+- MCP and discovery config reads now use the duplicate-key-rejecting YAML
+  loader, including restored YAML merge-key support and conservative warnings
+  for near-miss top-level config keys (#150).
+- Data-read path validation now applies a symmetric symlink guard, and the
+  test suite uses a global hermetic runtime-root fixture (#150).
+
 ## [0.14.0] - 2026-06-21
 
 ### Added
