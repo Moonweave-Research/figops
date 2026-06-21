@@ -25,7 +25,7 @@ Tier 2 is complete.
 ## Tier 3
 
 1. Naming and quarantine-zone validation. Status: done.
-2. Canonical-docs precedence registry.
+2. Canonical-docs precedence registry. Status: done.
 3. Config TODO/placeholder checks.
 
 Applying this philosophy to an existing research project is a separate migration step. That migration must be explicit, opt-in, and non-destructive.

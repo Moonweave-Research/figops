@@ -445,6 +445,39 @@ def _validate_relative_path_value(errors: list[str], field_name: str, path: str)
         errors.append(f"{field_name} must not contain path traversal '..': '{path}'.")
 
 
+def _validate_canonical_docs(errors: list[str], canonical_docs: object) -> None:
+    if canonical_docs is None:
+        return
+    if not isinstance(canonical_docs, list):
+        errors.append("canonical_docs must be an ordered list when provided.")
+        return
+
+    seen_paths: set[str] = set()
+    for index, item in enumerate(canonical_docs, 1):
+        field_name = f"canonical_docs[{index}].path"
+        label: object = None
+        if isinstance(item, str):
+            path = item
+        elif isinstance(item, dict):
+            path = item.get("path")
+            label = item.get("label")
+        else:
+            errors.append(f"canonical_docs[{index}] must be a relative path string or a mapping with path.")
+            continue
+
+        if not isinstance(path, str) or not path.strip():
+            errors.append(f"{field_name} must be a non-empty relative path.")
+            continue
+        _validate_relative_path_value(errors, field_name, path)
+        if label is not None and not isinstance(label, str):
+            errors.append(f"canonical_docs[{index}].label must be a string when provided.")
+
+        normalized_path = path.strip().replace("\\", "/").strip("/")
+        if normalized_path in seen_paths:
+            errors.append(f"Duplicate canonical_docs path: '{normalized_path}'.")
+        seen_paths.add(normalized_path)
+
+
 def _experimental_condition_ids(experimental_conditions: object) -> set[str] | None:
     if not isinstance(experimental_conditions, dict) or "conditions" not in experimental_conditions:
         return None
@@ -869,6 +902,7 @@ def validate_config(config):
         if config.get("diagrams"):
             errors.append("project.role 'master' must not define diagrams; use execution modules.")
 
+    _validate_canonical_docs(errors, config.get("canonical_docs"))
     _validate_experimental_conditions(errors, config.get("experimental_conditions"))
     sample_ids = _validate_sample_registry(errors, config.get("sample_registry"))
     if sample_ids is not None:
@@ -1114,6 +1148,10 @@ def validate_config(config):
             data_contract.get("require_figure_traceability"), bool
         ):
             errors.append("data_contract.require_figure_traceability must be a boolean.")
+        if "require_canonical_docs" in data_contract and not isinstance(
+            data_contract.get("require_canonical_docs"), bool
+        ):
+            errors.append("data_contract.require_canonical_docs must be a boolean.")
         _validate_raw_integrity_config(errors, data_contract.get("raw_integrity"))
         csv_checks = data_contract.get("csv_checks", [])
         if csv_checks is None:
