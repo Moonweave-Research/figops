@@ -38,6 +38,50 @@ class RuntimePathTest(unittest.TestCase):
             self.assertEqual(Path(resolved), runtime_root)
             self.assertTrue(runtime_root.is_dir())
 
+    def test_graph_hub_runtime_root_is_honored_after_research_overrides(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
+            research_root = Path(tmpdir) / "research-root"
+            research_home = Path(tmpdir) / "research-home"
+            graph_root = Path(tmpdir) / "graph-root"
+
+            with patch.dict(
+                os.environ,
+                {
+                    "RESEARCH_HUB_RUNTIME_ROOT": str(research_root),
+                    "RESEARCH_HUB_RUNTIME_HOME": str(research_home),
+                    "GRAPH_HUB_RUNTIME_ROOT": str(graph_root),
+                },
+                clear=False,
+            ):
+                self.assertEqual(Path(preview_runtime_root()), research_root)
+
+            with patch.dict(
+                os.environ,
+                {
+                    "RESEARCH_HUB_RUNTIME_ROOT": "",
+                    "RESEARCH_HUB_RUNTIME_HOME": str(research_home),
+                    "GRAPH_HUB_RUNTIME_ROOT": str(graph_root),
+                },
+                clear=False,
+            ):
+                self.assertEqual(Path(preview_runtime_root()), research_home)
+
+            with patch.dict(
+                os.environ,
+                {
+                    "RESEARCH_HUB_RUNTIME_ROOT": "",
+                    "RESEARCH_HUB_RUNTIME_HOME": "",
+                    "GRAPH_HUB_RUNTIME_ROOT": str(graph_root),
+                },
+                clear=False,
+            ):
+                preview = preview_runtime_root()
+                resolved = resolve_runtime_root()
+
+            self.assertEqual(Path(preview), graph_root)
+            self.assertEqual(Path(resolved), graph_root)
+            self.assertTrue(graph_root.is_dir())
+
     def test_preview_runtime_root_matches_resolver_fallback_without_creating(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
             blocked_cache = Path(tmpdir) / "cache-file"

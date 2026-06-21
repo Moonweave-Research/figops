@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -157,7 +158,7 @@ def _check_write_tools(server: GraphHubMCPServer) -> DoctorCheck:
         return DoctorCheck(
             "write_tools",
             "ok",
-            "MCP write/render tools are enabled.",
+            "MCP write/render tools are enabled (not execution-verified).",
             details={"enabled": True},
         )
     return DoctorCheck(
@@ -177,12 +178,41 @@ def _check_roots(server: GraphHubMCPServer) -> DoctorCheck:
         "allowed_data_roots": [str(root) for root in server.allowed_data_roots],
     }
     warnings = list(server.security_warnings)
+    errors: list[str] = []
+    if not server.research_root.exists():
+        errors.append(f"research_root does not exist: {server.research_root}")
+    elif not server.research_root.is_dir():
+        errors.append(f"research_root is not a directory: {server.research_root}")
+
+    runtime_root_explicit = bool(getattr(server, "_runtime_root_explicit", True))
+    if not server.runtime_root.exists():
+        if runtime_root_explicit:
+            warnings.append(f"runtime_root does not exist: {server.runtime_root}")
+    elif not server.runtime_root.is_dir():
+        errors.append(f"runtime_root is not a directory: {server.runtime_root}")
+    elif not os.access(server.runtime_root, os.W_OK | os.X_OK):
+        errors.append(f"runtime_root is not writable/executable: {server.runtime_root}")
+
+    if errors:
+        return DoctorCheck(
+            "roots",
+            "error",
+            "Resolved roots have blocking filesystem errors.",
+            "Fix the configured research_root/runtime_root paths before using MCP rendering.",
+            {**details, "errors": errors, "warnings": warnings},
+        )
     if warnings:
+        summary = "Resolved roots with security or filesystem warnings."
+        if any("does not exist" in warning for warning in warnings):
+            summary = "Resolved roots with warnings; one or more paths does not exist."
+        hint = "Tighten GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS or set GRAPH_HUB_MCP_STRICT_ROOTS=1."
+        if any(warning.startswith("runtime_root ") for warning in warnings):
+            hint = "Create the configured runtime_root or choose a writable runtime location."
         return DoctorCheck(
             "roots",
             "warning",
-            "Resolved roots with security warnings.",
-            "Tighten GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS or set GRAPH_HUB_MCP_STRICT_ROOTS=1.",
+            summary,
+            hint,
             {**details, "warnings": warnings},
         )
     return DoctorCheck("roots", "ok", "Resolved roots are valid.", details=details)

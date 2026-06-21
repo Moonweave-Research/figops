@@ -53,6 +53,9 @@ class McpSecurityMixin:
         self.runtime_root = self._resolve_runtime_root(server_config.runtime_root)
         self.security_warnings = []
         self._configured_allowed_data_roots = server_config.allowed_data_roots
+        self._strict_data_roots = bool(server_config.strict_data_roots)
+        # strict_roots only gates broad roots explicitly supplied through configuration/env.
+        # It does not alter symlink policy or the default compatible root seeds below.
         self._strict_roots = bool(server_config.strict_roots)
         self.allowed_data_roots = self._allowed_data_roots()
         self.write_tools_enabled = self._resolve_write_tools_enabled(server_config.write_tools_enabled)
@@ -93,7 +96,15 @@ class McpSecurityMixin:
         return False
 
     def _allowed_data_roots(self) -> tuple[Path, ...]:
-        roots = [self.research_root, self.runtime_root]
+        # Default compatibility floor: research_root and runtime_root are always allowed
+        # unless the operator opts into strict data roots. In strict data mode, project
+        # data reads require GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS/config entries, while
+        # runtime_root remains available for generated artifacts and manifests.
+        roots = [self.runtime_root] if self._strict_data_roots else [self.research_root, self.runtime_root]
+        if self._strict_data_roots and not self._configured_allowed_data_roots:
+            self.security_warnings.append(
+                "GRAPH_HUB_MCP_STRICT_DATA_ROOTS is enabled, but GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS is empty."
+            )
         for item in self._configured_allowed_data_roots:
             extra = normalize_allowed_root(item)
             stripped = str(item)
@@ -129,6 +140,10 @@ class McpSecurityMixin:
         home = Path.home().resolve()
         if root == home:
             return f"Configured broad data root allows the current user's home directory: {root}"
+        if root != Path(root.anchor) and (
+            root == home.parent or (root.parent == Path(root.anchor) and root.name.lower() in {"home", "users"})
+        ):
+            return f"Configured broad data root allows a multi-user parent directory: {root}"
         if os.name == "nt" and root.anchor and root == Path(root.anchor).resolve():
             return f"Configured broad data root allows the drive root: {root}"
         return ""
