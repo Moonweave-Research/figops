@@ -1,9 +1,9 @@
 # 📊 Graph Making Hub — 마스터 체크리스트 (task.md)
 
-> **최종 업데이트**: 2026-03-07 (UX 문서 분리, 사용자용 에러 안내 강화)
+> **최종 업데이트**: 2026-06-21 (v0.15.0 문서 드리프트 정리)
 > **원칙**: 우선순위는 **런타임 크래시 > 아키텍처 정합성 > 문서 정확성 > 개선** 순서
 
-> **2026-06-07 note**: 이 파일은 과거 작업 이력/체크리스트로 유지한다. 현재 운영 기준은 `AGENTS.md`, `Research_Central_Architecture.md`, `README.md`, `docs/QA.md`를 우선한다. 아래의 DVC, `requirements-lock.txt`, legacy `[Graph_making_hub]` 경로 언급은 당시 이력으로 해석한다.
+> **2026-06-21 note**: 이 파일은 과거 작업 이력/체크리스트로 유지한다. 현재 운영 기준은 `AGENTS.md`, `Research_Central_Architecture.md`, `README.md`, `docs/QA.md`를 우선한다. Python 의존성 기준은 `pyproject.toml` + `uv.lock`이다. 0.5.0 이후 릴리스 이력과 research-ops Tier 1-3 작업은 `CHANGELOG.md`를 우선한다. `0.5.0`은 태그 생성 전 baseline이며, git tag는 `v0.6.0`부터 시작한다.
 
 ---
 
@@ -56,7 +56,7 @@
 ## 🆕 Reproducibility Lock Hardening (2026-03-06)
 
 - [x] **Python full transitive lock 반영**
-  - DoD: `requirements-lock.txt`를 현재 운영 `.venv` 기준 full freeze로 갱신해 top-level pin이 아니라 전체 dependency tree를 고정
+  - DoD: Python 의존성 상태를 `pyproject.toml` + `uv.lock` 기준으로 고정
 - [x] **Repo-level `renv.lock` 도입**
   - DoD: 허브 루트에 `renv.lock`을 추가하고 Docker/R 경로가 동일 lock 기준으로 복원되도록 정렬
 - [x] **Docker R restore 경로 교체**
@@ -215,7 +215,7 @@ handoff_packet:
     - "interactive 목록은 valid project만 유지하되, 운영용 check-all/report는 invalid config를 discovered_count/invalid_projects로 별도 노출"
     - "Dockerfile + --docker/--docker-build 옵션을 추가해 격리 실행 경로를 제공"
     - "Docker image에 fonts-liberation/fontconfig를 포함하고, Python theme가 설치된 sans font만 선택하도록 바꿔 Docker font fallback 경고를 줄임"
-    - "requirements-lock.txt를 full transitive lock으로 교체하고, 허브 루트 renv.lock + Docker renv::restore()로 R 환경도 lock 기반 복원으로 전환"
+    - "Python 의존성을 pyproject.toml + uv.lock 기준으로 정렬하고, 허브 루트 renv.lock + Docker renv::restore()로 R 환경도 lock 기반 복원으로 전환"
     - "실제 등록 프로젝트들의 project_config.yaml에 analysis.inputs / environment.r_lock 보정을 반영해 prefetch/lock 게이트를 운영 상태에 맞게 정렬"
     - "sandbox 밖 실제 경로에서 --check-all --step plot/all --force --strict-lock을 재검증해 4개 프로젝트 모두 통과 확인"
   touched_files:
