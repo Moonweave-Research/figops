@@ -268,6 +268,30 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         "description": "Optional baseline figure path to compare the rendered output against.",
     }
     job_id_arg = {"type": "string", "description": "Stable render job ID; auto-generated when omitted."}
+    project_role_schema = {"type": "string", "enum": ["master", "module"]}
+    listed_project_schema = {
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string"},
+            "project_root": {"type": "string"},
+            "config_path": {"type": "string"},
+            "role": project_role_schema,
+            "status": {"type": "string"},
+            "errors": {"type": "array", "items": {"type": "string"}},
+            "declared_figures": {"type": "integer"},
+            "declared_diagrams": {"type": "integer"},
+            "target_format": {"type": "string"},
+        },
+    }
+    project_metadata_schema = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "role": project_role_schema,
+            "project_root": {"type": "string"},
+            "config_path": {"type": "string"},
+        },
+    }
     selector_one_of = [{"required": ["project_id"]}, {"required": ["project_path"]}]
     project_selector = {
         "project_id": project_id_arg,
@@ -338,7 +362,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
                 }
             ),
-            _standard_output_schema({"projects": {"type": "array", "items": {"type": "object"}}}),
+            _standard_output_schema({"projects": {"type": "array", "items": listed_project_schema}}),
         ),
         ToolDefinition(
             "graphhub.inspect_project",
@@ -346,7 +370,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
             {**_object_schema(project_selector), "oneOf": selector_one_of},
             _standard_output_schema(
                 {
-                    "project_metadata": {"type": "object"},
+                    "project_metadata": project_metadata_schema,
                     "folder_structure_status": {"type": "object"},
                     "data_contract_summary": {"type": "object"},
                     "pipeline_steps": {"type": "object"},

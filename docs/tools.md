@@ -565,6 +565,42 @@ Discover Graph Hub project configs without executing scripts or writing files.
     },
     "projects": {
       "items": {
+        "properties": {
+          "config_path": {
+            "type": "string"
+          },
+          "declared_diagrams": {
+            "type": "integer"
+          },
+          "declared_figures": {
+            "type": "integer"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "project_root": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "master",
+              "module"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target_format": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "type": "array"
@@ -757,6 +793,24 @@ Summarize one project config without running analysis, plotting, or report write
       "type": "object"
     },
     "project_metadata": {
+      "properties": {
+        "config_path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "project_root": {
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "master",
+            "module"
+          ],
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "resolution_hint": {

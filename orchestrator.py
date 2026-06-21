@@ -33,9 +33,11 @@ from hub_core import (
     list_projects,
     load_build_state,
     load_config,
+    master_execution_error,
     parse_comparison_config,
     parse_sweep_config,
     print_provenance,
+    project_role,
     prompt_numeric_selection,
     rerun_in_docker,
     run_analysis,
@@ -395,6 +397,9 @@ def main():
         # 설정 로드 및 실행
         config, config_path, config_hash = load_config(project_path)
         if not config:
+            return 1
+        if project_role(config) == "master":
+            logger.error("❌ Error: %s", master_execution_error(config))
             return 1
 
         if args.preset:

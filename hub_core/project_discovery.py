@@ -18,6 +18,7 @@ class DiscoveredProject:
     path: str
     config: str
     config_path: str
+    role: str
     valid: bool
     errors: tuple[str, ...]
     classification: str
@@ -30,6 +31,7 @@ class DiscoveredProject:
             "path": self.path,
             "config": self.config,
             "config_path": self.config_path,
+            "role": self.role,
             "valid": self.valid,
             "errors": list(self.errors),
             "classification": self.classification,
@@ -75,7 +77,8 @@ class ProjectDiscoveryService:
             if project.classification == "ephemeral" and not self._include_ephemeral_path(project.path):
                 continue
             discovered.append(project)
-            dirs[:] = []
+            if project.role != "master":
+                dirs[:] = []
 
         return sorted(
             discovered,
@@ -122,6 +125,7 @@ class ProjectDiscoveryService:
             path=rel_project,
             config=rel_config,
             config_path=str(config_path),
+            role=str(metadata["role"]),
             valid=valid,
             errors=tuple(metadata["errors"]),
             classification=classification,
@@ -227,12 +231,15 @@ def get_discoverable_projects(
     ):
         if not project["valid"]:
             continue
+        if project.get("role") == "master":
+            continue
         projects.append(
             {
                 "project_id": project["project_id"],
                 "name": project["name"],
                 "path": project["path"],
                 "config": project["config"],
+                "role": project["role"],
                 "classification": project["classification"],
                 "target_format": project["target_format"],
             }

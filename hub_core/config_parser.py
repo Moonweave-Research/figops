@@ -38,6 +38,8 @@ ALLOWED_MONOTONIC_MODES = {"increasing", "decreasing", "nondecreasing", "nonincr
 ALLOWED_PREFETCH_ADAPTERS = {"none", "noop", "off", "gdrive"}
 ALLOWED_ATHENA_ADAPTERS = {"none", "null", "off", "legacy", "on"}
 ALLOWED_CONVENTIONS_ADAPTERS = {"none", "generic", "surfur"}
+ALLOWED_PROJECT_ROLES = {"master", "module"}
+DEFAULT_PROJECT_ROLE = "module"
 CONFIG_FILE_CANDIDATES = (
     "project_config.yaml",
     os.path.join("scripts", "project_config.yaml"),
@@ -463,9 +465,46 @@ def find_config_path(project_dir):
     return None
 
 
+def project_role(config):
+    project = config.get("project") if isinstance(config, dict) else {}
+    if not isinstance(project, dict):
+        return DEFAULT_PROJECT_ROLE
+    role = project.get("role", DEFAULT_PROJECT_ROLE)
+    if not isinstance(role, str):
+        return DEFAULT_PROJECT_ROLE
+    role = role.strip().lower()
+    return role if role else DEFAULT_PROJECT_ROLE
+
+
+def project_modules(config):
+    modules = config.get("modules", []) if isinstance(config, dict) else []
+    if not isinstance(modules, list):
+        return []
+    return [str(module).strip() for module in modules if isinstance(module, str) and module.strip()]
+
+
+def master_execution_error(config):
+    modules = project_modules(config)
+    module_list = ", ".join(modules) if modules else "none declared"
+    return f"This is a master project root, not an execution module — enter one of its modules: [{module_list}]"
+
+
+def normalize_project_defaults(config):
+    if not isinstance(config, dict):
+        return config
+    project = config.get("project")
+    if isinstance(project, dict):
+        if "role" not in project:
+            project["role"] = DEFAULT_PROJECT_ROLE
+        elif isinstance(project.get("role"), str):
+            project["role"] = project["role"].strip().lower()
+    return config
+
+
 def _load_project_metadata(config_path, fallback_name):
     metadata = {
         "name": fallback_name,
+        "role": DEFAULT_PROJECT_ROLE,
         "valid": False,
         "errors": [],
     }
@@ -486,11 +525,13 @@ def _load_project_metadata(config_path, fallback_name):
     except ConfigMigrationError as exc:
         metadata["errors"] = [str(exc)]
         return metadata
+    conf_data = normalize_project_defaults(conf_data)
 
     project_section = conf_data.get("project")
     if not isinstance(project_section, dict):
         project_section = {}
     metadata["name"] = project_section.get("name", fallback_name)
+    metadata["role"] = project_role(conf_data)
     metadata["errors"] = validate_config(conf_data)
     metadata["valid"] = len(metadata["errors"]) == 0
     return metadata
@@ -530,12 +571,44 @@ def validate_config(config):
                 )
 
     project = config.get("project")
+    role = DEFAULT_PROJECT_ROLE
     if not isinstance(project, dict):
         errors.append("Missing or invalid 'project' section (must be a mapping).")
     else:
         name = project.get("name")
         if not isinstance(name, str) or not name.strip():
             errors.append("Missing required field: project.name (non-empty string).")
+        raw_role = project.get("role", DEFAULT_PROJECT_ROLE)
+        if not isinstance(raw_role, str) or raw_role.strip().lower() not in ALLOWED_PROJECT_ROLES:
+            allowed = ", ".join(sorted(ALLOWED_PROJECT_ROLES))
+            errors.append(f"Invalid project.role: '{raw_role}'. Allowed values: {allowed}.")
+        else:
+            role = raw_role.strip().lower() or DEFAULT_PROJECT_ROLE
+
+    modules = config.get("modules", [])
+    if modules is None:
+        modules = []
+    if not isinstance(modules, list):
+        errors.append("modules must be a list of relative module paths when provided.")
+    else:
+        for i, module_path in enumerate(modules, 1):
+            if not isinstance(module_path, str) or not module_path.strip():
+                errors.append(f"modules[{i}] must be a non-empty relative path.")
+                continue
+            if os.path.isabs(module_path):
+                errors.append(f"modules[{i}] must be a relative path, got absolute path '{module_path}'.")
+            elif ".." in module_path.replace("\\", "/").split("/"):
+                errors.append(f"modules[{i}] must not contain path traversal '..': '{module_path}'.")
+
+    if role == "master":
+        pipeline = config.get("pipeline", {})
+        has_pipeline = isinstance(pipeline, dict) and any(bool(pipeline.get(key)) for key in ("analysis",))
+        if has_pipeline:
+            errors.append("project.role 'master' must not define pipeline analysis steps; use execution modules.")
+        if config.get("figures"):
+            errors.append("project.role 'master' must not define figures; use execution modules.")
+        if config.get("diagrams"):
+            errors.append("project.role 'master' must not define diagrams; use execution modules.")
 
     visual_style = config.get("visual_style", {})
     if visual_style is None:
@@ -1264,6 +1337,7 @@ def load_config(project_dir):
         logger.error("   - %s", e)
         logger.error("   └─ Compare with the scaffold template or fix the listed fields and rerun.")
         return None, None, None
+    config = normalize_project_defaults(config)
 
     errors = validate_config(config)
     if errors:
@@ -1324,15 +1398,18 @@ def list_projects(root_dir, recursive=True, max_depth=4):
         status_text = "N/A"
         if project["valid"]:
             valid_count += 1
-            # 간이 config 로드하여 상태 확인
-            try:
-                with open(project["config_path"], "r", encoding="utf-8") as f:
-                    raw_text = f.read()
-                    config = _load_yaml_with_unique_keys(raw_text)
-                config_hash = hashlib.sha256(raw_text.replace("\r\n", "\n").encode("utf-8")).hexdigest()
-                status_text = check_project_status(os.path.join(root_dir, project["path"]), config, config_hash)
-            except Exception:
-                status_text = "⚠️ Status Error"
+            if project.get("role") == "master":
+                status_text = "N/A (master manifest)"
+            else:
+                # 간이 config 로드하여 상태 확인
+                try:
+                    with open(project["config_path"], "r", encoding="utf-8") as f:
+                        raw_text = f.read()
+                        config = _load_yaml_with_unique_keys(raw_text)
+                    config_hash = hashlib.sha256(raw_text.replace("\r\n", "\n").encode("utf-8")).hexdigest()
+                    status_text = check_project_status(os.path.join(root_dir, project["path"]), config, config_hash)
+                except Exception:
+                    status_text = "⚠️ Status Error"
         else:
             status_text = "❌ Invalid Config"
             invalid_projects.append(project)
@@ -1341,6 +1418,7 @@ def list_projects(root_dir, recursive=True, max_depth=4):
             [
                 project["name"],
                 project["path"],
+                project.get("role", "-"),
                 project.get("classification", "-"),
                 project.get("target_format", "-"),
                 _resolve_operational_state(operational_states, project["path"]),
@@ -1350,7 +1428,7 @@ def list_projects(root_dir, recursive=True, max_depth=4):
 
     ui_table(
         title=f"🏛️ Research Projects (depth <= {max_depth})",
-        columns=["Project Name", "Path", "Class", "Style", "Op State", "Status"],
+        columns=["Project Name", "Path", "Role", "Class", "Style", "Op State", "Status"],
         rows=rows,
     )
 

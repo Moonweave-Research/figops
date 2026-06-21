@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 
 from hub_core.adapters import select_adapters
-from hub_core.config_parser import validate_config
+from hub_core.config_parser import master_execution_error, project_role, validate_config
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.tools.render_support import McpRenderToolSupportMixin
 from hub_core.rendering import PLOT_TYPES
@@ -726,6 +726,17 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
                     errors=config_errors,
                     failure_stage="CONFIG",
                     resolution_hint="Fix project_config.yaml before rendering this project figure.",
+                )
+            if project_role(config) == "master":
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project render request targets a master project root.",
+                    errors=[master_execution_error(config)],
+                    failure_stage="CONFIG",
+                    resolution_hint="Select a declared execution module and render from that module project.",
                 )
             figures = self._project_figure_entries(config)
             selected, selection_errors = self._select_project_figure(

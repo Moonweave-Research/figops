@@ -9,8 +9,10 @@ from .config_parser import (
     get_discoverable_projects,
     list_projects,
     load_config,
+    master_execution_error,
     parse_comparison_config,
     parse_sweep_config,
+    project_role,
 )
 from .data_contract import validate_data_contract, validate_data_contract_preflight
 from .data_regression import check_golden_regression, freeze_golden_dataset
@@ -50,9 +52,11 @@ __all__ = [
     "list_projects",
     "load_build_state",
     "load_config",
+    "master_execution_error",
     "parse_comparison_config",
     "parse_sweep_config",
     "print_provenance",
+    "project_role",
     "prompt_numeric_selection",
     "rerun_in_docker",
     "run_analysis",
