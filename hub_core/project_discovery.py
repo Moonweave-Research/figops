@@ -279,11 +279,11 @@ class ProjectDiscoveryService:
 
     @staticmethod
     def _read_target_format(config_path: Path) -> str:
-        import yaml
+        from .config_parser import load_yaml_with_unique_keys
 
         try:
             with config_path.open("r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
+                data = load_yaml_with_unique_keys(f.read()) or {}
         except Exception:
             return ""
         if not isinstance(data, dict):

@@ -96,6 +96,7 @@ class HubSmokeTest(unittest.TestCase):
         env = os.environ.copy()
         runtime_home = tmp_path / "runtime_home"
         env["RESEARCH_HUB_RUNTIME_HOME"] = str(runtime_home)
+        env["RESEARCH_HUB_RUNTIME_ROOT"] = str(runtime_home)
         env["PYTHONUNBUFFERED"] = "1"
         return subprocess.run(
             cmd,
@@ -106,6 +107,29 @@ class HubSmokeTest(unittest.TestCase):
             text=True,
             check=False,
         )
+
+    def test_run_neutralizes_ambient_runtime_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_smoke_env_") as tmpdir:
+            tmp_path = Path(tmpdir)
+            with (
+                unittest.mock.patch.dict(
+                    os.environ,
+                    {
+                        "RESEARCH_HUB_RUNTIME_ROOT": "/ambient/runtime/root",
+                        "RESEARCH_HUB_RUNTIME_HOME": "/ambient/runtime/home",
+                    },
+                    clear=False,
+                ),
+                unittest.mock.patch("subprocess.run") as run_mock,
+            ):
+                run_mock.return_value = subprocess.CompletedProcess(["demo"], 0, "", "")
+
+                self._run([sys.executable, "-c", "print('demo')"], tmp_path)
+
+            passed_env = run_mock.call_args.kwargs["env"]
+            expected_runtime = str(tmp_path / "runtime_home")
+            self.assertEqual(passed_env["RESEARCH_HUB_RUNTIME_HOME"], expected_runtime)
+            self.assertEqual(passed_env["RESEARCH_HUB_RUNTIME_ROOT"], expected_runtime)
 
 
 if __name__ == "__main__":

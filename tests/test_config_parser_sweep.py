@@ -8,12 +8,56 @@ from hub_core.config_parser import (
     CURRENT_CONFIG_SCHEMA_VERSION,
     SUPPORTED_CONFIG_SCHEMA_VERSIONS,
     _load_project_metadata,
+    _load_yaml_with_unique_keys,
     _validate_sweep,
     load_config,
     migrate_config,
     parse_sweep_config,
     validate_config,
 )
+
+
+class TestUniqueKeyConfigLoader(unittest.TestCase):
+    def test_duplicate_top_level_key_is_rejected(self):
+        raw_config = """
+project:
+  name: First
+project:
+  name: Second
+"""
+
+        with self.assertRaisesRegex(Exception, "Duplicate key 'project'"):
+            _load_yaml_with_unique_keys(raw_config)
+
+    def test_duplicate_nested_key_is_rejected(self):
+        raw_config = """
+project:
+  name: Demo
+visual_style:
+  target_format: nature
+  target_format: science
+"""
+
+        with self.assertRaisesRegex(Exception, "Duplicate key 'target_format'"):
+            _load_yaml_with_unique_keys(raw_config)
+
+    def test_merge_keys_still_load(self):
+        raw_config = """
+defaults: &defaults
+  target_format: nature
+  font_scale: 1.2
+project:
+  name: Merge Demo
+visual_style:
+  <<: *defaults
+  profile: baseline
+"""
+
+        config = _load_yaml_with_unique_keys(raw_config)
+
+        self.assertEqual(config["visual_style"]["target_format"], "nature")
+        self.assertEqual(config["visual_style"]["font_scale"], 1.2)
+        self.assertEqual(config["visual_style"]["profile"], "baseline")
 
 
 class TestLoadProjectMetadataNonDictProject(unittest.TestCase):
@@ -109,6 +153,30 @@ class TestConfigSchemaMigration(unittest.TestCase):
 
                 self.assertEqual(migrated["schema_version"], CURRENT_CONFIG_SCHEMA_VERSION)
                 self.assertEqual(validate_config(migrated), [])
+
+
+class TestValidateConfigTopLevelNearMisses(unittest.TestCase):
+    def _minimal_config(self) -> dict:
+        return {
+            "project": {"name": "Near Miss Demo"},
+            "visual_style": {"target_format": "nature"},
+        }
+
+    def test_near_miss_top_level_key_is_error(self):
+        config = self._minimal_config()
+        config["module"] = ["../escape.py"]
+
+        errors = validate_config(config)
+
+        self.assertIn("Unknown top-level key 'module' — did you mean 'modules'?", errors)
+
+    def test_unrelated_extra_top_level_key_is_allowed(self):
+        config = self._minimal_config()
+        config["external_lab_notebook"] = {"owner": "materials-team"}
+
+        errors = validate_config(config)
+
+        self.assertEqual(errors, [])
 
 
 class TestParseSweepConfigValues(unittest.TestCase):

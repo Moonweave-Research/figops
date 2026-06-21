@@ -400,6 +400,25 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             with self.assertRaises(ValueError):
                 server._resolve_allowed_data_path(str(outside), field_name="data_path")
 
+    def test_allowed_data_path_rejects_symlink_component_into_allowed_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_containment_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            root.mkdir()
+            data_path = root / "data.csv"
+            data_path.write_text("x,y\n1,2\n", encoding="utf-8")
+            link_dir = Path(tmpdir) / "research_link"
+            try:
+                link_dir.symlink_to(root, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+            symlinked_data_path = link_dir / data_path.name
+
+            with self.assertRaisesRegex(ValueError, "symlinked path components"):
+                server._resolve_under_root(str(symlinked_data_path), field_name="project_path", root=root)
+            with self.assertRaisesRegex(ValueError, "symlinked path components"):
+                server._resolve_allowed_data_path(str(symlinked_data_path), field_name="data_path")
+
     def test_scan_root_rejects_root_outside_research_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
             research_root = Path(tmpdir) / "research"
@@ -419,6 +438,27 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             result = self._call(server, "graphhub.inspect_project", {"project_path": "/etc"})
             self.assertEqual(result["status"], "error")
             self.assertIn("project_path must stay under", result["errors"][0])
+
+    def test_inspect_project_reports_duplicate_config_keys(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
+            research_root = Path(tmpdir) / "research"
+            project = research_root / "Project"
+            project.mkdir(parents=True)
+            (project / "project_config.yaml").write_text(
+                """
+project:
+  name: First
+project:
+  name: Second
+""",
+                encoding="utf-8",
+            )
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=Path(tmpdir) / "runtime")
+
+            result = self._call(server, "graphhub.inspect_project", {"project_path": str(project)})
+
+            self.assertEqual(result["status"], "error")
+            self.assertIn("Duplicate key 'project'", result["errors"][0])
 
     def test_list_projects_preserves_legacy_and_ephemeral_statuses(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:

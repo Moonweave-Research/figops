@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 
 from .adapters import select_adapters
-from .config_parser import ALLOWED_TARGET_FORMATS, validate_config
+from .config_parser import ALLOWED_TARGET_FORMATS, load_yaml_with_unique_keys, validate_config
 from .scaffold import (
     DEFAULT_ANALYZE_R,
     DEFAULT_CONFIG_TEMPLATE,
@@ -460,7 +460,7 @@ def _style_summary(config_path: Path) -> dict[str, Any]:
     if not config_path.exists():
         return {"target_format": "nature", "profile": "baseline", "presets": [], "style_update_applied": False}
     try:
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        config = load_yaml_with_unique_keys(config_path.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
         return {"target_format": "unknown", "profile": "unknown", "presets": [], "style_update_applied": False}
     if not isinstance(config, dict):
