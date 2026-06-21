@@ -1,33 +1,43 @@
 # Research Operations Philosophy
 
-Graph Hub enforces a simple research-operations rule: every figure traces to validated data, and validated data traces to a declared experiment. The repository structure must enforce that chain, not merely document it.
+Graph Hub makes research-operations structure the default path for execution
+modules, while keeping migrations explicit and non-destructive. The enforcement
+posture is strict but scoped: modules fail fast on declared research-ops contract
+violations, but Graph Hub does not require every possible contract to be present
+in every project.
 
-The philosophy is reproducibility-first and FAIR-aligned, but sized for a single researcher or small research workflow. Graph Hub should make the correct research structure the default runtime path, fail fast when the structure is violated, and keep migrations opt-in and non-destructive.
+The philosophy is reproducibility-first and FAIR-aligned, but sized for a single
+researcher or small research workflow. Master manifests coordinate modules and
+are not runnable execution surfaces.
 
-Out of scope: enterprise governance bloat. This includes approval gates, contributor/role/institution governance, data-governance tiers, and lifecycle approval chains.
+Out of scope: enterprise governance bloat. This includes approval gates,
+contributor/role/institution governance, data-governance tiers, and lifecycle
+approval chains.
 
-## Tier 1
+## Module Enforcement Defaults
 
-1. Master/module boundary enforcement: a master manifest coordinates execution modules but is not itself runnable. Status: done.
-2. Folder role taxonomy and re-run-surface filtering: project folders declare their operational role, and only module configs appear in runnable re-run sets. Status: done.
-3. `experimental_conditions` schema and validation: experiments declare their conditions in machine-checkable form. Status: done.
+| Rule | Enforced by default for `role: module` | Explicit opt-out |
+| --- | --- | --- |
+| Master/module boundary | Yes. Master configs cannot define runnable pipeline, figure, or diagram surfaces. | None. Use `project.role: module` for runnable projects. |
+| Raw integrity | Yes, when `data_contract.raw_integrity` is configured and its manifest is sealed. Drift blocks render by default. Missing/unsealed manifests have no effect. | Set `data_contract.raw_integrity.mode: warn`. |
+| Config placeholders | Yes. TODO/FIXME/TBD/XXX/`???` and angle-bracket placeholder tokens fail validation by default. | Set `data_contract.forbid_todo_placeholders: false`. |
+| Figure traceability | Yes, for figures that declare any part of `claim`/`samples`/`conditions`. The declared chain must be complete and references must resolve when registries are present. Figures with no traceability declaration are allowed. | Set `data_contract.require_figure_traceability: false`. |
+| Canonical docs | Yes, when `canonical_docs` are declared. Declared docs must exist. Modules do not have to declare `canonical_docs`. | Set `data_contract.require_canonical_docs: false`. |
 
-Tier 1 is complete.
+Absent `project.role` defaults to `module`, so these module defaults apply unless
+the config explicitly opts out. Master configs keep the module-default rules off
+unless a rule is explicitly enabled.
 
-## Tier 2
+## Tier Status
 
-1. Sample registry across modules. Status: done.
-2. Figure-data-claim traceability manifest. Status: done.
-3. Raw data immutability and provenance enforcement. Status: done.
+Tier 1 is implemented: master/module boundary enforcement, folder role taxonomy,
+and machine-checkable `experimental_conditions`.
 
-Tier 2 is complete.
+Tier 2 is implemented with scoped enforcement: sample registries, declared
+figure-data-claim traceability, and raw integrity checks for sealed manifests.
 
-## Tier 3
+Tier 3 is implemented with scoped enforcement: naming/quarantine validation,
+canonical-docs precedence when declared, and config placeholder checks.
 
-1. Naming and quarantine-zone validation. Status: done.
-2. Canonical-docs precedence registry. Status: done.
-3. Config TODO/placeholder checks. Status: done.
-
-Tier 3 is complete. The research-operations philosophy enforcement plan for Tiers 1-3 is complete.
-
-Applying this philosophy to an existing research project is a separate migration step. That migration must be explicit, opt-in, and non-destructive.
+Applying this philosophy to an existing research project remains a separate
+migration step. That migration must be explicit, opt-in, and non-destructive.

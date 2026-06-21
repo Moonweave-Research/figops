@@ -83,10 +83,46 @@ class FigureTraceabilityValidationTest(unittest.TestCase):
         self.assertIn("figures[1].conditions", combined)
         self.assertIn("missing_condition", combined)
 
-    def test_require_figure_traceability_requires_claim_and_samples_when_registry_exists(self):
+    def test_partial_declared_traceability_fails_by_default_for_module(self):
         config = _minimal_config()
         config["sample_registry"] = _sample_registry()
-        config["data_contract"] = {"require_figure_traceability": True}
+        config["experimental_conditions"] = _experimental_conditions()
+        config["figures"] = [
+            {
+                "id": "fig3c",
+                "script": "plot_fig3c.py",
+                "output": "results/figures/fig3c.png",
+                "claim": "n exponent rises with sulfur wt%",
+            }
+        ]
+
+        errors = validate_config(config)
+
+        combined = " ".join(errors)
+        self.assertIn("fig3c", combined)
+        self.assertIn("missing samples", combined)
+        self.assertIn("missing conditions", combined)
+
+    def test_explicit_false_opt_out_allows_partial_traceability_declaration(self):
+        config = _minimal_config()
+        config["sample_registry"] = _sample_registry()
+        config["experimental_conditions"] = _experimental_conditions()
+        config["data_contract"] = {"require_figure_traceability": False}
+        config["figures"] = [
+            {
+                "id": "fig3c",
+                "script": "plot_fig3c.py",
+                "output": "results/figures/fig3c.png",
+                "claim": "n exponent rises with sulfur wt%",
+            }
+        ]
+
+        self.assertEqual(validate_config(config), [])
+
+    def test_module_default_does_not_require_undeclared_traceability_chain(self):
+        config = _minimal_config()
+        config["sample_registry"] = _sample_registry()
+        config["experimental_conditions"] = _experimental_conditions()
         config["figures"] = [
             {
                 "id": "fig3c",
@@ -95,12 +131,27 @@ class FigureTraceabilityValidationTest(unittest.TestCase):
             }
         ]
 
+        self.assertEqual(validate_config(config), [])
+
+    def test_master_traceability_is_not_enforced_by_module_default(self):
+        config = _minimal_config()
+        config["project"]["role"] = "master"
+        config["modules"] = ["modules/experiment_a"]
+        config["sample_registry"] = _sample_registry()
+        config["experimental_conditions"] = _experimental_conditions()
+        config["figures"] = [
+            {
+                "id": "fig3c",
+                "script": "plot_fig3c.py",
+                "output": "results/figures/fig3c.png",
+                "claim": "n exponent rises with sulfur wt%",
+            }
+        ]
+
         errors = validate_config(config)
 
-        combined = " ".join(errors)
-        self.assertIn("fig3c", combined)
-        self.assertIn("missing claim", combined)
-        self.assertIn("missing samples", combined)
+        self.assertTrue(any("project.role 'master' must not define figures" in error for error in errors))
+        self.assertFalse(any("missing samples" in error or "missing conditions" in error for error in errors))
 
     def test_figure_without_traceability_fields_is_unchanged_by_default(self):
         config = _minimal_config()

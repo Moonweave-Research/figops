@@ -6,6 +6,15 @@ visual_style:
   target_format: nature
   profile: baseline
 
+sample_registry:
+  - sample_id: POLYMER_FIXTURE
+
+experimental_conditions:
+  conditions:
+    - id: polymer_domain_helper_fixture
+      parameters:
+        samples: [POLYMER_FIXTURE]
+
 pipeline:
   analysis:
     - domain_helper: materials_polymer.signal_smooth_baseline
@@ -66,3 +75,6 @@ figures:
     inputs:
       - results/data/polymer_material_properties.csv
     output: results/figures/polymer_domain_helper.png
+    claim: Polymer helper outputs material-property traces from the declared fixture sample.
+    samples: [POLYMER_FIXTURE]
+    conditions: [polymer_domain_helper_fixture]

@@ -53,7 +53,7 @@ class CanonicalDocsConfigValidationTest(unittest.TestCase):
 
 
 class CanonicalDocsMCPValidationTest(unittest.TestCase):
-    def test_missing_canonical_doc_warns_without_failing_by_default(self):
+    def test_missing_declared_canonical_doc_fails_by_default_for_module(self):
         with tempfile.TemporaryDirectory(prefix="graphhub_canonical_docs_") as tmpdir:
             root = Path(tmpdir)
             project = root / "module"
@@ -63,6 +63,38 @@ class CanonicalDocsMCPValidationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root)
 
             result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
+
+        self.assertFalse(result["valid"])
+        self.assertTrue(any("Missing canonical doc" in error for error in result["config_errors"]))
+
+    def test_explicit_false_opt_out_keeps_missing_canonical_doc_advisory(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_canonical_docs_") as tmpdir:
+            root = Path(tmpdir)
+            project = root / "module"
+            config = _base_config()
+            config["canonical_docs"] = ["docs/missing.md"]
+            config["data_contract"] = {"require_canonical_docs": False}
+            _write_project(project, config)
+            server = GraphHubMCPServer(research_root=root)
+
+            result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
+
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["config_errors"], [])
+        self.assertTrue(any("Missing canonical doc" in warning for warning in result["warnings"]))
+
+    def test_master_canonical_docs_are_not_enforced_by_module_default(self):
+        with tempfile.TemporaryDirectory(prefix="graphhub_canonical_docs_") as tmpdir:
+            root = Path(tmpdir)
+            project = root / "master"
+            config = _base_config()
+            config["project"]["role"] = "master"
+            config["modules"] = ["modules/experiment_a"]
+            config["canonical_docs"] = ["docs/missing.md"]
+            _write_project(project, config)
+            server = GraphHubMCPServer(research_root=root)
+
+            result = server.call_tool("graphhub.validate_project", {"project_path": "master"})["structuredContent"]
 
         self.assertTrue(result["valid"])
         self.assertEqual(result["config_errors"], [])
