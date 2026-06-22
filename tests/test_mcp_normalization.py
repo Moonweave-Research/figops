@@ -302,7 +302,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             self.assertFalse((project_root / "project_config.yaml").exists())
             self.assertEqual(_snapshot_files(project_root), before)
 
-    def test_scaffold_project_refuses_symlinked_project_root_boundary(self):
+    def test_scaffold_project_allows_internal_symlinked_project_root_boundary(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             actual_root = Path(tmpdir) / "Actual_Project"
             actual_root.mkdir()
@@ -317,13 +317,13 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 {"project_name": "Blocked Project", "project_root": str(symlink_root), "dry_run": False},
             )
 
-            self.assertEqual(result["status"], "error")
-            self.assertTrue(result["manual_review_needed"])
-            self.assertIn("symlink", result["errors"][0])
-            self.assertFalse((actual_root / "project_config.yaml").exists())
-            self.assertEqual(_snapshot_files(actual_root), before_actual)
+            self.assertEqual(result["status"], "ok")
+            self.assertFalse(result["manual_review_needed"])
+            self.assertEqual(result["errors"], [])
+            self.assertTrue((actual_root / "project_config.yaml").exists())
+            self.assertNotEqual(_snapshot_files(actual_root), before_actual)
 
-    def test_scaffold_project_refuses_project_root_under_symlinked_ancestor(self):
+    def test_scaffold_project_allows_project_root_under_internal_symlinked_ancestor(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             actual_parent = Path(tmpdir) / "Actual_Projects"
             actual_parent.mkdir()
@@ -342,13 +342,13 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 },
             )
 
-            self.assertEqual(result["status"], "error")
-            self.assertTrue(result["manual_review_needed"])
-            self.assertIn("symlink", result["errors"][0])
-            self.assertFalse((actual_parent / "Blocked_Project").exists())
-            self.assertEqual(_snapshot_files(actual_parent), before_actual)
+            self.assertEqual(result["status"], "ok")
+            self.assertFalse(result["manual_review_needed"])
+            self.assertEqual(result["errors"], [])
+            self.assertTrue((actual_parent / "Blocked_Project" / "project_config.yaml").exists())
+            self.assertNotEqual(_snapshot_files(actual_parent), before_actual)
 
-    def test_scaffold_project_refuses_symlink_alias_back_to_research_root(self):
+    def test_scaffold_project_allows_symlink_alias_back_to_research_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             research_root = Path(tmpdir) / "ResearchOS"
             research_root.mkdir()
@@ -359,12 +359,12 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             result = self._call(
                 server,
                 "graphhub.scaffold_project",
-                {"project_name": "Blocked Project", "project_root": str(alias / "Blocked_Project")},
+                {"project_name": "Blocked Project", "project_root": str(alias / "Blocked_Project"), "dry_run": False},
             )
 
-            self.assertEqual(result["status"], "error")
-            self.assertIn("symlink", result["errors"][0])
-            self.assertFalse((research_root / "Blocked_Project").exists())
+            self.assertEqual(result["status"], "ok")
+            self.assertEqual(result["errors"], [])
+            self.assertTrue((research_root / "Blocked_Project" / "project_config.yaml").exists())
 
     def test_normalize_project_structure_plan_is_side_effect_free_and_preserves_style(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -876,7 +876,7 @@ visual_style:
             self.assertFalse((project / "alternate_scripts" / "plot.py").exists())
             self.assertEqual(_snapshot_files(project), before)
 
-    def test_normalize_project_structure_refuses_symlinked_project_root_boundary(self):
+    def test_normalize_project_structure_allows_internal_symlinked_project_root_boundary(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             actual_root = Path(tmpdir) / "LegacyGraph"
             actual_root.mkdir()
@@ -892,13 +892,13 @@ visual_style:
                 {"project_path": str(symlink_root), "dry_run": False, "move_policy": "copy"},
             )
 
-            self.assertEqual(result["status"], "error")
-            self.assertTrue(result["manual_review_needed"])
-            self.assertIn("symlink", result["errors"][0])
-            self.assertFalse((actual_root / "hub_scripts" / "plot.py").exists())
-            self.assertEqual(_snapshot_files(actual_root), before_actual)
+            self.assertEqual(result["status"], "ok")
+            self.assertFalse(result["manual_review_needed"])
+            self.assertEqual(result["errors"], [])
+            self.assertTrue((actual_root / "hub_scripts" / "plot.py").exists())
+            self.assertNotEqual(_snapshot_files(actual_root), before_actual)
 
-    def test_normalize_project_structure_refuses_project_root_under_symlinked_ancestor(self):
+    def test_normalize_project_structure_allows_project_root_under_internal_symlinked_ancestor(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             actual_parent = Path(tmpdir) / "Actual_Projects"
             project = actual_parent / "LegacyGraph"
@@ -915,13 +915,13 @@ visual_style:
                 {"project_path": str(symlink_parent / "LegacyGraph"), "dry_run": False, "move_policy": "copy"},
             )
 
-            self.assertEqual(result["status"], "error")
-            self.assertTrue(result["manual_review_needed"])
-            self.assertIn("symlink", result["errors"][0])
-            self.assertFalse((project / "hub_scripts" / "plot.py").exists())
-            self.assertEqual(_snapshot_files(project), before_project)
+            self.assertEqual(result["status"], "ok")
+            self.assertFalse(result["manual_review_needed"])
+            self.assertEqual(result["errors"], [])
+            self.assertTrue((project / "hub_scripts" / "plot.py").exists())
+            self.assertNotEqual(_snapshot_files(project), before_project)
 
-    def test_normalize_project_structure_refuses_symlink_alias_back_to_research_root(self):
+    def test_normalize_project_structure_allows_symlink_alias_back_to_research_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             research_root = Path(tmpdir) / "ResearchOS"
             project = research_root / "LegacyGraph"
@@ -938,9 +938,10 @@ visual_style:
                 {"project_path": str(alias / "LegacyGraph"), "dry_run": False},
             )
 
-            self.assertEqual(result["status"], "error")
-            self.assertIn("symlink", result["errors"][0])
-            self.assertEqual(_snapshot_files(project), before_project)
+            self.assertEqual(result["status"], "ok")
+            self.assertEqual(result["errors"], [])
+            self.assertTrue((project / "hub_scripts" / "plot.py").exists())
+            self.assertNotEqual(_snapshot_files(project), before_project)
 
     def test_normalize_project_structure_rejects_symlink_source_escaping_project(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:

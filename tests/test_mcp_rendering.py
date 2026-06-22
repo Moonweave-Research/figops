@@ -1628,7 +1628,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(collected["status_path"], result["status_path"])
             self.assertEqual(collected["latest_alias"], result["latest_alias"])
 
-    def test_render_csv_graph_rejects_symlinked_data_path_component(self):
+    def test_render_csv_graph_allows_internal_symlinked_data_path_component(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_symlink_data_") as tmpdir:
             root = Path(tmpdir) / "root"
             real_dir = root / "real"
@@ -1646,9 +1646,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 {"data_path": str(link_dir / data_path.name), "x_column": "x", "y_column": "y"},
             )
 
-            self.assertEqual(result["status"], "error")
-            self.assertEqual(result["failure_stage"], "CONTRACT")
-            self.assertTrue(any("symlinked path components" in error for error in result["errors"]))
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertFalse(any("symlinked path components" in error for error in result["errors"]))
 
     def test_render_csv_graph_failure_manifest_preserves_requested_baseline_state(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
