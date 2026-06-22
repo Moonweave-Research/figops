@@ -33,6 +33,7 @@ class McpProjectToolsMixin:
         config_path = Path(str(manifest["project_root"])) / "project_config.yaml"
         style_summary = self._manifest_style_summary(manifest)
         validation = self._validation_summary(config_path)
+        scaffold_manifest_path = str(Path(str(manifest["project_root"])) / ".graphhub_scaffold_manifest.json")
         if dry_run:
             return self._envelope(
                 "graphhub.scaffold_project",
@@ -43,7 +44,7 @@ class McpProjectToolsMixin:
                 project_name=project_name,
                 planned_paths=planned_paths,
                 manifest=public_manifest,
-                manifest_path=str(Path(str(manifest["project_root"])) / ".graphhub_scaffold_manifest.json"),
+                manifest_path=scaffold_manifest_path,
                 config_path=str(config_path),
                 style_summary=style_summary,
                 validation=validation,
@@ -63,7 +64,7 @@ class McpProjectToolsMixin:
                 project_name=project_name,
                 planned_paths=planned_paths,
                 manifest=public_manifest,
-                manifest_path=str(Path(str(manifest["project_root"])) / ".graphhub_scaffold_manifest.json"),
+                manifest_path=scaffold_manifest_path,
                 config_path=str(config_path),
                 style_summary=style_summary,
                 validation=validation,
@@ -81,7 +82,7 @@ class McpProjectToolsMixin:
             project_name=project_name,
             planned_paths=planned_paths,
             manifest=applied["manifest"],
-            manifest_path=str(Path(str(manifest["project_root"])) / ".graphhub_scaffold_manifest.json"),
+            manifest_path=scaffold_manifest_path,
             config_path=str(config_path),
             style_summary=style_summary,
             validation=validation,
@@ -99,6 +100,7 @@ class McpProjectToolsMixin:
         project_root = Path(str(manifest["project_root"]))
         config_path = project_root / "project_config.yaml"
         validation = self._validation_summary(config_path)
+        normalize_manifest_path = str(project_root / ".graphhub_normalization_manifest.json")
         if dry_run:
             return self._envelope(
                 "graphhub.normalize_project_structure",
@@ -108,7 +110,7 @@ class McpProjectToolsMixin:
                 project_root=str(project_root),
                 planned_paths=planned_paths,
                 manifest=public_manifest,
-                manifest_path=str(project_root / ".graphhub_normalization_manifest.json"),
+                manifest_path=normalize_manifest_path,
                 config_path=str(config_path),
                 style_summary=manifest["style_summary"],
                 validation=validation,
@@ -127,7 +129,7 @@ class McpProjectToolsMixin:
                 project_root=str(project_root),
                 planned_paths=planned_paths,
                 manifest=public_manifest,
-                manifest_path=str(project_root / ".graphhub_normalization_manifest.json"),
+                manifest_path=normalize_manifest_path,
                 config_path=str(config_path),
                 style_summary=manifest["style_summary"],
                 validation=validation,
@@ -152,7 +154,7 @@ class McpProjectToolsMixin:
             project_root=str(project_root),
             planned_paths=planned_paths,
             manifest=applied["manifest"],
-            manifest_path=str(project_root / ".graphhub_normalization_manifest.json"),
+            manifest_path=normalize_manifest_path,
             config_path=str(config_path),
             style_summary=applied["manifest"]["style_summary"],
             validation=validation,
