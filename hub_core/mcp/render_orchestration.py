@@ -224,12 +224,12 @@ class McpRenderOrchestrationMixin:
         Shared boilerplate for bridge and project render failure artifact methods.
         """
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_manifest_and_status(manifest, manifest_path, status_payload, status_path, latest_dir)
         for path in (manifest_path, status_path):
             path_text = str(path)
             if path_text not in created:
                 created.append(path_text)
         manifest["created_paths"] = created
+        _write_manifest_and_status(manifest, manifest_path, status_payload, status_path, latest_dir)
         return created
 
     def _write_render_failure_artifacts(
