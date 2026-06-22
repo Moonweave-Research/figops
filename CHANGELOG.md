@@ -15,6 +15,24 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.16.1] - 2026-06-22
+
+### Changed
+
+- MCP render handlers are split into focused CSV, project-render, and validation
+  mixins while preserving the public tool contract through the server aggregator.
+- MCP render artifact helpers now share manifest/status writing and lock-status
+  provenance plumbing across CSV and project render paths.
+- Internal MCP symlink aliases are allowed when they stay within trusted roots;
+  true root escapes remain rejected.
+
+### Fixed
+
+- Failure render manifests now record the generated manifest/status paths before
+  the manifest is written, so `created_paths` round-trips accurately.
+- Local generated artifact directories are ignored so demo, agent, and browser
+  traces do not pollute git status.
+
 ## [0.16.0] - 2026-06-22
 
 ### Added
