@@ -488,10 +488,29 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             symlinked_data_path = link_dir / data_path.name
 
-            with self.assertRaisesRegex(ValueError, "symlinked path components"):
-                server._resolve_under_root(str(symlinked_data_path), field_name="project_path", root=root)
-            with self.assertRaisesRegex(ValueError, "symlinked path components"):
-                server._resolve_allowed_data_path(str(symlinked_data_path), field_name="data_path")
+            # Internal symlinks (target under trusted root) are allowed.
+            under = server._resolve_under_root(
+                str(symlinked_data_path), field_name="project_path", root=root
+            )
+            self.assertEqual(under.resolve(), data_path.resolve())
+            allowed = server._resolve_allowed_data_path(
+                str(symlinked_data_path), field_name="data_path"
+            )
+            self.assertEqual(allowed.resolve(), data_path.resolve())
+
+            # Outbound symlinks (target outside trusted root) are rejected.
+            # The primary containment check (`path.relative_to(trusted_root)`) catches
+            # this case before the symlink check fires.
+            escape_dir = Path(tmpdir) / "escape_link"
+            escape_target = Path(tmpdir) / "outside"
+            escape_target.mkdir()
+            escape_dir.symlink_to(escape_target, target_is_directory=True)
+            escaped_path = escape_dir / "escape.txt"
+
+            with self.assertRaisesRegex(ValueError, "must stay under"):
+                server._resolve_under_root(
+                    str(escaped_path), field_name="project_path", root=root
+                )
 
     def test_scan_root_rejects_root_outside_research_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:

@@ -274,34 +274,33 @@ class McpReadToolsMixin:
         )
 
     def _serialize_project(self, project: Any) -> dict[str, Any]:
+        base = {
+            "project_id": project.project_id,
+            "project_root": project.path,
+            "role": project.role,
+            "classification": project.classification,
+            "errors": list(project.errors),
+            "declared_figures": 0,
+            "declared_diagrams": 0,
+        }
         if not project.config_path:
-            return {
-                "project_id": project.project_id,
-                "project_root": project.path,
-                "config_path": "",
-                "role": project.role,
-                "status": self._project_status(project),
-                "project_status": getattr(project, "status", "active"),
-                "classification": project.classification,
-                "errors": list(project.errors),
-                "declared_figures": 0,
-                "declared_diagrams": 0,
-                "target_format": "",
-            }
+            base.update(
+                config_path="",
+                status=self._project_status(project),
+                project_status=getattr(project, "status", "active"),
+                target_format="",
+            )
+            return base
         if Path(project.config_path).is_symlink():
-            return {
-                "project_id": project.project_id,
-                "project_root": project.path,
-                "config_path": project.config,
-                "status": "invalid",
-                "project_status": "active",
-                "classification": "invalid",
-                "errors": ["Project config is a symlink and is not exposed through MCP resources."],
-                "role": "module",
-                "declared_figures": 0,
-                "declared_diagrams": 0,
-                "target_format": "",
-            }
+            base.update(
+                config_path=project.config,
+                status="invalid",
+                project_status="active",
+                classification="invalid",
+                errors=["Project config is a symlink and is not exposed through MCP resources."],
+                target_format="",
+            )
+            return base
         config_data = self._load_project_config(
             Path(project.config_path).parent,
             config_path=Path(project.config_path),
@@ -310,19 +309,17 @@ class McpReadToolsMixin:
         config = config_data["config"] if isinstance(config_data["config"], dict) else {}
         figures = self._list_section(config, "figures")
         diagrams = self._list_section(config, "diagrams")
-        return {
-            "project_id": project.project_id,
-            "project_root": project.path,
-            "config_path": project.config,
-            "role": project.role,
-            "status": self._project_status(project),
-            "project_status": project_status(config),
-            "classification": project.classification,
-            "errors": list(project.errors),
-            "declared_figures": len(figures),
-            "declared_diagrams": len(diagrams),
-            "target_format": project.target_format,
-        }
+        base.update(
+            config_path=project.config,
+            status=self._project_status(project),
+            project_status=project_status(config),
+            classification=project.classification,
+            errors=list(project.errors),
+            declared_figures=len(figures),
+            declared_diagrams=len(diagrams),
+            target_format=project.target_format,
+        )
+        return base
 
     @staticmethod
     def _project_status(project: Any) -> str:

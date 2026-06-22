@@ -36,12 +36,18 @@ from .security import McpSecurityMixin, is_write_tool_name
 from .tools.batch_tools import McpBatchToolsMixin
 from .tools.project_tools import McpProjectToolsMixin
 from .tools.read_tools import McpReadToolsMixin
+from .tools.render_csv import McpRenderCsvMixin
+from .tools.render_project import McpRenderProjectMixin
 from .tools.render_tools import McpRenderToolsMixin
+from .tools.render_validation import McpRenderValidationMixin
 
 
 class GraphHubMCPServer(
     McpReadToolsMixin,
     McpRenderToolsMixin,
+    McpRenderProjectMixin,
+    McpRenderCsvMixin,
+    McpRenderValidationMixin,
     McpProjectToolsMixin,
     McpBatchToolsMixin,
     McpResourcesMixin,
@@ -131,41 +137,6 @@ class GraphHubMCPServer(
             "isError": is_error,
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     @staticmethod
     def _file_sha256(path: Path) -> str:
         digest = hashlib.sha256()
@@ -173,8 +144,6 @@ class GraphHubMCPServer(
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(chunk)
         return digest.hexdigest()
-
-
 
     def _git_commit(self) -> str:
         try:
@@ -255,9 +224,6 @@ class GraphHubMCPServer(
         digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
         return f"{tool_name}:{digest}"
 
-
-
-
     def _read_version(self) -> str:
         pyproject = self.hub_path / "pyproject.toml"
         try:
@@ -267,16 +233,6 @@ class GraphHubMCPServer(
         except OSError:
             return "unknown"
         return "unknown"
-
-
-
-
-
-
-
-
-
-
 
     @staticmethod
     def _lockfile_status(project_path: Path, config: dict[str, Any], *, strict: bool) -> dict[str, Any]:

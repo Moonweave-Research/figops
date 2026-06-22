@@ -16,6 +16,37 @@ from hub_core.runtime_paths import runtime_root_lookup_candidates
 class McpBatchToolsMixin:
     """Batch and artifact collection MCP tool handlers."""
 
+    def _batch_check_error(
+        self,
+        arguments: dict[str, Any],
+        *,
+        summary: str,
+        errors: list[str],
+        is_dry_run: bool,
+        batch_id: str,
+        batch_root: str | Path,
+        manifest_path: str | Path,
+        resumed_from: str = "",
+        **extra: Any,
+    ) -> dict[str, Any]:
+        return self._envelope(
+            "graphhub.batch_check",
+            arguments,
+            status="error",
+            summary=summary,
+            errors=errors,
+            manual_review_needed=True,
+            is_dry_run=is_dry_run,
+            batch_id=batch_id,
+            batch_root=str(batch_root),
+            manifest_path=str(manifest_path),
+            checked_projects=[],
+            skipped_projects=[],
+            resumed_from=resumed_from,
+            log_paths=[],
+            **extra,
+        )
+
     def collect_artifacts(self, arguments: dict[str, Any]) -> dict[str, Any]:
         job_id = self._render_job_id(arguments.get("job_id"))
         manifest_path = self._find_job_manifest_path(job_id)
@@ -147,61 +178,42 @@ class McpBatchToolsMixin:
                     field_name="resume_manifest_path",
                 )
             except ValueError as exc:
-                return self._envelope(
-                    "graphhub.batch_check",
+                return self._batch_check_error(
                     arguments,
-                    status="error",
                     summary="Batch resume manifest path is outside the allowed data roots.",
                     errors=[str(exc)],
-                    manual_review_needed=True,
                     is_dry_run=dry_run,
+                    batch_id=batch_id,
+                    batch_root=batch_root,
+                    manifest_path=manifest_path,
                     failure_stage="CONTRACT",
                     resolution_hint="Point resume_manifest_path at a manifest under an allowed data root.",
-                    batch_id=batch_id,
-                    batch_root=str(batch_root),
-                    manifest_path=str(manifest_path),
-                    checked_projects=[],
-                    skipped_projects=[],
-                    resumed_from="",
-                    log_paths=[],
                 )
             resumed_from = str(resume_path)
             try:
                 resume_manifest = json.loads(resume_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as exc:
-                return self._envelope(
-                    "graphhub.batch_check",
+                return self._batch_check_error(
                     arguments,
-                    status="error",
                     summary="Batch resume manifest could not be read.",
                     errors=[str(exc)],
-                    manual_review_needed=True,
                     is_dry_run=dry_run,
                     batch_id=batch_id,
-                    batch_root=str(batch_root),
-                    manifest_path=str(manifest_path),
-                    checked_projects=[],
-                    skipped_projects=[],
+                    batch_root=batch_root,
+                    manifest_path=manifest_path,
                     resumed_from=resumed_from,
-                    log_paths=[],
                 )
             resume_root = Path(str(resume_manifest.get("root") or "")).expanduser().resolve()
             if resume_root != root:
-                return self._envelope(
-                    "graphhub.batch_check",
+                return self._batch_check_error(
                     arguments,
-                    status="error",
                     summary="Batch resume manifest does not match the requested root.",
                     errors=["Resume manifest was created for a different root."],
-                    manual_review_needed=True,
                     is_dry_run=dry_run,
                     batch_id=batch_id,
-                    batch_root=str(batch_root),
-                    manifest_path=str(manifest_path),
-                    checked_projects=[],
-                    skipped_projects=[],
+                    batch_root=batch_root,
+                    manifest_path=manifest_path,
                     resumed_from=resumed_from,
-                    log_paths=[],
                 )
             previously_checked = {
                 str(project.get("project_id"))

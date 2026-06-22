@@ -173,9 +173,10 @@ class McpSecurityMixin:
             current = current / part
             if current.is_symlink():
                 target = current.resolve()
-                if target == trusted_root or self._is_relative_to(target, trusted_root):
-                    raise ValueError(f"{field_name} must not include symlinked path components.")
-                if not self._is_relative_to(trusted_root, target):
+                # Allow internal symlinks (target under trusted_root) and system-level
+                # aliases (trusted_root under target, e.g. macOS /var → /private/var).
+                # Reject only when neither side is contained by the other — a true escape.
+                if not self._is_relative_to(target, trusted_root) and not self._is_relative_to(trusted_root, target):
                     raise ValueError(f"{field_name} must not include symlinked path components.")
         return path
 
@@ -194,11 +195,11 @@ class McpSecurityMixin:
             current = current / part
             if current.is_symlink():
                 target = current.resolve()
-                for root in containing_roots:
-                    if target == root or self._is_relative_to(target, root):
-                        raise ValueError(f"{field_name} must not include symlinked path components.")
-                    if not self._is_relative_to(root, target):
-                        raise ValueError(f"{field_name} must not include symlinked path components.")
+                if not any(
+                    self._is_relative_to(target, root) or self._is_relative_to(root, target)
+                    for root in containing_roots
+                ):
+                    raise ValueError(f"{field_name} must not include symlinked path components.")
         return path
 
     def _activate_runtime_root_for_runtime_access(self) -> None:
