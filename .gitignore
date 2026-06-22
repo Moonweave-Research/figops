@@ -34,6 +34,9 @@ env/
 .pdca-status.json
 hub_logs/
 **/hub_logs/
+.demo_graphs/
+.omo/
+.playwright-mcp/
 
 # Secrets / local env
 .env
