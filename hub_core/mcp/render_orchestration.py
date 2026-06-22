@@ -103,6 +103,84 @@ def _batch_discovery_worker(root: str, max_depth: int, result_path: str) -> None
         )
 
 
+def _write_manifest_and_status(
+    manifest: dict[str, Any],
+    manifest_path: Path,
+    status_payload: dict[str, Any],
+    status_path: Path,
+    latest_dir: Path,
+) -> None:
+    """Write manifest and status payload to disk, then copy both to latest_dir.
+
+    Shared boilerplate for render success and failure artifact methods.
+    """
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    status_path.write_text(
+        json.dumps(status_payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    latest_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(manifest_path, latest_dir / "manifest.json")
+    shutil.copy2(status_path, latest_dir / "status.json")
+
+
+def _build_manifest(
+    *,
+    job_id: str,
+    job_root: Path,
+    config_path: Path,
+    status_path: Path,
+    latest_dir: Path,
+    figures: list[dict[str, Any]],
+    created_paths: list[str],
+    style_summary: dict[str, Any],
+    visual_preflight_status: dict[str, Any],
+    geometry_diagnostics: dict[str, Any],
+    layout_report: dict[str, Any],
+    artifact_status: str,
+    baseline_comparison: dict[str, Any],
+    manual_review_needed: bool,
+    provenance: dict[str, Any],
+    **extra: Any,
+) -> dict[str, Any]:
+    """Build a standard render manifest dict.
+
+    Renders the common skeleton shared by CSV graph and project figure
+    manifests.  Callers pass extra keyword arguments for render-type-specific
+    fields (e.g. *source_data_path*, *project_id*, *selected_figure*).
+    """
+    manifest: dict[str, Any] = {
+        "job_id": job_id,
+        "job_root": str(job_root),
+        "config_path": str(config_path),
+        "status_path": str(status_path),
+        "latest_dir": str(latest_dir),
+        "latest_alias": str(latest_dir),
+        "figures": figures,
+        "diagrams": [],
+        "assemblies": [],
+        "logs": [],
+        "created_paths": created_paths,
+        "modified_paths": [],
+        "skipped_paths": [],
+        "style_summary": style_summary,
+        "visual_preflight_status": visual_preflight_status,
+        "geometry_diagnostics": geometry_diagnostics,
+        "layout_report": layout_report,
+        "failure_stage": "",
+        "resolution_hint": "",
+        "artifact_status": artifact_status,
+        "baseline_comparison": baseline_comparison,
+        "manual_review_needed": manual_review_needed,
+        "provenance": provenance,
+    }
+    manifest.update(extra)
+    return manifest
+
+
 class McpRenderOrchestrationMixin:
     """Render, snapshot, provenance, and geometry helper methods for the MCP server."""
 
@@ -131,6 +209,28 @@ class McpRenderOrchestrationMixin:
             "failure_stage": failure_stage,
             "resolution_hint": resolution_hint,
         }
+
+    @staticmethod
+    def _write_failure_artifacts_to_disk(
+        manifest: dict[str, Any],
+        manifest_path: Path,
+        status_payload: dict[str, Any],
+        status_path: Path,
+        latest_dir: Path,
+        created: list[str],
+    ) -> list[str]:
+        """Write manifest and status to disk, update created_paths, and copy to latest.
+
+        Shared boilerplate for bridge and project render failure artifact methods.
+        """
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_manifest_and_status(manifest, manifest_path, status_payload, status_path, latest_dir)
+        for path in (manifest_path, status_path):
+            path_text = str(path)
+            if path_text not in created:
+                created.append(path_text)
+        manifest["created_paths"] = created
+        return created
 
     def _write_render_failure_artifacts(
         self,
@@ -191,28 +291,9 @@ class McpRenderOrchestrationMixin:
             resolution_hint=resolution_hint,
         )
         status_payload["layout_report"] = layout_report
-        manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
+        return self._write_failure_artifacts_to_disk(
+            manifest, manifest_path, status_payload, status_path, latest_dir, created
         )
-        status_path.write_text(
-            json.dumps(status_payload, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-        for path in (manifest_path, status_path):
-            path_text = str(path)
-            if path_text not in created:
-                created.append(path_text)
-        manifest["created_paths"] = created
-        manifest_path.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-        latest_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(manifest_path, latest_dir / "manifest.json")
-        shutil.copy2(status_path, latest_dir / "status.json")
-        return created
 
     @staticmethod
     @contextmanager
@@ -608,22 +689,9 @@ class McpRenderOrchestrationMixin:
         if script_output:
             status_payload["script_output"] = script_output
         status_payload["layout_report"] = layout_report
-        manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-        status_path.write_text(
-            json.dumps(status_payload, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
+        return self._write_failure_artifacts_to_disk(
+            manifest, manifest_path, status_payload, status_path, latest_dir, created
         )
-        for path in (manifest_path, status_path):
-            path_text = str(path)
-            if path_text not in created:
-                created.append(path_text)
-        manifest["created_paths"] = created
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-        latest_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(manifest_path, latest_dir / "manifest.json")
-        shutil.copy2(status_path, latest_dir / "status.json")
-        return created
 
     def _baseline_comparison(self, artifact_path: Path | None, raw_baseline_path: Any) -> dict[str, Any]:
         if not isinstance(raw_baseline_path, str) or not raw_baseline_path.strip():
@@ -691,6 +759,23 @@ class McpRenderOrchestrationMixin:
             "warnings": [] if matched else ["Artifact does not match baseline."],
         }
 
+    def _mcp_lock_status(self) -> dict[str, Any]:
+        """Collect uv.lock / renv.lock status for provenance records."""
+        python_lock = self.hub_path / "uv.lock"
+        r_lock = self.hub_path / "renv.lock"
+        return {
+            "python_lock": {
+                "path": str(python_lock),
+                "exists": python_lock.is_file(),
+                "sha256": self._file_sha256(python_lock) if python_lock.is_file() else "",
+            },
+            "r_lock": {
+                "path": str(r_lock),
+                "exists": r_lock.is_file(),
+                "sha256": self._file_sha256(r_lock) if r_lock.is_file() else "",
+            },
+        }
+
     def _mcp_render_provenance(
         self,
         *,
@@ -707,20 +792,7 @@ class McpRenderOrchestrationMixin:
         copied_hash = self._file_sha256(copied_data_path) if copied_data_path.is_file() else ""
         config_hash = self._file_sha256(config_path) if config_path.is_file() else ""
         output_hash = self._file_sha256(output_path) if output_path.is_file() else ""
-        python_lock = self.hub_path / "uv.lock"
-        r_lock = self.hub_path / "renv.lock"
-        lock_status = {
-            "python_lock": {
-                "path": str(python_lock),
-                "exists": python_lock.is_file(),
-                "sha256": self._file_sha256(python_lock) if python_lock.is_file() else "",
-            },
-            "r_lock": {
-                "path": str(r_lock),
-                "exists": r_lock.is_file(),
-                "sha256": self._file_sha256(r_lock) if r_lock.is_file() else "",
-            },
-        }
+        lock_status = self._mcp_lock_status()
         env_payload = {
             "python_executable": sys.executable,
             "python_version": sys.version.split()[0],
@@ -772,20 +844,7 @@ class McpRenderOrchestrationMixin:
             }
             for path in project_files
         ]
-        python_lock = self.hub_path / "uv.lock"
-        r_lock = self.hub_path / "renv.lock"
-        lock_status = {
-            "python_lock": {
-                "path": str(python_lock),
-                "exists": python_lock.is_file(),
-                "sha256": self._file_sha256(python_lock) if python_lock.is_file() else "",
-            },
-            "r_lock": {
-                "path": str(r_lock),
-                "exists": r_lock.is_file(),
-                "sha256": self._file_sha256(r_lock) if r_lock.is_file() else "",
-            },
-        }
+        lock_status = self._mcp_lock_status()
         env_payload = {
             "python_executable": sys.executable,
             "python_version": sys.version.split()[0],
