@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Conservative read-only gate for future public Graph Hub releases."""
+"""Conservative read-only gate for future public FigOps releases."""
 
 from __future__ import annotations
 
@@ -264,7 +264,7 @@ def run_release_check(root: Path, *, check_style_registry: bool = True) -> Relea
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=REPO_ROOT, help="Graph Hub release-candidate repository root")
+    parser.add_argument("--root", type=Path, default=REPO_ROOT, help="FigOps release-candidate repository root")
     args = parser.parse_args(argv)
 
     result = run_release_check(args.root.resolve())
