@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .athena import AthenaBridge, LegacyAthenaBridge, NullAthena
-from .conventions import Conventions, GenericConventions, SurfurConventions
+from .conventions import Conventions, GenericConventions, WorkspaceConventions
 from .prefetch import GDrivePrefetcher, NoopPrefetcher, Prefetcher
 
 
@@ -92,8 +92,8 @@ def _build_athena(name: str) -> AthenaBridge:
 def _build_conventions(name: str) -> Conventions:
     if name in {"", "generic", "none"}:
         return GenericConventions()
-    if name == "surfur":
-        return SurfurConventions()
+    if name == "workspace":
+        return WorkspaceConventions()
     raise AdapterSelectionError(
-        "Unknown conventions adapter {!r}; expected one of: generic, surfur.".format(name)
+        "Unknown conventions adapter {!r}; expected one of: generic, workspace.".format(name)
     )

@@ -43,7 +43,7 @@ class GenericConventions:
         return "scaffold file"
 
 
-class SurfurConventions:
+class WorkspaceConventions:
     def is_ephemeral_project_path(self, rel_path: str) -> bool:
         return self.is_worktree_path(rel_path) or self.is_bridge_job_path(rel_path)
 
@@ -51,13 +51,13 @@ class SurfurConventions:
         return is_quarantine_path(rel_path)
 
     def default_target_format(self) -> str:
-        return "nature_surfur"
+        return "nature"
 
     def scaffold_directory_reason(self) -> str:
-        return "ResearchOS scaffold directory"
+        return "workspace scaffold directory"
 
     def scaffold_file_reason(self) -> str:
-        return "ResearchOS scaffold file"
+        return "workspace scaffold file"
 
     @staticmethod
     def is_worktree_path(rel_path: str) -> bool:

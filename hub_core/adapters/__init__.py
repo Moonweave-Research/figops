@@ -1,5 +1,5 @@
 from .athena import AthenaBridge, LegacyAthenaBridge, NullAthena
-from .conventions import Conventions, GenericConventions, SurfurConventions
+from .conventions import Conventions, GenericConventions, WorkspaceConventions
 from .prefetch import GDrivePrefetcher, NoopPrefetcher, Prefetcher
 from .selection import AdapterSelection, AdapterSelectionError, select_adapters
 
@@ -14,6 +14,6 @@ __all__ = [
     "NoopPrefetcher",
     "NullAthena",
     "Prefetcher",
-    "SurfurConventions",
+    "WorkspaceConventions",
     "select_adapters",
 ]

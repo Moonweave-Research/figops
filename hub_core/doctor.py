@@ -227,7 +227,7 @@ def _check_adapters() -> DoctorCheck:
             "error",
             str(exc),
             "Use GRAPH_HUB_PREFETCH_ADAPTER=none|gdrive, GRAPH_HUB_ATHENA_ADAPTER=off|legacy, "
-            "and GRAPH_HUB_CONVENTIONS_ADAPTER=generic|surfur.",
+            "and GRAPH_HUB_CONVENTIONS_ADAPTER=generic|workspace.",
         )
     return DoctorCheck(
         "adapters",

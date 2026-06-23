@@ -9,7 +9,7 @@ from hub_core.adapters import (
     GenericConventions,
     NoopPrefetcher,
     NullAthena,
-    SurfurConventions,
+    WorkspaceConventions,
     select_adapters,
 )
 from hub_core.config_parser import validate_config
@@ -34,7 +34,7 @@ def test_select_adapters_accepts_environment_config_opt_ins():
             "adapters": {
                 "prefetch": "gdrive",
                 "athena": "off",
-                "conventions": "surfur",
+                "conventions": "workspace",
             }
         }
     }
@@ -44,7 +44,7 @@ def test_select_adapters_accepts_environment_config_opt_ins():
 
     assert isinstance(adapters.prefetcher, GDrivePrefetcher)
     assert isinstance(adapters.athena, NullAthena)
-    assert isinstance(adapters.conventions, SurfurConventions)
+    assert isinstance(adapters.conventions, WorkspaceConventions)
 
 
 def test_select_adapters_env_overrides_config():
@@ -59,14 +59,14 @@ def test_select_adapters_env_overrides_config():
     }
     env = {
         "GRAPH_HUB_PREFETCH_ADAPTER": "gdrive",
-        "GRAPH_HUB_CONVENTIONS_ADAPTER": "surfur",
+        "GRAPH_HUB_CONVENTIONS_ADAPTER": "workspace",
     }
 
     with patch.dict(os.environ, env, clear=True):
         adapters = select_adapters(config)
 
     assert isinstance(adapters.prefetcher, GDrivePrefetcher)
-    assert isinstance(adapters.conventions, SurfurConventions)
+    assert isinstance(adapters.conventions, WorkspaceConventions)
 
 
 def test_select_adapters_rejects_unknown_names():
@@ -83,7 +83,7 @@ def test_validate_config_accepts_adapter_config():
         "adapters": {
             "prefetch": "gdrive",
             "athena": "off",
-            "conventions": "surfur",
+            "conventions": "workspace",
         }
     }
 
@@ -92,7 +92,7 @@ def test_validate_config_accepts_adapter_config():
 
 def test_validate_config_rejects_unknown_adapter_config():
     config = _minimal_config()
-    config["environment"] = {"adapters": {"conventions": "researchos"}}
+    config["environment"] = {"adapters": {"conventions": "project_specific"}}
 
     errors = validate_config(config)
 
