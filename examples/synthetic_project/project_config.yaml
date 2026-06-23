@@ -1,6 +1,6 @@
 project:
   name: Synthetic Response Curve
-  description: Public-safe Graph Hub synthetic fixture.
+  description: Public-safe FigOps synthetic fixture.
 
 visual_style:
   target_format: nature

@@ -1,6 +1,6 @@
 # Synthetic Project Tutorial
 
-This fixture is a public-safe Graph Hub project that renders one response-curve figure from
+This fixture is a public-safe FigOps project that renders one response-curve figure from
 `results/data/response_curve.csv`.
 
 ## What It Contains
