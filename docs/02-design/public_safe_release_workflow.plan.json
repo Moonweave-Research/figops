@@ -1,0 +1,55 @@
+{
+  "schema_version": "0.5",
+  "plan_id": "graph-hub-public-core-local-readiness-2026-06-23",
+  "created_by": "keelplane",
+  "objective": "Verify and maintain local MPL-2.0 public-core readiness for Graph Hub without external publication or git side effects.",
+  "surface_summary": "Graph Hub working tree, MPL license and notice, public release checker, MCP surface, public style registry, docs, templates, and tests.",
+  "surfaces": [
+    {"id": "repo", "kind": "repo", "locator": "graph-making-hub working tree", "access_mode": "local-write"},
+    {"id": "license-notice", "kind": "document", "locator": "LICENSE, NOTICE, README.md, pyproject.toml", "access_mode": "local-write"},
+    {"id": "release-gate", "kind": "artifact", "locator": "scripts/check_public_release.py and tests/test_public_release_check.py", "access_mode": "local-write-without-weakening"},
+    {"id": "mcp-surface", "kind": "artifact", "locator": "graphhub_mcp_server.py and generated docs/tools.md", "access_mode": "local-write"},
+    {"id": "public-docs-examples", "kind": "document", "locator": "docs and project_config_template.yaml", "access_mode": "local-write"}
+  ],
+  "assumptions": [
+    {"claim": "The local working tree is being prepared as an MPL-2.0 public core.", "verification_step": "Inspect LICENSE, NOTICE, README.md, pyproject.toml, and run the public release checker."},
+    {"claim": "The release checker remains conservative and should pass only after real cleanup, not by suppressing checks.", "verification_step": "Inspect scripts/check_public_release.py diff and run its tests."},
+    {"claim": "The MCP surface is part of the public core and must remain operational.", "verification_step": "Run MCP smoke, focused MCP tests, and tool-reference freshness checks."},
+    {"claim": "Publication remains a separate human gate.", "verification_step": "Confirm no workflow step performs push, PR, tag, release, registry upload, package publication, or visibility change."}
+  ],
+  "safe_now": [
+    "Edit local source, tests, docs, metadata, and planning artifacts needed for public-core readiness.",
+    "Run local verification commands.",
+    "Remove or generalize project-specific public surfaces.",
+    "Record remaining risks without publishing externally."
+  ],
+  "human_gated": [
+    "Create a public mirror or change repository visibility.",
+    "Publish to PyPI, Docker, MCP Registry, GitHub Releases, or social channels.",
+    "Push, create a PR, commit, tag, or release.",
+    "Open a stable third-party plugin API or external code-loading contract.",
+    "Rewrite git history or run secret-history cleanup."
+  ],
+  "verification": [
+    {"claim_or_output": "Public release checker passes locally.", "falsifier": "uv run python scripts/check_public_release.py exits nonzero or reports a blocker.", "evidence_required": "public_release_check: ok"},
+    {"claim_or_output": "MCP smoke passes with eight public style formats.", "falsifier": "uv run python graphhub_mcp_server.py --smoke exits nonzero or reports a non-ok status.", "evidence_required": "health_status ok and style_format_count 8"},
+    {"claim_or_output": "Generated tool docs are fresh.", "falsifier": "uv run python scripts/gen_tool_reference.py --check exits nonzero.", "evidence_required": "zero exit status"},
+    {"claim_or_output": "Tests pass.", "falsifier": "Focused or full pytest commands fail.", "evidence_required": "pytest pass summary"},
+    {"claim_or_output": "No external side effect occurred.", "falsifier": "A commit, push, PR, tag, release, registry upload, or visibility change was performed.", "evidence_required": "git status/diff inspection and no remote commands"}
+  ],
+  "risk_gates": [
+    {"id": "remote-publication", "trigger": "Public mirror, visibility change, public branch, package, release, or registry publication", "safe_default": "Stop with local artifacts", "requires_user_approval": true},
+    {"id": "git-side-effect", "trigger": "Commit, push, PR, tag, release, rebase, reset, force-push, branch rewrite, or history cleanup", "safe_default": "Do not perform", "requires_user_approval": true},
+    {"id": "private-material-export", "trigger": "Exporting or publishing project-specific datasets, unpublished workflow notes, credentials, manuscript assets, or internal style packs", "safe_default": "Keep outside public core", "requires_user_approval": true},
+    {"id": "plugin-api", "trigger": "Stable third-party plugin API, external code auto-loading, or plugin compatibility guarantee", "safe_default": "Use project config and explicit scripts only", "requires_user_approval": true}
+  ],
+  "resume": {
+    "cacheable_artifacts": ["baseline_release_blockers.json", "public_core_boundary.md", "public_safe_verification_report.md"],
+    "invalidation_rules": [
+      "Rerun release checker after docs, examples, themes, provenance, license, notice, metadata, release checker, or marker-disposition changes.",
+      "Rerun MCP smoke and focused tests after any MCP, schema, docs/tools, or render path change.",
+      "Rerun focused style/config tests after target format, style profile, preset, or theme changes."
+    ]
+  },
+  "expected_output": "Local working tree ready for user review, with verification evidence and no external side effects."
+}
