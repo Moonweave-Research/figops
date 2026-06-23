@@ -1,7 +1,7 @@
 [project]
-name = "graph-making-hub"
+name = "figops"
 version = "0.16.1"
-description = "Reproducible plotting and analysis pipeline for research projects"
+description = "MCP-native figure operations for reproducible research"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MPL-2.0"
