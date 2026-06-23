@@ -55,8 +55,10 @@ Run commands through `uv run`.
 Required before every PR:
 
 ```bash
-uv run python -m pytest -q
+uv run python scripts/check_public_release.py
 uv run python graphhub_mcp_server.py --smoke
+uv run python scripts/gen_tool_reference.py --check
+uv run python -m pytest -q
 ```
 
 Also run ruff on changed Python files, for example:
@@ -65,8 +67,8 @@ Also run ruff on changed Python files, for example:
 uv run ruff check scripts/gen_tool_reference.py tests/test_tool_reference_docs.py
 ```
 
-Each PR body should include the exact `uv run python -m pytest -q` tail. When dependencies are not
-part of the task, do not edit dependency declarations or commit lockfile churn.
+Each PR body should include the exact tail from the local gate. When dependencies are not part of
+the task, do not edit dependency declarations or commit lockfile churn.
 
 ## Security and Environment Trust
 
