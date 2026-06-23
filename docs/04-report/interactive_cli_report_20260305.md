@@ -22,7 +22,7 @@
 - **Hybrid Execution**: CLI 인자가 있을 때는 자동화 모드로, 없을 때는 대화형 모드로 유연하게 동작 방식 전환.
 
 ## 4. Verification Results
-- **Validation Project**: `Sulfur-rich Polymer Actuation (10mm_20min, 통합)`
+- **Validation Project**: `Synthetic Polymer Actuation (10mm_20min, integrated)`
 - **Performance**: 대화형 선택을 포함한 전체 실행 시간이 **0.6초** 이내로 매우 쾌적함.
 - **Robustness**: 잘못된 숫자 입력이나 종료 명령(`q`)에 대해 안전한 예외 처리 확인.
 

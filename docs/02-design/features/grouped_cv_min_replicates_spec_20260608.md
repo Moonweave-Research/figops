@@ -239,7 +239,7 @@ Regression tests:
 3. Add `min_replicates` runtime tests and implementation in `hub_core/data_contract.py`.
 4. Add `grouped_cv` runtime tests, diagnostics sidecar, and implementation.
 5. Propagate grouped warning results into MCP render `manifest.json`, `status.json`, and `manual_review_needed`.
-6. Update `project_config_template.yaml` and `docs/hks/03_calculation_check_contract.md`.
+6. Update `project_config_template.yaml` and the public data-contract documentation.
 7. Run:
 
 ```bash

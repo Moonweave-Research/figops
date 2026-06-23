@@ -10,8 +10,8 @@
 
 **Problem:** bespoke integrations are baked into the core, so a clean checkout in another
 environment can't run: GDrive prefetch (`ensure_local_files`), the Athena bridge
-(`hub_core/athena_bridge.py`, `orchestrator.py` health/draft hooks), and Surfur/ResearchOS naming
-conventions (e.g. `nature_surfur` style, `.worktrees`/`ResearchOS` discovery assumptions).
+(`hub_core/athena_bridge.py`, `orchestrator.py` health/draft hooks), and workspace naming
+conventions (e.g. project-specific style aliases, `.worktrees`/`ResearchOS` discovery assumptions).
 
 **Design:** introduce `hub_core/adapters/` with small interfaces and **generic defaults**:
 
@@ -26,17 +26,17 @@ class GDrivePrefetcher:      # opt-in (current ensure_local_files behavior)
 
 # hub_core/adapters/athena.py    -> AthenaBridge protocol; NullAthena default (no health/draft hooks)
 # hub_core/adapters/conventions.py -> naming/discovery policy; GenericConventions default,
-#                                      SurfurConventions opt-in (worktrees/ResearchOS/nature_surfur)
+#                                      Project conventions opt-in (worktrees/ResearchOS/default style)
 ```
 
 - Selection via config (`environment.adapters: {prefetch: gdrive|none, athena: on|off,
-  conventions: surfur|generic}`) and/or env, **defaulting to none/generic**.
+  conventions: workspace|generic}`) and/or env, **defaulting to none/generic**.
 - The orchestrator and MCP render path call adapters through their interfaces only.
 - Athena timeout handling from PR #55 stays; the bridge becomes a `NullAthena` no-op by default.
 
 **Acceptance:** with all adapters at their defaults and **zero bespoke env vars**, a clean checkout
-can `scaffold → render` a figure (verified by a CI smoke test). GDrive/Athena/Surfur are opt-in and
-covered by their own tests. No `nature_surfur`/`ResearchOS`/`ensure_local_files` reference remains
+can `scaffold → render` a figure (verified by a CI smoke test). GDrive/Athena/workspace conventions are opt-in and
+covered by their own tests. No project-specific style alias, `ResearchOS`, or `ensure_local_files` reference remains
 outside `adapters/` + the style packs.
 
 ## M3.2 — Plot-type registry & render-backend interface — M

@@ -13,9 +13,12 @@ This pass focuses on:
 ## Non-Goals
 
 - Do not split a new repository.
-- Do not relicense Graph Hub.
-- Do not remove private/internal style packs.
-- Do not replace the existing internal gold smoke.
+- Do not publish packages, change remote visibility, or rewrite git history.
+- Do not include private datasets, unpublished workflow notes, credentials,
+  manuscript assets, internal style packs, or project-specific research material
+  in the public-core tree.
+- Do not replace private-only smoke targets in external workspaces; public-core
+  smoke targets must be synthetic and self-contained.
 
 ## Synthetic Fixture Contract
 
