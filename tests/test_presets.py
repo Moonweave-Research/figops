@@ -2,10 +2,20 @@
 import sys
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hub_core.config_parser import resolve_presets, resolve_step_style, validate_config
 from themes.journal_theme import STYLE_PRESETS, apply_journal_theme
+
+
+@pytest.fixture(autouse=True)
+def restore_matplotlib_rcparams():
+    saved_rc = plt.rcParams.copy()
+    yield
+    plt.rcParams.update(saved_rc)
 
 
 # ---------------------------------------------------------------------------
@@ -47,15 +57,15 @@ def test_resolve_presets_merges_visual_style():
     config = _base_config(
         visual_style={"target_format": "nature", "font_scale": 1.0, "profile": "baseline"},
         presets={
-            "ppt_style": {"target_format": "ppt", "font_scale": 1.5},
+            "science_style": {"target_format": "science", "font_scale": 1.5},
         },
     )
     result = resolve_presets(config)
     # target_format overridden by preset
-    assert result["ppt_style"]["target_format"] == "ppt"
-    assert result["ppt_style"]["font_scale"] == 1.5
+    assert result["science_style"]["target_format"] == "science"
+    assert result["science_style"]["font_scale"] == 1.5
     # profile from visual_style base survives
-    assert result["ppt_style"]["profile"] == "baseline"
+    assert result["science_style"]["profile"] == "baseline"
 
 
 # ---------------------------------------------------------------------------
@@ -95,11 +105,11 @@ def test_resolve_step_style_inline_override():
         "output": "Fig1.png",
         "preset": "journal",
         "font_scale": 2.0,
-        "target_format": "ppt",
+        "target_format": "science",
     }
     result = resolve_step_style(step, config, resolved_presets=resolved)
     # Inline values must win over preset
-    assert result["target_format"] == "ppt"
+    assert result["target_format"] == "science"
     assert result["font_scale"] == 2.0
 
 
@@ -123,9 +133,9 @@ def test_resolve_step_style_legacy_theme():
     config = _base_config(
         visual_style={"target_format": "nature", "font_scale": 1.0, "profile": "baseline"},
     )
-    step = {"script": "plot.py", "output": "Fig1.png", "theme": "ppt"}
+    step = {"script": "plot.py", "output": "Fig1.png", "theme": "science"}
     result = resolve_step_style(step, config, resolved_presets=None)
-    assert result["target_format"] == "ppt"
+    assert result["target_format"] == "science"
 
 
 # ---------------------------------------------------------------------------
@@ -161,19 +171,27 @@ def test_validate_config_presets_backward_compat():
     assert preset_errors == []
 
 
-def test_validate_config_accepts_nature_surfur_as_official_target_format():
+def test_validate_config_rejects_non_public_target_format():
     config = _base_config(
-        visual_style={"target_format": "nature_surfur", "font_scale": 1.0, "profile": "baseline"},
+        visual_style={"target_format": "presentation_private", "font_scale": 1.0, "profile": "baseline"},
     )
     errors = validate_config(config)
-    assert errors == []
+    assert any("target_format" in error for error in errors)
 
 
-def test_nature_surfur_theme_loads_as_distinct_project_preset():
-    apply_journal_theme("nature_surfur")
-    assert "nature_surfur" in STYLE_PRESETS
-    assert STYLE_PRESETS["nature_surfur"]["legend.fontsize"] == 6.0
-    assert STYLE_PRESETS["nature_surfur"]["xtick.minor.visible"] is False
+def test_validate_config_rejects_non_public_preset_profile():
+    config = _base_config(
+        presets={"journal": {"target_format": "nature", "profile": "unknown_profile"}},
+    )
+    errors = validate_config(config)
+    assert any("presets.journal.profile" in error for error in errors)
+
+
+def test_default_theme_loads_as_public_preset():
+    apply_journal_theme("default")
+    assert "default" in STYLE_PRESETS
+    assert STYLE_PRESETS["default"]["legend.fontsize"] == STYLE_PRESETS["nature"]["legend.fontsize"]
+    assert STYLE_PRESETS["default"]["xtick.minor.visible"] == STYLE_PRESETS["nature"]["xtick.minor.visible"]
 
 
 # ---------------------------------------------------------------------------

@@ -11,9 +11,7 @@ from .logging import get_logger
 
 ALLOWED_TARGET_FORMATS = {
     "nature",
-    "nature_surfur",
     "science",
-    "ppt",
     "default",
     "acs",
     "rsc",
@@ -37,7 +35,7 @@ ALLOWED_OUTPUT_FORMATS = {"png", "pdf", "svg"}
 ALLOWED_MONOTONIC_MODES = {"increasing", "decreasing", "nondecreasing", "nonincreasing"}
 ALLOWED_PREFETCH_ADAPTERS = {"none", "noop", "off", "gdrive"}
 ALLOWED_ATHENA_ADAPTERS = {"none", "null", "off", "legacy", "on"}
-ALLOWED_CONVENTIONS_ADAPTERS = {"none", "generic", "surfur"}
+ALLOWED_CONVENTIONS_ADAPTERS = {"none", "generic", "workspace"}
 ALLOWED_PROJECT_ROLES = {"master", "module"}
 ALLOWED_PROJECT_STATUSES = {"active", "legacy"}
 ALLOWED_RAW_INTEGRITY_MODES = {"warn", "strict"}
@@ -1125,6 +1123,13 @@ def validate_config(config):
                 prof = preset_vals["profile"]
                 if not isinstance(prof, str) or not prof.strip():
                     errors.append(f"presets.{preset_name}.profile must be a non-empty string.")
+                else:
+                    profile_key = prof.strip().lower()
+                    if _KNOWN_STYLE_PROFILE_KEYS and profile_key not in _KNOWN_STYLE_PROFILE_KEYS:
+                        allowed_profiles = ", ".join(sorted(_KNOWN_STYLE_PROFILES))
+                        errors.append(
+                            f"presets.{preset_name}.profile '{prof}' is invalid. Allowed: {allowed_profiles}."
+                        )
             if "output_format" in preset_vals:
                 of = preset_vals["output_format"]
                 if not isinstance(of, str) or of.strip().lower() not in ALLOWED_OUTPUT_FORMATS:
