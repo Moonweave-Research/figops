@@ -1259,7 +1259,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             plt.rcParams.update(saved_rc)
             plt.close(fig)
 
-    def test_ppt_multi_series_legend_uses_right_outside_layout(self):
+    def test_explicit_right_outside_multi_series_legend_uses_right_outside_layout(self):
         spec = BridgeFigureSpec(
             csv_path="unused.csv",
             output_path="unused.png",
@@ -1268,7 +1268,8 @@ class BridgeRendererUnitTest(unittest.TestCase):
             y_column="y",
             title="line",
             series_column="series",
-            target_format="ppt",
+            target_format="science",
+            legend_layout="right_outside",
         )
         points = [
             {"x": 0.0, "y": 1.0, "label": "", "series": "S1", "yerr": None},
@@ -1285,12 +1286,12 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertIsNotNone(legend)
             self.assertFalse(legend.get_frame_on())
             self.assertEqual(legend._loc, 6)
-            self.assertAlmostEqual(fig.subplotpars.right, 0.75, places=2)
-            self.assertFalse(hasattr(fig, "_graph_hub_layout_lock"))
+            self.assertAlmostEqual(fig.subplotpars.right, 0.8235, places=3)
+            self.assertTrue(hasattr(fig, "_graph_hub_layout_lock"))
         finally:
             plt.close(fig)
 
-    def test_best_legend_layout_overrides_ppt_default(self):
+    def test_best_legend_layout_overrides_explicit_format_defaults(self):
         spec = BridgeFigureSpec(
             csv_path="unused.csv",
             output_path="unused.png",
@@ -1299,7 +1300,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             y_column="y",
             title="line",
             series_column="series",
-            target_format="ppt",
+            target_format="science",
             legend_layout="best",
         )
         points = [
@@ -1689,33 +1690,6 @@ class BridgeRendererUnitTest(unittest.TestCase):
             from plotting.bridge_renderer import render_multipanel_figure
 
             with self.assertRaisesRegex(ValueError, "gutter_h_mm and gutter_v_mm must be non-negative"):
-                render_multipanel_figure(spec)
-
-    def test_multipanel_manuscript_mode_rejects_ppt_target_format(self):
-        with tempfile.TemporaryDirectory(prefix="bridge_multi_ppt_manuscript_") as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            left_csv = self._write_xy_csv(tmpdir_path, "left.csv")
-            spec = MultiPanelSpec(
-                panels=(
-                    BridgeFigureSpec(
-                        csv_path=str(left_csv),
-                        output_path=str(tmpdir_path / "left.png"),
-                        plot_type="line",
-                        x_column="x",
-                        y_column="y",
-                        title="left",
-                    ),
-                ),
-                output_path=str(tmpdir_path / "multi.png"),
-                rows=1,
-                cols=1,
-                target_format="ppt",
-                compose_mode="manuscript",
-            )
-
-            from plotting.bridge_renderer import render_multipanel_figure
-
-            with self.assertRaisesRegex(ValueError, "not supported for target_format='ppt'"):
                 render_multipanel_figure(spec)
 
     def test_multipanel_manuscript_mode_rejects_non_fixed_layout_panel(self):

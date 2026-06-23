@@ -411,7 +411,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                     "x_column": "x",
                     "y_column": "y",
                     "plot_type": "scatter",
-                    "target_format": "nature_surfur",
+                    "target_format": "science",
                     "profile": "baseline",
                     "output_format": "png",
                     "semantic_checks": {"y": {"range": [0, 3], "allow_null": False}},
@@ -448,7 +448,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(status["job_id"], "render-demo")
             self.assertEqual(status["status"], result["status"])
             self.assertEqual(status["failure_stage"], "")
-            self.assertEqual(manifest["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(manifest["style_summary"]["target_format"], "science")
             self.assertEqual(manifest["visual_preflight_status"]["passed"], True)
             figure_manifests = manifest["figure_manifests"]
             self.assertEqual(len(figure_manifests), 1)
@@ -2009,7 +2009,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             research_root = Path(tmpdir)
             project = _write_project_render_fixture(
-                research_root / "ResearchOS" / "02_Surfur_Polymer", name="260504_sulfur_rh25"
+                research_root / "ResearchOS" / "Public_Project", name="260504_public_fixture"
             )
             server = GraphHubMCPServer(research_root=research_root)
 

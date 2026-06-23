@@ -79,7 +79,6 @@ _FORMAT_FIGSIZE_MM: dict[str, tuple[float, float]] = {
     "nature": (89, 71),
     "science": (89, 71),
     "default": (89, 71),
-    "ppt": (152, 114),
 }
 
 
@@ -395,8 +394,6 @@ def _validated_compose_mode(spec: MultiPanelSpec) -> str:
         raise ValueError("panel_height_mm must be positive")
     if spec.gutter_h_mm < 0 or spec.gutter_v_mm < 0:
         raise ValueError("gutter_h_mm and gutter_v_mm must be non-negative")
-    if compose_mode == "manuscript" and str(spec.target_format or "").lower() == "ppt":
-        raise ValueError("manuscript compose is not supported for target_format='ppt'")
     return compose_mode
 
 
@@ -486,8 +483,6 @@ def _panel_geometry_mm(panel: BridgeFigureSpec | PanelImageSpec) -> tuple[float,
     if isinstance(panel, PanelImageSpec):
         layout_key = "standard"
     else:
-        if str(panel.target_format or "").lower() == "ppt":
-            raise ValueError("manuscript compose does not support PPT panel geometry")
         layout_key = _resolved_legend_layout(panel)
         if layout_key not in PUBLICATION_LAYOUT_SPECS_MM:
             raise ValueError(
@@ -1752,6 +1747,4 @@ def _apply_layout(fig, ax, spec: BridgeFigureSpec, *, allow_figure_layout: bool 
 def _resolved_legend_layout(spec: BridgeFigureSpec) -> str:
     if spec.legend_layout != "auto":
         return spec.legend_layout
-    if spec.target_format == "ppt":
-        return "right_outside"
     return "smart"  # nature/science 등 기본은 smart layout 적용
