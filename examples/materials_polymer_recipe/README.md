@@ -8,7 +8,7 @@ Graph Hub contract path:
    resistivity and conductivity.
 3. `data_contract.csv_checks` validates both declared outputs before the figure renders.
 
-Run from the repository root:
+From the repository root:
 
 ```bash
 uv run python orchestrator.py --project examples/materials_polymer_recipe --step all --force

@@ -12,6 +12,9 @@ cd graph-making-hub
 uv sync
 ```
 
+Graph Hub is not published to a package registry in this local public-core path;
+run commands from the checked-out repository unless a future release note says otherwise.
+
 If you are already in a clone, start with:
 
 ```bash
@@ -140,4 +143,5 @@ quality/layout warning for manual review. Open the printed PNG path to inspect t
   reusable signal-processing and resistivity analysis helpers through the data contract before
   rendering a figure.
 - [Tool reference](tools.md): generated MCP tool schemas, plot types, semantic checks, and examples.
+- [MCP setup](mcp_setup.md): stdio client snippets, write-tool policy, and allowed-root policy.
 - [Onboarding path](onboarding.md): the recommended sequence for a new lab member.
