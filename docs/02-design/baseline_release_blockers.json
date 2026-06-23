@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-06-23T00:00:00Z",
+  "status": "superseded_by_local_mpl_public_core_cleanup",
+  "commands": [
+    {
+      "command": "uv run python scripts/check_public_release.py",
+      "expected_exit": 0,
+      "observed_exit": 0,
+      "expected_output": "public_release_check: ok",
+      "observed_output": "public_release_check: ok"
+    },
+    {
+      "command": "uv run python graphhub_mcp_server.py --smoke",
+      "expected_exit": 0,
+      "observed_exit": 0,
+      "expected_output_contains": "health_status ok and style_format_count 8",
+      "observed_output_contains": "health_status ok and style_format_count 8"
+    }
+  ],
+  "resolved_blocker_classes": [
+    "license posture updated to MPL-2.0 public-core scope",
+    "notice language updated to MPL-2.0 public-core scope",
+    "private/internal style packs removed from public style registry",
+    "private style format and profile names removed from live public target/profile surfaces",
+    "private workflow document paths removed from tracked public-core surface",
+    "release checker remains conservative and passes without weakening"
+  ],
+  "remaining_gates": [
+    "No external publication is authorized.",
+    "No repository visibility change is authorized.",
+    "No package, registry, tag, release, push, PR, or commit is authorized without explicit user request.",
+    "Project-specific datasets, unpublished workflow notes, credentials, manuscript assets, and internal style packs remain outside the public-core distribution unless separately approved."
+  ],
+  "notes": [
+    "This artifact replaces the earlier pre-cleanup blocked baseline.",
+    "Intentional private marker literals remain only in the release checker and its tests as denylist fixtures."
+  ]
+}

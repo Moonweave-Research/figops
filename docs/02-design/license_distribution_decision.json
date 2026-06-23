@@ -1,0 +1,36 @@
+{
+  "approved_by": "user",
+  "approved_at": "2026-06-23T00:00:00Z",
+  "license_decision": "MPL-2.0 public core for local readiness",
+  "distribution_model": "local public-core readiness only; no public distribution, push, PR, release, registry publication, or repository visibility change",
+  "allowed_license_file_edits": [
+    "Replace LICENSE with MPL-2.0 text",
+    "Update NOTICE for MPL-2.0 public-core scope",
+    "Update package metadata and README license language to match MPL-2.0 public-core scope"
+  ],
+  "allowed_publication_surfaces": [],
+  "explicitly_forbidden_actions": [
+    "publication",
+    "public mirror creation",
+    "repository visibility changes",
+    "package publishing",
+    "registry publishing",
+    "release-note publication",
+    "tag creation",
+    "release creation",
+    "private literal disclosure",
+    "private workflow disclosure",
+    "history rewrite",
+    "reset",
+    "rebase",
+    "force-push",
+    "secret-history rewrite",
+    "audit-history mutation",
+    "commit without explicit request",
+    "push",
+    "PR"
+  ],
+  "approved_scope": "Local MPL-2.0 public-core readiness cleanup",
+  "local_cleanup_allowance": "Edit source, tests, docs, metadata, and local planning artifacts as needed to make the public-core release gate pass locally without weakening the checker or publishing externally.",
+  "notes": "This record reflects the user's approval to prepare the local public core under MPL-2.0. It does not authorize external publication, remote visibility changes, package or registry publishing, commits, pushes, PRs, tags, releases, or history rewriting."
+}
