@@ -1,7 +1,7 @@
 # Materials/Polymer Domain Helper Recipe
 
 This public-safe fixture shows reusable M4.3 domain analysis helpers flowing through the normal
-Graph Hub contract path:
+FigOps contract path:
 
 1. `materials_polymer.signal_smooth_baseline` smooths and baseline-corrects a raw signal.
 2. `materials_polymer.resistivity_transform` converts resistance, area, and thickness into
