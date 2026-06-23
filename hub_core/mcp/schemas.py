@@ -561,7 +561,9 @@ def list_tool_definitions() -> list[dict[str, Any]]:
             ),
             _standard_output_schema(
                 {
+                    "job_id": {"type": "string"},
                     "figures": {"type": "array", "items": {"type": "object"}},
+                    "figure_manifests": {"type": "array", "items": {"type": "object"}},
                     "diagrams": {"type": "array", "items": {"type": "object"}},
                     "assemblies": {"type": "array", "items": {"type": "object"}},
                     "logs": {"type": "array", "items": {"type": "object"}},

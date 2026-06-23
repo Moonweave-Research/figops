@@ -12,6 +12,7 @@ import tempfile
 import time
 import traceback
 from contextlib import contextmanager, redirect_stdout
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,7 @@ MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0
 MCP_BATCH_TIMEOUT_SECONDS = 30.0
 MCP_WORKER_RESULT_MAX_BYTES = 16 * 1024 * 1024
+FIGURE_MANIFEST_SCHEMA_VERSION = "graphhub.figure_manifest/1"
 
 
 def _write_worker_result(result_path: str | Path, result: dict[str, Any]) -> None:
@@ -181,6 +183,26 @@ def _build_manifest(
     return manifest
 
 
+def _figure_manifest_sidecar_path(figure_path: Path) -> Path:
+    return figure_path.with_name(f"{figure_path.name}.figure_manifest.json")
+
+
+@dataclass(frozen=True, slots=True)
+class FigureManifestContext:
+    job_id: str
+    tool_name: str
+    status: str
+    artifact_status: str
+    manual_review_needed: bool
+    style_summary: dict[str, Any]
+    provenance: dict[str, Any]
+    config_path: Path
+    inputs: list[dict[str, str]]
+    warnings: list[str]
+    selected_figure: dict[str, Any] | None = None
+    figure_metadata: dict[str, Any] | None = None
+
+
 class McpRenderOrchestrationMixin:
     """Render, snapshot, provenance, and geometry helper methods for the MCP server."""
 
@@ -208,6 +230,63 @@ class McpRenderOrchestrationMixin:
             "manual_review_needed": manual_review_needed,
             "failure_stage": failure_stage,
             "resolution_hint": resolution_hint,
+        }
+
+    def _write_figure_manifest_sidecars(
+        self,
+        *,
+        figures: list[dict[str, Any]],
+        context: FigureManifestContext,
+    ) -> list[dict[str, str]]:
+        sidecars: list[dict[str, str]] = []
+        for figure in figures:
+            figure_path = Path(str(figure["path"]))
+            sidecar_path = _figure_manifest_sidecar_path(figure_path)
+            payload: dict[str, Any] = {
+                "schema_version": FIGURE_MANIFEST_SCHEMA_VERSION,
+                "job_id": context.job_id,
+                "tool_invocation": {
+                    "tool_name": context.tool_name,
+                    "status": context.status,
+                    "artifact_status": context.artifact_status,
+                    "manual_review_needed": context.manual_review_needed,
+                },
+                "figure": {
+                    "path": str(figure_path),
+                    "format": str(figure.get("format") or figure_path.suffix.lower().lstrip(".")),
+                    "sha256": self._file_sha256(figure_path) if figure_path.is_file() else "",
+                },
+                "inputs": context.inputs,
+                "config": {
+                    "path": str(context.config_path),
+                    "sha256": self._file_sha256(context.config_path) if context.config_path.is_file() else "",
+                },
+                "style_summary": context.style_summary,
+                "warnings": context.warnings,
+                "provenance": context.provenance,
+            }
+            if context.selected_figure is not None:
+                payload["selected_figure"] = context.selected_figure
+            if context.figure_metadata is not None:
+                payload["figure_metadata"] = context.figure_metadata
+            sidecar_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            sidecars.append(
+                {
+                    "path": str(sidecar_path),
+                    "figure_path": str(figure_path),
+                    "schema_version": FIGURE_MANIFEST_SCHEMA_VERSION,
+                }
+            )
+        return sidecars
+
+    def _figure_manifest_input(self, *, role: str, path: Path) -> dict[str, str]:
+        return {
+            "role": role,
+            "path": str(path),
+            "sha256": self._file_sha256(path) if path.is_file() else "",
         }
 
     @staticmethod

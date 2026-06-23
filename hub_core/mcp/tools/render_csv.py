@@ -401,6 +401,30 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             )
             status = "warning" if manual_review_needed else "ok"
             artifact_status = self._artifact_status(preflight, baseline_comparison)
+            style_summary = {
+                "target_format": target_format,
+                "profile": profile,
+                "output_format": output_format,
+            }
+            figure_manifests = self._write_figure_manifest_sidecars(
+                figures=figures,
+                context=render_helpers.FigureManifestContext(
+                    job_id=job_id,
+                    tool_name="graphhub.render_csv_graph",
+                    status=status,
+                    artifact_status=artifact_status,
+                    manual_review_needed=manual_review_needed,
+                    style_summary=style_summary,
+                    provenance=provenance,
+                    config_path=config_path,
+                    inputs=[
+                        self._figure_manifest_input(role="source_data", path=data_path),
+                        self._figure_manifest_input(role="runtime_copy", path=job_data_path),
+                    ],
+                    warnings=preflight_warnings + baseline_warnings + calculation_warnings + geometry_warnings,
+                ),
+            )
+            created_paths.extend(sidecar["path"] for sidecar in figure_manifests)
             created_paths.extend([str(manifest_path), str(status_path)])
             manifest = render_helpers._build_manifest(
                 job_id=job_id,
@@ -410,11 +434,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 latest_dir=latest_dir,
                 figures=figures,
                 created_paths=created_paths,
-                style_summary={
-                    "target_format": target_format,
-                    "profile": profile,
-                    "output_format": output_format,
-                },
+                style_summary=style_summary,
                 visual_preflight_status=preflight,
                 geometry_diagnostics=geometry_diagnostics,
                 layout_report=layout_report,
@@ -425,6 +445,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 source_data_path=str(data_path),
                 copied_data_path=str(job_data_path),
                 calculation_checks=calculation_checks,
+                figure_manifests=figure_manifests,
             )
             status_payload = self._render_status_payload(
                 job_id=job_id,

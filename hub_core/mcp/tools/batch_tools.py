@@ -84,6 +84,9 @@ class McpBatchToolsMixin:
             )
         )
         figures = manifest.get("figures") if isinstance(manifest.get("figures"), list) else []
+        figure_manifests = (
+            manifest.get("figure_manifests") if isinstance(manifest.get("figure_manifests"), list) else []
+        )
         figure_metadata = manifest.get("figure_metadata") if isinstance(manifest.get("figure_metadata"), dict) else {}
         figure_format_warnings = self._figure_metadata_warnings(figure_metadata)
         preflight_warnings = self._preflight_warnings(preflight)
@@ -130,6 +133,7 @@ class McpBatchToolsMixin:
             manual_review_needed=manual_review_needed,
             job_id=job_id,
             figures=figures,
+            figure_manifests=figure_manifests,
             diagrams=manifest.get("diagrams") or [],
             assemblies=manifest.get("assemblies") or [],
             logs=manifest.get("logs") or [],

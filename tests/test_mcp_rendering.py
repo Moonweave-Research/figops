@@ -436,6 +436,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertFalse((tmp_root / "input" / "project_config.yaml").exists())
             self.assertTrue(any(path.endswith("project_config.yaml") for path in result["created_paths"]))
             self.assertTrue(any(path.endswith("graph.png") for path in result["created_paths"]))
+            self.assertTrue(any(path.endswith("graph.png.figure_manifest.json") for path in result["created_paths"]))
             self.assertTrue(any(path.endswith("status.json") for path in result["created_paths"]))
 
             manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
@@ -449,11 +450,24 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(status["failure_stage"], "")
             self.assertEqual(manifest["style_summary"]["target_format"], "nature_surfur")
             self.assertEqual(manifest["visual_preflight_status"]["passed"], True)
+            figure_manifests = manifest["figure_manifests"]
+            self.assertEqual(len(figure_manifests), 1)
+            sidecar_path = Path(figure_manifests[0]["path"])
+            self.assertTrue(sidecar_path.is_file())
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            self.assertEqual(sidecar["schema_version"], "graphhub.figure_manifest/1")
+            self.assertEqual(sidecar["job_id"], "render-demo")
+            self.assertEqual(sidecar["tool_invocation"]["tool_name"], "graphhub.render_csv_graph")
+            self.assertEqual(sidecar["figure"]["path"], result["output_path"])
+            self.assertEqual(len(sidecar["figure"]["sha256"]), 64)
+            self.assertTrue(any(item["role"] == "source_data" for item in sidecar["inputs"]))
+            self.assertTrue(any(item["role"] == "runtime_copy" for item in sidecar["inputs"]))
             provenance = manifest["provenance"]
             self.assertEqual(provenance["job_id"], "render-demo")
             self.assertEqual(provenance["renderer_surface"], "graphhub.render_csv_graph")
             self.assertEqual(provenance["renderer"], "plotting.bridge_renderer.render_bridge_figure")
             self.assertEqual(provenance["source_data_sha256"], provenance["copied_data_sha256"])
+            self.assertEqual(sidecar["figure"]["sha256"], provenance["output_sha256"])
             self.assertEqual(len(provenance["config_sha256"]), 64)
             self.assertEqual(len(provenance["environment_sha256"]), 64)
             self.assertIn("hub_git_commit", provenance)
@@ -524,7 +538,14 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(collected["provenance"]["job_id"], "artifact-demo")
             self.assertEqual(len(collected["figures"]), 1)
             self.assertTrue(Path(collected["figures"][0]["path"]).is_file())
+            self.assertEqual(len(collected["figure_manifests"]), 1)
+            csv_sidecar_path = Path(collected["figure_manifests"][0]["path"])
+            self.assertTrue(csv_sidecar_path.is_file())
+            csv_sidecar = json.loads(csv_sidecar_path.read_text(encoding="utf-8"))
+            self.assertEqual(csv_sidecar["schema_version"], "graphhub.figure_manifest/1")
+            self.assertEqual(csv_sidecar["tool_invocation"]["tool_name"], "graphhub.render_csv_graph")
             self.assertTrue(any(path.endswith("graph.png") for path in collected["created_paths"]))
+            self.assertTrue(any(path.endswith("graph.png.figure_manifest.json") for path in collected["created_paths"]))
             self.assertTrue(Path(collected["provenance"]["manifest_path"]).is_file())
             self.assertTrue(Path(collected["provenance"]["status_path"]).is_file())
             self.assertTrue(Path(collected["provenance"]["latest_dir"]).is_dir())
@@ -624,6 +645,18 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(manifest["selected_figure"]["output"], "results/figures/Fig1.png")
             self.assertEqual(manifest["source_project_path"], "01_Project")
             self.assertEqual(manifest["provenance"]["source_project_path"], "01_Project")
+            figure_manifests = manifest["figure_manifests"]
+            self.assertEqual(len(figure_manifests), 1)
+            sidecar_path = Path(figure_manifests[0]["path"])
+            self.assertTrue(sidecar_path.is_file())
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            self.assertEqual(sidecar["schema_version"], "graphhub.figure_manifest/1")
+            self.assertEqual(sidecar["job_id"], "project-render")
+            self.assertEqual(sidecar["tool_invocation"]["tool_name"], "graphhub.render_project_figure")
+            self.assertEqual(sidecar["figure"]["path"], result["output_path"])
+            self.assertEqual(sidecar["selected_figure"]["output"], "results/figures/Fig1.png")
+            self.assertTrue(any(item["path"].endswith("results/data/summary.csv") for item in sidecar["inputs"]))
+            self.assertEqual(sidecar["figure"]["sha256"], manifest["provenance"]["output_sha256"])
             self.assertEqual(len(manifest["provenance"]["config_sha256"]), 64)
             self.assertEqual(len(manifest["provenance"]["environment_sha256"]), 64)
 
@@ -728,6 +761,12 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(collected["provenance"]["source_project_path"], "01_Project")
             self.assertEqual(len(collected["figures"]), 1)
             self.assertTrue(Path(collected["figures"][0]["path"]).is_file())
+            self.assertEqual(len(collected["figure_manifests"]), 1)
+            project_sidecar_path = Path(collected["figure_manifests"][0]["path"])
+            self.assertTrue(project_sidecar_path.is_file())
+            project_sidecar = json.loads(project_sidecar_path.read_text(encoding="utf-8"))
+            self.assertEqual(project_sidecar["schema_version"], "graphhub.figure_manifest/1")
+            self.assertEqual(project_sidecar["tool_invocation"]["tool_name"], "graphhub.render_project_figure")
             self.assertIn("figure_metadata", collected)
 
     def test_render_project_figure_requires_unambiguous_selector_without_writing(self):
@@ -2548,6 +2587,8 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
         # key would be caught by additionalProperties:False, not just by manual tracing.
         csv_schema = definitions["graphhub.render_csv_graph"]["outputSchema"]
         project_schema = definitions["graphhub.render_project_figure"]["outputSchema"]
+        collect_schema = definitions["graphhub.collect_artifacts"]["outputSchema"]
+        self.assertIn("figure_manifests", collect_schema["properties"])
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             _, csv_success = self._render_csv(tmpdir)
             self._assert_validates(csv_success, csv_schema)
@@ -2608,6 +2649,12 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             self._assert_validates(project_no_sidecar, project_schema)
             self.assertIsNone(project_no_sidecar["geometry_diagnostics"]["passed"])
             self.assertIsNone(project_no_sidecar["layout_report"]["passed"])
+
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
+            csv_server, csv_success = self._render_csv(tmpdir, job_id="geom-schema-collect")
+            collected = self._call(csv_server, "graphhub.collect_artifacts", {"job_id": csv_success["job_id"]})
+            self._assert_validates(collected, collect_schema)
+            self.assertEqual(len(collected["figure_manifests"]), 1)
 
     def _assert_validates(self, instance: dict, schema: dict) -> None:
         # Hand-rolled non-vacuous check (jsonschema is not a test dependency):

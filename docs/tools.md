@@ -2042,6 +2042,12 @@ Return artifact metadata for a completed MCP render job.
     "failure_stage": {
       "type": "string"
     },
+    "figure_manifests": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
     "figure_metadata": {
       "type": "object"
     },
@@ -2053,6 +2059,9 @@ Return artifact metadata for a completed MCP render job.
     },
     "is_dry_run": {
       "type": "boolean"
+    },
+    "job_id": {
+      "type": "string"
     },
     "jsonrpc_code": {
       "type": "integer"

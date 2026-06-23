@@ -246,6 +246,28 @@ class McpRenderProjectMixin:
                 selected_figure=selected,
                 style_summary=style_summary,
             )
+            project_inputs = [
+                self._figure_manifest_input(role="project_input", path=snapshot_project_path / input_rel)
+                for input_rel in self._selected_figure_declared_inputs(selected)
+            ]
+            figure_manifests = self._write_figure_manifest_sidecars(
+                figures=figures_out,
+                context=render_helpers.FigureManifestContext(
+                    job_id=job_id,
+                    tool_name="graphhub.render_project_figure",
+                    status=status,
+                    artifact_status=artifact_status,
+                    manual_review_needed=manual_review_needed,
+                    style_summary=style_summary,
+                    provenance=provenance,
+                    config_path=config_path,
+                    inputs=project_inputs,
+                    warnings=preflight_warnings + baseline_warnings + geometry_warnings + figure_format_warnings,
+                    selected_figure=selected_public,
+                    figure_metadata=figure_metadata,
+                ),
+            )
+            created_paths.extend(sidecar["path"] for sidecar in figure_manifests)
             created_paths.extend([str(manifest_path), str(status_path)])
             manifest = render_helpers._build_manifest(
                 job_id=job_id,
@@ -268,6 +290,7 @@ class McpRenderProjectMixin:
                 snapshot_project_path=str(snapshot_project_path),
                 selected_figure=selected_public,
                 figure_metadata=figure_metadata,
+                figure_manifests=figure_manifests,
             )
             status_payload = self._render_status_payload(
                 job_id=job_id,
