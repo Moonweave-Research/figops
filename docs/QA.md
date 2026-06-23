@@ -1,6 +1,6 @@
 # QA Guide
 
-This document defines the local quality gate for the independent `graph-making-hub` repository.
+This document defines the local quality gate for the independent `figops` repository.
 Routine users should start with [quickstart.md](quickstart.md); use this guide before PRs, release
 checks, or public-core readiness reviews.
 
@@ -47,7 +47,7 @@ Expected outputs:
 
 ## Regression And Integrity Criteria
 
-Graph Hub quality checks focus on:
+FigOps quality checks focus on:
 
 - Semantic data contracts: declared CSV checks and semantic ranges must pass before trusted renders.
 - Artifact integrity: generated figures must be non-empty and match their declared format headers.

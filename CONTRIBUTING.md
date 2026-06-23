@@ -1,6 +1,6 @@
 # Contributing
 
-Graph Hub is developed as a local-first research plotting and orchestration tool. GitHub Actions
+FigOps is developed as a local-first research figure-operations tool. GitHub Actions
 is currently disabled, so local verification is the merge gate.
 
 ## Architecture
