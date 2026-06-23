@@ -33,17 +33,7 @@ STYLE_PACKS: tuple[StylePack, ...] = (
         visibility=PUBLIC_CORE,
         target_formats=("acs", "cell", "default", "elsevier", "nature", "rsc", "science", "wiley"),
         profiles=("baseline",),
-        release_note="Generic journal and default formats suitable for a future public core.",
-    ),
-    StylePack(
-        name="surfur_internal",
-        visibility=INTERNAL,
-        target_formats=("nature_surfur", "ppt"),
-        profiles=("baseline", "resistance_premium"),
-        release_note=(
-            "Project-derived Sulfur/resistance and presentation styling; "
-            "keep out of public releases until reviewed."
-        ),
+        release_note="Generic journal and default formats suitable for the public core.",
     ),
 )
 

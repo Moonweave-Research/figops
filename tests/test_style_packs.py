@@ -1,3 +1,4 @@
+from hub_core.config_parser import ALLOWED_TARGET_FORMATS
 from themes.style_packs import (
     PUBLIC_CORE,
     list_style_packs,
@@ -10,14 +11,17 @@ def test_style_pack_registry_covers_allowed_target_formats() -> None:
     assert validate_style_pack_registry() == []
 
 
-def test_private_project_derived_styles_are_not_public_core() -> None:
+def test_style_pack_registry_is_public_core_only() -> None:
     packs = list_style_packs()
-    by_format = {target_format: pack for pack in packs for target_format in pack["target_formats"]}
 
-    assert by_format["nature_surfur"]["visibility"] != PUBLIC_CORE
+    assert private_or_internal_style_packs() == []
+    assert {pack["visibility"] for pack in packs} == {PUBLIC_CORE}
 
 
-def test_resistance_premium_profile_is_internal() -> None:
-    internal_packs = private_or_internal_style_packs()
+def test_public_core_style_pack_exposes_all_runtime_formats() -> None:
+    packs = list_style_packs()
+    target_formats = {target_format for pack in packs for target_format in pack["target_formats"]}
+    profiles = {profile for pack in packs for profile in pack["profiles"]}
 
-    assert any("resistance_premium" in pack["profiles"] for pack in internal_packs)
+    assert target_formats == ALLOWED_TARGET_FORMATS
+    assert profiles == {"baseline"}

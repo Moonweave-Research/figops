@@ -52,11 +52,11 @@ class TestProfileResolution(unittest.TestCase):
     def test_default_resolves_to_baseline(self):
         self.assertEqual(resolve_profile_name(None), "baseline")
 
-    def test_alias_premium(self):
-        self.assertEqual(resolve_profile_name("premium"), "resistance_premium")
+    def test_alias_base(self):
+        self.assertEqual(resolve_profile_name("base"), "baseline")
 
-    def test_alias_resistance(self):
-        self.assertEqual(resolve_profile_name("resistance"), "resistance_premium")
+    def test_alias_wiley(self):
+        self.assertEqual(resolve_profile_name("wiley"), "baseline")
 
     def test_unknown_falls_back_to_baseline(self):
         self.assertEqual(resolve_profile_name("nonexistent_profile"), "baseline")
@@ -184,12 +184,12 @@ class TestProfileResolution(unittest.TestCase):
                 for key, expected_value in expected_tokens.items():
                     self.assertEqual(tokens[key], expected_value)
 
-    def test_journal_compliance_tokens_resolve_for_non_baseline_profile(self):
+    def test_journal_compliance_tokens_resolve_for_unknown_profile_fallback(self):
         baseline_tokens, _baseline_meta = get_render_style_tokens("science", "baseline")
-        profile_tokens, profile_meta = get_render_style_tokens("science", "resistance_premium")
+        profile_tokens, profile_meta = get_render_style_tokens("science", "public_unknown")
 
         self.assertEqual(profile_meta["target_format"], "science")
-        self.assertEqual(profile_meta["profile"], "resistance_premium")
+        self.assertEqual(profile_meta["profile"], "baseline")
         for key in ("min_font_size_pt", "min_line_width_pt", "max_figure_height_mm"):
             self.assertEqual(profile_tokens[key], baseline_tokens[key])
 
