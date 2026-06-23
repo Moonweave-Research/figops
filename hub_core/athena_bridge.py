@@ -179,8 +179,7 @@ class AthenaBridge:
 
         return tuple(features)
 
-    # DPI per context: PPT targets screen (300), journal targets print (600).
-    _CONTEXT_DPI: Dict[str, int] = {"PPT": 300, "POSTER": 300}
+    _CONTEXT_DPI: Dict[str, int] = {"POSTER": 300}
 
     @staticmethod
     def _read_quality_sidecar(output_path: str) -> Optional[Dict[str, Any]]:
@@ -302,7 +301,7 @@ class AthenaBridge:
                 title=spec.get("title", "Athena-Hub V2 Render"),
                 layers=layers,
                 view_mode=spec.get("view_mode", "isometric"),
-                context=context,  # activates CONTEXT_STYLES[context] (NATURE/PPT/POSTER/REPORT)
+                context=context,
             )
 
             # Quality-aware 시각 피드백: 사이드카에서 품질 결과를 읽어 동적 오버레이 적용

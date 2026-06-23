@@ -25,7 +25,7 @@ The engine of the Hub, responsible for lifecycle management and project orchestr
 
 ### 2. `plotting` (Standardized Visualization)
 Matplotlib-based visualization helpers designed for publication-quality output.
-- **Standardization**: Consistent fonts, line weights, and color schemes (Nature, Science, PPT).
+- **Standardization**: Consistent fonts, line weights, and color schemes for public journal formats.
 - **Layout Helpers**: Tools for multi-panel figures and complex subplots.
 
 ### 3. `analysis_helpers` (Domain-Specific Scripts)
@@ -35,5 +35,5 @@ Domain-specific analysis logic, categorized by scientific field.
 
 ### 4. `themes` (Journal Style Presets)
 Styling configurations that drive the visual consistency of the `plotting` module.
-- **Presets**: CSS/Matplotlib rcParams for major journals and presentation formats.
+- **Presets**: CSS/Matplotlib rcParams for public journal formats.
 - **Color Palettes**: Color-blind friendly and high-contrast palettes.
