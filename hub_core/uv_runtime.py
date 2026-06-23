@@ -8,7 +8,7 @@ from typing import Mapping, Sequence
 
 from .runtime_paths import resolve_runtime_root
 
-UV_ENV_NAME = "graph-making-hub"
+UV_ENV_NAME = "figops"
 
 
 def _as_path(value: str | os.PathLike) -> Path:
@@ -23,13 +23,13 @@ def resolve_uv_project_environment(
     hub_root: str | os.PathLike | None = None,
     runtime_root: str | os.PathLike | None = None,
 ) -> str:
-    """Return the external uv project environment path for Graph Hub."""
+    """Return the external uv project environment path for FigOps."""
     hub_root_path = _as_path(hub_root or _default_hub_root())
     runtime_root_path = _as_path(runtime_root or resolve_runtime_root())
     env_path = runtime_root_path / "uv_envs" / UV_ENV_NAME
 
     if env_path == hub_root_path / ".venv" or hub_root_path in env_path.parents:
-        raise ValueError(f"UV project environment must stay outside Graph Hub: {env_path}")
+        raise ValueError(f"UV project environment must stay outside FigOps: {env_path}")
 
     return str(env_path)
 
