@@ -2,7 +2,7 @@ import subprocess
 import sys
 
 
-def test_preset_help_lists_nature_surfur_target_format():
+def test_preset_help_lists_public_target_formats_only():
     result = subprocess.run(
         [sys.executable, "orchestrator.py", "--help"],
         check=True,
@@ -10,4 +10,5 @@ def test_preset_help_lists_nature_surfur_target_format():
         text=True,
     )
 
-    assert "nature_surfur" in result.stdout
+    assert "nature, science, default, acs, rsc, elsevier, wiley, cell" in result.stdout
+    assert "presentation_private" not in result.stdout

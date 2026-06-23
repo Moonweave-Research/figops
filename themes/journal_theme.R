@@ -1,5 +1,4 @@
-# journal_theme.R — Nature/Science (AAAS) Style Definitions
-# Sulfur Project Optimized Hub Version
+# journal_theme.R — Public journal style definitions
 library(ggplot2)
 
 # ── Nature Standard Sizes (mm) ───────────────────────────────────
@@ -10,17 +9,10 @@ DOUBLE_COLUMN <- 183 # mm
 theme_journal <- function(target_format = "nature", font_scale = 1.0) {
     target_format <- tolower(target_format)
 
-    # 1. 포맷별 기본값 설정 (fallback: nature)
-    if (target_format == "ppt") {
-        base_size <- 14.0 * font_scale
-        line_weight <- 1.5 * (1.0 + (font_scale - 1.0) * 0.7)
-        tick_length <- 0.15 * font_scale # PPT는 바깥쪽 틱
-    } else {
-        # nature, science 공통
-        base_size <- 7.0 * font_scale
-        line_weight <- 0.5 * (1.0 + (font_scale - 1.0) * 0.7)
-        tick_length <- -0.1 * font_scale # Nature는 안쪽 틱
-    }
+    # 1. Public-core journal defaults (fallback: nature-like compact styling)
+    base_size <- 7.0 * font_scale
+    line_weight <- 0.5 * (1.0 + (font_scale - 1.0) * 0.7)
+    tick_length <- -0.1 * font_scale
 
     # 2. 공통 테마 생성
     t <- theme_bw(base_size = base_size, base_family = "sans") %+replace%
@@ -49,14 +41,6 @@ theme_journal <- function(target_format = "nature", font_scale = 1.0) {
             panel.spacing = unit(0.5, "lines"),
             plot.margin = margin(5, 5, 5, 5, "mm")
         )
-
-    # 3. PPT 전용 디테일 수정 (top/right 테두리 제거 등)
-    if (target_format == "ppt") {
-        t <- t + theme(
-            panel.border = element_blank(),
-            axis.line = element_line(color = "black", linewidth = line_weight)
-        )
-    }
 
     return(t)
 }

@@ -64,19 +64,12 @@ _PUBLICATION_LAYOUT_SPECS_MM = {
         "box_height_mm": 55.0,
         "margins_mm": {"left": 14.0, "right": 5.0, "bottom": 12.0, "top": 20.0},
     },
-    # PPT/default right-side legend keeps the older ratio workflow unless an
+    # Default right-side legend keeps the older ratio workflow unless an
     # explicit absolute-mm box is requested by the caller.
     "right_outside": {
         "box_width_mm": 70.0,
         "box_height_mm": 55.0,
         "margins_mm": {"left": 14.0, "right": 18.0, "bottom": 12.0, "top": 8.0},
-    },
-    # 02_Surfur_Polymer 전용 — 정사각 50x50 mm plot box (3-up NatComm double-col 기준)
-    # 독립 single-panel 용. 3-up/2-up 멀티패널은 스크립트에서 figsize 직접 계산.
-    "surfur_square": {
-        "box_width_mm": 50.0,
-        "box_height_mm": 50.0,
-        "margins_mm": {"left": 12.0, "right": 4.0, "bottom": 10.0, "top": 6.0},
     },
 }
 PUBLICATION_LAYOUT_SPECS_MM = copy.deepcopy(_PUBLICATION_LAYOUT_SPECS_MM)
@@ -87,7 +80,7 @@ _LEGACY_LAYOUT_RATIOS = {
     "standard": {"left": 0.15, "right": 0.95, "bottom": 0.15, "top": 0.90},
 }
 
-TIFF_AUTO_PRESETS: set[str] = {"nature", "nature_surfur", "science", "acs", "rsc", "elsevier", "wiley", "cell"}
+TIFF_AUTO_PRESETS: set[str] = {"nature", "science", "acs", "rsc", "elsevier", "wiley", "cell"}
 
 
 @dataclass(frozen=True)
@@ -140,8 +133,6 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     # body/axis lettering with 6.5 pt ticks as a Graph Hub assumption that
     # stays within the repo's established small-text floor.
     "cell": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    "nature_surfur": FontTokens(tag=6.0, label=5.0, annot=6.0, legend=6.0, axis=7.0, tick=6.0),
-    "ppt": FontTokens(tag=16.0, label=12.0, annot=12.0, legend=12.0, axis=14.0, tick=12.0),
     "default": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
 }
 _ACTIVE_FONT_TOKENS = _FONT_TOKEN_PRESETS["nature"]
@@ -233,39 +224,6 @@ STYLE_PRESETS = {
         # Output
         "savefig.dpi": 600,
         "savefig.format": "pdf",
-        "savefig.bbox": "tight",
-        "svg.fonttype": "none",
-        "pdf.fonttype": 42,
-        "ps.fonttype": 42,
-    },
-    "ppt": {
-        "font.family": "sans-serif",
-        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"],
-        # Font Sizes (PPT에 맞춰 확대된 기본값)
-        "axes.labelsize": 14.0,
-        "axes.titlesize": 16.0,
-        "legend.fontsize": 12.0,
-        "xtick.labelsize": 12.0,
-        "ytick.labelsize": 12.0,
-        # Line Weights (PPT에 맞춰 굵은 선)
-        "axes.linewidth": 1.5,
-        "grid.linewidth": 1.0,
-        "lines.linewidth": 2.0,
-        "patch.linewidth": 1.5,
-        "xtick.major.width": 1.2,
-        "ytick.major.width": 1.2,
-        # Grid & Ticks
-        "axes.grid": False,
-        "xtick.direction": "out",
-        "ytick.direction": "out",
-        "xtick.top": False,
-        "ytick.right": False,
-        # Legend
-        "legend.frameon": False,
-        "legend.loc": "best",
-        # Output
-        "savefig.dpi": 300,
-        "savefig.format": "png",
         "savefig.bbox": "tight",
         "svg.fonttype": "none",
         "pdf.fonttype": 42,
@@ -463,26 +421,6 @@ STYLE_PRESETS["cell"].update(
         "xtick.top": False,
         "ytick.right": False,
         "savefig.dpi": 600,
-    }
-)
-
-# 02_Surfur_Polymer 전용 프리셋 (2026-04-10)
-# - NatComm 5-7pt strict compliance (title 7.0, legend 6.0)
-# - 50x50 mm plot box 기준 → spine/tick 약간 굵게 (0.75pt)
-# - minor tick global 강제 off (필요한 플랏에서만 개별 on)
-# - 기본 `nature`와 별개로 유지해 다른 프로젝트에 영향 없음
-STYLE_PRESETS["nature_surfur"] = copy.deepcopy(STYLE_PRESETS["nature"])
-STYLE_PRESETS["nature_surfur"].update(
-    {
-        "font.size": 7.0,  # ax.text() 등의 기본 텍스트 크기 (rcParams 기본 10pt 오버라이드)
-        "axes.titlesize": 7.0,
-        "legend.fontsize": 6.0,
-        "legend.title_fontsize": 6.0,
-        "axes.linewidth": 0.75,
-        "xtick.major.width": 0.75,
-        "ytick.major.width": 0.75,
-        "xtick.minor.visible": False,
-        "ytick.minor.visible": False,
     }
 )
 
@@ -712,9 +650,9 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
 
     Args:
         target_format (str): 적용할 테마 프리셋 이름
-            ('nature', 'nature_surfur', 'science', 'ppt', 'default', 'acs', 'rsc', 'elsevier')
+            ('nature', 'science', 'default', 'acs', 'rsc', 'elsevier', 'wiley', 'cell')
         font_scale (float): 기준 테마 폰트 사이즈 대비 보정 배율
-        profile_name (str): 세부 스타일 프로파일 이름 (예: baseline, resistance_premium)
+        profile_name (str): 세부 스타일 프로파일 이름 (예: baseline)
     """
     global _ACTIVE_COMPLIANCE_TOKENS, _ACTIVE_FONT_TOKENS, _ACTIVE_TARGET_FORMAT
 
@@ -1321,14 +1259,11 @@ def apply_publication_layout(
     """
     [Promoted from Pusan DEA Project]
     Publication figure layout with deterministic axes-box sizing.
-    For non-PPT publication formats, the data box is fixed in absolute mm and
+    For public publication formats, the data box is fixed in absolute mm and
     the figure canvas is derived from margins + box size.
     """
     fig = fig or plt.gcf()
     normalized_format = str(target_format or "nature").lower()
-
-    if normalized_format == "ppt" and box_width_mm is None and box_height_mm is None and margins_mm is None:
-        return _apply_legacy_publication_layout(fig, layout_type)
 
     layout_spec = PUBLICATION_LAYOUT_SPECS_MM.get(layout_type, PUBLICATION_LAYOUT_SPECS_MM["standard"])
     resolved_box_width = float(box_width_mm or layout_spec["box_width_mm"])

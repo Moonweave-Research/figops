@@ -100,13 +100,13 @@ class JournalThemeLayoutTest(unittest.TestCase):
         self.assertIn("THEME_PROFILE", DEFAULT_PROJECT_CONTEXT_PY)
 
     def test_font_tokens_expose_named_role_sizes(self):
-        tokens = font_tokens("nature_surfur")
+        tokens = font_tokens("nature")
 
-        self.assertEqual(tokens.tag, 6.0)
-        self.assertEqual(tokens.label, 5.0)
+        self.assertEqual(tokens.tag, 8.0)
+        self.assertEqual(tokens.label, 6.0)
         self.assertEqual(tokens.annot, 6.0)
         self.assertEqual(tokens.annotation, tokens.annot)
-        self.assertEqual(tokens["legend"], 6.0)
+        self.assertEqual(tokens["legend"], 7.0)
         self.assertEqual(tokens.as_dict()["axis"], 7.0)
 
     def test_science_font_tokens_use_aaas_sans_serif_scale(self):
@@ -517,25 +517,25 @@ class JournalThemeLayoutTest(unittest.TestCase):
         finally:
             plt.rcParams.update(saved_rc)
 
-    def test_font_tokens_apply_profile_font_overrides(self):
-        tokens = font_tokens("nature_surfur", profile_name="resistance_premium")
+    def test_font_tokens_unknown_profile_falls_back_to_baseline(self):
+        tokens = font_tokens("science", profile_name="public_unknown")
 
-        self.assertEqual(tokens.tag, 8.5)
-        self.assertEqual(tokens.label, 7.5)
-        self.assertEqual(tokens.annot, 7.5)
-        self.assertEqual(tokens.axis, 7.5)
-        self.assertEqual(tokens.legend, 6.5)
+        self.assertEqual(tokens.tag, 8.0)
+        self.assertEqual(tokens.label, 7.0)
+        self.assertEqual(tokens.annot, 7.0)
+        self.assertEqual(tokens.axis, 7.0)
+        self.assertEqual(tokens.legend, 7.0)
         self.assertEqual(tokens.tick, 6.5)
 
     def test_active_font_token_sizes_do_not_leak_default_font_size(self):
-        apply_journal_theme("ppt")
+        apply_journal_theme("science")
 
         self.assertNotIn(10.0, _active_font_token_sizes())
 
     def test_apply_journal_theme_passes_active_tokens_to_diagnostics(self):
-        apply_journal_theme("nature_surfur")
+        apply_journal_theme("science")
         fig, ax = plt.subplots()
-        ax.text(0.2, 0.2, "token", fontsize=font_tokens("nature_surfur").label)
+        ax.text(0.2, 0.2, "token", fontsize=font_tokens("science").label)
         ax.text(0.4, 0.4, "drift", fontsize=5.5)
         try:
             with tempfile.TemporaryDirectory(prefix="journal_tokens_") as tmpdir:
@@ -585,10 +585,10 @@ class JournalThemeLayoutTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
-    def test_non_baseline_profile_clamps_and_reports_journal_compliance(self):
+    def test_unknown_profile_fallback_clamps_and_reports_journal_compliance(self):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            apply_journal_theme("science", font_scale=0.1, profile_name="resistance_premium")
+            apply_journal_theme("science", font_scale=0.1, profile_name="public_unknown")
 
         self.assertGreaterEqual(plt.rcParams["font.size"], 5.0)
         self.assertGreaterEqual(plt.rcParams["lines.linewidth"], 0.5)
@@ -640,8 +640,8 @@ class JournalThemeLayoutTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
-    def test_profile_font_overrides_are_allowed_tokens(self):
-        apply_journal_theme("nature_surfur", profile_name="resistance_premium")
+    def test_unknown_profile_fallback_uses_allowed_tokens(self):
+        apply_journal_theme("science", profile_name="public_unknown")
         fig, ax = plt.subplots()
         ax.plot([0, 1], [0, 1], label="series")
         ax.set_xlabel("x")
@@ -653,7 +653,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 [ax],
                 layout_locked=False,
                 font_token_sizes=list(
-                    font_tokens("nature_surfur", profile_name="resistance_premium").as_dict().values()
+                    font_tokens("science", profile_name="public_unknown").as_dict().values()
                 ),
             )
             drift = next(check for check in result["checks"] if check["name"] == "font_size_token_drift")
@@ -695,12 +695,12 @@ class JournalThemeLayoutTest(unittest.TestCase):
             finally:
                 plt.close(fig)
 
-    def test_ppt_layout_keeps_legacy_relative_behavior(self):
+    def test_default_layout_uses_absolute_publication_geometry(self):
         fig, ax = plt.subplots(figsize=(6, 4))
         try:
-            apply_publication_layout("right_outside", fig=fig, target_format="ppt")
-            self.assertAlmostEqual(fig.subplotpars.right, 0.75, places=2)
-            self.assertFalse(hasattr(fig, "_graph_hub_layout_lock"))
+            apply_publication_layout("right_outside", fig=fig, target_format="default")
+            self.assertAlmostEqual(fig.subplotpars.right, 0.8235, places=3)
+            self.assertTrue(hasattr(fig, "_graph_hub_layout_lock"))
         finally:
             plt.close(fig)
 
@@ -929,32 +929,32 @@ class JournalThemeLayoutTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
-    def test_tiff_companion_generated_for_nature_surfur(self):
-        self.assertIn("nature_surfur", TIFF_AUTO_PRESETS)
+    def test_tiff_companion_generated_for_science(self):
+        self.assertIn("science", TIFF_AUTO_PRESETS)
         fig, ax = plt.subplots()
         ax.plot([0, 1], [0, 1])
         try:
-            with tempfile.TemporaryDirectory(prefix="journal_tiff_surfur_") as tmpdir:
+            with tempfile.TemporaryDirectory(prefix="journal_tiff_science_") as tmpdir:
                 png_path = Path(tmpdir) / "figure.png"
-                save_journal_fig(fig, png_path, preset="nature_surfur", dpi=150)
+                save_journal_fig(fig, png_path, preset="science", dpi=150)
 
                 tiff_path = png_path.with_suffix(".tiff")
-                self.assertTrue(tiff_path.exists(), "TIFF companion not created for nature_surfur preset")
+                self.assertTrue(tiff_path.exists(), "TIFF companion not created for science preset")
                 self.assertGreater(tiff_path.stat().st_size, 1024, "TIFF file too small")
         finally:
             plt.close(fig)
 
-    def test_tiff_companion_skipped_for_ppt(self):
-        self.assertNotIn("ppt", TIFF_AUTO_PRESETS)
+    def test_tiff_companion_skipped_for_default(self):
+        self.assertNotIn("default", TIFF_AUTO_PRESETS)
         fig, ax = plt.subplots()
         ax.plot([0, 1], [0, 1])
         try:
-            with tempfile.TemporaryDirectory(prefix="journal_tiff_ppt_") as tmpdir:
+            with tempfile.TemporaryDirectory(prefix="journal_tiff_default_") as tmpdir:
                 png_path = Path(tmpdir) / "figure.png"
-                save_journal_fig(fig, png_path, preset="ppt", dpi=150)
+                save_journal_fig(fig, png_path, preset="default", dpi=150)
 
                 tiff_path = png_path.with_suffix(".tiff")
-                self.assertFalse(tiff_path.exists(), "TIFF should not be created for ppt preset")
+                self.assertFalse(tiff_path.exists(), "TIFF should not be created for default preset")
         finally:
             plt.close(fig)
 
