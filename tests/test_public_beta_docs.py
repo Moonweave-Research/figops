@@ -6,8 +6,8 @@ HUB_ROOT = Path(__file__).resolve().parent.parent
 def test_public_beta_readme_has_copy_paste_entrypoints() -> None:
     readme = (HUB_ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert readme.startswith("# Graph Hub\n")
-    assert "MCP-native research figure operations" in readme
+    assert readme.startswith("# FigOps\n")
+    assert "MCP-native figure operations" in readme
     assert "docs/quickstart.md" in readme
     assert "docs/mcp_setup.md" in readme
     assert "docs/positioning.md" in readme

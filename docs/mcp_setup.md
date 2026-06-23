@@ -1,6 +1,6 @@
 # MCP Setup
 
-Graph Hub exposes a local stdio MCP server through `graphhub_mcp_server.py`. The server is designed
+FigOps exposes a local stdio MCP server through `graphhub_mcp_server.py`. The server is backed by Graph Hub Core and designed
 for local research workspaces: read-only discovery is safe by default, and write tools default to disabled.
 
 ## Verify The Server
@@ -23,12 +23,12 @@ Use this command shape in MCP clients that accept a command plus args:
 {
   "command": "uv",
   "args": ["run", "python", "graphhub_mcp_server.py"],
-  "cwd": "/absolute/path/to/graph-making-hub"
+  "cwd": "/absolute/path/to/figops"
 }
 ```
 
 If your client does not support `cwd`, wrap the command in a small launcher script outside the repo
-that changes to the Graph Hub checkout before starting `uv run python graphhub_mcp_server.py`.
+that changes to the FigOps checkout before starting `uv run python graphhub_mcp_server.py`.
 
 ## Write-Tool Policy
 

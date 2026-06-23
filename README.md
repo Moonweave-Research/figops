@@ -1,6 +1,6 @@
-# Graph Hub
+# FigOps
 
-Graph Hub is an MCP-native research figure operations engine. It turns local CSV data, project configs, and plotting scripts into publication-oriented figures with explicit data contracts, provenance, artifact manifests, and local release gates.
+FigOps is an MCP-native figure operations engine for reproducible research. It turns local CSV data, project configs, and plotting scripts into publication-oriented figures with explicit data contracts, provenance, artifact manifests, and local release gates.
 
 "Data is the API. Quality is absolute."
 
@@ -8,7 +8,7 @@ Graph Hub is an MCP-native research figure operations engine. It turns local CSV
 
 - New user path: [docs/quickstart.md](./docs/quickstart.md)
 - MCP client setup: [docs/mcp_setup.md](./docs/mcp_setup.md)
-- Why Graph Hub: [docs/positioning.md](./docs/positioning.md)
+- Why FigOps: [docs/positioning.md](./docs/positioning.md)
 - Generated MCP tool reference: [docs/tools.md](./docs/tools.md)
 - Local QA and release gates: [docs/QA.md](./docs/QA.md)
 - Contributor workflow: [CONTRIBUTING.md](./CONTRIBUTING.md)
@@ -56,7 +56,7 @@ uv run python orchestrator.py --project examples/materials_polymer_recipe --step
 
 ## MCP Surface
 
-Graph Hub ships a local stdio MCP server entrypoint:
+FigOps ships a local stdio MCP server entrypoint backed by Graph Hub Core:
 
 ```bash
 uv run python graphhub_mcp_server.py --smoke
@@ -90,7 +90,7 @@ Use focused tests and `uv run ruff check <changed Python files>` while iterating
 
 ## License And Distribution Status
 
-Graph Hub public-core source is licensed under the Mozilla Public License 2.0 (MPL-2.0). See [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
+FigOps public-core source is licensed under the Mozilla Public License 2.0 (MPL-2.0). See [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
 
 Project-specific datasets, unpublished workflow notes, credentials, manuscript assets, and internal style packs are outside this public-core distribution unless explicitly included with their own notices.
 
