@@ -1,0 +1,46 @@
+{
+  "schema_version": "0.5",
+  "plan_id": "figops-public-safe-evolution-2026-06-23",
+  "created_by": "keelplane",
+  "source_spec": "docs/02-design/public_safe_figops_evolution_spec.md",
+  "objective": "Evolve local MPL-2.0 Graph Hub Core toward a public-safe FigOps product path without external publication or git side effects.",
+  "surface_summary": "Graph Hub public-core working tree, FigOps evolution spec, release workflow, release checker, MCP surface, docs, examples, package metadata, and future figure reproducibility design.",
+  "surfaces": [
+    {"id": "repo", "kind": "repo", "locator": "graph-making-hub working tree", "access_mode": "local-write"},
+    {"id": "figops-spec", "kind": "document", "locator": "docs/02-design/public_safe_figops_evolution_spec.md", "access_mode": "local-write"},
+    {"id": "release-workflow", "kind": "artifact", "locator": "docs/02-design/public_safe_release_workflow.plan.json", "access_mode": "local-write"},
+    {"id": "release-gate", "kind": "artifact", "locator": "scripts/check_public_release.py and tests/test_public_release_check.py", "access_mode": "local-write-without-weakening"},
+    {"id": "mcp-surface", "kind": "artifact", "locator": "graphhub_mcp_server.py, docs/tools.md, focused MCP tests", "access_mode": "local-write"},
+    {"id": "license-release", "kind": "document", "locator": "LICENSE, NOTICE, README.md, pyproject.toml", "access_mode": "local-write"}
+  ],
+  "assumptions": [
+    {"claim": "The local working tree is being prepared as an MPL-2.0 public core.", "verification_step": "Run uv run python scripts/check_public_release.py."},
+    {"claim": "FigOps is only a working name until legal and package-name clearance is complete.", "verification_step": "Check that docs use working-title language and do not instruct package publication."},
+    {"claim": "Publication remains gated separately from local readiness.", "verification_step": "Confirm no push, PR, tag, release, registry upload, package publication, or visibility change was performed."},
+    {"claim": "Figure-level manifest, bundle, replay, retarget, and plotted-data capture are roadmap capabilities unless backed by tests and implementation.", "verification_step": "Check docs and release copy for future-tense language until tests and implementation exist."}
+  ],
+  "safe_now": [
+    "Edit local planning/spec artifacts.",
+    "Run local verification commands.",
+    "Keep FigOps as a working title only.",
+    "Record future design work without claiming unimplemented product capabilities."
+  ],
+  "human_gated": [
+    "Choose final public name or publish under that name.",
+    "Create a public mirror, change repository visibility, push a public branch, or publish package/registry metadata.",
+    "Open a third-party plugin API or external code auto-loading contract.",
+    "Rewrite git history or run secret-history cleanup."
+  ],
+  "verification": [
+    {"claim_or_output": "Workflow JSON artifacts parse.", "falsifier": "python -m json.tool on either plan exits nonzero.", "evidence_required": "Successful json.tool output or zero exit status."},
+    {"claim_or_output": "Planning artifacts do not introduce private marker blockers.", "falsifier": "Private marker search or release checker reports a planning artifact as a blocker.", "evidence_required": "public_release_check: ok."},
+    {"claim_or_output": "MCP surface remains operational.", "falsifier": "uv run python graphhub_mcp_server.py --smoke exits nonzero or reports non-ok status.", "evidence_required": "Smoke output with health_status ok and tool_surface graphhub_mcp."}
+  ],
+  "risk_gates": [
+    {"id": "name-clearance", "trigger": "Publishing, packaging, or publicly branding the project as FigOps", "safe_default": "Use working-title language only", "requires_user_approval": true},
+    {"id": "remote-publication", "trigger": "Public mirror, visibility change, public branch, package, release, or registry publication", "safe_default": "Stop with local artifacts", "requires_user_approval": true},
+    {"id": "plugin-api", "trigger": "Stable third-party plugin API, external code auto-loading, or plugin compatibility guarantee", "safe_default": "Use project config, templates, and explicit scripts only", "requires_user_approval": true},
+    {"id": "history-rewrite", "trigger": "Rebase, reset, force-push, branch rewrite, or secret-history cleanup", "safe_default": "Do not rewrite history", "requires_user_approval": true}
+  ],
+  "expected_output": "Future FigOps evolution backlog remains clearly separated from current local public-core readiness."
+}
