@@ -21,9 +21,9 @@ def render_tool_reference() -> str:
 
     surface = describe_graphhub_surface()
     lines = [
-        "# Graph Hub MCP Tool Reference",
+        "# FigOps MCP Tool Reference",
         "",
-        "This file is generated from the live Graph Hub MCP registries.",
+        "This file is generated from the live FigOps MCP registries backed by Graph Hub Core.",
         "Regenerate it with:",
         "",
         "```bash",

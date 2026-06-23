@@ -249,7 +249,7 @@ def describe_graphhub_surface() -> dict[str, Any]:
 
 def list_tool_definitions() -> list[dict[str, Any]]:
     supported_render_plot_types = _supported_render_plot_types()
-    root_arg = {"type": "string", "description": "Project scan root. Defaults to Graph Hub research root."}
+    root_arg = {"type": "string", "description": "Project scan root. Defaults to FigOps research root."}
     project_id_arg = {
         "type": "string",
         "description": "Discovered project ID; mutually exclusive with project_path, supply exactly one.",
@@ -325,7 +325,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
     definitions = [
         ToolDefinition(
             "graphhub.health",
-            "Return Graph Hub server health and discovery status.",
+            "Return FigOps server health and discovery status.",
             _object_schema(
                 {
                     "root": root_arg,
@@ -346,7 +346,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ),
         ToolDefinition(
             "graphhub.describe",
-            "Describe registered Graph Hub tools, plot types, semantic checks, and render examples.",
+            "Describe registered FigOps tools, plot types, semantic checks, and render examples.",
             _object_schema(),
             _standard_output_schema(
                 {
@@ -359,7 +359,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ),
         ToolDefinition(
             "graphhub.list_styles",
-            "Return canonical Graph Hub target formats, output formats, profiles, and aliases.",
+            "Return canonical FigOps target formats, output formats, profiles, and aliases.",
             _object_schema(),
             _standard_output_schema(
                 {
@@ -375,7 +375,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ),
         ToolDefinition(
             "graphhub.list_projects",
-            "Discover Graph Hub project configs without executing scripts or writing files.",
+            "Discover FigOps project configs without executing scripts or writing files.",
             _object_schema(
                 {
                     "root": root_arg,
@@ -578,7 +578,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ),
         ToolDefinition(
             "graphhub.scaffold_project",
-            "Plan or create a standard Graph Hub project scaffold.",
+            "Plan or create a standard FigOps project scaffold.",
             _object_schema(
                 {
                     "project_name": {"type": "string"},
@@ -611,7 +611,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         ),
         ToolDefinition(
             "graphhub.normalize_project_structure",
-            "Plan or apply migration of an existing graph folder into standard Graph Hub structure.",
+            "Plan or apply migration of an existing graph folder into standard FigOps structure.",
             _object_schema(
                 {
                     "project_path": {"type": "string"},
@@ -677,20 +677,20 @@ def list_resource_definitions() -> list[dict[str, str]]:
     return [
         {
             "uri": "graphhub://styles",
-            "name": "Graph Hub Styles",
+            "name": "FigOps Styles",
             "description": "Canonical target formats, output formats, profiles, and aliases.",
             "mimeType": "application/json",
         },
         {
             "uri": "graphhub://profiles",
-            "name": "Graph Hub Style Profiles",
+            "name": "FigOps Style Profiles",
             "description": "Available style profiles and profile aliases.",
             "mimeType": "application/json",
         },
         {
             "uri": "graphhub://projects",
-            "name": "Graph Hub Projects",
-            "description": "Discovered Graph Hub project metadata using default discovery rules.",
+            "name": "FigOps Projects",
+            "description": "Discovered FigOps project metadata using default discovery rules.",
             "mimeType": "application/json",
         },
     ]
@@ -700,13 +700,13 @@ def list_resource_templates() -> list[dict[str, str]]:
     return [
         {
             "uriTemplate": "graphhub://projects/{project_id}/config",
-            "name": "Graph Hub Project Config",
+            "name": "FigOps Project Config",
             "description": "Project configuration YAML resolved by discovered project ID.",
             "mimeType": "application/x-yaml",
         },
         {
             "uriTemplate": "graphhub://jobs/{job_id}/manifest",
-            "name": "Graph Hub Render Job Manifest",
+            "name": "FigOps Render Job Manifest",
             "description": "Sanitized render job manifest resolved by job ID.",
             "mimeType": "application/json",
         },
@@ -723,7 +723,7 @@ def list_prompt_definitions() -> list[dict[str, Any]]:
                 {"name": "data_path", "description": "CSV input path.", "required": True},
                 {"name": "x_column", "description": "CSV x-axis column.", "required": True},
                 {"name": "y_column", "description": "CSV y-axis column.", "required": True},
-                {"name": "target_format", "description": "Graph Hub target format.", "required": False},
+                {"name": "target_format", "description": "FigOps target format.", "required": False},
                 {"name": "plot_type", "description": ", ".join(supported_render_plot_types), "required": False},
             ],
         },
@@ -731,13 +731,13 @@ def list_prompt_definitions() -> list[dict[str, Any]]:
             "name": "inspect_graph_project_quality",
             "description": "Workflow for inspecting a graph project without executing scripts.",
             "arguments": [
-                {"name": "project_id", "description": "Discovered Graph Hub project ID.", "required": False},
+                {"name": "project_id", "description": "Discovered FigOps project ID.", "required": False},
                 {"name": "project_path", "description": "Project path.", "required": False},
             ],
         },
         {
             "name": "standardize_existing_graph_project",
-            "description": "Workflow for planning safe Graph Hub project normalization.",
+            "description": "Workflow for planning safe FigOps project normalization.",
             "arguments": [
                 {"name": "project_path", "description": "Existing graph project path.", "required": True},
                 {"name": "move_policy", "description": "copy, move, or symlink.", "required": False},
@@ -745,9 +745,9 @@ def list_prompt_definitions() -> list[dict[str, Any]]:
         },
         {
             "name": "render_project_figure",
-            "description": "Workflow for rendering one configured project figure through Graph Hub MCP.",
+            "description": "Workflow for rendering one configured project figure through FigOps MCP.",
             "arguments": [
-                {"name": "project_id", "description": "Discovered Graph Hub project ID.", "required": False},
+                {"name": "project_id", "description": "Discovered FigOps project ID.", "required": False},
                 {"name": "project_path", "description": "Project path.", "required": False},
                 {"name": "figure_id", "description": "Configured figures[].id.", "required": False},
                 {"name": "figure_output", "description": "Configured figures[].output.", "required": False},
