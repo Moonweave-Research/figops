@@ -62,7 +62,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                     {
                         "project_name": "New Project",
                         "project_root": str(project_root),
-                        "target_format": "nature_surfur",
+                        "target_format": "science",
                         "dry_run": True,
                     },
                 )
@@ -88,14 +88,14 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 "archive",
             ):
                 self.assertIn(required_dir, result["planned_paths"])
-            self.assertEqual(result["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(result["style_summary"]["target_format"], "science")
             self.assertEqual(result["manifest"]["operation"], "scaffold_project")
 
-    def test_scaffold_project_surfur_conventions_preserve_researchos_reasons(self):
+    def test_scaffold_project_workspace_conventions_preserve_workspace_reasons(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project_root = Path(tmpdir) / "ResearchOS" / "New_Project"
 
-            with unittest.mock.patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "surfur"}, clear=False):
+            with unittest.mock.patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "workspace"}, clear=False):
                 server = GraphHubMCPServer(research_root=Path(tmpdir))
                 result = self._call(
                     server,
@@ -108,8 +108,8 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 )
 
             reasons = {entry["reason"] for entry in result["manifest"]["entries"]}
-            self.assertIn("ResearchOS scaffold directory", reasons)
-            self.assertIn("ResearchOS scaffold file", reasons)
+            self.assertIn("workspace scaffold directory", reasons)
+            self.assertIn("workspace scaffold file", reasons)
 
     def test_scaffold_project_rejects_project_root_outside_research_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -378,9 +378,9 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 """
 project: {name: LegacyGraph}
 visual_style:
-  target_format: nature_surfur
+  target_format: wiley
   font_scale: 1.2
-  profile: resistance_premium
+  profile: baseline
 presets:
   custom_svg:
     target_format: science
@@ -410,7 +410,7 @@ figures:
             self.assertIn("raw/summary.csv", destinations)
             self.assertIn("results/figures/figure.png", destinations)
             self.assertIn("docs/notes.md", destinations)
-            self.assertEqual(result["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(result["style_summary"]["target_format"], "wiley")
             self.assertIn("custom_svg", result["style_summary"]["presets"])
             self.assertFalse(result["style_summary"]["style_update_applied"])
 
@@ -469,9 +469,9 @@ figures:
                 """
 project: {name: LegacyGraph}
 visual_style:
-  target_format: nature_surfur
+  target_format: wiley
   font_scale: 1.2
-  profile: resistance_premium
+  profile: baseline
 presets:
   custom_svg:
     target_format: science
@@ -496,12 +496,12 @@ figures:
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
-            self.assertEqual(planned["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(planned["style_summary"]["target_format"], "wiley")
             self.assertIn("custom_svg", planned["style_summary"]["presets"])
             self.assertEqual(applied["status"], "warning")
             config = yaml.safe_load((project / "project_config.yaml").read_text(encoding="utf-8"))
-            self.assertEqual(config["visual_style"]["target_format"], "nature_surfur")
-            self.assertEqual(config["visual_style"]["profile"], "resistance_premium")
+            self.assertEqual(config["visual_style"]["target_format"], "wiley")
+            self.assertEqual(config["visual_style"]["profile"], "baseline")
             self.assertIn("custom_svg", config["presets"])
             self.assertEqual(config["figures"][0]["preset"], "custom_svg")
 

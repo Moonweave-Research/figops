@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+from pathlib import Path
 
 from hub_core.doctor import format_doctor_report, run_doctor
 from hub_core.logging import configure_logging
@@ -21,6 +23,13 @@ def _run_smoke(config: McpServerConfig) -> int:
     }
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     return 0 if payload["status"] == "ok" else 1
+
+
+def _smoke_config(config: McpServerConfig) -> McpServerConfig:
+    if config.research_root is not None or os.environ.get("PROJECT_ROOT"):
+        return config
+    hub_path = config.hub_path or Path(__file__).resolve().parent
+    return config.overlay(research_root=hub_path)
 
 
 def main() -> int:
@@ -46,7 +55,7 @@ def main() -> int:
         write_tools_enabled=True if args.enable_write_tools else None,
     )
     if args.smoke:
-        return _run_smoke(config)
+        return _run_smoke(_smoke_config(config))
     if args.command == "doctor":
         report = run_doctor(config)
         if args.json:

@@ -30,7 +30,7 @@ VALID_CONFIG = """
 project:
   name: "{name}"
 visual_style:
-  target_format: nature_surfur
+  target_format: nature
   font_scale: 1.0
   profile: baseline
 data_contract:
@@ -226,8 +226,8 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(result["profiles"], list_profiles())
         self.assertEqual(result["profile_aliases"], dict(sorted(PROFILE_ALIASES.items())))
         self.assertIn("style_packs", result)
-        self.assertTrue(any(pack["name"] == "surfur_internal" for pack in result["style_packs"]))
-        self.assertIn("nature_surfur", result["target_formats"])
+        self.assertTrue(all(pack["visibility"] == "public_core" for pack in result["style_packs"]))
+        self.assertNotIn("presentation_private", result["target_formats"])
 
     def test_describe_exposes_registry_backed_capabilities(self):
         server = GraphHubMCPServer()
@@ -559,7 +559,7 @@ project:
             self._write_legacy_project(root, "03_Legacy")
             self._write_project(root, ".worktrees/feature/04_Worktree")
 
-            with unittest.mock.patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "surfur"}, clear=False):
+            with unittest.mock.patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "workspace"}, clear=False):
                 server = GraphHubMCPServer(research_root=Path(tmpdir))
                 result = self._call(
                     server,
@@ -583,7 +583,7 @@ project:
                     },
                 )
             self.assertEqual(inspected["status"], "ok")
-            self.assertEqual(inspected["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(inspected["style_summary"]["target_format"], "nature")
 
     def test_inspect_and_validate_project_do_not_execute_or_write(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
@@ -598,7 +598,7 @@ project:
             self.assertEqual(_snapshot_files(root), before)
             self.assertEqual(inspected["status"], "ok")
             self.assertEqual(inspected["project_metadata"]["name"], "01_Valid")
-            self.assertEqual(inspected["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(inspected["style_summary"]["target_format"], "nature")
             self.assertEqual(inspected["pipeline_steps"]["analysis"], 1)
             self.assertEqual(inspected["figure_outputs"], ["results/figures/Fig1.png"])
             self.assertEqual(inspected["diagram_outputs"], ["results/figures/Diagram1.svg"])
@@ -635,7 +635,7 @@ project:
     def test_validate_project_naming_lint_warns_without_failing(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
-            project = self._write_project(root, "저항 측정/26013_bad_date")
+            project = self._write_project(root, "public_measurements/26013_bad_date")
 
             server = GraphHubMCPServer(research_root=Path(tmpdir))
             validated = self._call(
@@ -658,7 +658,7 @@ project:
     def test_validate_project_naming_lint_accepts_conforming_names(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
-            project = self._write_project(root, "저항 측정/260130/PET_control")
+            project = self._write_project(root, "public_measurements/260130/public_control")
 
             server = GraphHubMCPServer(research_root=Path(tmpdir))
             validated = self._call(
@@ -729,7 +729,7 @@ project:
 
         self.assertEqual(content["mimeType"], "application/json")
         self.assertEqual(payload["target_formats"], styles["target_formats"])
-        self.assertIn("nature_surfur", payload["target_formats"])
+        self.assertEqual(payload["target_formats"], sorted(ALLOWED_TARGET_FORMATS))
 
     def test_resources_read_projects_and_legacy_config_are_read_only(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_resource_") as tmpdir:
@@ -1105,7 +1105,7 @@ project:
     def test_rpc_accepts_in_enum_profile_alias(self):
         argument_errors = _validate_tool_arguments(
             "graphhub.render_csv_graph",
-            {"data_path": "a.csv", "x_column": "x", "y_column": "y", "profile": "premium"},
+            {"data_path": "a.csv", "x_column": "x", "y_column": "y", "profile": "wiley"},
         )
 
         self.assertEqual(argument_errors, [])
@@ -1119,7 +1119,7 @@ project:
                 "data_path": "a.csv",
                 "x_column": "x",
                 "y_column": "y",
-                "profile": "Premium",
+                "profile": "Wiley",
                 "target_format": "Nature",
                 "output_format": "PNG",
             },
