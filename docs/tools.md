@@ -1245,9 +1245,6 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
         "cell",
         "cell_press",
         "default",
-        "premium",
-        "resistance",
-        "resistance_premium",
         "wiley"
       ],
       "type": "string"
@@ -1270,8 +1267,6 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
         "default",
         "elsevier",
         "nature",
-        "nature_surfur",
-        "ppt",
         "rsc",
         "science",
         "wiley"
@@ -1638,9 +1633,6 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
         "cell",
         "cell_press",
         "default",
-        "premium",
-        "resistance",
-        "resistance_premium",
         "wiley"
       ],
       "type": "string"
@@ -1664,8 +1656,6 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
         "default",
         "elsevier",
         "nature",
-        "nature_surfur",
-        "ppt",
         "rsc",
         "science",
         "wiley"
@@ -2233,8 +2223,6 @@ Plan or create a standard Graph Hub project scaffold.
         "default",
         "elsevier",
         "nature",
-        "nature_surfur",
-        "ppt",
         "rsc",
         "science",
         "wiley"
