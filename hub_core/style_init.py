@@ -16,7 +16,7 @@ project_config.yaml → process_runner → env var → apply_journal_theme
     apply_hub_style()
 
 process_runner.py가 주입하는 env var:
-    THEME_FORMAT  : target_format  (예: 'nature', 'ppt')
+    THEME_FORMAT  : target_format  (예: 'nature', 'science')
     THEME_SCALE   : font_scale     (예: '1.0', '1.2')
     THEME_PROFILE : profile_name   (예: 'baseline')
 """

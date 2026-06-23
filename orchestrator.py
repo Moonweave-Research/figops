@@ -210,7 +210,7 @@ def main():
         help=(
             "Override visual_style for this run without editing project_config.yaml.\n"
             "Accepts a named preset from the config's presets: section, or a target_format\n"
-            "(nature, nature_surfur, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
+            "(nature, science, default, acs, rsc, elsevier, wiley, cell)."
         ),
     )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging on stderr")

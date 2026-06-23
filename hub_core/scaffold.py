@@ -314,7 +314,10 @@ def scaffold_wizard(hub_path):
             return None
 
     # YAML 구성 자동화
-    target_format = ui_prompt("Journal Target Format (nature/nature_surfur/science/ppt)", default="nature")
+    target_format = ui_prompt(
+        "Journal Target Format (nature/science/default/acs/rsc/elsevier/wiley/cell)",
+        default="nature",
+    )
     font_scale = ui_prompt("Font Scale", default="1.0")
 
     res = scaffold_project(target_dir, hub_path, project_name=project_name, overwrite=True)
