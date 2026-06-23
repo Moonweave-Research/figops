@@ -1,6 +1,6 @@
 # New Lab Member Path
 
-Follow this sequence when you are new to Graph Hub.
+Follow this sequence when you are new to FigOps.
 
 1. Start with the [quickstart](quickstart.md). It creates a local scaffold and renders a CSV-backed
    figure without bespoke environment variables.
