@@ -48,7 +48,7 @@ VALID_CONFIG = """
 project:
   name: "{name}"
 visual_style:
-  target_format: nature_surfur
+  target_format: nature
   font_scale: 1.0
   profile: baseline
 data_contract:
@@ -204,7 +204,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             self._write_project(root, "_archive/06_Archived")
             before = _snapshot_files(root)
             runtime_root = Path(tmpdir) / "runtime"
-            with patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "surfur"}, clear=False):
+            with patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "workspace"}, clear=False):
                 server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
                 result = self._call(
                     server,
