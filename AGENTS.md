@@ -36,7 +36,7 @@ Coordinate end-to-end planning, implementation, and verification across the modu
 Orchestrator injects the following vars:
 - `RESEARCH_HUB_PATH`: Absolute path to the hub.
 - `PROJECT_ROOT`: Absolute path to the active research project.
-- `THEME_FORMAT`: `nature | nature_surfur | science | ppt | default | acs | rsc | elsevier | wiley | cell`. The live source of truth is `ALLOWED_TARGET_FORMATS` in `hub_core/config_parser.py`; agents can also call `graphhub.list_styles` or consult generated `docs/tools.md`.
+- `THEME_FORMAT`: `nature | science | default | acs | rsc | elsevier | wiley | cell`. The live source of truth is `ALLOWED_TARGET_FORMATS` in `hub_core/config_parser.py`; agents can also call `graphhub.list_styles` or consult generated `docs/tools.md`.
 - `THEME_SCALE`: Font scaling factor.
 - `THEME_PROFILE`: Active style profile name.
 
@@ -136,7 +136,7 @@ report warnings through `graphhub.health`.
 - `GRAPH_HUB_ATHENA_ADAPTER`: selects the Athena bridge (`off`/`null` or
   `legacy`/`on`). Default is no Athena bridge.
 - `GRAPH_HUB_CONVENTIONS_ADAPTER`: selects naming/discovery conventions
-  (`generic` or `surfur`). Default is generic.
+  (`generic` or `workspace`). Default is generic.
 - `ATHENA_PATH`: path used only by the opt-in legacy Athena bridge.
 
 ### Runtime / diagnostic env vars

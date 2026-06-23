@@ -2,10 +2,13 @@
 
 ## Decision
 
-Graph Making Hub remains private and proprietary for now.
+Graph Making Hub's public-core source tree is licensed under the Mozilla Public
+License 2.0 (MPL-2.0).
 
-The repository uses an all-rights-reserved license notice. No open source
-license is granted at this stage.
+This decision applies to the public-core repository contents only. It does not
+grant rights to private datasets, unpublished workflow notes, credentials,
+manuscript assets, internal style packs, or project-specific research material
+unless those assets are explicitly included with their own notices.
 
 ## Rationale
 
@@ -20,27 +23,25 @@ combined operating system:
 - provenance and reproducibility hooks;
 - project normalization and scaffold workflows.
 
-Publishing the full repository under a permissive license too early would expose
-the operating model before the intended public surface is separated from private
-research workflows.
+Publishing the public core under MPL-2.0 supports reusable FigOps tooling while
+keeping project-specific research assets and internal workflow material outside
+the public distribution boundary.
 
 ## Current Policy
 
-- Keep the full Graph Making Hub repository private.
-- Treat current source, docs, style contracts, project templates, and MCP code as
-  internal Moonweave Research assets.
-- Do not distribute code or derived packages externally unless a separate license
-  decision is made.
-- Keep real research project paths, style presets, and workflow documents out of
-  any future public edition unless explicitly reviewed.
+- License the public-core source under MPL-2.0; see `LICENSE` and `NOTICE`.
+- Keep private datasets, unpublished workflow notes, credentials, manuscript
+  assets, internal style packs, and project-specific research material out of the
+  public-core tree unless explicitly reviewed and noticed.
+- Do not treat access to excluded private material as part of the MPL-2.0 grant.
+- Keep remote visibility changes, package publication, registry publication, and
+  any history rewrite as separate human-gated actions.
 
 ## Future Public Release Options
 
-### Option A: Apache-2.0 Public Core
+### Public Core
 
-Use if the goal is broad adoption, citation, and commercial-compatible reuse.
-
-Good candidates for a public core:
+Included public-core candidates:
 
 - MCP protocol surface;
 - generic project config schema;
@@ -54,40 +55,37 @@ Keep private:
 - project-specific research presets;
 - unpublished research workflow documents;
 - real data paths and project-specific configs;
-- internal HKS notes that encode lab operating practice.
+- internal operating notes that encode lab-specific practice.
 
-### Option B: Source-Available Research License
+### Excluded Private Material
 
-Use if the goal is transparency and academic reuse while limiting commercial
-productization.
+Excluded material stays outside the public-core grant unless later reviewed and
+included with explicit notices:
 
-This would not be OSI open source. It may reduce industry adoption, but it can
-better protect a research-tool business or lab platform direction.
-
-### Option C: Keep Private
-
-Use while the tool remains a competitive research workflow asset or while the
-public surface is not yet separated.
-
-This is the current decision.
+- real research data and project paths;
+- project-specific presets and internal style packs;
+- unpublished manuscript assets;
+- private workflow notes and local operating playbooks;
+- credentials, tokens, caches, and runtime state.
 
 ## Review Trigger
 
 Revisit this decision when one of these becomes true:
 
-- a public `graphhub-lite` package is split from the private repository;
 - an external collaborator needs formal reuse rights;
-- the repository is prepared for public GitHub release;
+- the public-core boundary expands to include new asset classes;
 - Graph Hub becomes part of a paper, demo, or product-facing distribution.
 
 ## Required Release Checklist
 
-Before any public release:
+Before any public release, visibility change, package publication, or registry
+publication:
 
-- [ ] Remove real research project paths and private workflow references.
-- [ ] Replace private examples with synthetic fixtures.
-- [ ] Decide between Apache-2.0, a source-available research license, or another
-      reviewed license.
+- [x] Remove real research project paths and private workflow references from the
+      public-core tree.
+- [x] Replace private examples with synthetic fixtures or public-safe examples.
+- [x] Apply MPL-2.0 metadata in `LICENSE`, `NOTICE`, README, and package
+      metadata.
 - [ ] Add dependency license review.
-- [ ] Add README license summary.
-- [ ] Verify `LICENSE` and `NOTICE` match the intended distribution mode.
+- [x] Add README license summary.
+- [x] Verify `LICENSE` and `NOTICE` match the intended distribution mode.
