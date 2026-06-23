@@ -1,6 +1,6 @@
 # Multipanel Project Tutorial
 
-This fixture is a public-safe Graph Hub project that assembles three SVG panels into one
+This fixture is a public-safe FigOps project that assembles three SVG panels into one
 publication-style SVG plate.
 
 ## What It Contains

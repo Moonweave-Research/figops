@@ -1,6 +1,6 @@
 project:
   name: Synthetic Multipanel Figure
-  description: Public-safe Graph Hub multipanel fixture.
+  description: Public-safe FigOps multipanel fixture.
 
 visual_style:
   target_format: nature
