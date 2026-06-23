@@ -2,14 +2,14 @@
 
 - Status: post-cleanup product evolution spec
 - Date: 2026-06-23
-- Scope: future public-safe evolution of Graph Hub into an installable MCP-native figure operations tool
-- Working name: `FigOps` pending legal/trademark/package-name clearance
+- Scope: public-safe evolution of Graph Hub Core into the FigOps MCP-native figure operations tool
+- Product name: `FigOps`; package/registry publication still requires legal/trademark/package-name clearance
 
-Graph Hub Core is now being prepared locally as an MPL-2.0 public-core codebase. `FigOps` remains a working title only. This spec does not authorize publication, package or registry publishing, repository visibility changes, commits, pushes, PRs, tags, releases, or history rewriting.
+Graph Hub Core is now being prepared locally as the MPL-2.0 public-core engine behind FigOps. This spec does not authorize package or registry publishing, repository visibility changes, tags, releases, or history rewriting without explicit approval.
 
 ## Product Direction
 
-Graph Hub should not be positioned as another Matplotlib style wrapper. The strongest public direction is an MCP-native figure operations system: inspect a research project, validate data and config contracts, render figures under controlled roots, collect artifacts, and leave reproducibility evidence behind.
+FigOps should not be positioned as another Matplotlib style wrapper. The strongest public direction is an MCP-native figure operations system: inspect a research project, validate data and config contracts, render figures under controlled roots, collect artifacts, and leave reproducibility evidence behind.
 
 Working tagline:
 
@@ -32,7 +32,7 @@ Existing strengths that carry forward:
 
 Future product gaps remain separate from local release readiness:
 
-- Public name and package identity clearance.
+- Package and registry identity clearance.
 - Install UX beyond clone/uv workflows.
 - Host-specific MCP setup docs.
 - Figure-level manifest, bundle, replay, retarget, and plotted-data capture as first-class product layers.
@@ -64,7 +64,7 @@ Expected current behavior: the release checker prints `public_release_check: ok`
 
 ## Adversarial Review Checklist
 
-- No uncleared `FigOps` legal or package claim.
+- No uncleared package or registry claim.
 - No publication or visibility-change action without approval.
 - No unsupported superiority claim over related tools.
 - No private marker leakage.
