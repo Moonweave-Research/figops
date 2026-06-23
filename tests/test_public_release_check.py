@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image
 
 from hub_core.provenance import embed_provenance_fingerprint
+from scripts import check_public_release
 from scripts.check_public_release import run_release_check
 
 
@@ -30,9 +31,15 @@ def test_public_release_check_blocks_private_markers(tmp_path: Path) -> None:
     assert any("02_Surfur_Polymer" in blocker for blocker in result.blockers)
 
 
-def test_public_release_check_blocks_internal_style_packs(tmp_path: Path) -> None:
+def test_public_release_check_blocks_internal_style_packs(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "LICENSE").write_text("Apache-2.0\n", encoding="utf-8")
     (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
+    monkeypatch.setattr(check_public_release, "validate_style_pack_registry", lambda: [])
+    monkeypatch.setattr(
+        check_public_release,
+        "private_or_internal_style_packs",
+        lambda: [{"name": "internal_fixture"}],
+    )
 
     result = run_release_check(tmp_path)
 
