@@ -61,7 +61,7 @@ def run_doctor(config: McpServerConfig) -> dict[str, Any]:
 
 def format_doctor_report(report: dict[str, Any]) -> str:
     lines = [
-        f"Graph Hub doctor: {report['status']}",
+        f"FigOps doctor: {report['status']}",
         report["summary"],
         "",
     ]
@@ -80,7 +80,7 @@ def format_doctor_report(report: dict[str, Any]) -> str:
 
 def _summary_for(status: str) -> str:
     if status == "ok":
-        return "Environment is ready for Graph Hub MCP discovery and rendering."
+        return "Environment is ready for FigOps MCP discovery and rendering."
     if status == "warning":
         return "Environment is usable, but optional or workflow-specific capabilities are missing."
     return "Environment has blocking configuration errors that must be fixed before reliable use."

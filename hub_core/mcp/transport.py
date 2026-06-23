@@ -107,7 +107,7 @@ def _handle_json_rpc(server: Any, request: dict[str, Any]) -> dict[str, Any] | N
             "result": {
                 "protocolVersion": protocol_version,
                 "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
-                "serverInfo": {"name": "graph-making-hub", "version": server._read_version()},
+                "serverInfo": {"name": "figops", "version": server._read_version()},
             },
         }
     if method == "ping":

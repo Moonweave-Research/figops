@@ -33,12 +33,12 @@ def _smoke_config(config: McpServerConfig) -> McpServerConfig:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Graph Hub MCP stdio server")
+    parser = argparse.ArgumentParser(description="FigOps MCP stdio server")
     parser.add_argument("--smoke", action="store_true", help="Run a read-only MCP health/style smoke check")
     subparsers = parser.add_subparsers(dest="command")
-    doctor_parser = subparsers.add_parser("doctor", help="Run a Graph Hub environment readiness check")
+    doctor_parser = subparsers.add_parser("doctor", help="Run a FigOps environment readiness check")
     doctor_parser.add_argument("--json", action="store_true", help="Emit structured doctor output for agents")
-    parser.add_argument("--hub-path", help="Explicit Graph Hub repository path")
+    parser.add_argument("--hub-path", help="Explicit FigOps repository path")
     parser.add_argument("--research-root", help="Explicit research/project discovery root")
     parser.add_argument("--runtime-root", help="Explicit MCP runtime root")
     parser.add_argument(
