@@ -1,4 +1,4 @@
-# Graph Hub - Roadmap and Current State
+# FigOps - Roadmap and Current State
 
 > North star: **a shareable lab tool** with reproducible project execution,
 > publication-quality plotting, self-describing MCP tools, and honest
@@ -34,7 +34,7 @@
 | Fundamentals and security | 9/10 | Audit-fix issues #153-158 are resolved; MCP root/runtime trust, duplicate-key YAML loading, symlink guards, and runtime-root isolation are in place. |
 | Code maintainability | 7/10 | The MCP monolith is decomposed and ruff is clean. Remaining debt is concentrated in large modules, especially `hub_core/data_contract.py`. |
 | Generality / portability | 7/10 | Prefetch, Athena, and conventions adapters are opt-in with generic defaults; project status and schema versioning are explicit. |
-| DX / docs / discoverability | 8/10 | Registry-backed `graphhub.describe`, generated `docs/tools.md`, `docs/mcp_errors.md`, and `graphhub.doctor` have shipped. |
+| DX / docs / discoverability | 8/10 | Registry-backed `figops.describe`, generated `docs/tools.md`, `docs/mcp_errors.md`, and `figops.doctor` have shipped. |
 
 Roadmap goal: keep fundamentals and DX >=8 while paying down concentrated module
 size debt without reintroducing broad refactors.
@@ -44,7 +44,7 @@ size debt without reintroducing broad refactors.
 ## Current architecture
 
 ```
-graphhub_mcp_server.py        # thin stdio entrypoint and --smoke
+figops_mcp_server.py        # thin stdio entrypoint and --smoke
 hub_core/
   mcp/                        # shipped decomposition of the former mcp_surface.py
     transport.py              # JSON-RPC framing, dispatch, batch, lifecycle
@@ -81,7 +81,7 @@ registries wherever possible.
 
 What is true now:
 
-- `graphhub_mcp_server.py` remains a thin entrypoint.
+- `figops_mcp_server.py` remains a thin entrypoint.
 - `GraphHubMCPServer`, `run_stdio_server`, and `list_tool_definitions` are
   exported from the decomposed MCP package.
 - Ruff debt has been cleared; `ruff check .` is expected to pass with 0 errors.
@@ -125,10 +125,10 @@ Current state:
 
 **Shipped across 0.5.0 and later releases.**
 
-- M5.1 registry-backed `graphhub.describe` shipped.
+- M5.1 registry-backed `figops.describe` shipped.
 - M5.2 generated tool docs and MCP error docs shipped and are checked for
   freshness.
-- M5.3 `graphhub.doctor` / smoke-style environment readiness checks shipped.
+- M5.3 `figops.doctor` / smoke-style environment readiness checks shipped.
 - M5.4 release discipline is active through `pyproject.toml`, `CHANGELOG.md`,
   and tags beginning at v0.6.0.
 

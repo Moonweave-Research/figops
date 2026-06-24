@@ -6,15 +6,15 @@
 
 ## Goal
 
-Expose Graph Hub state safely to agents without creating files, running project scripts, or modifying workspace state.
+Expose FigOps state safely to agents without creating files, running project scripts, or modifying workspace state.
 
-Phase 1 proves that MCP can inspect Graph Hub reliably before it is allowed to execute or write anything.
+Phase 1 proves that MCP can inspect FigOps reliably before it is allowed to execute or write anything.
 
-For Athena migration, Phase 1 is the first point where Athena should start consuming Graph Hub through a client surface. Athena should read health, style, project, and validation state from Graph Hub MCP or a compatibility client before any render path is replaced.
+For Athena migration, Phase 1 is the first point where Athena should start consuming FigOps through a client surface. Athena should read health, style, project, and validation state from FigOps MCP or a compatibility client before any render path is replaced.
 
 ## Tools
 
-### `graphhub.health`
+### `figops.health`
 
 Returns Hub server health and configuration.
 
@@ -35,7 +35,7 @@ Acceptance criteria:
 - no project scripts are executed,
 - no generated workspace state files are written.
 
-### `graphhub.list_styles`
+### `figops.list_styles`
 
 Returns available target formats, output formats, style profiles, aliases, and default style.
 
@@ -51,10 +51,10 @@ Result fields:
 Acceptance criteria:
 
 - includes `nature_surfur`,
-- matches Graph Hub core style contract,
+- matches FigOps core style contract,
 - does not hard-code a narrower Athena-only enum.
 
-### `graphhub.list_projects`
+### `figops.list_projects`
 
 Returns discovered project configs.
 
@@ -83,7 +83,7 @@ Acceptance criteria:
 - symlinked projects are handled intentionally,
 - invalid configs are visible with validation messages.
 
-### `graphhub.inspect_project`
+### `figops.inspect_project`
 
 Summarizes one project without running it.
 
@@ -104,7 +104,7 @@ Result fields:
 - `style_summary`
 - `normalization_needed`
 
-### `graphhub.validate_project`
+### `figops.validate_project`
 
 Runs schema and contract checks without executing analysis or plotting scripts.
 
@@ -127,12 +127,12 @@ Result fields:
 Read-only resources:
 
 ```text
-graphhub://styles
-graphhub://styles/{target_format}
-graphhub://profiles
-graphhub://projects
-graphhub://projects/{project_id}/config
-graphhub://projects/{project_id}/artifacts
+figops://styles
+figops://styles/{target_format}
+figops://profiles
+figops://projects
+figops://projects/{project_id}/config
+figops://projects/{project_id}/artifacts
 ```
 
 Resources must use validated URIs and MIME types.
@@ -148,8 +148,8 @@ Resources must use validated URIs and MIME types.
 ## Definition of Done
 
 - Read-only MCP server skeleton exists.
-- `graphhub.health`, `graphhub.list_styles`, and `graphhub.list_projects` are implemented first.
-- `graphhub.inspect_project` and `graphhub.validate_project` are implemented after project discovery parity is proven.
+- `figops.health`, `figops.list_styles`, and `figops.list_projects` are implemented first.
+- `figops.inspect_project` and `figops.validate_project` are implemented after project discovery parity is proven.
 - All tools return the standard result envelope.
 - Every tool has `inputSchema`; structured tools have `outputSchema`.
 
@@ -171,5 +171,5 @@ No-write tests:
 
 Parity tests:
 
-- `graphhub.list_projects` matches CLI discovery with the same filters.
-- `graphhub.list_styles` matches Graph Hub core style contract.
+- `figops.list_projects` matches CLI discovery with the same filters.
+- `figops.list_styles` matches FigOps core style contract.

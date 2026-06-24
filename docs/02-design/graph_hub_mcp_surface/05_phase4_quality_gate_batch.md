@@ -58,7 +58,7 @@ Default exclusions:
 - invalid configs for execution
 - legacy folders unless explicitly selected
 
-Phase 4 v1 exposes `graphhub.batch_check` as the bounded batch surface. It discovers projects, applies the default exclusions, validates selected projects through existing Graph Hub validation, and writes a runtime manifest only when `dry_run=false`.
+Phase 4 v1 exposes `figops.batch_check` as the bounded batch surface. It discovers projects, applies the default exclusions, validates selected projects through existing FigOps validation, and writes a runtime manifest only when `dry_run=false`.
 
 Inputs:
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import tempfile
 import tomllib
@@ -20,8 +21,17 @@ def package_version(root: Path) -> str:
     return pyproject["project"]["version"]
 
 
+def package_name(root: Path) -> str:
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    return pyproject["project"]["name"]
+
+
+def wheel_distribution_stem(root: Path) -> str:
+    return re.sub(r"[-_.]+", "_", package_name(root)).lower()
+
+
 def expected_wheel_name(root: Path) -> str:
-    return f"graph_making_hub-{package_version(root)}-py3-none-any.whl"
+    return f"{wheel_distribution_stem(root)}-{package_version(root)}-py3-none-any.whl"
 
 
 def resolve_wheel(root: Path, wheel: Path | None = None, dist_dir: str = DEFAULT_DIST_DIR) -> Path:
@@ -40,8 +50,8 @@ def resolve_wheel(root: Path, wheel: Path | None = None, dist_dir: str = DEFAULT
 def consumer_smoke_commands(wheel: Path, uv_bin: str = "uv") -> tuple[tuple[str, ...], ...]:
     wheel_ref = str(wheel)
     return (
-        (uv_bin, "run", "--isolated", "--with", wheel_ref, "graphhub-mcp", "--smoke"),
-        (uv_bin, "run", "--isolated", "--with", wheel_ref, "graphhub", "--help"),
+        (uv_bin, "run", "--isolated", "--with", wheel_ref, "figops-mcp", "--smoke"),
+        (uv_bin, "run", "--isolated", "--with", wheel_ref, "figops", "--help"),
     )
 
 
@@ -65,7 +75,7 @@ def run_commands(commands: Sequence[Sequence[str]], cwd: Path) -> list[dict[str,
 def inspect_consumer_install(root: Path, wheel: Path | None = None, uv_bin: str = "uv") -> dict[str, object]:
     wheel_path = resolve_wheel(root, wheel)
     commands = consumer_smoke_commands(wheel_path, uv_bin=uv_bin)
-    with tempfile.TemporaryDirectory(prefix="graphhub-consumer-smoke-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="figops-consumer-smoke-") as temp_dir:
         smoke_cwd = Path(temp_dir)
         results = run_commands(commands, cwd=smoke_cwd)
     blockers = [

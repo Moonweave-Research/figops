@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -19,11 +20,21 @@ def package_version(root: Path) -> str:
     return pyproject["project"]["version"]
 
 
+def package_name(root: Path) -> str:
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    return pyproject["project"]["name"]
+
+
+def wheel_distribution_stem(root: Path) -> str:
+    return re.sub(r"[-_.]+", "_", package_name(root)).lower()
+
+
 def expected_asset_names(root: Path) -> tuple[str, str]:
     version = package_version(root)
+    dist_name = wheel_distribution_stem(root)
     return (
-        f"graph_making_hub-{version}-py3-none-any.whl",
-        f"graph_making_hub-{version}.tar.gz",
+        f"{dist_name}-{version}-py3-none-any.whl",
+        f"{dist_name}-{version}.tar.gz",
     )
 
 

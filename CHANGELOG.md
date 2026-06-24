@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Graph Hub are documented here.
+All notable changes to FigOps are documented here.
 
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and the
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
@@ -12,8 +12,19 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
 - Use `MAJOR.MINOR.PATCH`: major for incompatible public contract changes, minor for new
   backward-compatible capabilities, and patch for backward-compatible fixes.
 - Run the local release gate before opening a release PR: `uv run python -m pytest -q`,
-  changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
+  changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
+
+## [0.17.0] - 2026-06-24
+
+### Changed
+
+- Rename the install distribution and primary console scripts to FigOps:
+  `figops`, `figops-mcp`, and `figops.*` MCP tools are now the primary public
+  identity.
+- Preserve legacy `graphhub` / `graphhub-mcp` console aliases and
+  `graphhub.*` MCP tool aliases for compatibility while current docs and
+  generated references move to the FigOps name.
 
 ## [0.16.11] - 2026-06-24
 

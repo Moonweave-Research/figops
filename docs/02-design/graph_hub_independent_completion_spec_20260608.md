@@ -1,23 +1,23 @@
-# Graph Hub Independent Completion Spec
+# FigOps Independent Completion Spec
 
 - Status: Direction lock and implementation specification
 - Date: 2026-06-08
-- Scope: independent `graph-making-hub` repository, Graph Hub MCP, project graph contracts, HKS/common agent protocols
-- Decision: Graph Hub is the primary graph and scientific figure system. Athena is optional and should not be required for graph routing. Use Athena or another toolbox only when a separate non-graph solver/literature/research step is explicitly needed.
+- Scope: independent `figops` repository, FigOps MCP, project graph contracts, HKS/common agent protocols
+- Decision: FigOps is the primary graph and scientific figure system. Athena is optional and should not be required for graph routing. Use Athena or another toolbox only when a separate non-graph solver/literature/research step is explicitly needed.
 
 ## Executive Decision
 
-Graph Hub should be completed as a narrow, high-quality specialist system:
+FigOps should be completed as a narrow, high-quality specialist system:
 
 ```text
 Agent / Server / Human
         |
         | explicit graph request
         v
-Graph Hub MCP
+FigOps MCP
         |
         v
-Graph Hub Core
+FigOps Core
   - project and data contract
   - graph-specific calculation checks
   - central style system
@@ -29,7 +29,7 @@ Graph Hub Core
 validated figure + manifest + status + provenance
 ```
 
-Athena remains a client, not the owner. It may call Graph Hub only for explicit legacy compatibility or mixed workflows where Athena produced non-graph data first, but Graph Hub must be fully usable without Athena.
+Athena remains a client, not the owner. It may call FigOps only for explicit legacy compatibility or mixed workflows where Athena produced non-graph data first, but FigOps must be fully usable without Athena.
 
 ## What Athena No Longer Owns
 
@@ -42,7 +42,7 @@ Athena should not own:
 - figure rendering,
 - visual preflight,
 - artifact manifests,
-- Graph Hub MCP schemas.
+- FigOps MCP schemas.
 
 Athena may still own:
 
@@ -55,14 +55,14 @@ Athena may still own:
 
 ### 1. Project And Data Contract
 
-Graph Hub must treat data and config as the API.
+FigOps must treat data and config as the API.
 
 Required surfaces:
 
 - `project_config.yaml` is the project-level contract.
 - Standard folders are `raw/`, `work/`, `hub_scripts/`, `results/data/`, `results/figures/`, `results/final/`, `docs/`, and `archive/`.
 - `data_contract.csv_checks` validates input tables before rendering.
-- `visual_style` and `presets` select Graph Hub style definitions without redefining them per project.
+- `visual_style` and `presets` select FigOps style definitions without redefining them per project.
 - Invalid configs are visible to agents instead of silently skipped.
 
 Current source files:
@@ -82,7 +82,7 @@ Done means:
 
 ### 2. Graph-Specific Calculation Checks
 
-Calculation checks that determine whether a figure is scientifically valid belong in Graph Hub.
+Calculation checks that determine whether a figure is scientifically valid belong in FigOps.
 
 Required checks:
 
@@ -104,7 +104,7 @@ Required checks:
 
 Non-goal:
 
-- Graph Hub does not become a general physics/math solver. Domain derivations and literature reasoning can stay in markdown protocols or agent reasoning. Graph Hub only verifies calculations that are inputs to graphs or figure quality.
+- FigOps does not become a general physics/math solver. Domain derivations and literature reasoning can stay in markdown protocols or agent reasoning. FigOps only verifies calculations that are inputs to graphs or figure quality.
 
 Current source files:
 
@@ -122,7 +122,7 @@ Done means:
 
 ### 3. Central Style System
 
-Graph Hub owns the style library.
+FigOps owns the style library.
 
 Required style contract:
 
@@ -144,18 +144,18 @@ Done means:
 
 - styles are defined centrally,
 - projects only select or override styles through config,
-- MCP style tools expose the same style set as Graph Hub core,
+- MCP style tools expose the same style set as FigOps core,
 - `nature_surfur` is first-class,
 - style drift between CLI, MCP, and agent docs is tested.
 
 ### 4. Render And Quality Gates
 
-Graph Hub render must produce publication-style figures through controlled paths.
+FigOps render must produce publication-style figures through controlled paths.
 
 Required behavior:
 
-- `graphhub.render_csv_graph` renders structured CSV jobs under the external runtime root.
-- `graphhub.collect_artifacts` returns artifact metadata after render.
+- `figops.render_csv_graph` renders structured CSV jobs under the external runtime root.
+- `figops.collect_artifacts` returns artifact metadata after render.
 - render jobs do not write into source project trees unless an explicit apply/project tool is used.
 - visual preflight reports pass/warning/failure.
 - baseline comparison records matched/unmatched status.
@@ -163,7 +163,7 @@ Required behavior:
 
 Current source files:
 
-- `graphhub_mcp_server.py`
+- `figops_mcp_server.py`
 - `hub_core/mcp_surface.py`
 - `plotting/bridge_renderer.py`
 - `hub_core/figure_preflight.py`
@@ -180,7 +180,7 @@ Done means:
 
 ### 5. Provenance And Operating Contract
 
-Graph Hub must make every result inspectable and reproducible.
+FigOps must make every result inspectable and reproducible.
 
 Required fields:
 
@@ -219,20 +219,20 @@ Done means:
 
 ### 6. Agent Usability
 
-Graph Hub must be directly usable by agents without Athena.
+FigOps must be directly usable by agents without Athena.
 
 Required MCP workflows:
 
 ```text
-graphhub.list_styles
-graphhub.list_projects
-graphhub.inspect_project
-graphhub.validate_project
-graphhub.render_csv_graph
-graphhub.collect_artifacts
-graphhub.scaffold_project
-graphhub.normalize_project_structure
-graphhub.batch_check
+figops.list_styles
+figops.list_projects
+figops.inspect_project
+figops.validate_project
+figops.render_csv_graph
+figops.collect_artifacts
+figops.scaffold_project
+figops.normalize_project_structure
+figops.batch_check
 ```
 
 Required agent guidance:
@@ -253,7 +253,7 @@ Done means:
 
 ### 7. Project Migration And Scaffolding
 
-Graph Hub must convert scattered graph projects into standard Graph Hub projects.
+FigOps must convert scattered graph projects into standard FigOps projects.
 
 Required behavior:
 
@@ -280,7 +280,7 @@ Done means:
 
 ### 8. Real Acceptance Tests
 
-Graph Hub is not complete until real workflows pass.
+FigOps is not complete until real workflows pass.
 
 Required acceptance fixtures:
 
@@ -307,7 +307,7 @@ Done means:
 
 ## HKS/Common Protocol
 
-HKS is the common knowledge layer that agents read before using Graph Hub. If the project later gives HKS a different formal name, this section should be renamed without changing the contract.
+HKS is the common knowledge layer that agents read before using FigOps. If the project later gives HKS a different formal name, this section should be renamed without changing the contract.
 
 HKS/common must contain:
 
@@ -347,13 +347,13 @@ Done means:
 - agents can answer "which tool should I call next?" from HKS/common docs,
 - graph-specific calculation checks have stable names,
 - HKS docs and MCP schemas do not contradict each other,
-- HKS docs are versioned in the Graph Hub repo.
+- HKS docs are versioned in the FigOps repo.
 
 ## Roadmap
 
 ### Phase A: Contract Freeze
 
-- freeze this spec as the Graph Hub completion direction,
+- freeze this spec as the FigOps completion direction,
 - update the MCP surface index to point to this spec,
 - create `docs/hks/` common protocol files,
 - add tests that fail when style lists drift.
@@ -389,10 +389,10 @@ Done means:
 ## Open Risk Review
 
 The former promotion blocker was the lack of a project-aware MCP render tool.
-The current target implementation adds `graphhub.render_project_figure` so
+The current target implementation adds `figops.render_project_figure` so
 configured `project_config.yaml` figures can render under
 `runtime_root/mcp_project_jobs/<job_id>/project` with the same
-manifest/status/provenance/failure-stage envelope as `graphhub.render_csv_graph`.
+manifest/status/provenance/failure-stage envelope as `figops.render_csv_graph`.
 
 Remaining acceptance risk:
 
@@ -405,8 +405,8 @@ Local acceptance evidence, 2026-06-08:
 - render wrote under `~/Library/Caches/Graph_making_hub/mcp_project_jobs/real-pi-control-acceptance-20260608`;
 - source project file snapshot was unchanged before/after render;
 - snapshot contained no copied `raw/` files;
-- `collect_artifacts` returned `renderer_surface=graphhub.render_project_figure`;
-- stdio JSON-RPC direct-call to `graphhub_mcp_server.py` returned `status=ok` in dry-run mode;
+- `collect_artifacts` returned `renderer_surface=figops.render_project_figure`;
+- stdio JSON-RPC direct-call to `figops_mcp_server.py` returned `status=ok` in dry-run mode;
 - invalid `nature_surfur` project stopped at `failure_stage=CONFIG` without creating a job root;
 - after artifact-based font preflight, the valid render returned `status=ok` and `manual_review_needed=false`.
 
@@ -417,7 +417,7 @@ Server acceptance evidence, 2026-06-08:
 - server focused MCP/preflight suites passed;
 - server ruff check passed;
 - server stdio JSON-RPC direct-call returned `status=ok` in dry-run mode;
-- server fixture project render and `collect_artifacts` returned `renderer_surface=graphhub.render_project_figure`;
+- server fixture project render and `collect_artifacts` returned `renderer_surface=figops.render_project_figure`;
 - server Codex config and shared `agent-config` host config both register `mcp_servers.graphhub`;
 - `codex mcp list` reports `graphhub ... enabled`;
 - `codex doctor --summary` reports 0 fail.
@@ -425,16 +425,16 @@ Server acceptance evidence, 2026-06-08:
 These risks must also be tracked during implementation:
 
 1. **HKS naming risk:** HKS is not defined in the current repo. This spec defines it as the common agent protocol layer. Rename if the intended meaning differs.
-2. **Calculation scope risk:** Graph Hub should own graph-related checks, not general scientific derivation. Keep physics/math derivations in HKS methodology docs unless they directly affect figure validation.
+2. **Calculation scope risk:** FigOps should own graph-related checks, not general scientific derivation. Keep physics/math derivations in HKS methodology docs unless they directly affect figure validation.
 3. **Adapter creep risk:** raw instrument adapters can easily become a second analysis engine. Only add adapter families with explicit input signatures, output schema, tests, and failure modes.
-4. **Athena dependency risk:** new Graph Hub behavior must not import Athena or require Athena runtime.
+4. **Athena dependency risk:** new FigOps behavior must not import Athena or require Athena runtime.
 5. **Visual quality risk:** numeric checks cannot prove publication readiness alone. Manual-review state must stay visible until visual preflight and baseline comparison pass.
 6. **Project migration risk:** normalization must be dry-run first and manifest-backed; source raw data should never move silently.
 7. **Server reproducibility risk:** repeat direct MCP acceptance after future server environment changes.
 
 ## Final Direction
 
-Graph Hub should be finished as an independent scientific figure engine.
+FigOps should be finished as an independent scientific figure engine.
 
 The default real workflow should be:
 
@@ -442,9 +442,9 @@ The default real workflow should be:
 read HKS/common protocol
 inspect or scaffold project
 validate project/data/style/calculation checks
-render through Graph Hub MCP
+render through FigOps MCP
 collect artifacts
 review manifest/status/preflight/provenance
 ```
 
-Athena is optional. Use it only when the request genuinely needs a separate non-graph solver, literature, or local knowledge-base step beyond Graph Hub's graph contract.
+Athena is optional. Use it only when the request genuinely needs a separate non-graph solver, literature, or local knowledge-base step beyond FigOps's graph contract.

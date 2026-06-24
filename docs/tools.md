@@ -1,6 +1,6 @@
-# Graph Hub MCP Tool Reference
+# FigOps MCP Tool Reference
 
-This file is generated from the live Graph Hub MCP registries.
+This file is generated from the live FigOps MCP registries.
 Regenerate it with:
 
 ```bash
@@ -11,9 +11,9 @@ The freshness test fails if this committed file drifts from the registry output.
 
 ## Tools
 
-### `graphhub.health`
+### `figops.health`
 
-Return Graph Hub server health and discovery status.
+Return FigOps server health and discovery status.
 
 **Input schema**
 
@@ -28,7 +28,7 @@ Return Graph Hub server health and discovery status.
       "type": "integer"
     },
     "root": {
-      "description": "Project scan root. Defaults to Graph Hub research root.",
+      "description": "Project scan root. Defaults to FigOps research root.",
       "type": "string"
     }
   },
@@ -163,9 +163,9 @@ Return Graph Hub server health and discovery status.
 }
 ```
 
-### `graphhub.describe`
+### `figops.describe`
 
-Describe registered Graph Hub tools, plot types, semantic checks, and render examples.
+Describe registered FigOps tools, plot types, semantic checks, and render examples.
 
 **Input schema**
 
@@ -307,9 +307,9 @@ Describe registered Graph Hub tools, plot types, semantic checks, and render exa
 }
 ```
 
-### `graphhub.list_styles`
+### `figops.list_styles`
 
-Return canonical Graph Hub target formats, output formats, profiles, and aliases.
+Return canonical FigOps target formats, output formats, profiles, and aliases.
 
 **Input schema**
 
@@ -460,9 +460,9 @@ Return canonical Graph Hub target formats, output formats, profiles, and aliases
 }
 ```
 
-### `graphhub.list_projects`
+### `figops.list_projects`
 
-Discover Graph Hub project configs without executing scripts or writing files.
+Discover FigOps project configs without executing scripts or writing files.
 
 **Input schema**
 
@@ -493,7 +493,7 @@ Discover Graph Hub project configs without executing scripts or writing files.
       "type": "integer"
     },
     "root": {
-      "description": "Project scan root. Defaults to Graph Hub research root.",
+      "description": "Project scan root. Defaults to FigOps research root.",
       "type": "string"
     }
   },
@@ -676,7 +676,7 @@ Discover Graph Hub project configs without executing scripts or writing files.
 }
 ```
 
-### `graphhub.inspect_project`
+### `figops.inspect_project`
 
 Summarize one project config without running analysis, plotting, or report writers.
 
@@ -717,7 +717,7 @@ Summarize one project config without running analysis, plotting, or report write
       "type": "string"
     },
     "root": {
-      "description": "Project scan root. Defaults to Graph Hub research root.",
+      "description": "Project scan root. Defaults to FigOps research root.",
       "type": "string"
     }
   },
@@ -925,7 +925,7 @@ Summarize one project config without running analysis, plotting, or report write
 }
 ```
 
-### `graphhub.validate_project`
+### `figops.validate_project`
 
 Run read-only config, data contract, style, and lockfile checks without executing scripts.
 
@@ -966,7 +966,7 @@ Run read-only config, data contract, style, and lockfile checks without executin
       "type": "string"
     },
     "root": {
-      "description": "Project scan root. Defaults to Graph Hub research root.",
+      "description": "Project scan root. Defaults to FigOps research root.",
       "type": "string"
     },
     "strict_lock": {
@@ -1130,7 +1130,7 @@ Run read-only config, data contract, style, and lockfile checks without executin
 }
 ```
 
-### `graphhub.render_csv_graph`
+### `figops.render_csv_graph`
 
 Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
 
@@ -1573,7 +1573,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
 }
 ```
 
-### `graphhub.render_project_figure`
+### `figops.render_project_figure`
 
 Render one configured project figure in an isolated runtime-root MCP job workspace.
 
@@ -1654,7 +1654,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
       "type": "string"
     },
     "root": {
-      "description": "Project scan root. Defaults to Graph Hub research root.",
+      "description": "Project scan root. Defaults to FigOps research root.",
       "type": "string"
     },
     "target_format": {
@@ -1959,7 +1959,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
 }
 ```
 
-### `graphhub.collect_artifacts`
+### `figops.collect_artifacts`
 
 Return artifact metadata for a completed MCP render job.
 
@@ -2191,9 +2191,9 @@ Return artifact metadata for a completed MCP render job.
 }
 ```
 
-### `graphhub.scaffold_project`
+### `figops.scaffold_project`
 
-Plan or create a standard Graph Hub project scaffold.
+Plan or create a standard FigOps project scaffold.
 
 **Input schema**
 
@@ -2379,9 +2379,9 @@ Plan or create a standard Graph Hub project scaffold.
 }
 ```
 
-### `graphhub.normalize_project_structure`
+### `figops.normalize_project_structure`
 
-Plan or apply migration of an existing graph folder into standard Graph Hub structure.
+Plan or apply migration of an existing graph folder into standard FigOps structure.
 
 **Input schema**
 
@@ -2549,7 +2549,7 @@ Plan or apply migration of an existing graph folder into standard Graph Hub stru
 }
 ```
 
-### `graphhub.batch_check`
+### `figops.batch_check`
 
 Run a bounded project discovery and validation batch check with optional runtime manifest logging.
 
@@ -2602,7 +2602,7 @@ Run a bounded project discovery and validation batch check with optional runtime
       "type": "string"
     },
     "root": {
-      "description": "Project scan root. Defaults to Graph Hub research root.",
+      "description": "Project scan root. Defaults to FigOps research root.",
       "type": "string"
     }
   },
@@ -2815,7 +2815,7 @@ Run a bounded project discovery and validation batch check with optional runtime
     "x_column": "x",
     "y_column": "y"
   },
-  "tool": "graphhub.render_csv_graph"
+  "tool": "figops.render_csv_graph"
 }
 ```
 
@@ -2883,7 +2883,7 @@ Run a bounded project discovery and validation batch check with optional runtime
     "x_column": "x",
     "y_column": "y"
   },
-  "tool": "graphhub.render_csv_graph"
+  "tool": "figops.render_csv_graph"
 }
 ```
 
@@ -2963,7 +2963,7 @@ Run a bounded project discovery and validation batch check with optional runtime
     "x_column": "x",
     "y_column": "y"
   },
-  "tool": "graphhub.render_csv_graph"
+  "tool": "figops.render_csv_graph"
 }
 ```
 
@@ -3014,7 +3014,7 @@ Run a bounded project discovery and validation batch check with optional runtime
     "y_column": "y",
     "z_column": "z"
   },
-  "tool": "graphhub.render_csv_graph"
+  "tool": "figops.render_csv_graph"
 }
 ```
 
@@ -3077,7 +3077,7 @@ Run a bounded project discovery and validation batch check with optional runtime
     "x_column": "x",
     "y_column": "y"
   },
-  "tool": "graphhub.render_csv_graph"
+  "tool": "figops.render_csv_graph"
 }
 ```
 
@@ -3140,7 +3140,7 @@ Run a bounded project discovery and validation batch check with optional runtime
     "x_column": "x",
     "y_column": "y"
   },
-  "tool": "graphhub.render_csv_graph"
+  "tool": "figops.render_csv_graph"
 }
 ```
 
@@ -3209,7 +3209,7 @@ Run a bounded project discovery and validation batch check with optional runtime
     "x_column": "x",
     "y_column": "y"
   },
-  "tool": "graphhub.render_csv_graph"
+  "tool": "figops.render_csv_graph"
 }
 ```
 
@@ -3272,7 +3272,7 @@ Run a bounded project discovery and validation batch check with optional runtime
     "x_column": "x",
     "y_column": "y"
   },
-  "tool": "graphhub.render_csv_graph"
+  "tool": "figops.render_csv_graph"
 }
 ```
 

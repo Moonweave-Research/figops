@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `graphhub.render_project_figure`, an MCP tool that renders one `project_config.yaml` figure from an existing Graph Hub project while preserving runtime-root isolation, structured artifacts, failure taxonomy, and provenance.
+**Goal:** Add `figops.render_project_figure`, an MCP tool that renders one `project_config.yaml` figure from an existing FigOps project while preserving runtime-root isolation, structured artifacts, failure taxonomy, and provenance.
 
-**Architecture:** Reuse Graph Hub's existing project discovery, config validation, style contract, process runner, preflight, artifact collection, and provenance conventions. The MCP tool must not write into source research projects by default: it copies the selected project into `runtime_root/mcp_project_jobs/<job_id>/project`, runs only the selected figure pipeline there, and returns the same envelope shape used by `graphhub.render_csv_graph`. Source-project rendering can be considered later as an explicit non-default mode, but is out of scope for this slice.
+**Architecture:** Reuse FigOps's existing project discovery, config validation, style contract, process runner, preflight, artifact collection, and provenance conventions. The MCP tool must not write into source research projects by default: it copies the selected project into `runtime_root/mcp_project_jobs/<job_id>/project`, runs only the selected figure pipeline there, and returns the same envelope shape used by `figops.render_csv_graph`. Source-project rendering can be considered later as an explicit non-default mode, but is out of scope for this slice.
 
 **Tech Stack:** Python 3.12, stdlib JSON-RPC MCP surface, `pytest`, `ruff`, existing `ProjectDiscoveryService`, `hub_core.config_parser`, `hub_core.process_runner`, `hub_core.figure_preflight`, and `hub_core.mcp_surface.GraphHubMCPServer`.
 
@@ -12,9 +12,9 @@
 
 ## Current Gap
 
-`graphhub.render_csv_graph` is implemented and tested, but it only supports ad hoc CSV graph jobs. The default Graph Hub user workflow is project-aware: an agent discovers a project, inspects `project_config.yaml`, chooses a configured `figures[]` entry, renders it, collects artifacts, and reviews manifest/status/provenance. MCP cannot yet do that without dropping back to the CLI or Athena legacy bridge.
+`figops.render_csv_graph` is implemented and tested, but it only supports ad hoc CSV graph jobs. The default FigOps user workflow is project-aware: an agent discovers a project, inspects `project_config.yaml`, chooses a configured `figures[]` entry, renders it, collects artifacts, and reviews manifest/status/provenance. MCP cannot yet do that without dropping back to the CLI or Athena legacy bridge.
 
-This is the final promotion blocker for using Graph Hub MCP as the default graph surface.
+This is the final promotion blocker for using FigOps MCP as the default graph surface.
 
 ## Non-Goals
 
@@ -28,13 +28,13 @@ This is the final promotion blocker for using Graph Hub MCP as the default graph
 ## File Map
 
 - Modify: `hub_core/mcp_surface.py`
-  - Add `graphhub.render_project_figure` tool definition.
+  - Add `figops.render_project_figure` tool definition.
   - Add `GraphHubMCPServer.render_project_figure()`.
   - Add helpers for figure selection, project snapshot creation, output redirection, process execution, and project render provenance.
 - Modify: `tests/test_mcp_rendering.py`
   - Add runtime-isolation, failure-taxonomy, provenance, and collect-artifacts tests for project-aware render.
 - Modify: `tests/test_mcp_read_only.py`
-  - Assert `tools/list` includes `graphhub.render_project_figure` and schemas expose required fields.
+  - Assert `tools/list` includes `figops.render_project_figure` and schemas expose required fields.
 - Modify: `docs/hks/00_agent_graph_workflow.md`
   - Add direct project-render workflow step.
 - Modify: `docs/hks/05_mcp_tool_playbook.md`
@@ -47,7 +47,7 @@ This is the final promotion blocker for using Graph Hub MCP as the default graph
 Tool name:
 
 ```text
-graphhub.render_project_figure
+figops.render_project_figure
 ```
 
 Input schema:
@@ -127,7 +127,7 @@ Add this test to `tests/test_mcp_read_only.py`:
 def test_tool_definitions_include_project_aware_render_tool(self):
     definitions = {tool["name"]: tool for tool in list_tool_definitions()}
 
-    tool = definitions["graphhub.render_project_figure"]
+    tool = definitions["figops.render_project_figure"]
     properties = tool["inputSchema"]["properties"]
     output_properties = tool["outputSchema"]["properties"]
 
@@ -153,41 +153,41 @@ python hub_uv.py run python -m pytest tests/test_mcp_read_only.py::ReadOnlyMCPTe
 Expected:
 
 ```text
-KeyError: 'graphhub.render_project_figure'
+KeyError: 'figops.render_project_figure'
 ```
 
 - [ ] **Step 3: Add tool name and schema**
 
-In `hub_core/mcp_surface.py`, add the tool name next to `graphhub.render_csv_graph`:
+In `hub_core/mcp_surface.py`, add the tool name next to `figops.render_csv_graph`:
 
 ```python
 TOOL_NAMES = (
-    "graphhub.health",
-    "graphhub.list_styles",
-    "graphhub.list_projects",
-    "graphhub.inspect_project",
-    "graphhub.validate_project",
-    "graphhub.render_csv_graph",
-    "graphhub.render_project_figure",
-    "graphhub.collect_artifacts",
-    "graphhub.scaffold_project",
-    "graphhub.normalize_project_structure",
-    "graphhub.batch_check",
+    "figops.health",
+    "figops.list_styles",
+    "figops.list_projects",
+    "figops.inspect_project",
+    "figops.validate_project",
+    "figops.render_csv_graph",
+    "figops.render_project_figure",
+    "figops.collect_artifacts",
+    "figops.scaffold_project",
+    "figops.normalize_project_structure",
+    "figops.batch_check",
 )
 WRITE_TOOL_NAMES = (
-    "graphhub.render_csv_graph",
-    "graphhub.render_project_figure",
-    "graphhub.scaffold_project",
-    "graphhub.normalize_project_structure",
-    "graphhub.batch_check",
+    "figops.render_csv_graph",
+    "figops.render_project_figure",
+    "figops.scaffold_project",
+    "figops.normalize_project_structure",
+    "figops.batch_check",
 )
 ```
 
-Add a `ToolDefinition` after `graphhub.render_csv_graph`:
+Add a `ToolDefinition` after `figops.render_csv_graph`:
 
 ```python
 ToolDefinition(
-    "graphhub.render_project_figure",
+    "figops.render_project_figure",
     "Render one configured project figure in an isolated runtime-root MCP job workspace.",
     _object_schema(
         {
@@ -229,17 +229,17 @@ Register the handler in `GraphHubMCPServer.__init__`:
 
 ```python
 self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
-    "graphhub.health": self.health,
-    "graphhub.list_styles": self.list_styles,
-    "graphhub.list_projects": self.list_projects,
-    "graphhub.inspect_project": self.inspect_project,
-    "graphhub.validate_project": self.validate_project,
-    "graphhub.render_csv_graph": self.render_csv_graph,
-    "graphhub.render_project_figure": self.render_project_figure,
-    "graphhub.collect_artifacts": self.collect_artifacts,
-    "graphhub.scaffold_project": self.scaffold_project,
-    "graphhub.normalize_project_structure": self.normalize_project_structure,
-    "graphhub.batch_check": self.batch_check,
+    "figops.health": self.health,
+    "figops.list_styles": self.list_styles,
+    "figops.list_projects": self.list_projects,
+    "figops.inspect_project": self.inspect_project,
+    "figops.validate_project": self.validate_project,
+    "figops.render_csv_graph": self.render_csv_graph,
+    "figops.render_project_figure": self.render_project_figure,
+    "figops.collect_artifacts": self.collect_artifacts,
+    "figops.scaffold_project": self.scaffold_project,
+    "figops.normalize_project_structure": self.normalize_project_structure,
+    "figops.batch_check": self.batch_check,
 }
 ```
 
@@ -248,7 +248,7 @@ Temporarily add this stub so the server can instantiate:
 ```python
 def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
     return self._envelope(
-        "graphhub.render_project_figure",
+        "figops.render_project_figure",
         arguments,
         status="error",
         summary="Project-aware render is not implemented.",
@@ -313,7 +313,7 @@ def test_render_project_figure_requires_figure_selector_when_multiple_figures(se
         (project / "project_config.yaml").write_text(PROJECT_RENDER_CONFIG, encoding="utf-8")
         server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
 
-        result = self._call(server, "graphhub.render_project_figure", {"project_path": str(project)})
+        result = self._call(server, "figops.render_project_figure", {"project_path": str(project)})
 
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["failure_stage"], "CONTRACT")
@@ -332,7 +332,7 @@ def test_render_project_figure_rejects_unknown_figure_id(self):
 
         result = self._call(
             server,
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             {"project_path": str(project), "figure_id": "FigMissing"},
         )
 
@@ -407,7 +407,7 @@ def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
         project_path = self._resolve_project_path(arguments)
     except Exception as exc:
         return self._envelope(
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             arguments,
             status="error",
             summary="Project selection failed.",
@@ -424,7 +424,7 @@ def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
     config_errors = validate_config(config) if isinstance(config, dict) else list(loaded["errors"])
     if config_errors:
         return self._envelope(
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             arguments,
             status="error",
             summary="Project config is invalid.",
@@ -444,7 +444,7 @@ def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
     )
     if selected is None:
         return self._envelope(
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             arguments,
             status="error",
             summary="Project figure selection failed.",
@@ -457,7 +457,7 @@ def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
             baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
         )
     return self._envelope(
-        "graphhub.render_project_figure",
+        "figops.render_project_figure",
         arguments,
         status="error",
         summary="Project figure selected but render execution is not implemented.",
@@ -513,7 +513,7 @@ def test_render_project_figure_dry_run_validates_without_writing_runtime(self):
 
         result = self._call(
             server,
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             {"project_path": str(project), "dry_run": True, "job_id": "project-dry-run"},
         )
 
@@ -551,7 +551,7 @@ output_relpath = str(selected.get("output") or "")
 output_path = snapshot_project_path / output_relpath
 if dry_run:
     return self._envelope(
-        "graphhub.render_project_figure",
+        "figops.render_project_figure",
         arguments,
         status="ok",
         summary="Project figure render validated in dry-run mode; no files were created.",
@@ -586,7 +586,7 @@ def _stable_project_id_for_path(self, project_path: Path) -> str:
     for project in ProjectDiscoveryService(self.research_root).discover(max_depth=12):
         if (self.research_root / project.path).resolve() == project_path.resolve():
             return project.project_id
-    return self._operation_id("graphhub.project", {"project_path": str(project_path)})
+    return self._operation_id("figops.project", {"project_path": str(project_path)})
 
 @staticmethod
 def _public_selected_figure(figure: dict[str, Any]) -> dict[str, Any]:
@@ -659,7 +659,7 @@ def test_render_project_figure_runs_selected_figure_in_runtime_snapshot(self):
 
         result = self._call(
             server,
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             {"project_path": str(project), "job_id": "project-render-demo"},
         )
 
@@ -673,7 +673,7 @@ def test_render_project_figure_runs_selected_figure_in_runtime_snapshot(self):
         self.assertEqual(manifest["job_id"], "project-render-demo")
         self.assertEqual(manifest["selected_figure"]["id"], "FigA")
         self.assertIn("provenance", manifest)
-        self.assertEqual(manifest["provenance"]["renderer_surface"], "graphhub.render_project_figure")
+        self.assertEqual(manifest["provenance"]["renderer_surface"], "figops.render_project_figure")
 ```
 
 - [ ] **Step 2: Run execution test and verify failure**
@@ -798,7 +798,7 @@ status_path = job_root / "status.json"
 latest_dir = self.runtime_root / "_latest" / "mcp_project_render"
 if job_root.exists() and not overwrite:
     return self._envelope(
-        "graphhub.render_project_figure",
+        "figops.render_project_figure",
         arguments,
         status="error",
         summary="Project render job already exists.",
@@ -877,7 +877,7 @@ def test_render_project_figure_script_failure_writes_failure_artifacts(self):
 
         result = self._call(
             server,
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             {"project_path": str(project), "job_id": "project-failure"},
         )
 
@@ -1007,15 +1007,15 @@ def test_collect_artifacts_supports_project_render_provenance(self):
         server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
         self._call(
             server,
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             {"project_path": str(project), "job_id": "project-collect"},
         )
 
-        collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "project-collect"})
+        collected = self._call(server, "figops.collect_artifacts", {"job_id": "project-collect"})
 
         self.assertIn(collected["status"], {"ok", "warning"})
         self.assertEqual(collected["job_id"], "project-collect")
-        self.assertEqual(collected["provenance"]["renderer_surface"], "graphhub.render_project_figure")
+        self.assertEqual(collected["provenance"]["renderer_surface"], "figops.render_project_figure")
         self.assertEqual(len(collected["figures"]), 1)
         self.assertTrue(Path(collected["figures"][0]["path"]).is_file())
 ```
@@ -1072,10 +1072,10 @@ def test_prompts_get_project_figure_workflow_mentions_project_render(self):
     )
     text = response["result"]["messages"][0]["content"]["text"]
 
-    self.assertIn("graphhub.inspect_project", text)
-    self.assertIn("graphhub.validate_project", text)
-    self.assertIn("graphhub.render_project_figure", text)
-    self.assertIn("graphhub.collect_artifacts", text)
+    self.assertIn("figops.inspect_project", text)
+    self.assertIn("figops.validate_project", text)
+    self.assertIn("figops.render_project_figure", text)
+    self.assertIn("figops.collect_artifacts", text)
     self.assertIn("manual_review_needed", text)
 ```
 
@@ -1086,9 +1086,9 @@ Add to `list_prompt_definitions()`:
 ```python
 {
     "name": "render_project_figure",
-    "description": "Workflow for rendering one configured project figure through Graph Hub MCP.",
+    "description": "Workflow for rendering one configured project figure through FigOps MCP.",
     "arguments": [
-        {"name": "project_id", "description": "Discovered Graph Hub project ID.", "required": False},
+        {"name": "project_id", "description": "Discovered FigOps project ID.", "required": False},
         {"name": "project_path", "description": "Project path.", "required": False},
         {"name": "figure_id", "description": "Configured figures[].id.", "required": False},
         {"name": "figure_output", "description": "Configured figures[].output.", "required": False},
@@ -1105,15 +1105,15 @@ if name == "render_project_figure":
     selector = arguments.get("figure_id") or arguments.get("figure_output") or "<single configured figure>"
     text = (
         "Project figure workflow:\n"
-        "1. Call graphhub.inspect_project for the selected project.\n"
-        "2. Call graphhub.validate_project and stop on status=error.\n"
-        f"3. Call graphhub.render_project_figure for selector {selector!r} with dry_run=true first.\n"
-        "4. If dry_run is clean, call graphhub.render_project_figure without dry_run.\n"
-        "5. Call graphhub.collect_artifacts for the returned job_id.\n"
+        "1. Call figops.inspect_project for the selected project.\n"
+        "2. Call figops.validate_project and stop on status=error.\n"
+        f"3. Call figops.render_project_figure for selector {selector!r} with dry_run=true first.\n"
+        "4. If dry_run is clean, call figops.render_project_figure without dry_run.\n"
+        "5. Call figops.collect_artifacts for the returned job_id.\n"
         "6. Report manifest_path, status_path, provenance, failure_stage, resolution_hint, and manual_review_needed.\n"
     )
     return self._prompt_payload(
-        "Workflow for rendering one configured project figure through Graph Hub MCP.",
+        "Workflow for rendering one configured project figure through FigOps MCP.",
         text,
     )
 ```
@@ -1123,9 +1123,9 @@ if name == "render_project_figure":
 In `docs/hks/00_agent_graph_workflow.md`, replace the render step block with:
 
 ```markdown
-6. Call `graphhub.render_project_figure` for configured project figures.
-7. Call `graphhub.render_csv_graph` for explicit structured CSV graph requests.
-8. Call `graphhub.collect_artifacts` after render.
+6. Call `figops.render_project_figure` for configured project figures.
+7. Call `figops.render_csv_graph` for explicit structured CSV graph requests.
+8. Call `figops.collect_artifacts` after render.
 9. Inspect `manifest_path`, `status_path`, `failure_stage`, `resolution_hint`, `manual_review_needed`, `visual_preflight_status`, and `provenance`.
 ```
 
@@ -1143,12 +1143,12 @@ Render Fig1 for the sulfur resistance project using its project_config.yaml styl
 Tool sequence:
 
 ```text
-graphhub.list_projects
-graphhub.inspect_project
-graphhub.validate_project
-graphhub.render_project_figure with dry_run=true
-graphhub.render_project_figure
-graphhub.collect_artifacts
+figops.list_projects
+figops.inspect_project
+figops.validate_project
+figops.render_project_figure with dry_run=true
+figops.render_project_figure
+figops.collect_artifacts
 ```
 
 Do not mutate the source project unless a future explicit source-write mode is approved.
@@ -1194,7 +1194,7 @@ all tests pass
 Run:
 
 ```bash
-python hub_uv.py run --with ruff python -m ruff check graphhub_mcp_server.py hub_core/mcp_surface.py hub_core/project_discovery.py tests/test_mcp_read_only.py tests/test_mcp_rendering.py tests/test_project_discovery.py
+python hub_uv.py run --with ruff python -m ruff check figops_mcp_server.py hub_core/mcp_surface.py hub_core/project_discovery.py tests/test_mcp_read_only.py tests/test_mcp_rendering.py tests/test_project_discovery.py
 ```
 
 Expected:
@@ -1208,13 +1208,13 @@ All checks passed!
 Run:
 
 ```bash
-python hub_uv.py run python graphhub_mcp_server.py --smoke
+python hub_uv.py run python figops_mcp_server.py --smoke
 ```
 
 Expected:
 
 ```json
-{"health_status": "ok", "status": "ok", "style_format_count": 10, "tool_surface": "graphhub_mcp"}
+{"health_status": "ok", "status": "ok", "style_format_count": 10, "tool_surface": "figops_mcp"}
 ```
 
 - [ ] **Step 4: Run active MCP config check**
@@ -1244,7 +1244,7 @@ Expected:
 
 ```text
 git diff --check has no output
-status shows only intended Graph Hub changes
+status shows only intended FigOps changes
 ```
 
 ## Review
@@ -1253,7 +1253,7 @@ status shows only intended Graph Hub changes
 
 Findings:
 
-1. **Covered:** The plan adds `graphhub.render_project_figure`, the missing project-aware MCP render tool.
+1. **Covered:** The plan adds `figops.render_project_figure`, the missing project-aware MCP render tool.
 2. **Covered:** Source-project write risk is handled by runtime snapshot execution under `runtime_root/mcp_project_jobs/<job_id>/project`.
 3. **Covered:** Multi-figure ambiguity is handled through explicit `figure_id` or `figure_output`.
 4. **Covered:** Failure taxonomy maps config, contract, export, timeout, and plot failures.
@@ -1283,8 +1283,8 @@ Findings:
 
 The feature is done only when:
 
-- `tools/list` exposes `graphhub.render_project_figure`,
-- `graphhub.render_project_figure` can render one configured Python figure from a project snapshot,
+- `tools/list` exposes `figops.render_project_figure`,
+- `figops.render_project_figure` can render one configured Python figure from a project snapshot,
 - source project files are unchanged after render,
 - project snapshot copy is selective and does not copy undeclared raw/media folders by default,
 - manifest/status/collect include provenance,

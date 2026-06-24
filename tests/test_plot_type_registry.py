@@ -3,7 +3,7 @@ from pathlib import Path
 
 from matplotlib.axes import Axes
 
-from hub_core.mcp.schemas import describe_graphhub_surface, list_tool_definitions
+from hub_core.mcp.schemas import describe_figops_surface, list_tool_definitions
 from hub_core.mcp.transport import _validate_tool_arguments
 from hub_core.rendering import PLOT_TYPES, PlotType
 from plotting.bridge_renderer import BridgeFigureSpec
@@ -31,7 +31,7 @@ def test_registered_plot_type_updates_mcp_schema_and_validator():
         )
 
         definitions = list_tool_definitions()
-        render_tool = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
+        render_tool = next(tool for tool in definitions if tool["name"] == "figops.render_csv_graph")
         plot_type_enum = render_tool["inputSchema"]["properties"]["plot_type"]["enum"]
 
         assert "test_plugin" in plot_type_enum
@@ -40,7 +40,7 @@ def test_registered_plot_type_updates_mcp_schema_and_validator():
             data_path = Path(tmpdir) / "data.csv"
             data_path.write_text("x,y\n1,2\n", encoding="utf-8")
             errors = _validate_tool_arguments(
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -70,13 +70,13 @@ def test_registered_plot_type_updates_describe_without_hand_edit():
             },
         )
 
-        surface = describe_graphhub_surface()
+        surface = describe_figops_surface()
         described = {plot_type["name"]: plot_type for plot_type in surface["plot_types"]}
 
         assert "test_plugin" in described
         assert described["test_plugin"]["arg_schema"] == PLOT_TYPES["test_plugin"].arg_schema
         assert described["test_plugin"]["capabilities"] == PLOT_TYPES["test_plugin"].capabilities
-        assert described["test_plugin"]["worked_example"]["tool"] == "graphhub.render_csv_graph"
+        assert described["test_plugin"]["worked_example"]["tool"] == "figops.render_csv_graph"
         assert described["test_plugin"]["worked_example"]["arguments"]["plot_type"] == "test_plugin"
     finally:
         PLOT_TYPES.clear()
@@ -84,7 +84,7 @@ def test_registered_plot_type_updates_describe_without_hand_edit():
 
 
 def test_describe_lists_every_registered_plot_type_with_contracts():
-    surface = describe_graphhub_surface()
+    surface = describe_figops_surface()
     described = {plot_type["name"]: plot_type for plot_type in surface["plot_types"]}
 
     assert set(described) == set(PLOT_TYPES)
@@ -95,7 +95,7 @@ def test_describe_lists_every_registered_plot_type_with_contracts():
 
 
 def test_described_tool_set_matches_live_tool_registry():
-    surface = describe_graphhub_surface()
+    surface = describe_figops_surface()
     described_tools = {tool["name"]: tool for tool in surface["tools"]}
     live_tools = {tool["name"]: tool for tool in list_tool_definitions()}
 
@@ -126,7 +126,7 @@ def test_bar_plot_type_publishes_aggregate_contract():
 
 
 def test_describe_surfaces_bar_aggregate_arg():
-    surface = describe_graphhub_surface()
+    surface = describe_figops_surface()
     described = {plot_type["name"]: plot_type for plot_type in surface["plot_types"]}
 
     assert described["bar"]["arg_schema"]["properties"]["aggregate"] == {
@@ -145,7 +145,7 @@ def test_describe_surfaces_bar_aggregate_arg():
 
 def test_render_csv_schema_accepts_bar_aggregate_arg():
     definitions = list_tool_definitions()
-    render_tool = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
+    render_tool = next(tool for tool in definitions if tool["name"] == "figops.render_csv_graph")
     assert render_tool["inputSchema"]["properties"]["aggregate"] == {
         "type": "string",
         "enum": ["mean", "median"],
@@ -157,7 +157,7 @@ def test_render_csv_schema_accepts_bar_aggregate_arg():
         data_path = Path(tmpdir) / "bar.csv"
         data_path.write_text("x,y,sem\nA,1,0.1\nA,3,0.2\nB,2,0.3\nB,4,0.4\n", encoding="utf-8")
         errors = _validate_tool_arguments(
-            "graphhub.render_csv_graph",
+            "figops.render_csv_graph",
             {
                 "data_path": str(data_path),
                 "x_column": "x",
@@ -181,7 +181,7 @@ def test_heatmap_plot_type_publishes_annotation_contract():
     }
     assert PLOT_TYPES["heatmap"].capabilities["supports_value_annotations"] is True
 
-    surface = describe_graphhub_surface()
+    surface = describe_figops_surface()
     described = {plot_type["name"]: plot_type for plot_type in surface["plot_types"]}
     assert described["heatmap"]["arg_schema"]["properties"]["annotate_values"] == {
         "type": "boolean",
@@ -191,7 +191,7 @@ def test_heatmap_plot_type_publishes_annotation_contract():
     assert described["heatmap"]["worked_example"]["arguments"]["annotate_values"] is True
 
     definitions = list_tool_definitions()
-    render_tool = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
+    render_tool = next(tool for tool in definitions if tool["name"] == "figops.render_csv_graph")
     assert render_tool["inputSchema"]["properties"]["annotate_values"] == {"type": "boolean", "default": False}
 
 
@@ -253,7 +253,7 @@ def test_facet_plot_type_publishes_contract():
 
 def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
     definitions = list_tool_definitions()
-    render_tool = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
+    render_tool = next(tool for tool in definitions if tool["name"] == "figops.render_csv_graph")
     assert render_tool["inputSchema"]["properties"]["facet_column"] == {"type": "string"}
     assert render_tool["inputSchema"]["properties"]["facet_scales"] == {
         "type": "string",
@@ -268,7 +268,7 @@ def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
         data_path = Path(tmpdir) / "facet.csv"
         data_path.write_text("x,y,phase\n0,1,A\n1,2,A\n0,3,B\n1,4,B\n", encoding="utf-8")
         errors = _validate_tool_arguments(
-            "graphhub.render_csv_graph",
+            "figops.render_csv_graph",
             {
                 "data_path": str(data_path),
                 "x_column": "x",
@@ -303,7 +303,7 @@ def test_xy_plot_types_publish_statistical_overlay_contracts():
 
 
 def test_describe_surfaces_statistical_overlay_args_for_xy_plot_types():
-    surface = describe_graphhub_surface()
+    surface = describe_figops_surface()
     described = {plot_type["name"]: plot_type for plot_type in surface["plot_types"]}
 
     for name in ("line", "scatter", "xy"):
@@ -319,7 +319,7 @@ def test_describe_surfaces_statistical_overlay_args_for_xy_plot_types():
 
 def test_render_csv_schema_accepts_statistical_overlay_args():
     definitions = list_tool_definitions()
-    render_tool = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
+    render_tool = next(tool for tool in definitions if tool["name"] == "figops.render_csv_graph")
     properties = render_tool["inputSchema"]["properties"]
     assert properties["fit_line"] == {"type": "boolean"}
     assert properties["ci_band"] == {"type": "boolean"}
@@ -329,7 +329,7 @@ def test_render_csv_schema_accepts_statistical_overlay_args():
         data_path = Path(tmpdir) / "overlay.csv"
         data_path.write_text("x,y\n0,1\n1,2\n2,3\n", encoding="utf-8")
         errors = _validate_tool_arguments(
-            "graphhub.render_csv_graph",
+            "figops.render_csv_graph",
             {
                 "data_path": str(data_path),
                 "x_column": "x",

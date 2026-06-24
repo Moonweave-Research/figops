@@ -51,7 +51,7 @@ re-export from `mcp_surface.py` *only within that PR*, then delete the shim by t
 6. **resources.py / prompts.py**.
 7. **server.py** — `GraphHubMCPServer` becomes the thin façade; `mcp_surface.py` is deleted and
    `hub_core/mcp/__init__.py` re-exports `GraphHubMCPServer`, `run_stdio_server`,
-   `list_tool_definitions` (preserve the public import path used by tests + `graphhub_mcp_server.py`).
+   `list_tool_definitions` (preserve the public import path used by tests + `figops_mcp_server.py`).
 
 ## Constraints
 
@@ -87,5 +87,5 @@ re-export from `mcp_surface.py` *only within that PR*, then delete the shim by t
 ## Definition of done (M1)
 
 - `hub_core/mcp_surface.py` gone; `hub_core/mcp/` populated; no module > 800 lines.
-- Full suite green, unchanged behavior; public import path preserved; `graphhub_mcp_server.py --smoke` works.
+- Full suite green, unchanged behavior; public import path preserved; `figops_mcp_server.py --smoke` works.
 - CI: ruff gating + arch/size guard green.

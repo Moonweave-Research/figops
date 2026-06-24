@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from hub_core.adapters.selection import AdapterSelectionError, select_adapters
-from hub_core.mcp import GraphHubMCPServer, McpServerConfig
+from hub_core.mcp import FigOpsMCPServer, McpServerConfig
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,7 @@ class DoctorCheck:
 
 
 def run_doctor(config: McpServerConfig) -> dict[str, Any]:
-    server = GraphHubMCPServer(config=config)
+    server = FigOpsMCPServer(config=config)
     checks = [
         _check_python(),
         _check_uv(),
@@ -61,7 +61,7 @@ def run_doctor(config: McpServerConfig) -> dict[str, Any]:
 
 def format_doctor_report(report: dict[str, Any]) -> str:
     lines = [
-        f"Graph Hub doctor: {report['status']}",
+        f"FigOps doctor: {report['status']}",
         report["summary"],
         "",
     ]
@@ -80,7 +80,7 @@ def format_doctor_report(report: dict[str, Any]) -> str:
 
 def _summary_for(status: str) -> str:
     if status == "ok":
-        return "Environment is ready for Graph Hub MCP discovery and rendering."
+        return "Environment is ready for FigOps MCP discovery and rendering."
     if status == "warning":
         return "Environment is usable, but optional or workflow-specific capabilities are missing."
     return "Environment has blocking configuration errors that must be fixed before reliable use."
@@ -153,7 +153,7 @@ def _check_rscript() -> DoctorCheck:
     return DoctorCheck("Rscript", "ok", version or "Rscript is available.", details={"path": rscript})
 
 
-def _check_write_tools(server: GraphHubMCPServer) -> DoctorCheck:
+def _check_write_tools(server: FigOpsMCPServer) -> DoctorCheck:
     if server.write_tools_enabled:
         return DoctorCheck(
             "write_tools",
@@ -170,7 +170,7 @@ def _check_write_tools(server: GraphHubMCPServer) -> DoctorCheck:
     )
 
 
-def _check_roots(server: GraphHubMCPServer) -> DoctorCheck:
+def _check_roots(server: FigOpsMCPServer) -> DoctorCheck:
     details = {
         "hub_path": str(server.hub_path),
         "research_root": str(server.research_root),

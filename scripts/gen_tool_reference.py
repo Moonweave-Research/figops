@@ -17,13 +17,13 @@ def _json_block(payload: Any) -> str:
 
 
 def render_tool_reference() -> str:
-    from hub_core.mcp.schemas import describe_graphhub_surface
+    from hub_core.mcp.schemas import describe_figops_surface
 
-    surface = describe_graphhub_surface()
+    surface = describe_figops_surface()
     lines = [
-        "# Graph Hub MCP Tool Reference",
+        "# FigOps MCP Tool Reference",
         "",
-        "This file is generated from the live Graph Hub MCP registries.",
+        "This file is generated from the live FigOps MCP registries.",
         "Regenerate it with:",
         "",
         "```bash",

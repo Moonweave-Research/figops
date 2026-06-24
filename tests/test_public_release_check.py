@@ -147,7 +147,7 @@ def test_public_release_check_blocks_post_tag_changes_without_version_bump(tmp_p
     (tmp_path / "LICENSE").write_text("Apache-2.0\n", encoding="utf-8")
     (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "graph-making-hub"\nversion = "0.16.1"\n',
+        '[project]\nname = "figops"\nversion = "0.16.1"\n',
         encoding="utf-8",
     )
     (tmp_path / "CHANGELOG.md").write_text("## [0.16.1] - 2026-06-22\n", encoding="utf-8")

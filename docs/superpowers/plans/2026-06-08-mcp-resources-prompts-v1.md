@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add MCP `resources/*` and `prompts/*` JSON-RPC support to the existing Graph Hub MCP stdio server.
+**Goal:** Add MCP `resources/*` and `prompts/*` JSON-RPC support to the existing FigOps MCP stdio server.
 
 **Architecture:** Keep the current dependency-free JSON-RPC server in `hub_core/mcp_surface.py`. Add small helper functions for resource metadata, resource reading, prompt metadata, prompt rendering, URI parsing, and prompt argument validation without changing existing tool behavior.
 
@@ -55,9 +55,9 @@ def test_json_rpc_resources_and_prompts_list(self):
     templates = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 12, "method": "resources/templates/list"})
     prompts = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 13, "method": "prompts/list"})
 
-    self.assertIn("graphhub://styles", {item["uri"] for item in resources["result"]["resources"]})
+    self.assertIn("figops://styles", {item["uri"] for item in resources["result"]["resources"]})
     self.assertIn(
-        "graphhub://projects/{project_id}/config",
+        "figops://projects/{project_id}/config",
         {item["uriTemplate"] for item in templates["result"]["resourceTemplates"]},
     )
     self.assertIn("make_publication_graph_from_csv", {item["name"] for item in prompts["result"]["prompts"]})
@@ -97,9 +97,9 @@ def test_resources_read_styles_matches_list_styles(self):
 
     resource = _handle_json_rpc(
         server,
-        {"jsonrpc": "2.0", "id": 20, "method": "resources/read", "params": {"uri": "graphhub://styles"}},
+        {"jsonrpc": "2.0", "id": 20, "method": "resources/read", "params": {"uri": "figops://styles"}},
     )
-    styles = server.call_tool("graphhub.list_styles", {})["structuredContent"]
+    styles = server.call_tool("figops.list_styles", {})["structuredContent"]
     payload = json.loads(resource["result"]["contents"][0]["text"])
 
     self.assertEqual(resource["result"]["contents"][0]["mimeType"], "application/json")
@@ -117,7 +117,7 @@ python hub_uv.py run python -m pytest tests/test_mcp_read_only.py::ReadOnlyMCPTe
 
 - [ ] **Step 3: Implement static resource reads**
 
-Implement `graphhub://styles` and `graphhub://profiles`.
+Implement `figops://styles` and `figops://profiles`.
 
 - [ ] **Step 4: Run GREEN**
 
@@ -133,9 +133,9 @@ Run the focused test plus full `tests/test_mcp_read_only.py`.
 
 Add tests for:
 
-- `graphhub://projects` returns JSON with `projects`, `root`, and `count`.
-- `graphhub://projects/{project_id}/config` reads discovered `config_path`, including legacy `scripts/project_config.yaml`.
-- `graphhub://jobs/{job_id}/manifest` returns a sanitized manifest after a controlled render.
+- `figops://projects` returns JSON with `projects`, `root`, and `count`.
+- `figops://projects/{project_id}/config` reads discovered `config_path`, including legacy `scripts/project_config.yaml`.
+- `figops://jobs/{job_id}/manifest` returns a sanitized manifest after a controlled render.
 - malformed URI returns `-32602`.
 - valid-but-missing resource returns `-32002`.
 
@@ -183,7 +183,7 @@ Expected: pass.
 Add tests for:
 
 - `prompts/list` returns three v1 prompt names.
-- `prompts/get make_publication_graph_from_csv` includes dry-run render, `calculation_checks`, `visual_preflight_status`, `graphhub.collect_artifacts`, and manual review.
+- `prompts/get make_publication_graph_from_csv` includes dry-run render, `calculation_checks`, `visual_preflight_status`, `figops.collect_artifacts`, and manual review.
 - missing required prompt arguments return `-32602`.
 - unknown prompt returns `-32002`.
 - prompt calls do not create runtime job folders.

@@ -9,7 +9,7 @@
 
 ## Goal
 
-Complete Graph Hub MCP v1 by adding read-only resources and workflow prompts to the existing tool server.
+Complete FigOps MCP v1 by adding read-only resources and workflow prompts to the existing tool server.
 
 The current MCP surface already exposes tools for health, styles, project discovery, project inspection, validation, controlled CSV rendering, artifact collection, scaffolding, normalization, and bounded batch checks. The missing MCP-native pieces are:
 
@@ -21,9 +21,9 @@ The current MCP surface already exposes tools for health, styles, project discov
 
 Tools are good for actions. Resources and prompts are better for shared context.
 
-Graph Hub should not require every agent to rediscover style contracts, project config shape, or artifact manifest rules by calling action tools repeatedly. A client should be able to ask for stable context such as `graphhub://styles`, `graphhub://projects`, or `graphhub://jobs/{job_id}/manifest`.
+FigOps should not require every agent to rediscover style contracts, project config shape, or artifact manifest rules by calling action tools repeatedly. A client should be able to ask for stable context such as `figops://styles`, `figops://projects`, or `figops://jobs/{job_id}/manifest`.
 
-Prompts should give agents a safe workflow template while preserving Graph Hub ownership. They must guide users through inspect, validate, render, collect, and review without silently normalizing projects or claiming publication readiness.
+Prompts should give agents a safe workflow template while preserving FigOps ownership. They must guide users through inspect, validate, render, collect, and review without silently normalizing projects or claiming publication readiness.
 
 ## MCP Protocol Additions
 
@@ -57,7 +57,7 @@ The server must keep existing `tools/list` and `tools/call` behavior unchanged.
 
 ```json
 {
-  "uri": "graphhub://styles"
+  "uri": "figops://styles"
 }
 ```
 
@@ -90,25 +90,25 @@ Use JSON-RPC errors consistently:
 
 V1 supports only these URI forms:
 
-- `graphhub://styles`
-- `graphhub://profiles`
-- `graphhub://projects`
-- `graphhub://projects/{project_id}/config`
-- `graphhub://jobs/{job_id}/manifest`
+- `figops://styles`
+- `figops://profiles`
+- `figops://projects`
+- `figops://projects/{project_id}/config`
+- `figops://jobs/{job_id}/manifest`
 
 Parsing rules:
 
 - the URI scheme must be exactly `graphhub`,
 - query strings and fragments are rejected,
-- `graphhub://styles`, `graphhub://profiles`, and `graphhub://projects` use the URI authority with an empty path,
+- `figops://styles`, `figops://profiles`, and `figops://projects` use the URI authority with an empty path,
 - dynamic resources use authority `projects` or `jobs` plus exactly two path segments,
 - dynamic path segments are percent-decoded once,
 - project IDs may contain `::` because `ProjectDiscoveryService` generates IDs in that shape,
 - job IDs in resource URIs are strict: they must already match `[A-Za-z0-9_-]{1,80}` and must not be auto-sanitized or remapped.
 
-### `graphhub://styles`
+### `figops://styles`
 
-Returns Graph Hub style contract metadata as JSON.
+Returns FigOps style contract metadata as JSON.
 
 Required fields:
 
@@ -122,10 +122,10 @@ Required fields:
 Acceptance:
 
 - Includes `nature_surfur`.
-- Matches `graphhub.list_styles` output for the same fields.
+- Matches `figops.list_styles` output for the same fields.
 - Does not create runtime folders or modify source files.
 
-### `graphhub://profiles`
+### `figops://profiles`
 
 Returns profile metadata as JSON.
 
@@ -140,7 +140,7 @@ Acceptance:
 - Matches `themes.style_profiles.list_profiles()`.
 - Does not expose unrelated environment/config state.
 
-### `graphhub://projects`
+### `figops://projects`
 
 Returns discovered project metadata as JSON.
 
@@ -148,7 +148,7 @@ Query parameters are not supported in v1. Use the server's configured `research_
 
 Required fields:
 
-- `projects`: same serialized project shape as `graphhub.list_projects`
+- `projects`: same serialized project shape as `figops.list_projects`
 - `root`
 - `count`
 
@@ -159,7 +159,7 @@ Acceptance:
 - Excludes worktrees and ephemeral runtime folders by default.
 - Does not run project scripts.
 
-### `graphhub://projects/{project_id}/config`
+### `figops://projects/{project_id}/config`
 
 Returns the selected project config YAML as text.
 
@@ -173,7 +173,7 @@ Acceptance:
 - Raw data, PDFs, media, and generated binaries are never read through this resource.
 - Symlinked config files, config paths that resolve outside the discovered project root, and configs larger than 1 MiB are rejected with `-32602`.
 
-### `graphhub://jobs/{job_id}/manifest`
+### `figops://jobs/{job_id}/manifest`
 
 Returns a render job manifest JSON.
 
@@ -194,8 +194,8 @@ Acceptance:
 {
   "resources": [
     {
-      "uri": "graphhub://styles",
-      "name": "Graph Hub Styles",
+      "uri": "figops://styles",
+      "name": "FigOps Styles",
       "description": "Canonical target formats, output formats, profiles, and aliases.",
       "mimeType": "application/json"
     }
@@ -209,14 +209,14 @@ Acceptance:
 {
   "resourceTemplates": [
     {
-      "uriTemplate": "graphhub://projects/{project_id}/config",
-      "name": "Graph Hub Project Config",
+      "uriTemplate": "figops://projects/{project_id}/config",
+      "name": "FigOps Project Config",
       "description": "Project configuration YAML resolved by discovered project ID.",
       "mimeType": "application/x-yaml"
     },
     {
-      "uriTemplate": "graphhub://jobs/{job_id}/manifest",
-      "name": "Graph Hub Render Job Manifest",
+      "uriTemplate": "figops://jobs/{job_id}/manifest",
+      "name": "FigOps Render Job Manifest",
       "description": "Sanitized render job manifest resolved by job ID.",
       "mimeType": "application/json"
     }
@@ -230,7 +230,7 @@ Acceptance:
 {
   "contents": [
     {
-      "uri": "graphhub://styles",
+      "uri": "figops://styles",
       "mimeType": "application/json",
       "text": "{...}"
     }
@@ -256,11 +256,11 @@ Arguments:
 
 The prompt must instruct the client to:
 
-1. call `graphhub.list_styles` if style support is uncertain,
-2. run `graphhub.render_csv_graph` with `dry_run=true`,
+1. call `figops.list_styles` if style support is uncertain,
+2. run `figops.render_csv_graph` with `dry_run=true`,
 3. inspect `calculation_checks`, `visual_preflight_status`, `failure_stage`, and `resolution_hint`,
 4. rerun without `dry_run` only when the dry run is clean or the user accepts warnings,
-5. call `graphhub.collect_artifacts`,
+5. call `figops.collect_artifacts`,
 6. never claim publication readiness without manual review when `manual_review_needed=true`.
 
 ### `inspect_graph_project_quality`
@@ -277,8 +277,8 @@ If neither selector is present, `prompts/get` returns `-32602`.
 
 The prompt must instruct the client to:
 
-1. call `graphhub.inspect_project`,
-2. call `graphhub.validate_project`,
+1. call `figops.inspect_project`,
+2. call `figops.validate_project`,
 3. inspect config errors, data contract errors, style errors, missing inputs, missing outputs, and normalization status,
 4. avoid rendering or normalization unless the user explicitly asks.
 
@@ -293,11 +293,11 @@ Arguments:
 
 The prompt must instruct the client to:
 
-1. call `graphhub.inspect_project`,
-2. call `graphhub.normalize_project_structure` with `dry_run=true`,
+1. call `figops.inspect_project`,
+2. call `figops.normalize_project_structure` with `dry_run=true`,
 3. show the manifest and preserve project style choices,
 4. apply only after user approval,
-5. call `graphhub.validate_project` after apply.
+5. call `figops.validate_project` after apply.
 
 ## Prompt Result Shape
 
@@ -348,22 +348,22 @@ Prompt argument validation:
 - Resource reads must be read-only.
 - Prompt retrieval must be read-only.
 - Resource URI parsing must reject path traversal, unknown schemes, unknown authorities, and extra path segments.
-- `graphhub://projects/{project_id}/config` must resolve by project ID, not by arbitrary path.
-- `graphhub://jobs/{job_id}/manifest` must strictly validate `job_id` and reject invalid characters instead of remapping them.
-- `graphhub://projects/{project_id}/config` must reject symlinked config files instead of following them.
+- `figops://projects/{project_id}/config` must resolve by project ID, not by arbitrary path.
+- `figops://jobs/{job_id}/manifest` must strictly validate `job_id` and reject invalid characters instead of remapping them.
+- `figops://projects/{project_id}/config` must reject symlinked config files instead of following them.
 - No resource may expose `.env`, credentials, raw data files, PDFs, images, or binary output contents in v1.
 - Resources may expose manifest JSON and project config YAML because these are graph contract artifacts.
 - Prompt arguments must be interpolated as inert text only; prompt generation must not call tools, inspect paths, or validate file existence.
 
 ## V1 Scope Reconciliation
 
-Earlier phase documents mention `graphhub://styles/{target_format}` and `graphhub://projects/{project_id}/artifacts`.
+Earlier phase documents mention `figops://styles/{target_format}` and `figops://projects/{project_id}/artifacts`.
 
 For this v1 work unit:
 
-- `graphhub://styles/{target_format}` is deferred because `graphhub://styles` already exposes all target formats and profile metadata.
-- `graphhub://projects/{project_id}/artifacts` is deferred because reliable project artifact inventory needs a separate inventory-board spec.
-- Render job artifacts are represented through `graphhub://jobs/{job_id}/manifest` plus `graphhub.collect_artifacts`.
+- `figops://styles/{target_format}` is deferred because `figops://styles` already exposes all target formats and profile metadata.
+- `figops://projects/{project_id}/artifacts` is deferred because reliable project artifact inventory needs a separate inventory-board spec.
+- Render job artifacts are represented through `figops://jobs/{job_id}/manifest` plus `figops.collect_artifacts`.
 
 ## Non-Goals
 
@@ -379,7 +379,7 @@ For this v1 work unit:
 - `initialize` advertises `tools`, `resources`, and `prompts`.
 - `resources/list` returns stable resources for styles, profiles, and projects.
 - `resources/templates/list` returns templates for project config and job manifest resources.
-- `resources/read` supports `graphhub://styles`, `graphhub://profiles`, `graphhub://projects`, `graphhub://projects/{project_id}/config`, and `graphhub://jobs/{job_id}/manifest`.
+- `resources/read` supports `figops://styles`, `figops://profiles`, `figops://projects`, `figops://projects/{project_id}/config`, and `figops://jobs/{job_id}/manifest`.
 - `prompts/list` returns the three v1 prompts.
 - `prompts/get` returns a valid MCP prompt message for each v1 prompt.
 - Malformed resource URIs and invalid prompt arguments return `-32602`.
@@ -394,13 +394,13 @@ Add tests for:
 - JSON-RPC `initialize` capabilities include tools/resources/prompts.
 - `resources/list` schema and core resource names.
 - `resources/templates/list` exposes dynamic project config and job manifest templates.
-- `resources/read graphhub://styles` matches `graphhub.list_styles`.
-- `resources/read graphhub://projects` uses project discovery and remains read-only.
-- `resources/read graphhub://projects/{project_id}/config` returns YAML for known project ID.
-- `resources/read graphhub://projects/{project_id}/config` reads legacy discovered config paths.
-- `resources/read graphhub://projects/{project_id}/config` rejects symlinked config files.
-- `resources/read graphhub://jobs/{job_id}/manifest` returns a render manifest after a controlled render.
-- `resources/read graphhub://jobs/{job_id}/manifest` sanitizes the original input data path from the returned JSON text.
+- `resources/read figops://styles` matches `figops.list_styles`.
+- `resources/read figops://projects` uses project discovery and remains read-only.
+- `resources/read figops://projects/{project_id}/config` returns YAML for known project ID.
+- `resources/read figops://projects/{project_id}/config` reads legacy discovered config paths.
+- `resources/read figops://projects/{project_id}/config` rejects symlinked config files.
+- `resources/read figops://jobs/{job_id}/manifest` returns a render manifest after a controlled render.
+- `resources/read figops://jobs/{job_id}/manifest` sanitizes the original input data path from the returned JSON text.
 - malformed resource URI returns `-32602`.
 - valid-but-missing resource returns `-32002`.
 - non-object JSON-RPC `params` returns `-32602`.

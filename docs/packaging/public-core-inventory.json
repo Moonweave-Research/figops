@@ -1,7 +1,7 @@
 {
   "schema_version": "public_core_inventory/1",
   "distribution_policy": {
-    "current_distribution_name": "graph-making-hub",
+    "current_distribution_name": "figops",
     "current_status": "private_internal",
     "public_pypi_allowed": false,
     "license_decision_required": true,
@@ -11,7 +11,7 @@
     {
       "area": "mcp_protocol_surface",
       "paths": [
-        "graphhub_mcp_server.py",
+        "figops_mcp_server.py",
         "hub_core/mcp/transport.py",
         "hub_core/mcp/schemas.py",
         "hub_core/mcp/server.py"
@@ -85,6 +85,6 @@
     "Internal/private style packs are removed from the public distribution or split into a private package.",
     "Private workflow documents and real research markers are absent from the public candidate.",
     "uv build and twine check pass for the final package artifacts.",
-    "A clean environment can install the wheel and run graphhub-mcp --smoke."
+    "A clean environment can install the wheel and run figops-mcp --smoke."
   ]
 }

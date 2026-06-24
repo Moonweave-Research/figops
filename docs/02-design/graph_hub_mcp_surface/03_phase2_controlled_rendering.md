@@ -8,11 +8,11 @@
 
 Support "structured CSV in, publication-style graph out" without touching source project trees.
 
-This phase validates that MCP can call existing Graph Hub rendering behavior safely. It does not analyze arbitrary raw instrument files and does not normalize real project folders.
+This phase validates that MCP can call existing FigOps rendering behavior safely. It does not analyze arbitrary raw instrument files and does not normalize real project folders.
 
 ## Tools
 
-### `graphhub.render_csv_graph`
+### `figops.render_csv_graph`
 
 Creates a temporary Hub-compatible job from a structured table and a figure spec.
 
@@ -32,11 +32,11 @@ Behavior:
 
 - copies or links input into an MCP job workspace,
 - writes a minimal `project_config.yaml`,
-- runs the existing bridge renderer through Graph Hub,
+- runs the existing bridge renderer through FigOps,
 - stores output under the runtime root,
 - returns artifact paths and preflight status.
 
-### `graphhub.collect_artifacts`
+### `figops.collect_artifacts`
 
 Returns artifact metadata after a render job.
 
@@ -62,9 +62,9 @@ Result fields:
 
 ## Style Preservation
 
-Rendering must use Graph Hub's canonical style contract.
+Rendering must use FigOps's canonical style contract.
 
-The tool must accept the same target formats as Graph Hub core, including `nature_surfur`. It must not use a smaller Athena-only enum.
+The tool must accept the same target formats as FigOps core, including `nature_surfur`. It must not use a smaller Athena-only enum.
 
 ## Non-Goals
 
@@ -78,7 +78,7 @@ The tool must accept the same target formats as Graph Hub core, including `natur
 
 - `render_csv_graph` creates jobs only under the runtime root.
 - `collect_artifacts` returns graph resources and manifest paths.
-- `nature_surfur` and the rest of Graph Hub target formats are accepted.
+- `nature_surfur` and the rest of FigOps target formats are accepted.
 - Render failures return execution errors rather than protocol errors.
 - Visual preflight failure returns `manual_review_needed=true`.
 
@@ -98,5 +98,5 @@ Execution tests:
 Compatibility tests:
 
 - rendered config uses `project_config.yaml` contract,
-- renderer calls existing Graph Hub bridge behavior,
-- style format list matches Graph Hub core.
+- renderer calls existing FigOps bridge behavior,
+- style format list matches FigOps core.

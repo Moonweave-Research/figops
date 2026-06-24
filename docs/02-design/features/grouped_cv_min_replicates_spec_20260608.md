@@ -1,21 +1,21 @@
 # Grouped CV and Replicate Count Data Contract Spec
 
 - Date: 2026-06-08
-- Scope: Graph Hub `data_contract.csv_checks[].semantic_checks`
+- Scope: FigOps `data_contract.csv_checks[].semantic_checks`
 - Status: implementation spec for Phase B calculation-check expansion
 
 ## Goal
 
-Add two graph-specific calculation checks to Graph Hub:
+Add two graph-specific calculation checks to FigOps:
 
 - `min_replicates`: block rendering when each declared group does not contain enough repeated observations.
 - `grouped_cv`: mark data as quality-failed when a numeric measurement has excessive coefficient of variation inside declared groups.
 
-These checks belong in Graph Hub because insufficient repeats and group-level noise directly determine whether a plotted trend, bar, error bar, or replicate summary is scientifically defensible.
+These checks belong in FigOps because insufficient repeats and group-level noise directly determine whether a plotted trend, bar, error bar, or replicate summary is scientifically defensible.
 
 ## Non-Goals
 
-- Do not make Graph Hub a general statistics engine.
+- Do not make FigOps a general statistics engine.
 - Do not infer grouping columns automatically.
 - Do not compute or validate full regression models in this slice.
 - Do not change the global CV warning behavior yet; keep it backward compatible.

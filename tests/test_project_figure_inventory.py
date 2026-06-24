@@ -288,4 +288,4 @@ def test_render_markdown_includes_workflow_and_targets(tmp_path: Path) -> None:
     assert "`project_a`" in markdown
     assert "`FigReady`" in markdown
     assert "Symlinks" in markdown
-    assert "graphhub.render_project_figure with dry_run=true" in markdown
+    assert "figops.render_project_figure with dry_run=true" in markdown

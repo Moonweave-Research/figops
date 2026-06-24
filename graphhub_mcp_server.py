@@ -6,30 +6,30 @@ import json
 
 from hub_core.doctor import format_doctor_report, run_doctor
 from hub_core.logging import configure_logging
-from hub_core.mcp import GraphHubMCPServer, McpServerConfig, run_stdio_server
+from hub_core.mcp import FigOpsMCPServer, McpServerConfig, run_stdio_server
 
 
 def _run_smoke(config: McpServerConfig) -> int:
-    server = GraphHubMCPServer(config=config)
-    health = server.call_tool("graphhub.health", {})["structuredContent"]
-    styles = server.call_tool("graphhub.list_styles", {})["structuredContent"]
+    server = FigOpsMCPServer(config=config)
+    health = server.call_tool("figops.health", {})["structuredContent"]
+    styles = server.call_tool("figops.list_styles", {})["structuredContent"]
     payload = {
         "status": "ok" if health.get("status") in {"ok", "warning"} and styles.get("status") == "ok" else "error",
         "health_status": health.get("status"),
         "style_format_count": styles.get("style_format_count") or len(styles.get("target_formats", [])),
-        "tool_surface": "graphhub_mcp",
+        "tool_surface": "figops_mcp",
     }
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     return 0 if payload["status"] == "ok" else 1
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Graph Hub MCP stdio server")
+    parser = argparse.ArgumentParser(description="FigOps MCP stdio server")
     parser.add_argument("--smoke", action="store_true", help="Run a read-only MCP health/style smoke check")
     subparsers = parser.add_subparsers(dest="command")
-    doctor_parser = subparsers.add_parser("doctor", help="Run a Graph Hub environment readiness check")
+    doctor_parser = subparsers.add_parser("doctor", help="Run a FigOps environment readiness check")
     doctor_parser.add_argument("--json", action="store_true", help="Emit structured doctor output for agents")
-    parser.add_argument("--hub-path", help="Explicit Graph Hub repository path")
+    parser.add_argument("--hub-path", help="Explicit FigOps repository path")
     parser.add_argument("--research-root", help="Explicit research/project discovery root")
     parser.add_argument("--runtime-root", help="Explicit MCP runtime root")
     parser.add_argument(
@@ -54,7 +54,7 @@ def main() -> int:
         else:
             print(format_doctor_report(report))
         return 0 if report["ready"] else 1
-    return run_stdio_server(GraphHubMCPServer(config=config, require_initialize=True))
+    return run_stdio_server(FigOpsMCPServer(config=config, require_initialize=True))
 
 
 if __name__ == "__main__":

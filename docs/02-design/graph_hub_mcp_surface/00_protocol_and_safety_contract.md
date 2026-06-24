@@ -1,18 +1,18 @@
 # 00 Protocol and Safety Contract
 
 - Status: Required cross-cutting contract
-- Applies to: every Graph Hub MCP work unit
+- Applies to: every FigOps MCP work unit
 - Implementation order: define this before writing any MCP tool
 
 ## Purpose
 
-This document defines the protocol and safety rules that every Graph Hub MCP tool, resource, and prompt must obey.
+This document defines the protocol and safety rules that every FigOps MCP tool, resource, and prompt must obey.
 
-MCP tools are model-callable, so they need stricter boundaries than the existing CLI. The server must expose Graph Hub capability without making it easy for an agent to write into the wrong project, leak sensitive paths, run unbounded jobs, or treat a syntactically created graph as publication-ready.
+MCP tools are model-callable, so they need stricter boundaries than the existing CLI. The server must expose FigOps capability without making it easy for an agent to write into the wrong project, leak sensitive paths, run unbounded jobs, or treat a syntactically created graph as publication-ready.
 
 ## Ownership Contract
 
-Graph Hub owns the graph contract:
+FigOps owns the graph contract:
 
 - project discovery,
 - `project_config.yaml` validation,
@@ -21,9 +21,9 @@ Graph Hub owns the graph contract:
 - provenance and artifact manifests,
 - graph quality status.
 
-Athena and other agents are clients of this contract. They may request graphs, inspect Hub state, or consume artifact resources, but they must not narrow Graph Hub's style set or duplicate project discovery rules as a separate source of truth.
+Athena and other agents are clients of this contract. They may request graphs, inspect Hub state, or consume artifact resources, but they must not narrow FigOps's style set or duplicate project discovery rules as a separate source of truth.
 
-The existing Athena bridge remains a compatibility adapter during migration. It should be replaced only after MCP parity tests prove equivalent behavior. Existing Graph Hub code that imports Athena should be treated as optional or transitional, not as required core graph behavior.
+The existing Athena bridge remains a compatibility adapter during migration. It should be replaced only after MCP parity tests prove equivalent behavior. Existing FigOps code that imports Athena should be treated as optional or transitional, not as required core graph behavior.
 
 ## MCP Server Capabilities
 
@@ -61,7 +61,7 @@ summary: short human-readable result
 created_paths: list
 modified_paths: list
 skipped_paths: list
-artifact_resources: list of graphhub:// or file:// resource links
+artifact_resources: list of figops:// or file:// resource links
 warnings: list
 errors: list
 manual_review_needed: boolean
@@ -110,13 +110,13 @@ The MCP server must not create `.venv`, `.r_libs`, DVC state, or long-lived cach
 Suggested resources:
 
 ```text
-graphhub://styles
-graphhub://styles/{target_format}
-graphhub://profiles
-graphhub://projects
-graphhub://projects/{project_id}/config
-graphhub://projects/{project_id}/artifacts
-graphhub://jobs/{job_id}/manifest
+figops://styles
+figops://styles/{target_format}
+figops://profiles
+figops://projects
+figops://projects/{project_id}/config
+figops://projects/{project_id}/artifacts
+figops://jobs/{job_id}/manifest
 ```
 
 Requirements:
@@ -124,7 +124,7 @@ Requirements:
 - each resource must declare a MIME type,
 - resource templates must use valid URI templates,
 - binary artifacts such as PNG previews must be returned as binary resource contents or file/resource links, not embedded as arbitrary text,
-- `graphhub://` resource URIs must be validated before reading,
+- `figops://` resource URIs must be validated before reading,
 - resources exposing project configs or manifests should include `lastModified` metadata when available.
 
 ## Prompt Requirements

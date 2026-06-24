@@ -92,7 +92,7 @@ import sys
 def setup_hub_path():
     hub_path = os.environ.get("RESEARCH_HUB_PATH")
     if not hub_path:
-        raise RuntimeError("RESEARCH_HUB_PATH is required when running Graph Hub project scripts.")
+        raise RuntimeError("RESEARCH_HUB_PATH is required when running FigOps project scripts.")
     if hub_path not in sys.path:
         sys.path.insert(0, hub_path)
     return hub_path
@@ -130,7 +130,7 @@ logger = logging.getLogger(__name__)
 
 hub_path = os.environ.get("RESEARCH_HUB_PATH")
 if not hub_path:
-    raise RuntimeError("RESEARCH_HUB_PATH is required when running this plot script outside Graph Hub.")
+    raise RuntimeError("RESEARCH_HUB_PATH is required when running this plot script outside FigOps.")
 if hub_path not in sys.path:
     sys.path.insert(0, hub_path)
 
@@ -191,7 +191,7 @@ logger = logging.getLogger(__name__)
 
 hub_path = os.environ.get("RESEARCH_HUB_PATH")
 if not hub_path:
-    raise RuntimeError("RESEARCH_HUB_PATH is required when running this diagram script outside Graph Hub.")
+    raise RuntimeError("RESEARCH_HUB_PATH is required when running this diagram script outside FigOps.")
 if hub_path not in sys.path:
     sys.path.insert(0, hub_path)
 

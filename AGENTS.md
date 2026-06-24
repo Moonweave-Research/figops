@@ -1,6 +1,6 @@
 # AGENTS.md — Research Hub Unified Agent Protocol (v4.0)
 
-> Identity: This is the single, model-agnostic operating protocol for the independent `graph-making-hub` repository.
+> Identity: This is the single, model-agnostic operating protocol for the independent `figops` repository.
 > Principle: Data is the API. Quality is absolute. Silent failure is prohibited.
 
 ---
@@ -36,7 +36,7 @@ Coordinate end-to-end planning, implementation, and verification across the modu
 Orchestrator injects the following vars:
 - `RESEARCH_HUB_PATH`: Absolute path to the hub.
 - `PROJECT_ROOT`: Absolute path to the active research project.
-- `THEME_FORMAT`: `nature | nature_surfur | science | ppt | default | acs | rsc | elsevier | wiley | cell`. The live source of truth is `ALLOWED_TARGET_FORMATS` in `hub_core/config_parser.py`; agents can also call `graphhub.list_styles` or consult generated `docs/tools.md`.
+- `THEME_FORMAT`: `nature | nature_surfur | science | ppt | default | acs | rsc | elsevier | wiley | cell`. The live source of truth is `ALLOWED_TARGET_FORMATS` in `hub_core/config_parser.py`; agents can also call `figops.list_styles` or consult generated `docs/tools.md`.
 - `THEME_SCALE`: Font scaling factor.
 - `THEME_PROFILE`: Active style profile name.
 
@@ -44,13 +44,13 @@ Orchestrator injects the following vars:
 
 ## 5) Local Operational Ownership
 
-Graph Hub locally owns per-project analysis and plotting orchestration via `orchestrator.py` and `project_config.yaml` contracts. Workspace-level figure or schematic integrations may reference this repo, but current operational ownership for analysis, plotting, cache behavior, and project scaffolding stays here.
+FigOps locally owns per-project analysis and plotting orchestration via `orchestrator.py` and `project_config.yaml` contracts. Workspace-level figure or schematic integrations may reference this repo, but current operational ownership for analysis, plotting, cache behavior, and project scaffolding stays here.
 
 Programmatic schematic Hub integration may be described in workspace-level specs, but it is not wired into the current Hub orchestrator CLI unless this repository documents that change.
 
 ## 6) Common Commands
 
-Run from the independent `graph-making-hub/` clone:
+Run from the independent `figops/` clone:
 
 ```bash
 # Preferred uv entry point: keeps uv's project env outside the repo
@@ -96,7 +96,7 @@ python orchestrator.py --check-all --step all --force --strict-lock
 - Python dependency state from `pyproject.toml` and `uv.lock` for orchestration and plotting.
 - R runtime from `renv.lock` for project analysis scripts.
 - Keep runtime environments outside tracked source unless a repo-level exception is documented.
-- Prefer `python hub_uv.py ...` over bare `uv run ...` inside this repo. The wrapper pins `UV_PROJECT_ENVIRONMENT` and `UV_CACHE_DIR` under the external Graph Hub runtime root so a materialized repo-local `.venv/` is not recreated.
+- Prefer `python hub_uv.py ...` over bare `uv run ...` inside this repo. The wrapper pins `UV_PROJECT_ENVIRONMENT` and `UV_CACHE_DIR` under the external FigOps runtime root so a materialized repo-local `.venv/` is not recreated.
 
 ## 9) Standardized Plotting Policy
 
@@ -108,7 +108,7 @@ The MCP launcher is trusted. Prefer explicit server config/CLI values for
 `hub_path`, `research_root`, `runtime_root`, write-tool enablement, and
 allowed data roots. Environment variables remain a supported operator-policy
 source and must be validated before they widen access. Boundary-widening values
-report warnings through `graphhub.health`.
+report warnings through `figops.health`.
 
 - `GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS`: widens read access for MCP data inputs
   beyond the research root and runtime root. Entries must be non-empty,
@@ -126,7 +126,7 @@ report warnings through `graphhub.health`.
   jobs, manifests, logs, and generated artifacts are stored. Runtime access
   must stay under the resolved runtime root.
 - `GRAPH_HUB_RUNTIME_ROOT`: launcher-compatible fallback for runtime storage root selection.
-- `RESEARCH_HUB_PATH`: tells project scripts where to import Graph Hub helpers.
+- `RESEARCH_HUB_PATH`: tells project scripts where to import FigOps helpers.
   The launcher must point it at this repository, not at a user-controlled path.
 - `PROJECT_ROOT`: points project scripts at the active project or runtime
   snapshot. Render code must use resolved project/snapshot paths and fail if
@@ -145,7 +145,7 @@ These variables are runtime knobs or diagnostics transport, not MCP
 trust-boundary inputs. Do not add them to `ROOT_ADAPTER_SECURITY_ENV_VARS`
 unless they start widening roots, write access, or adapter trust.
 
-- `GRAPH_HUB_LOG_LEVEL`: selects Graph Hub logging verbosity; default is
+- `GRAPH_HUB_LOG_LEVEL`: selects FigOps logging verbosity; default is
   `WARNING`.
 - `GEOMETRY_DIAGNOSTICS_OUT`: render-scoped sidecar path used for geometry
   diagnostics output.

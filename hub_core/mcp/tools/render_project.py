@@ -148,7 +148,7 @@ class McpRenderProjectMixin:
         project_id = self._stable_project_id_for_path(project_path)
         if dry_run:
             return self._envelope(
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 arguments,
                 summary="Project figure render validated in dry-run mode; no files were created.",
                 is_dry_run=True,
@@ -352,7 +352,7 @@ class McpRenderProjectMixin:
                     layout_report=failure_layout_report,
                 )
             return self._envelope(
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 arguments,
                 status="error",
                 summary="Project figure render execution failed.",
@@ -384,7 +384,7 @@ class McpRenderProjectMixin:
                 resolution_hint=resolution_hint,
             )
         return self._envelope(
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             arguments,
             status=status,
             summary=(

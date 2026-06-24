@@ -1,4 +1,4 @@
-# Graph Hub — Remaining Audit Remediation Spec (handoff to implementer)
+# FigOps — Remaining Audit Remediation Spec (handoff to implementer)
 
 > Status: implementation spec. The concrete-defect roadmap from the 2026-06 adversarial
 > audit (P0/P1/P2 + two P3 items) is **already merged to `main`** across PRs

@@ -1,14 +1,14 @@
-# Graph Hub MCP Surface Spec
+# FigOps MCP Surface Spec
 
 - Status: Final direction and work-unit index; updated after live ResearchOS audit
 - Date: 2026-06-07
-- Scope: independent `graph-making-hub` repository, Athena visualization bridge, ResearchOS project graph inventory
-- Decision: Graph Hub remains the canonical graph engine. MCP is added as a thin, typed agent surface. Athena becomes a caller/client of Graph Hub, not the owner of Graph Hub project or style contracts.
+- Scope: independent `figops` repository, Athena visualization bridge, ResearchOS project graph inventory
+- Decision: FigOps remains the canonical graph engine. MCP is added as a thin, typed agent surface. Athena becomes a caller/client of FigOps, not the owner of FigOps project or style contracts.
 - Implementation start point: finish Phase 0 truth-surface repair and style-contract alignment. Write-capable MCP tools are out of scope until discovery, style, validation, and no-write read-only tests pass.
 
 ## Executive Decision
 
-Graph Hub should evolve toward an MCP-compatible surface, but MCP must not replace the existing Hub engine.
+FigOps should evolve toward an MCP-compatible surface, but MCP must not replace the existing Hub engine.
 
 The target architecture is:
 
@@ -17,10 +17,10 @@ Agents / Athena / Codex
         |
         | client calls
         v
-Graph Hub MCP Surface
+FigOps MCP Surface
         |
         v
-Graph Hub Core Engine
+FigOps Core Engine
   - project_config.yaml contract
   - orchestrator.py CLI
   - hub_core validation and execution
@@ -31,9 +31,9 @@ Graph Hub Core Engine
 Standardized research project folders and reproducible artifacts
 ```
 
-The key rule is: MCP exposes Graph Hub capability; it does not reimplement plotting, style selection, project discovery, cache behavior, provenance, or validation.
+The key rule is: MCP exposes FigOps capability; it does not reimplement plotting, style selection, project discovery, cache behavior, provenance, or validation.
 
-Athena must not copy or narrow Graph Hub's project/style contract. During migration, Athena's existing `hub_bridge` path remains a compatibility adapter until MCP render parity is proven with the same inputs, styles, artifact manifests, and failure modes.
+Athena must not copy or narrow FigOps's project/style contract. During migration, Athena's existing `hub_bridge` path remains a compatibility adapter until MCP render parity is proven with the same inputs, styles, artifact manifests, and failure modes.
 
 ## Why This Is Split
 
@@ -56,20 +56,20 @@ Read and execute in this order:
 
 Post-migration direction lock:
 
-- [Graph Hub Independent Completion Spec](graph_hub_independent_completion_spec_20260608.md)
+- [FigOps Independent Completion Spec](graph_hub_independent_completion_spec_20260608.md)
 
 ## Current Findings That Drive the Plan
 
-### Live ResearchOS And Graph Hub State
+### Live ResearchOS And FigOps State
 
 Live audit on 2026-06-07 found:
 
-- Graph Hub has been physically externalized as its own Git repository at `/Users/choemun-yeong/workspace/graph-making-hub`.
-- ResearchOS still owns workspace governance and Athena. Athena must resolve Graph Hub as an external tool path, not as a nested `[Graph_making_hub]` source tree.
-- Graph Hub discovery now reports 14 projects: 13 valid and 1 invalid.
+- FigOps has been physically externalized as its own Git repository at `/Users/choemun-yeong/workspace/figops`.
+- ResearchOS still owns workspace governance and Athena. Athena must resolve FigOps as an external tool path, not as a nested `[Graph_making_hub]` source tree.
+- FigOps discovery now reports 14 projects: 13 valid and 1 invalid.
 - The invalid project is `02_Surfur_Polymer/유전율 측정`, with three `data_contract.csv_checks.path is required` errors.
-- Athena `hub_bridge` is enabled and resolves `hub_path` to the local independent Graph Hub path, with compatibility handling for legacy configured paths.
-- Athena can execute a Graph Hub bridge smoke job, but its `TargetFormat` contract is narrower than Graph Hub's official style set.
+- Athena `hub_bridge` is enabled and resolves `hub_path` to the local independent FigOps path, with compatibility handling for legacy configured paths.
+- Athena can execute a FigOps bridge smoke job, but its `TargetFormat` contract is narrower than FigOps's official style set.
 - `workspace_state.md` and `workspace_state.json` can become dirty from health/report generation, so read-only MCP health must not reuse side-effectful report writers.
 
 ### Discovery Truth Has Been Repaired, But Phase 0 Is Not Done
@@ -80,7 +80,7 @@ That discovery gap has been repaired in the current workspace by introducing a s
 
 ### Style Contracts Must Stay Shared
 
-Graph Hub supports target formats including:
+FigOps supports target formats including:
 
 ```text
 nature, nature_surfur, science, ppt, default, acs, rsc, elsevier, wiley, cell
@@ -92,18 +92,18 @@ Athena's bridge model currently narrows that surface to:
 nature, science, ppt, default
 ```
 
-The MCP schema must derive style formats from Graph Hub's canonical style contract or from a shared model generated from that contract. It must not copy a narrower Athena-only enum.
+The MCP schema must derive style formats from FigOps's canonical style contract or from a shared model generated from that contract. It must not copy a narrower Athena-only enum.
 
-### Athena Is A Caller, Not The Graph Hub Owner
+### Athena Is A Caller, Not The FigOps Owner
 
-The current Athena bridge writes temporary Hub-compatible projects and calls Graph Hub's CLI. This is a useful compatibility layer, but it is not the target ownership model.
+The current Athena bridge writes temporary Hub-compatible projects and calls FigOps's CLI. This is a useful compatibility layer, but it is not the target ownership model.
 
 Target ownership:
 
-- Graph Hub owns project discovery, project config validation, style contracts, rendering execution, provenance, artifacts, and quality status.
-- Athena owns research routing, solve/literature/context workflows, and calls Graph Hub through a typed client interface.
-- Graph Hub MCP becomes the stable interface between them.
-- Graph Hub code should not require Athena imports for core graph rendering. Existing Graph Hub-to-Athena rendering hooks are transitional/plugin-like and should be reviewed before MCP write tools ship.
+- FigOps owns project discovery, project config validation, style contracts, rendering execution, provenance, artifacts, and quality status.
+- Athena owns research routing, solve/literature/context workflows, and calls FigOps through a typed client interface.
+- FigOps MCP becomes the stable interface between them.
+- FigOps code should not require Athena imports for core graph rendering. Existing FigOps-to-Athena rendering hooks are transitional/plugin-like and should be reviewed before MCP write tools ship.
 
 ### MCP Must Not Become a New Plotting Engine
 
@@ -123,13 +123,13 @@ MCP should import or call those behaviors. It must not duplicate them.
 
 The MCP direction is accepted only when all of the following remain true:
 
-1. Graph Hub remains usable through the existing CLI.
-2. MCP calls use Graph Hub core behavior instead of reimplementing plotting.
+1. FigOps remains usable through the existing CLI.
+2. MCP calls use FigOps core behavior instead of reimplementing plotting.
 3. Read-only tools are side-effect free.
 4. Write tools are explicit, bounded, and return manifests.
 5. Project discovery is symlink-aware and excludes worktrees/ephemeral bridge jobs by default.
 6. Invalid project configs are visible to agents.
-7. Target style formats are shared across Graph Hub, Athena bridge, and MCP.
+7. Target style formats are shared across FigOps, Athena bridge, and MCP.
 8. `nature_surfur` remains a first-class supported target format.
 9. Temporary jobs use an external runtime root.
 10. Artifact results distinguish `created`, `validated`, `preflight_passed`, and `manual_review_needed`.

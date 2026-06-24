@@ -1,9 +1,9 @@
 # Research Operations Philosophy
 
-Graph Hub makes research-operations structure the default path for execution
+FigOps makes research-operations structure the default path for execution
 modules, while keeping migrations explicit and non-destructive. The enforcement
 posture is strict but scoped: modules fail fast on declared research-ops contract
-violations, but Graph Hub does not require every possible contract to be present
+violations, but FigOps does not require every possible contract to be present
 in every project.
 
 The philosophy is reproducibility-first and FAIR-aligned, but sized for a single

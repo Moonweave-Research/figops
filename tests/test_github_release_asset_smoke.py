@@ -10,7 +10,7 @@ from scripts.github_release_asset_smoke import (
 
 
 def _write_pyproject(root: Path, version: str = "1.2.3") -> None:
-    (root / "pyproject.toml").write_text(f'[project]\nname = "graph-making-hub"\nversion = "{version}"\n')
+    (root / "pyproject.toml").write_text(f'[project]\nname = "figops"\nversion = "{version}"\n')
 
 
 def _write_fake_gh(path: Path, payload: dict[str, object], returncode: int = 0) -> None:
@@ -27,8 +27,8 @@ def test_expected_release_asset_names_use_current_version(tmp_path: Path) -> Non
 
     assert release_tag(tmp_path) == "v1.2.3"
     assert expected_asset_names(tmp_path) == (
-        "graph_making_hub-1.2.3-py3-none-any.whl",
-        "graph_making_hub-1.2.3.tar.gz",
+        "figops-1.2.3-py3-none-any.whl",
+        "figops-1.2.3.tar.gz",
     )
 
 
@@ -54,8 +54,8 @@ def test_inspect_release_assets_accepts_expected_assets(tmp_path: Path) -> None:
             "url": "https://example.test/release",
             "tagName": "v1.2.3",
             "assets": [
-                {"name": "graph_making_hub-1.2.3-py3-none-any.whl"},
-                {"name": "graph_making_hub-1.2.3.tar.gz"},
+                {"name": "figops-1.2.3-py3-none-any.whl"},
+                {"name": "figops-1.2.3.tar.gz"},
             ],
         },
     )
@@ -74,4 +74,4 @@ def test_inspect_release_assets_blocks_missing_wheel(tmp_path: Path) -> None:
     result = inspect_release_assets(tmp_path, repo="owner/repo", gh_bin=str(fake_gh))
 
     assert not result["ok"]
-    assert any("graph_making_hub-1.2.3-py3-none-any.whl" in blocker for blocker in result["blockers"])
+    assert any("figops-1.2.3-py3-none-any.whl" in blocker for blocker in result["blockers"])

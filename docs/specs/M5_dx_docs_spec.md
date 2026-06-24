@@ -10,7 +10,7 @@
 returns formats/profiles but not plot types or their per-type args. Enums were added for
 format/profile (PR #55) but plot-type discovery is still thin.
 
-**Design:** a `graphhub.describe` tool (or an enriched `list_styles`) that returns, from the M3.2
+**Design:** a `figops.describe` tool (or an enriched `list_styles`) that returns, from the M3.2
 registry + the tool registry (`docs/architecture.md`):
 - every plot type with its `arg_schema` + `capabilities` (supports_series/yerr/broken_axis/...),
 - every tool with its input/output schema and a one-line purpose,
@@ -41,7 +41,7 @@ tool reference is regenerated in CI and matches the live schemas.
 
 ## M5.3 — Self-check / doctor — S
 
-**Design:** extend the existing `graphhub_mcp_server.py --smoke` into a `graphhub doctor` that
+**Design:** extend the existing `figops_mcp_server.py --smoke` into a `graphhub doctor` that
 validates the environment and reports readiness: Python/uv, optional `[io]` deps, `Rscript`
 availability, write-tool gating state, resolved roots + any broad-root warnings (PR #55),
 adapter selection (M3.1). Human-readable + a `--json` mode for agents.

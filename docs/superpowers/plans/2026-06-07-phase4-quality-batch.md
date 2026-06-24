@@ -4,7 +4,7 @@
 
 **Goal:** Add Phase 4 MCP quality status, optional baseline comparison, and bounded batch checking without mutating source projects.
 
-**Architecture:** Keep MCP as a thin surface over Graph Hub core contracts. Rendering still uses `plotting.bridge_renderer` and `figure_preflight`; batch checking composes `ProjectDiscoveryService`, existing inspect/validate helpers, and writes only a runtime manifest when explicitly requested.
+**Architecture:** Keep MCP as a thin surface over FigOps core contracts. Rendering still uses `plotting.bridge_renderer` and `figure_preflight`; batch checking composes `ProjectDiscoveryService`, existing inspect/validate helpers, and writes only a runtime manifest when explicitly requested.
 
 **Tech Stack:** Python 3.12 through `python3 hub_uv.py run`, standard library JSON/path/hash utilities, existing `hub_core.mcp_surface`, and unittest/pytest.
 
@@ -13,7 +13,7 @@
 ## Files
 
 - Modify: `hub_core/mcp_surface.py`
-  - Add `graphhub.batch_check` tool definition and handler.
+  - Add `figops.batch_check` tool definition and handler.
   - Add `artifact_status` and `baseline_comparison` fields to render and collect results.
   - Add bounded batch runtime manifest writing under `runtime_root/mcp_jobs/<batch_id>/batch_manifest.json`.
 - Modify: `docs/02-design/graph_hub_mcp_surface/05_phase4_quality_gate_batch.md`
@@ -54,7 +54,7 @@ Expected: fail because `artifact_status`, `baseline_path`, and `baseline_compari
 
 In `hub_core/mcp_surface.py`:
 
-- Add optional `baseline_path` to `graphhub.render_csv_graph` and `graphhub.collect_artifacts` schemas.
+- Add optional `baseline_path` to `figops.render_csv_graph` and `figops.collect_artifacts` schemas.
 - Add helper methods:
   - `_artifact_status(preflight, baseline_comparison)`
   - `_baseline_comparison(artifact_path, baseline_path)`
@@ -83,7 +83,7 @@ Add tests in `tests/test_mcp_batch_quality.py`:
 
 ```python
 def test_tool_definitions_include_batch_check(self):
-    # Assert graphhub.batch_check exists with root, max_projects, dry_run, batch_id, resume_manifest_path.
+    # Assert figops.batch_check exists with root, max_projects, dry_run, batch_id, resume_manifest_path.
 
 def test_batch_check_dry_run_excludes_invalid_legacy_and_ephemeral_projects_by_default(self):
     # Build fixture valid/invalid/legacy/.worktrees/[Athena]/bridge_jobs projects and assert skip reasons.
@@ -106,7 +106,7 @@ Run:
 python3 hub_uv.py run python -m pytest tests/test_mcp_batch_quality.py -q
 ```
 
-Expected: fail because `graphhub.batch_check` is not implemented.
+Expected: fail because `figops.batch_check` is not implemented.
 
 - [ ] **Step 3: Implement batch check**
 
@@ -115,7 +115,7 @@ In `hub_core/mcp_surface.py`:
 - Add constants:
   - `MCP_BATCH_MAX_PROJECTS = 50`
   - `MCP_BATCH_TIMEOUT_SECONDS = 30.0`
-- Add `graphhub.batch_check` to `TOOL_NAMES`, `WRITE_TOOL_NAMES`, tool definitions, and handlers.
+- Add `figops.batch_check` to `TOOL_NAMES`, `WRITE_TOOL_NAMES`, tool definitions, and handlers.
 - Handler inputs:
   - `root`, `max_depth`, `max_projects`, `include_invalid`, `include_legacy`, `include_worktrees`, `include_ephemeral`, `dry_run`, `batch_id`, `resume_manifest_path`.
 - Default behavior:
@@ -161,7 +161,7 @@ Expected: full suite passes.
 Run:
 
 ```bash
-/home/ubuntu/.codex/wrappers/review.sh deep-review "Review Phase 4 Graph Hub MCP quality gate and batch operation diff against origin/main. Focus on write boundaries, batch bounds, resume manifest correctness, invalid/legacy/ephemeral exclusions, baseline comparison safety, visual preflight/manual_review status, and existing CLI compatibility."
+/home/ubuntu/.codex/wrappers/review.sh deep-review "Review Phase 4 FigOps MCP quality gate and batch operation diff against origin/main. Focus on write boundaries, batch bounds, resume manifest correctness, invalid/legacy/ephemeral exclusions, baseline comparison safety, visual preflight/manual_review status, and existing CLI compatibility."
 ```
 
 - [ ] **Step 4: Address review feedback with TDD**

@@ -34,15 +34,15 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
     def test_tool_definitions_include_project_normalization_tools(self):
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
 
-        self.assertIn("graphhub.scaffold_project", definitions)
-        self.assertIn("graphhub.normalize_project_structure", definitions)
-        self.assertIn("project_root", definitions["graphhub.scaffold_project"]["inputSchema"]["required"])
-        self.assertIn("project_name", definitions["graphhub.scaffold_project"]["inputSchema"]["required"])
-        self.assertIn("project_path", definitions["graphhub.normalize_project_structure"]["inputSchema"]["required"])
+        self.assertIn("figops.scaffold_project", definitions)
+        self.assertIn("figops.normalize_project_structure", definitions)
+        self.assertIn("project_root", definitions["figops.scaffold_project"]["inputSchema"]["required"])
+        self.assertIn("project_name", definitions["figops.scaffold_project"]["inputSchema"]["required"])
+        self.assertIn("project_path", definitions["figops.normalize_project_structure"]["inputSchema"]["required"])
 
     def test_normalize_uses_dry_run_flag_matching_other_write_tools(self):
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
-        normalize_props = definitions["graphhub.normalize_project_structure"]["inputSchema"]["properties"]
+        normalize_props = definitions["figops.normalize_project_structure"]["inputSchema"]["properties"]
 
         self.assertIn("dry_run", normalize_props)
         self.assertNotIn("plan_only", normalize_props)
@@ -58,7 +58,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 server = GraphHubMCPServer(research_root=Path(tmpdir))
                 result = self._call(
                     server,
-                    "graphhub.scaffold_project",
+                    "figops.scaffold_project",
                     {
                         "project_name": "New Project",
                         "project_root": str(project_root),
@@ -99,7 +99,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 server = GraphHubMCPServer(research_root=Path(tmpdir))
                 result = self._call(
                     server,
-                    "graphhub.scaffold_project",
+                    "figops.scaffold_project",
                     {
                         "project_name": "New Project",
                         "project_root": str(project_root),
@@ -120,7 +120,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {"project_name": "Blocked Project", "project_root": str(external_root), "dry_run": False},
             )
 
@@ -135,7 +135,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {
                     "project_name": "Applied Project",
                     "project_root": str(project_root),
@@ -182,7 +182,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {
                     "project_name": "Existing Project",
                     "project_root": str(project_root),
@@ -199,20 +199,20 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project_root = Path(tmpdir) / "ResearchOS" / "Existing_Project"
             project_root.mkdir(parents=True)
-            manifest_path = project_root / ".graphhub_scaffold_manifest.json"
+            manifest_path = project_root / ".figops_scaffold_manifest.json"
             manifest_path.write_text('{"existing": true}\n', encoding="utf-8")
             before = _snapshot_files(project_root)
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {"project_name": "Existing Project", "project_root": str(project_root), "dry_run": False},
             )
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn(".graphhub_scaffold_manifest.json", result["errors"][0])
+            self.assertIn(".figops_scaffold_manifest.json", result["errors"][0])
             self.assertEqual(_snapshot_files(project_root), before)
 
     def test_scaffold_project_refuses_directory_blocker_before_writes(self):
@@ -225,7 +225,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {"project_name": "Blocked Project", "project_root": str(project_root), "dry_run": False},
             )
 
@@ -244,7 +244,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {"project_name": "Blocked Project", "project_root": str(project_root), "dry_run": False},
             )
 
@@ -265,7 +265,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {
                     "project_name": "Blocked Project",
                     "project_root": str(project_root),
@@ -292,7 +292,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {"project_name": "Blocked Project", "project_root": str(project_root), "dry_run": False},
             )
 
@@ -313,7 +313,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {"project_name": "Blocked Project", "project_root": str(symlink_root), "dry_run": False},
             )
 
@@ -334,7 +334,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {
                     "project_name": "Blocked Project",
                     "project_root": str(symlink_parent / "Blocked_Project"),
@@ -358,7 +358,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {"project_name": "Blocked Project", "project_root": str(alias / "Blocked_Project"), "dry_run": False},
             )
 
@@ -397,7 +397,7 @@ figures:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "copy"},
             )
 
@@ -426,7 +426,7 @@ figures:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False},
             )
 
@@ -444,7 +444,7 @@ figures:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "include_raw": True, "move_policy": "copy"},
             )
 
@@ -452,12 +452,12 @@ figures:
             self.assertFalse(result["is_dry_run"])
             self.assertTrue((project / "hub_scripts" / "plot.py").is_file())
             self.assertTrue((project / "raw" / "summary.csv").is_file())
-            self.assertTrue((project / ".graphhub_normalization_manifest.json").is_file())
-            manifest = json.loads((project / ".graphhub_normalization_manifest.json").read_text(encoding="utf-8"))
+            self.assertTrue((project / ".figops_normalization_manifest.json").is_file())
+            manifest = json.loads((project / ".figops_normalization_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["operation"], "normalize_project_structure")
             self.assertTrue(any(entry["destination"] == "hub_scripts/plot.py" for entry in manifest["entries"]))
             self.assertTrue(
-                any(path.endswith(".graphhub_normalization_manifest.json") for path in result["created_paths"])
+                any(path.endswith(".figops_normalization_manifest.json") for path in result["created_paths"])
             )
 
     def test_normalize_project_structure_preserves_legacy_scripts_config(self):
@@ -487,12 +487,12 @@ figures:
 
             planned = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": True, "move_policy": "copy"},
             )
             applied = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
@@ -518,7 +518,7 @@ figures:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "copy"},
             )
 
@@ -542,7 +542,7 @@ figures:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "copy"},
             )
 
@@ -561,7 +561,7 @@ figures:
 
             planned = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": True, "include_raw": False, "move_policy": "copy"},
             )
 
@@ -581,7 +581,7 @@ figures:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
@@ -602,7 +602,7 @@ figures:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "move", "overwrite": True},
             )
 
@@ -624,7 +624,7 @@ figures:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy", "overwrite": True},
             )
 
@@ -644,12 +644,12 @@ figures:
 
             planned = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "move"},
             )
             applied = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "include_raw": True, "move_policy": "move"},
             )
 
@@ -672,7 +672,7 @@ figures:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "symlink", "overwrite": True},
             )
 
@@ -690,7 +690,7 @@ figures:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy", "overwrite": True},
             )
 
@@ -716,7 +716,7 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
@@ -736,7 +736,7 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
@@ -757,7 +757,7 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
@@ -770,20 +770,20 @@ visual_style:
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project = Path(tmpdir) / "LegacyGraph"
             project.mkdir()
-            manifest_path = project / ".graphhub_normalization_manifest.json"
+            manifest_path = project / ".figops_normalization_manifest.json"
             manifest_path.write_text('{"existing": true}\n', encoding="utf-8")
             before = _snapshot_files(project)
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn(".graphhub_normalization_manifest.json", result["errors"][0])
+            self.assertIn(".figops_normalization_manifest.json", result["errors"][0])
             self.assertEqual(_snapshot_files(project), before)
 
     def test_normalize_project_structure_refuses_manifest_directory_even_with_overwrite(self):
@@ -791,7 +791,7 @@ visual_style:
             project = Path(tmpdir) / "LegacyGraph"
             project.mkdir()
             (project / "plot.py").write_text("print('plot')\n", encoding="utf-8")
-            manifest_path = project / ".graphhub_normalization_manifest.json"
+            manifest_path = project / ".figops_normalization_manifest.json"
             manifest_path.mkdir()
             (manifest_path / "sentinel").write_text("keep\n", encoding="utf-8")
             before = _snapshot_files(project)
@@ -799,13 +799,13 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy", "overwrite": True},
             )
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn(".graphhub_normalization_manifest.json", result["errors"][0])
+            self.assertIn(".figops_normalization_manifest.json", result["errors"][0])
             self.assertFalse((project / "hub_scripts" / "plot.py").exists())
             self.assertEqual(_snapshot_files(project), before)
 
@@ -821,7 +821,7 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
@@ -844,7 +844,7 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy", "overwrite": True},
             )
 
@@ -866,7 +866,7 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy", "overwrite": True},
             )
 
@@ -888,7 +888,7 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(symlink_root), "dry_run": False, "move_policy": "copy"},
             )
 
@@ -911,7 +911,7 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(symlink_parent / "LegacyGraph"), "dry_run": False, "move_policy": "copy"},
             )
 
@@ -934,7 +934,7 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(alias / "LegacyGraph"), "dry_run": False},
             )
 
@@ -955,7 +955,7 @@ visual_style:
 
             result = self._call(
                 server,
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 {"project_path": str(project), "dry_run": False, "move_policy": "symlink"},
             )
 

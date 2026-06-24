@@ -1,8 +1,8 @@
-# Graph Hub Failure UX And Synthetic Fixture Spec - 2026-06-09
+# FigOps Failure UX And Synthetic Fixture Spec - 2026-06-09
 
 ## Goal
 
-Improve Graph Hub's near-term product readiness without splitting `graphhub-lite` yet.
+Improve FigOps's near-term product readiness without splitting `graphhub-lite` yet.
 
 This pass focuses on:
 
@@ -13,7 +13,7 @@ This pass focuses on:
 ## Non-Goals
 
 - Do not split a new repository.
-- Do not relicense Graph Hub.
+- Do not relicense FigOps.
 - Do not remove private/internal style packs.
 - Do not replace the existing internal gold smoke.
 
@@ -58,7 +58,7 @@ The plot script should use generic `nature` + `baseline` styling and produce a s
 
 ## Failure UX Contract
 
-For `graphhub.render_csv_graph`, a missing column error must include:
+For `figops.render_csv_graph`, a missing column error must include:
 
 - `status="error"`
 - `failure_stage="CONTRACT"`
@@ -68,7 +68,7 @@ For `graphhub.render_csv_graph`, a missing column error must include:
 
 ## Acceptance Criteria
 
-- The synthetic project renders via `graphhub.render_project_figure` in a runtime snapshot.
+- The synthetic project renders via `figops.render_project_figure` in a runtime snapshot.
 - The source synthetic project is not modified by the MCP render.
 - Missing-column failure UX assertions cover `failure_stage` and `resolution_hint`.
 - Existing private gold smoke remains untouched.

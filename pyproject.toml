@@ -3,8 +3,8 @@ requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "graph-making-hub"
-version = "0.16.11"
+name = "figops"
+version = "0.17.0"
 description = "Reproducible plotting and analysis pipeline for research projects"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -39,6 +39,8 @@ io = [
 ]
 
 [project.scripts]
+figops = "orchestrator:main"
+figops-mcp = "figops_mcp_server:main"
 graphhub = "orchestrator:main"
 graphhub-mcp = "graphhub_mcp_server:main"
 
@@ -48,7 +50,7 @@ Repository = "https://github.com/Moonweave-Research/figops"
 Issues = "https://github.com/Moonweave-Research/figops/issues"
 
 [tool.setuptools]
-py-modules = ["graphhub_mcp_server", "hub_uv", "orchestrator"]
+py-modules = ["figops_mcp_server", "graphhub_mcp_server", "hub_uv", "orchestrator"]
 
 [tool.setuptools.packages.find]
 include = ["hub_core*", "plotting*", "themes*"]

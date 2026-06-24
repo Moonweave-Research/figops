@@ -1,6 +1,6 @@
 # PyPI packaging readiness
 
-Graph Making Hub / FigOps now has enough Python packaging metadata to build a
+FigOps now has enough Python packaging metadata to build a
 wheel and source distribution for the current distribution name:
 
 ```bash
@@ -12,14 +12,14 @@ uv build
 The install name from the current `pyproject.toml` is:
 
 ```bash
-pip install graph-making-hub
+pip install figops
 ```
 
 The installed console entry points are:
 
 ```bash
-graphhub --help
-graphhub-mcp --smoke
+figops --help
+figops-mcp --smoke
 ```
 
 ## Consumer install smoke
@@ -33,7 +33,7 @@ python scripts/consumer_install_smoke.py
 ```
 
 This does not publish anything. It verifies that someone installing the built
-wheel gets working `graphhub` and `graphhub-mcp` commands.
+wheel gets working `figops` and `figops-mcp` commands.
 
 
 ## Internal GitHub release distribution
@@ -42,15 +42,15 @@ Until the public license gate is resolved, the supported share path is a
 GitHub release asset for people who already have repository access:
 
 ```bash
-gh release download v0.16.11 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
-python -m pip install dist-release/graph_making_hub-0.16.11-py3-none-any.whl
-graphhub-mcp --smoke
+gh release download v0.17.0 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
+python -m pip install dist-release/figops-0.17.0-py3-none-any.whl
+figops-mcp --smoke
 ```
 
 Maintainers should attach both built artifacts to each release and verify them:
 
 ```bash
-gh release upload v0.16.11 dist/graph_making_hub-0.16.11-py3-none-any.whl dist/graph_making_hub-0.16.11.tar.gz
+gh release upload v0.17.0 dist/figops-0.17.0-py3-none-any.whl dist/figops-0.17.0.tar.gz
 python scripts/github_release_asset_smoke.py
 ```
 
@@ -64,11 +64,10 @@ Before uploading to TestPyPI or PyPI, confirm all of the following:
 
 1. LICENSE and NOTICE grant the intended public or source-available rights.
 2. `scripts/check_public_release.py` passes for the release candidate.
-3. The desired PyPI project name is final. The current name is
-   `graph-making-hub`; changing it to `figops` is a separate distribution
-   identity decision.
+3. The desired PyPI project name is final. The current candidate name is
+   `figops`; changing away from it would create a new distribution identity.
 4. `uv build` succeeds, `python scripts/package_metadata_smoke.py` validates the package metadata/console scripts, and `twine check dist/*` passes.
-5. `python scripts/consumer_install_smoke.py` proves a consumer-style wheel install can run `graphhub --help` and `graphhub-mcp --smoke`.
+5. `python scripts/consumer_install_smoke.py` proves a consumer-style wheel install can run `figops --help` and `figops-mcp --smoke`.
 6. The PyPI or TestPyPI account has a verified email address and a scoped API
    token for upload.
 
@@ -87,7 +86,7 @@ python scripts/consumer_install_smoke.py
 python scripts/github_release_asset_smoke.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 python scripts/guarded_pypi_upload.py --repository testpypi --execute
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.11
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps figops==0.17.0
 python scripts/guarded_pypi_upload.py --repository pypi
 python scripts/guarded_pypi_upload.py --repository pypi --execute
 ```

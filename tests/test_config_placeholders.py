@@ -36,7 +36,7 @@ class ConfigPlaceholderMCPTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
+            result = server.call_tool("figops.validate_project", {"project_path": "module"})["structuredContent"]
 
         self.assertFalse(result["valid"])
         report = result["placeholder_report"]
@@ -60,7 +60,7 @@ class ConfigPlaceholderMCPTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
+            result = server.call_tool("figops.validate_project", {"project_path": "module"})["structuredContent"]
 
         self.assertTrue(result["valid"])
         self.assertEqual(result["config_errors"], [])
@@ -77,7 +77,7 @@ class ConfigPlaceholderMCPTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.validate_project", {"project_path": "master"})["structuredContent"]
+            result = server.call_tool("figops.validate_project", {"project_path": "master"})["structuredContent"]
 
         self.assertTrue(result["valid"])
         self.assertEqual(result["config_errors"], [])
@@ -93,7 +93,7 @@ class ConfigPlaceholderMCPTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
+            result = server.call_tool("figops.validate_project", {"project_path": "module"})["structuredContent"]
 
         self.assertFalse(result["valid"])
         self.assertTrue(
@@ -114,7 +114,7 @@ class ConfigPlaceholderMCPTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
+            result = server.call_tool("figops.validate_project", {"project_path": "module"})["structuredContent"]
 
         self.assertTrue(result["valid"])
         self.assertEqual(result["placeholder_report"]["placeholders"], [])
@@ -135,7 +135,7 @@ class ConfigPlaceholderMCPTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.inspect_project", {"project_path": "module"})["structuredContent"]
+            result = server.call_tool("figops.inspect_project", {"project_path": "module"})["structuredContent"]
 
         report = result["placeholder_report"]
         self.assertTrue(report["detected"])

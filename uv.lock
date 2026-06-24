@@ -268,8 +268,8 @@ wheels = [
 ]
 
 [[package]]
-name = "graph-making-hub"
-version = "0.16.11"
+name = "figops"
+version = "0.17.0"
 source = { editable = "." }
 dependencies = [
     { name = "adjusttext" },

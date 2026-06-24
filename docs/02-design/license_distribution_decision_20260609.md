@@ -2,14 +2,14 @@
 
 ## Decision
 
-Graph Making Hub remains private and proprietary for now.
+FigOps remains private and proprietary for now.
 
 The repository uses an all-rights-reserved license notice. No open source
 license is granted at this stage.
 
 ## Rationale
 
-Graph Making Hub is not just a plotting helper collection. Its value is in the
+FigOps is not just a plotting helper collection. Its value is in the
 combined operating system:
 
 - `project_config.yaml` figure contracts;
@@ -26,7 +26,7 @@ research workflows.
 
 ## Current Policy
 
-- Keep the full Graph Making Hub repository private.
+- Keep the full FigOps repository private.
 - Treat current source, docs, style contracts, project templates, and MCP code as
   internal Moonweave Research assets.
 - Do not distribute code or derived packages externally unless a separate license
@@ -78,7 +78,7 @@ Revisit this decision when one of these becomes true:
 - a public `graphhub-lite` package is split from the private repository;
 - an external collaborator needs formal reuse rights;
 - the repository is prepared for public GitHub release;
-- Graph Hub becomes part of a paper, demo, or product-facing distribution.
+- FigOps becomes part of a paper, demo, or product-facing distribution.
 
 ## Required Release Checklist
 

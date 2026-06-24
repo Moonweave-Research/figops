@@ -143,8 +143,8 @@ class TestConfigSchemaMigration(unittest.TestCase):
         errors = validate_config(self._minimal_config("9.9"))
 
         combined = " ".join(errors)
-        self.assertIn("newer than this Graph Hub runtime supports", combined)
-        self.assertIn("Upgrade Graph Hub", combined)
+        self.assertIn("newer than this FigOps runtime supports", combined)
+        self.assertIn("Upgrade FigOps", combined)
 
     def test_supported_versions_round_trip_to_current(self):
         for version in SUPPORTED_CONFIG_SCHEMA_VERSIONS:

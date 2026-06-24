@@ -164,8 +164,8 @@ def migrate_config(config):
 
     if _schema_version_key(version) > current_key:
         raise ConfigVersionTooNewError(
-            f"project_config.yaml schema_version '{version}' is newer than this Graph Hub runtime supports "
-            f"('{CURRENT_CONFIG_SCHEMA_VERSION}'). Upgrade Graph Hub before loading this config."
+            f"project_config.yaml schema_version '{version}' is newer than this FigOps runtime supports "
+            f"('{CURRENT_CONFIG_SCHEMA_VERSION}'). Upgrade FigOps before loading this config."
         )
 
     while version != CURRENT_CONFIG_SCHEMA_VERSION:
@@ -173,7 +173,7 @@ def migrate_config(config):
         if migration is None:
             supported = ", ".join(SUPPORTED_CONFIG_SCHEMA_VERSIONS)
             raise ConfigMigrationError(
-                f"project_config.yaml schema_version '{version}' is not supported by this Graph Hub runtime. "
+                f"project_config.yaml schema_version '{version}' is not supported by this FigOps runtime. "
                 f"Supported versions: {supported}."
             )
         migrated = migration(migrated)
@@ -938,8 +938,8 @@ def validate_config(config):
         else:
             if version_key > current_key:
                 errors.append(
-                    f"schema_version '{schema_version}' is newer than this Graph Hub runtime supports "
-                    f"('{CURRENT_CONFIG_SCHEMA_VERSION}'). Upgrade Graph Hub before loading this config."
+                    f"schema_version '{schema_version}' is newer than this FigOps runtime supports "
+                    f"('{CURRENT_CONFIG_SCHEMA_VERSION}'). Upgrade FigOps before loading this config."
                 )
             elif version != CURRENT_CONFIG_SCHEMA_VERSION:
                 supported = ", ".join(SUPPORTED_CONFIG_SCHEMA_VERSIONS)

@@ -33,10 +33,10 @@ class McpProjectToolsMixin:
         config_path = Path(str(manifest["project_root"])) / "project_config.yaml"
         style_summary = self._manifest_style_summary(manifest)
         validation = self._validation_summary(config_path)
-        scaffold_manifest_path = str(Path(str(manifest["project_root"])) / ".graphhub_scaffold_manifest.json")
+        scaffold_manifest_path = str(Path(str(manifest["project_root"])) / ".figops_scaffold_manifest.json")
         if dry_run:
             return self._envelope(
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 arguments,
                 summary=f"Planned scaffold for project {project_name}.",
                 is_dry_run=True,
@@ -53,7 +53,7 @@ class McpProjectToolsMixin:
             applied = apply_scaffold_project(manifest, overwrite=overwrite)
         except FileExistsError as exc:
             return self._envelope(
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 arguments,
                 status="error",
                 summary="Scaffold destination already exists.",
@@ -71,7 +71,7 @@ class McpProjectToolsMixin:
             )
         validation = self._validation_summary(config_path)
         return self._envelope(
-            "graphhub.scaffold_project",
+            "figops.scaffold_project",
             arguments,
             summary=f"Created scaffold for project {project_name}.",
             created_paths=applied["created_paths"],
@@ -100,10 +100,10 @@ class McpProjectToolsMixin:
         project_root = Path(str(manifest["project_root"]))
         config_path = project_root / "project_config.yaml"
         validation = self._validation_summary(config_path)
-        normalize_manifest_path = str(project_root / ".graphhub_normalization_manifest.json")
+        normalize_manifest_path = str(project_root / ".figops_normalization_manifest.json")
         if dry_run:
             return self._envelope(
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 arguments,
                 summary=f"Planned normalization for {project_root.name}.",
                 is_dry_run=True,
@@ -119,7 +119,7 @@ class McpProjectToolsMixin:
             applied = apply_normalize_project(manifest, hub_path=self.hub_path, overwrite=overwrite)
         except FileExistsError as exc:
             return self._envelope(
-                "graphhub.normalize_project_structure",
+                "figops.normalize_project_structure",
                 arguments,
                 status="error",
                 summary="Normalization destination already exists.",
@@ -137,7 +137,7 @@ class McpProjectToolsMixin:
         validation = self._validation_summary(config_path)
         validation_failed = validation.get("checked") is True and validation.get("valid") is False
         return self._envelope(
-            "graphhub.normalize_project_structure",
+            "figops.normalize_project_structure",
             arguments,
             status="warning" if validation_failed else "ok",
             summary=(

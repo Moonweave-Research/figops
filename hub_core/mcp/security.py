@@ -10,16 +10,17 @@ from hub_core.runtime_paths import preview_runtime_root, resolve_runtime_root
 from hub_core.utils import get_hub_path, get_research_root
 
 WRITE_TOOL_NAMES = (
-    "graphhub.render_csv_graph",
-    "graphhub.render_project_figure",
-    "graphhub.scaffold_project",
-    "graphhub.normalize_project_structure",
-    "graphhub.batch_check",
+    "figops.render_csv_graph",
+    "figops.render_project_figure",
+    "figops.scaffold_project",
+    "figops.normalize_project_structure",
+    "figops.batch_check",
 )
+LEGACY_WRITE_TOOL_NAMES = tuple(name.replace("figops.", "graphhub.", 1) for name in WRITE_TOOL_NAMES)
 
 
 def is_write_tool_name(name: str) -> bool:
-    return name in WRITE_TOOL_NAMES
+    return name in WRITE_TOOL_NAMES or name in LEGACY_WRITE_TOOL_NAMES
 
 
 class McpSecurityMixin:
