@@ -1,5 +1,5 @@
 # journal_theme.R — Nature/Science (AAAS) Style Definitions
-# Sulfur Project Optimized Hub Version
+# FigOps journal theme helper
 library(ggplot2)
 
 # ── Nature Standard Sizes (mm) ───────────────────────────────────

@@ -66,9 +66,35 @@ def test_public_package_surface_accepts_synthetic_minimal_artifacts(tmp_path: Pa
     assert result["artifact_count"] == 2
 
 
+def test_public_package_surface_blocks_private_marker_in_packaged_r_file(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    _write_wheel(
+        dist / "figops-0.16.6-py3-none-any.whl",
+        {"themes/journal_theme.R": "note <- 'nature_surfur'\n"},
+    )
+
+    result = inspect_public_package_surface(tmp_path)
+
+    assert not result["ok"]
+    assert any("journal_theme.R" in blocker and "nature_surfur" in blocker for blocker in result["blockers"])
+
+
+def test_public_package_surface_allows_packaged_scaffold_template(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    _write_wheel(
+        dist / "figops-0.16.6-py3-none-any.whl",
+        {"hub_core/templates/project_config_template.yaml": "project:\n  name: Example\n"},
+    )
+
+    result = inspect_public_package_surface(tmp_path)
+
+    assert result["ok"]
+
+
 def test_blocked_path_reason_matches_private_publication_surfaces():
     assert blocked_path_reason("figops-0.16.6/tests/test_private.py") == "*/tests/*"
     assert blocked_path_reason("figops-0.16.6/docs/hks/01.md") == "*/docs/hks/*"
-    assert blocked_path_reason("figops-0.16.6/project_config_template.yaml") == (
-        "*/project_config_template.yaml"
-    )
+    assert blocked_path_reason("figops-0.16.6/project_config_template.yaml") == "figops-*/project_config_template.yaml"
+    assert blocked_path_reason("figops-0.16.6/hub_core/templates/project_config_template.yaml") is None

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from scripts.check_public_release import ReleaseCheckResult, run_license_check  
 from scripts.public_package_surface import inspect_public_package_surface  # noqa: E402
 
 DEFAULT_DIST_GLOB = "dist/*"
+POLICY_PATH = Path("docs/packaging/public-core-inventory.json")
 
 
 def expand_dist_paths(root: Path, dist_glob: str = DEFAULT_DIST_GLOB) -> tuple[Path, ...]:
@@ -37,9 +39,33 @@ def build_upload_command(repository: str, dist_paths: Sequence[Path]) -> list[st
     return command
 
 
+def policy_blockers(root: Path) -> tuple[str, ...]:
+    policy_file = root / POLICY_PATH
+    if not policy_file.exists():
+        return (f"Distribution policy file is missing: {POLICY_PATH}",)
+    try:
+        payload = json.loads(policy_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return (f"Distribution policy file is invalid JSON: {POLICY_PATH} ({exc.msg}).",)
+    policy = payload.get("distribution_policy")
+    if not isinstance(policy, dict):
+        return ("Distribution policy is missing distribution_policy object.",)
+
+    blockers: list[str] = []
+    if policy.get("public_pypi_allowed") is not True:
+        blockers.append("Distribution policy has not approved public PyPI/TestPyPI uploads.")
+    if policy.get("license_decision_required") is not False:
+        blockers.append("Distribution policy still requires a license decision before upload.")
+    if policy.get("current_status") not in {"public_package_approved", "public_pypi_approved"}:
+        blockers.append(
+            "Distribution policy current_status must be public_package_approved or public_pypi_approved before upload."
+        )
+    return tuple(blockers)
+
+
 def upload_blockers(root: Path, dist_glob: str = DEFAULT_DIST_GLOB) -> tuple[str, ...]:
     license_result = run_license_check(root)
-    blockers = list(license_result.blockers)
+    blockers = [*policy_blockers(root), *license_result.blockers]
     if not expand_dist_paths(root, dist_glob):
         blockers.append(f"No distribution files found for glob: {dist_glob}")
         return tuple(sorted(set(blockers)))

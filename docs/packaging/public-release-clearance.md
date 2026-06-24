@@ -1,8 +1,6 @@
 # Public release clearance checklist
 
-FigOps can already be shared as a private GitHub Release wheel with people who
-have repository access. Public PyPI is a separate legal and product decision.
-Do not treat a passing build as permission to publish.
+FigOps can already be shared as a GitHub Release wheel with people who have repository access. Public package distribution now uses Apache-2.0, but PyPI/TestPyPI uploads still go through the guarded technical checklist below.
 
 This checklist is intentionally conservative. It is not legal advice; it is the
 release gate that keeps the project safe while ownership and publication rights
@@ -22,11 +20,11 @@ Why Apache-2.0 is the best default for this project:
   may evolve alongside publishable methods.
 - It is widely recognized by PyPI, GitHub, companies, and universities.
 
-Do not switch LICENSE/NOTICE until release authority is confirmed.
+LICENSE/NOTICE are now Apache-2.0 for package distribution. Keep the full repository private until repo-only private markers, docs, and internal style packs are intentionally separated or cleared.
 
 ## Required human approvals
 
-Before any TestPyPI or PyPI upload, record answers for these items:
+Before any TestPyPI or PyPI upload, confirm these items:
 
 1. Who owns the code: you personally, the lab, the university, a grant-funded
    project, or a mixed set of contributors?
@@ -60,21 +58,19 @@ Expected for a private-repo / public-PyPI path: `guarded_pypi_upload.py` can pas
 For now, use GitHub Release assets only:
 
 ```bash
-gh release download v0.17.2 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.2-py3-none-any.whl
+gh release download v0.17.3 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.3-py3-none-any.whl
 figops-mcp --smoke
 ```
 
 ## First public-release PR after approval
 
-Once approvals are recorded, the first public-release PR should do only these
-things:
+For PyPI release PRs, keep the scope narrow:
 
-1. Replace LICENSE/NOTICE with the approved license text and attribution.
-2. Remove or split private style packs and private docs from the public release
-   candidate.
-3. Make `scripts/guarded_pypi_upload.py --repository testpypi` pass in dry-run mode.
-4. Rebuild and smoke-test the wheel/sdist.
-5. Publish to TestPyPI first through `scripts/guarded_pypi_upload.py`.
+1. Rebuild from a clean tree.
+2. Make `scripts/guarded_pypi_upload.py --repository testpypi` pass in dry-run mode.
+3. Smoke-test installed commands from the built wheel, including `figops --init`.
+4. Publish to TestPyPI first through `scripts/guarded_pypi_upload.py --execute`.
+5. Install-check from TestPyPI before publishing the same version to PyPI.
 
 Do not combine this with broad feature work.

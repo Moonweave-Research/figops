@@ -38,30 +38,26 @@ wheel gets working `figops` and `figops-mcp` commands.
 
 ## Internal GitHub release distribution
 
-Until the public license gate is resolved, the supported share path is a
-GitHub release asset for people who already have repository access:
+The GitHub release asset remains the supported pre-PyPI sharing path:
 
 ```bash
-gh release download v0.17.2 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
-python -m pip install dist-release/figops-0.17.2-py3-none-any.whl
+gh release download v0.17.3 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
+python -m pip install dist-release/figops-0.17.3-py3-none-any.whl
 figops-mcp --smoke
 ```
 
 Maintainers should attach both built artifacts to each release and verify them:
 
 ```bash
-gh release upload v0.17.2 dist/figops-0.17.2-py3-none-any.whl dist/figops-0.17.2.tar.gz
+gh release upload v0.17.3 dist/figops-0.17.3-py3-none-any.whl dist/figops-0.17.3.tar.gz
 python scripts/github_release_asset_smoke.py
 ```
 
 ## Current distribution boundary
 
-This repository is still private/internal. A GitHub release can be published for
-internal FigOps use, but public PyPI upload is blocked until the distribution
-policy changes.
+This repository can remain private/internal while the built FigOps wheel/sdist are distributed publicly under Apache-2.0. The full repository release gate may still report repo-only private docs/tests/internal style packs that are not shipped in the package artifacts.
 
-Use the clearance checklist and structured blocker report before changing that
-policy:
+Use the clearance checklist and structured blocker report before making the full repository public:
 
 ```bash
 python scripts/public_core_inventory.py --status --include-blockers
@@ -73,15 +69,14 @@ approval.
 
 Before uploading to TestPyPI or PyPI, confirm all of the following:
 
-1. LICENSE and NOTICE grant the intended public or source-available rights.
+1. LICENSE and NOTICE grant Apache-2.0 package distribution rights.
 2. `python scripts/guarded_pypi_upload.py --repository testpypi` prints an upload command after package-artifact checks pass.
 3. `scripts/check_public_release.py` is either passing for a public repository release, or its remaining blockers are confirmed to be private repo-only files excluded from the built wheel/sdist.
 4. The desired PyPI project name is final. The current candidate name is
    `figops`; changing away from it would create a new distribution identity.
 5. `uv build` succeeds, `python scripts/package_metadata_smoke.py` validates the package metadata/console scripts, and `twine check dist/*` passes.
 6. `python scripts/consumer_install_smoke.py` proves a consumer-style wheel install can run `figops --help` and `figops-mcp --smoke`.
-7. The PyPI or TestPyPI account has a verified email address and a scoped API
-   token for upload.
+7. The PyPI or TestPyPI account has a verified email address and either Trusted Publishing or a scoped API token for upload.
 
 ## Upload commands after policy approval
 
@@ -98,10 +93,9 @@ python scripts/consumer_install_smoke.py
 python scripts/github_release_asset_smoke.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 python scripts/guarded_pypi_upload.py --repository testpypi --execute
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps figops==0.17.2
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps figops==0.17.3
 python scripts/guarded_pypi_upload.py --repository pypi
 python scripts/guarded_pypi_upload.py --repository pypi --execute
 ```
 
-The guarded uploader refuses to upload when the license files, built artifacts,
-or package-surface scan are blocked. Do not bypass it from this repository.
+The guarded uploader refuses to upload when distribution policy, license files, built artifacts, or package-surface scans are blocked. Do not bypass it from this repository.
