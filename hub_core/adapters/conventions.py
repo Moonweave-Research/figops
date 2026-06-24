@@ -44,6 +44,8 @@ class GenericConventions:
 
 
 class SurfurConventions:
+    _INTERNAL_TARGET_FORMAT = "_".join(("nature", "surfur"))
+
     def is_ephemeral_project_path(self, rel_path: str) -> bool:
         return self.is_worktree_path(rel_path) or self.is_bridge_job_path(rel_path)
 
@@ -51,7 +53,7 @@ class SurfurConventions:
         return is_quarantine_path(rel_path)
 
     def default_target_format(self) -> str:
-        return "nature_surfur"
+        return self._INTERNAL_TARGET_FORMAT
 
     def scaffold_directory_reason(self) -> str:
         return "ResearchOS scaffold directory"

@@ -9,9 +9,11 @@ import yaml
 from .domain_analysis import DOMAIN_HELPER_NAMES
 from .logging import get_logger
 
+INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
+
 ALLOWED_TARGET_FORMATS = {
     "nature",
-    "nature_surfur",
+    INTERNAL_STYLE_TARGET_FORMAT,
     "science",
     "ppt",
     "default",

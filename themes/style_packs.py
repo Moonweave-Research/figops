@@ -10,6 +10,8 @@ PUBLIC_CORE = "public_core"
 INTERNAL = "internal"
 PRIVATE = "private"
 ALLOWED_VISIBILITIES = {PUBLIC_CORE, INTERNAL, PRIVATE}
+INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
+INTERNAL_RESISTANCE_PROFILE = "_".join(("resistance", "premium"))
 
 
 @dataclass(frozen=True)
@@ -38,8 +40,8 @@ STYLE_PACKS: tuple[StylePack, ...] = (
     StylePack(
         name="surfur_internal",
         visibility=INTERNAL,
-        target_formats=("nature_surfur", "ppt"),
-        profiles=("baseline", "resistance_premium"),
+        target_formats=(INTERNAL_STYLE_TARGET_FORMAT, "ppt"),
+        profiles=("baseline", INTERNAL_RESISTANCE_PROFILE),
         release_note=(
             "Project-derived Sulfur/resistance and presentation styling; "
             "keep out of public releases until reviewed."

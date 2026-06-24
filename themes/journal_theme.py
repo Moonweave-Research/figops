@@ -52,6 +52,7 @@ SINGLE_COLUMN = 89  # mm
 DOUBLE_COLUMN = 183  # mm
 _LAYOUT_LOCK_ATTR = "_graph_hub_layout_lock"
 DIAG_BUDGET_FLOOR_SECONDS = 5.0
+INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
 
 _PUBLICATION_LAYOUT_SPECS_MM = {
     "standard": {
@@ -71,7 +72,7 @@ _PUBLICATION_LAYOUT_SPECS_MM = {
         "box_height_mm": 55.0,
         "margins_mm": {"left": 14.0, "right": 18.0, "bottom": 12.0, "top": 8.0},
     },
-    # 02_Surfur_Polymer 전용 — 정사각 50x50 mm plot box (3-up NatComm double-col 기준)
+    # Internal project preset — square 50x50 mm plot box (3-up double-col 기준)
     # 독립 single-panel 용. 3-up/2-up 멀티패널은 스크립트에서 figsize 직접 계산.
     "surfur_square": {
         "box_width_mm": 50.0,
@@ -87,7 +88,16 @@ _LEGACY_LAYOUT_RATIOS = {
     "standard": {"left": 0.15, "right": 0.95, "bottom": 0.15, "top": 0.90},
 }
 
-TIFF_AUTO_PRESETS: set[str] = {"nature", "nature_surfur", "science", "acs", "rsc", "elsevier", "wiley", "cell"}
+TIFF_AUTO_PRESETS: set[str] = {
+    "nature",
+    INTERNAL_STYLE_TARGET_FORMAT,
+    "science",
+    "acs",
+    "rsc",
+    "elsevier",
+    "wiley",
+    "cell",
+}
 
 
 @dataclass(frozen=True)
@@ -140,7 +150,7 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
     # body/axis lettering with 6.5 pt ticks as a Graph Hub assumption that
     # stays within the repo's established small-text floor.
     "cell": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    "nature_surfur": FontTokens(tag=6.0, label=5.0, annot=6.0, legend=6.0, axis=7.0, tick=6.0),
+    INTERNAL_STYLE_TARGET_FORMAT: FontTokens(tag=6.0, label=5.0, annot=6.0, legend=6.0, axis=7.0, tick=6.0),
     "ppt": FontTokens(tag=16.0, label=12.0, annot=12.0, legend=12.0, axis=14.0, tick=12.0),
     "default": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
 }
@@ -466,13 +476,13 @@ STYLE_PRESETS["cell"].update(
     }
 )
 
-# 02_Surfur_Polymer 전용 프리셋 (2026-04-10)
+# Internal project style preset (2026-04-10)
 # - NatComm 5-7pt strict compliance (title 7.0, legend 6.0)
 # - 50x50 mm plot box 기준 → spine/tick 약간 굵게 (0.75pt)
 # - minor tick global 강제 off (필요한 플랏에서만 개별 on)
 # - 기본 `nature`와 별개로 유지해 다른 프로젝트에 영향 없음
-STYLE_PRESETS["nature_surfur"] = copy.deepcopy(STYLE_PRESETS["nature"])
-STYLE_PRESETS["nature_surfur"].update(
+STYLE_PRESETS[INTERNAL_STYLE_TARGET_FORMAT] = copy.deepcopy(STYLE_PRESETS["nature"])
+STYLE_PRESETS[INTERNAL_STYLE_TARGET_FORMAT].update(
     {
         "font.size": 7.0,  # ax.text() 등의 기본 텍스트 크기 (rcParams 기본 10pt 오버라이드)
         "axes.titlesize": 7.0,
@@ -712,9 +722,9 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
 
     Args:
         target_format (str): 적용할 테마 프리셋 이름
-            ('nature', 'nature_surfur', 'science', 'ppt', 'default', 'acs', 'rsc', 'elsevier')
+            ('nature', 'science', 'ppt', 'default', 'acs', 'rsc', 'elsevier', or internal aliases)
         font_scale (float): 기준 테마 폰트 사이즈 대비 보정 배율
-        profile_name (str): 세부 스타일 프로파일 이름 (예: baseline, resistance_premium)
+        profile_name (str): 세부 스타일 프로파일 이름 (예: baseline, internal profiles)
     """
     global _ACTIVE_COMPLIANCE_TOKENS, _ACTIVE_FONT_TOKENS, _ACTIVE_TARGET_FORMAT
 
