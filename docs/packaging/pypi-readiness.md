@@ -49,11 +49,12 @@ from pathlib import Path
 shutil.rmtree(Path("dist"), ignore_errors=True)
 PY
 uv build
-python -m twine check dist/*
-python -m twine upload --repository testpypi dist/*
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.3
-python -m twine upload dist/*
+python scripts/guarded_pypi_upload.py --repository testpypi
+python scripts/guarded_pypi_upload.py --repository testpypi --execute
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.4
+python scripts/guarded_pypi_upload.py --repository pypi
+python scripts/guarded_pypi_upload.py --repository pypi --execute
 ```
 
-Do not upload to public PyPI from this private repository while the public
-release gate is blocked.
+The guarded uploader refuses to upload while `scripts/check_public_release.py`
+is blocked. Do not bypass it from this private repository.
