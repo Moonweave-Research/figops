@@ -197,28 +197,9 @@ def _provenance_payload_text(fingerprint: dict) -> str:
 def run_release_check(root: Path, *, check_style_registry: bool = True) -> ReleaseCheckResult:
     blockers: list[str] = []
     warnings: list[str] = []
-
-    license_path = root / "LICENSE"
-    if not license_path.exists():
-        blockers.append("LICENSE is missing; public release license is undefined.")
-    else:
-        try:
-            license_text = _normalize_text(_read_text(license_path)).lower()
-        except UnicodeDecodeError as exc:
-            blockers.append(_decode_blocker("LICENSE", exc))
-            license_text = ""
-        if "all rights reserved" in license_text or "proprietary" in license_text:
-            blockers.append("LICENSE is proprietary/all-rights-reserved; public release is blocked.")
-
-    notice_path = root / "NOTICE"
-    if notice_path.exists():
-        try:
-            notice_text = _normalize_text(_read_text(notice_path)).lower()
-        except UnicodeDecodeError as exc:
-            blockers.append(_decode_blocker("NOTICE", exc))
-            notice_text = ""
-        if "no open source license" in notice_text:
-            blockers.append("NOTICE states no open source license has been granted.")
+    license_result = run_license_check(root)
+    blockers.extend(license_result.blockers)
+    warnings.extend(license_result.warnings)
 
     if check_style_registry:
         for error in validate_style_pack_registry():
@@ -263,6 +244,35 @@ def run_release_check(root: Path, *, check_style_registry: bool = True) -> Relea
         marker = _private_marker_in_text(_provenance_payload_text(fingerprint), rel)
         if marker is not None:
             blockers.append(f"Private marker {marker!r} found in provenance fingerprint for {rel}.")
+
+    return ReleaseCheckResult(blockers=tuple(sorted(set(blockers))), warnings=tuple(sorted(set(warnings))))
+
+
+def run_license_check(root: Path) -> ReleaseCheckResult:
+    blockers: list[str] = []
+    warnings: list[str] = []
+
+    license_path = root / "LICENSE"
+    if not license_path.exists():
+        blockers.append("LICENSE is missing; public release license is undefined.")
+    else:
+        try:
+            license_text = _normalize_text(_read_text(license_path)).lower()
+        except UnicodeDecodeError as exc:
+            blockers.append(_decode_blocker("LICENSE", exc))
+            license_text = ""
+        if "all rights reserved" in license_text or "proprietary" in license_text:
+            blockers.append("LICENSE is proprietary/all-rights-reserved; public release is blocked.")
+
+    notice_path = root / "NOTICE"
+    if notice_path.exists():
+        try:
+            notice_text = _normalize_text(_read_text(notice_path)).lower()
+        except UnicodeDecodeError as exc:
+            blockers.append(_decode_blocker("NOTICE", exc))
+            notice_text = ""
+        if "no open source license" in notice_text:
+            blockers.append("NOTICE states no open source license has been granted.")
 
     return ReleaseCheckResult(blockers=tuple(sorted(set(blockers))), warnings=tuple(sorted(set(warnings))))
 

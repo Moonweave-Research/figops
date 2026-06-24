@@ -29,7 +29,7 @@ def test_public_core_status_reports_current_gate_as_blocked():
     assert status["inventory_valid"] is True
     assert status["release_gate"]["ok"] is False
     assert status["pypi_upload_allowed"] is False
-    assert "license" in status["release_gate"]["blocker_families"]
+    assert "private_marker" in status["release_gate"]["blocker_families"]
     assert "style_pack" in status["release_gate"]["blocker_families"]
     assert "blockers_by_family" not in status["release_gate"]
 
@@ -38,17 +38,17 @@ def test_public_core_status_can_include_grouped_release_blockers():
     status = build_public_core_status(HUB_ROOT, include_blockers=True)
 
     blockers = status["release_gate"]["blockers_by_family"]
-    assert "license" in blockers
+    assert "private_marker" in blockers
     assert "style_pack" in blockers
-    assert any("LICENSE" in blocker for blocker in blockers["license"])
+    assert any("Private marker" in blocker for blocker in blockers["private_marker"])
 
 
 def test_release_blocker_summary_groups_by_family():
     grouped = release_blocker_summary(HUB_ROOT)
 
-    assert "license" in grouped
     assert "private_marker" in grouped
-    assert all(isinstance(blocker, str) for blocker in grouped["license"])
+    assert "private_workflow_doc" in grouped
+    assert all(isinstance(blocker, str) for blocker in grouped["private_marker"])
 
 
 def test_public_core_inventory_validation_fails_closed_for_missing_policy():

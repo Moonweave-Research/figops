@@ -15,6 +15,7 @@ def test_packaging_metadata_declares_build_backend_and_owner_metadata():
     assert any(req.startswith("setuptools>=") for req in payload["build-system"]["requires"])
     assert payload["project"]["authors"] == [{"name": "Choemun Yeong"}]
     assert payload["project"]["maintainers"] == [{"name": "Moonweave Research"}]
+    assert payload["project"]["license"] == "Apache-2.0"
     assert payload["project"]["license-files"] == ["LICENSE", "NOTICE"]
 
 

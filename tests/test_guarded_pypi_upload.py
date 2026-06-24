@@ -2,15 +2,19 @@ import sys
 from pathlib import Path
 
 from scripts import guarded_pypi_upload
-from scripts.check_public_release import ReleaseCheckResult
 
 
-def test_guarded_upload_blocks_private_license(tmp_path: Path) -> None:
+def test_guarded_upload_blocks_private_license(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "LICENSE").write_text("All rights reserved.\n", encoding="utf-8")
     (tmp_path / "NOTICE").write_text("No open source license has been granted.\n", encoding="utf-8")
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "figops-0.16.4-py3-none-any.whl").write_text("placeholder", encoding="utf-8")
+    monkeypatch.setattr(
+        guarded_pypi_upload,
+        "inspect_public_package_surface",
+        lambda _root, _dist_glob: {"ok": True, "blockers": []},
+    )
 
     blockers = guarded_pypi_upload.upload_blockers(tmp_path)
 
@@ -18,16 +22,31 @@ def test_guarded_upload_blocks_private_license(tmp_path: Path) -> None:
     assert any("no open source license" in blocker for blocker in blockers)
 
 
-def test_guarded_upload_requires_distribution_files(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(
-        guarded_pypi_upload,
-        "run_release_check",
-        lambda _root: ReleaseCheckResult(blockers=(), warnings=()),
-    )
+def test_guarded_upload_requires_distribution_files(tmp_path: Path) -> None:
+    (tmp_path / "LICENSE").write_text("Apache License\nVersion 2.0\n", encoding="utf-8")
+    (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
 
     blockers = guarded_pypi_upload.upload_blockers(tmp_path)
 
     assert blockers == ("No distribution files found for glob: dist/*",)
+
+
+def test_guarded_upload_blocks_package_surface_findings(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "LICENSE").write_text("Apache License\nVersion 2.0\n", encoding="utf-8")
+    (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    wheel = dist / "figops-0.16.4-py3-none-any.whl"
+    wheel.write_text("placeholder", encoding="utf-8")
+    monkeypatch.setattr(
+        guarded_pypi_upload,
+        "inspect_public_package_surface",
+        lambda _root, _dist_glob: {"ok": False, "blockers": ["private marker found"]},
+    )
+
+    blockers = guarded_pypi_upload.upload_blockers(tmp_path)
+
+    assert "private marker found" in blockers
 
 
 def test_guarded_upload_command_defaults_to_testpypi_repository(tmp_path: Path) -> None:

@@ -31,8 +31,8 @@ rights. Check [LICENSE](./LICENSE) and [NOTICE](./NOTICE) before sharing it.
 For internal users with repository access:
 
 ```bash
-gh release download v0.17.1 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.1-py3-none-any.whl
+gh release download v0.17.2 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.2-py3-none-any.whl
 figops-mcp --smoke
 ```
 
@@ -155,8 +155,8 @@ also run:
 python scripts/github_release_asset_smoke.py
 ```
 
-`python scripts/check_public_release.py` is expected to block today because the
-repo is still private/internal and the license is not public/open-source.
+`python scripts/check_public_release.py` may still block for repo-only private docs/tests.
+For PyPI, the guarded uploader checks the built wheel/sdist package surface instead.
 
 ## When something goes wrong
 
@@ -191,8 +191,8 @@ decision:
 
 1. choose the public license or source-available terms,
 2. keep `figops` as the public PyPI name unless a final legal/product review changes it,
-3. remove or split private docs/tests/style packs from the public release surface,
-4. make `scripts/check_public_release.py` pass,
+3. confirm built wheel/sdist artifacts exclude private docs/tests/research markers,
+4. make `scripts/guarded_pypi_upload.py --repository testpypi` pass in dry-run mode,
 5. then publish to TestPyPI/PyPI through the guarded uploader.
 
 The working checklist is in

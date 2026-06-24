@@ -42,15 +42,15 @@ Until the public license gate is resolved, the supported share path is a
 GitHub release asset for people who already have repository access:
 
 ```bash
-gh release download v0.17.1 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
-python -m pip install dist-release/figops-0.17.1-py3-none-any.whl
+gh release download v0.17.2 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
+python -m pip install dist-release/figops-0.17.2-py3-none-any.whl
 figops-mcp --smoke
 ```
 
 Maintainers should attach both built artifacts to each release and verify them:
 
 ```bash
-gh release upload v0.17.1 dist/figops-0.17.1-py3-none-any.whl dist/figops-0.17.1.tar.gz
+gh release upload v0.17.2 dist/figops-0.17.2-py3-none-any.whl dist/figops-0.17.2.tar.gz
 python scripts/github_release_asset_smoke.py
 ```
 
@@ -74,12 +74,13 @@ approval.
 Before uploading to TestPyPI or PyPI, confirm all of the following:
 
 1. LICENSE and NOTICE grant the intended public or source-available rights.
-2. `scripts/check_public_release.py` passes for the release candidate.
-3. The desired PyPI project name is final. The current candidate name is
+2. `python scripts/guarded_pypi_upload.py --repository testpypi` prints an upload command after package-artifact checks pass.
+3. `scripts/check_public_release.py` is either passing for a public repository release, or its remaining blockers are confirmed to be private repo-only files excluded from the built wheel/sdist.
+4. The desired PyPI project name is final. The current candidate name is
    `figops`; changing away from it would create a new distribution identity.
-4. `uv build` succeeds, `python scripts/package_metadata_smoke.py` validates the package metadata/console scripts, and `twine check dist/*` passes.
-5. `python scripts/consumer_install_smoke.py` proves a consumer-style wheel install can run `figops --help` and `figops-mcp --smoke`.
-6. The PyPI or TestPyPI account has a verified email address and a scoped API
+5. `uv build` succeeds, `python scripts/package_metadata_smoke.py` validates the package metadata/console scripts, and `twine check dist/*` passes.
+6. `python scripts/consumer_install_smoke.py` proves a consumer-style wheel install can run `figops --help` and `figops-mcp --smoke`.
+7. The PyPI or TestPyPI account has a verified email address and a scoped API
    token for upload.
 
 ## Upload commands after policy approval
@@ -97,10 +98,10 @@ python scripts/consumer_install_smoke.py
 python scripts/github_release_asset_smoke.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 python scripts/guarded_pypi_upload.py --repository testpypi --execute
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps figops==0.17.1
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps figops==0.17.2
 python scripts/guarded_pypi_upload.py --repository pypi
 python scripts/guarded_pypi_upload.py --repository pypi --execute
 ```
 
-The guarded uploader refuses to upload while `scripts/check_public_release.py`
-is blocked. Do not bypass it from this private repository.
+The guarded uploader refuses to upload when the license files, built artifacts,
+or package-surface scan are blocked. Do not bypass it from this repository.
