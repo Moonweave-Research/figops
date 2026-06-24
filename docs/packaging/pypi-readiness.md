@@ -51,7 +51,7 @@ PY
 uv build
 python scripts/guarded_pypi_upload.py --repository testpypi
 python scripts/guarded_pypi_upload.py --repository testpypi --execute
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.4
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.5
 python scripts/guarded_pypi_upload.py --repository pypi
 python scripts/guarded_pypi_upload.py --repository pypi --execute
 ```
