@@ -15,6 +15,16 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.16.3] - 2026-06-24
+
+### Added
+
+- Add Python packaging metadata for wheel/source-distribution builds, including
+  package discovery, owner metadata, license files, repository URLs, and
+  `graphhub` / `graphhub-mcp` console entry points.
+- Document the PyPI/TestPyPI release boundary and keep public uploads blocked
+  until the repository license and public release gate are ready.
+
 ## [0.16.2] - 2026-06-23
 
 ### Fixed
