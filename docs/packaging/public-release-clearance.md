@@ -1,6 +1,6 @@
 # Public release clearance checklist
 
-FigOps can already be shared as a GitHub Release wheel with people who have repository access. Public package distribution now uses Apache-2.0, but PyPI/TestPyPI uploads still go through the guarded technical checklist below.
+FigOps can already be shared as a GitHub Release wheel with people who have repository access. Public package distribution now uses Apache-2.0, and PyPI/TestPyPI uploads go through the guarded technical checklist plus the manual Trusted Publishing workflow.
 
 This checklist is intentionally conservative. It is not legal advice; it is the
 release gate that keeps the project safe while ownership and publication rights
@@ -70,7 +70,7 @@ For PyPI release PRs, keep the scope narrow:
 1. Rebuild from a clean tree.
 2. Make `scripts/guarded_pypi_upload.py --repository testpypi` pass in dry-run mode.
 3. Smoke-test installed commands from the built wheel, including `figops --init`.
-4. Publish to TestPyPI first through `scripts/guarded_pypi_upload.py --execute`.
-5. Install-check from TestPyPI before publishing the same version to PyPI.
+4. Publish to TestPyPI first through `.github/workflows/publish.yml` with `repository=testpypi`.
+5. Install-check from TestPyPI before publishing the same version to PyPI through the same workflow with `repository=pypi`.
 
-Do not combine this with broad feature work.
+Do not combine this with broad feature work. See `docs/packaging/trusted-publishing.md` for the exact PyPI/TestPyPI pending publisher values and workflow commands.

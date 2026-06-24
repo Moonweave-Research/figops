@@ -1,0 +1,94 @@
+name: Publish Python package
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Package index target
+        required: true
+        type: choice
+        default: testpypi
+        options:
+          - testpypi
+          - pypi
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Sync dependencies
+        run: uv sync
+      - name: Run tests
+        run: uv run python -m pytest -q
+      - name: Build distributions
+        run: uv build
+      - name: Package metadata smoke
+        run: uv run python scripts/package_metadata_smoke.py
+      - name: Public package surface
+        run: uv run python scripts/public_package_surface.py
+      - name: Consumer install smoke
+        run: uv run python scripts/consumer_install_smoke.py
+      - name: Twine metadata check
+        run: uv run --with twine python -m twine check dist/*
+      - name: Guard upload policy
+        run: uv run python scripts/guarded_pypi_upload.py --repository "${{ inputs.repository }}"
+      - name: Store distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: figops-dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    if: ${{ inputs.repository == 'testpypi' }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/figops/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: figops-dist
+          path: dist
+      - name: Publish distributions to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist/
+
+  publish-pypi:
+    name: Publish to PyPI
+    if: ${{ inputs.repository == 'pypi' }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/figops/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: figops-dist
+          path: dist
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
