@@ -15,6 +15,15 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.16.6] - 2026-06-24
+
+### Added
+
+- Add a public-package artifact surface checker for built wheel/source
+  distributions.
+- Add a `MANIFEST.in` that keeps private docs, tests, examples, and repository
+  operating files out of source distributions.
+
 ## [0.16.5] - 2026-06-24
 
 ### Added

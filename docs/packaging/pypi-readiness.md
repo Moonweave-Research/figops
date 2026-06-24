@@ -49,9 +49,10 @@ from pathlib import Path
 shutil.rmtree(Path("dist"), ignore_errors=True)
 PY
 uv build
+python scripts/public_package_surface.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 python scripts/guarded_pypi_upload.py --repository testpypi --execute
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.5
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.6
 python scripts/guarded_pypi_upload.py --repository pypi
 python scripts/guarded_pypi_upload.py --repository pypi --execute
 ```
