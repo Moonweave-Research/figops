@@ -16,8 +16,20 @@ permissions:
   contents: read
 
 jobs:
+  release-ref:
+    name: Verify release ref
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require main branch
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "publish.yml only publishes from refs/heads/main; got $GITHUB_REF" >&2
+            exit 1
+          fi
+
   build:
     name: Build and verify distributions
+    needs: release-ref
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

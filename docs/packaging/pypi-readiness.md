@@ -85,6 +85,7 @@ Preferred uploads now use the manual GitHub Actions workflow in
 `.github/workflows/publish.yml`. Configure pending publishers in both PyPI and
 TestPyPI, then run the workflow for `testpypi` before promoting the same version
 to `pypi`.
+The workflow fails closed when dispatched from any ref other than `refs/heads/main`.
 
 See [trusted-publishing.md](./trusted-publishing.md) for the exact publisher
 values, commands, and post-upload install smoke checks.

@@ -9,6 +9,7 @@ chooses when a build is promoted.
 - No PyPI username, password, or API token is stored in GitHub secrets.
 - Only the publishing jobs receive `id-token: write` permission.
 - The build/test/package checks run before any upload job starts.
+- The workflow fails closed unless it is manually run from `refs/heads/main`.
 - TestPyPI and PyPI use separate GitHub environments and separate PyPI
   publisher registrations.
 
