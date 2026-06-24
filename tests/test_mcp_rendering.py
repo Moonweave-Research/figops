@@ -805,7 +805,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn("project_path must stay under", result["errors"][0])
             self.assertFalse((runtime_root / "mcp_project_jobs").exists())
 
-    def test_render_project_figure_missing_input_is_export_failure(self):
+    def test_render_project_figure_missing_input_fails_data_contract_before_render(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
             project = _write_project_render_fixture(root)
@@ -820,9 +820,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             )
 
             self.assertEqual(result["status"], "error")
-            self.assertEqual(result["failure_stage"], "EXPORT")
-            self.assertIn("declared inputs", result["resolution_hint"])
-            self.assertTrue(Path(result["manifest_path"]).is_file())
+            self.assertEqual(result["failure_stage"], "VALIDATE")
+            self.assertIn("Data contract preflight failed", result["errors"][0])
+            self.assertFalse((runtime_root / "mcp_project_jobs" / "missing-input").exists())
 
     def test_render_project_figure_refuses_symlinked_snapshot_inputs(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:

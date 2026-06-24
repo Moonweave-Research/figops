@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from .runtime_paths import resolve_runtime_root
+try:
+    from .runtime_paths import resolve_runtime_root
+except ImportError:
+    module_path = Path(__file__).with_name("runtime_paths.py")
+    spec = importlib.util.spec_from_file_location("_figops_runtime_paths", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load FigOps runtime paths: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    resolve_runtime_root = module.resolve_runtime_root
 
 UV_ENV_NAME = "graph-making-hub"
 
