@@ -15,6 +15,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.16.11] - 2026-06-24
+
+### Changed
+
+- Rewrite the README around a more human install/use/distribution story,
+  including the current GitHub Release wheel path and remaining public-release gate.
+
 ## [0.16.10] - 2026-06-24
 
 ### Added
