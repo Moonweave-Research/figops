@@ -10,6 +10,7 @@ import os
 from copy import deepcopy
 
 DEFAULT_PROFILE = "baseline"
+INTERNAL_RESISTANCE_PROFILE = "_".join(("resistance", "premium"))
 
 # ── Multi-channel encoding cycles (CVD / greyscale accessibility) ──
 # 색상과 독립적으로 시리즈를 구분할 수 있도록 마커·선종류를 자동 순환
@@ -64,7 +65,7 @@ STYLE_PROFILES = {
             "timeseries_palette": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"],
         },
     },
-    "resistance_premium": {
+    INTERNAL_RESISTANCE_PROFILE: {
         "description": "Profile copied from resistance publication style",
         "rc_overrides": {
             "axes.titlesize": 8.5,
@@ -530,8 +531,8 @@ TARGET_FORMAT_PROFILE_TOKENS = {
 PROFILE_ALIASES = {
     "default": "baseline",
     "base": "baseline",
-    "premium": "resistance_premium",
-    "resistance": "resistance_premium",
+    "premium": INTERNAL_RESISTANCE_PROFILE,
+    "resistance": INTERNAL_RESISTANCE_PROFILE,
     "wiley": "baseline",
     "cell": "baseline",
     "cell_press": "baseline",

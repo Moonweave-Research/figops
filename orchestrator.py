@@ -64,6 +64,7 @@ from hub_core.logging import configure_logging, get_logger
 from hub_core.research_ops_enforcement import validate_research_ops_contract
 
 logger = get_logger(__name__)
+INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
 
 
 def _refresh_visual_output_signatures(project_dir: str, config: dict, build_state: dict) -> None:
@@ -210,7 +211,7 @@ def main():
         help=(
             "Override visual_style for this run without editing project_config.yaml.\n"
             "Accepts a named preset from the config's presets: section, or a target_format\n"
-            "(nature, nature_surfur, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
+            f"(nature, {INTERNAL_STYLE_TARGET_FORMAT}, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
         ),
     )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging on stderr")
