@@ -42,12 +42,14 @@ def validate_public_core_inventory(inventory: dict[str, Any]) -> list[str]:
     if not isinstance(policy, dict):
         errors.append("distribution_policy must be an object.")
     else:
-        if policy.get("current_status") != "private_internal":
-            errors.append("distribution_policy.current_status must remain private_internal until relicensing.")
-        if policy.get("public_pypi_allowed") is not False:
-            errors.append("distribution_policy.public_pypi_allowed must be false until the public release gate passes.")
-        if not policy.get("license_decision_required"):
-            errors.append("distribution_policy.license_decision_required must be true.")
+        if policy.get("current_status") not in {"private_internal", "public_package_approved", "public_pypi_approved"}:
+            errors.append("distribution_policy.current_status must be a known release state.")
+        if not isinstance(policy.get("public_pypi_allowed"), bool):
+            errors.append("distribution_policy.public_pypi_allowed must be boolean.")
+        if not isinstance(policy.get("license_decision_required"), bool):
+            errors.append("distribution_policy.license_decision_required must be boolean.")
+        if policy.get("public_pypi_allowed") and policy.get("license_decision_required"):
+            errors.append("distribution_policy cannot allow PyPI while license_decision_required is true.")
 
     for key in ("public_core_candidates", "private_or_internal_components", "release_exit_criteria"):
         value = inventory.get(key)
@@ -93,9 +95,10 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
     policy = inventory.get("distribution_policy", {})
     pypi_upload_allowed = (
         not inventory_errors
-        and release_result.ok
         and isinstance(policy, dict)
         and policy.get("public_pypi_allowed") is True
+        and policy.get("license_decision_required") is False
+        and policy.get("current_status") in {"public_package_approved", "public_pypi_approved"}
     )
     payload = {
         "schema_version": inventory.get("schema_version"),

@@ -29,6 +29,8 @@ TEXT_SUFFIXES = {
     ".json",
     ".md",
     ".py",
+    ".r",
+    ".R",
     ".rst",
     ".toml",
     ".txt",
@@ -41,10 +43,11 @@ BLOCKED_PATH_PATTERNS = (
     "*/docs/hks/*",
     "*/docs/02-design/*",
     "*/docs/superpowers/*",
-    "*/project_config_template.yaml",
     "*/AGENTS.md",
     "*/task.md",
     "*/Research_Central_Architecture.md",
+    "project_config_template.yaml",
+    "figops-*/project_config_template.yaml",
 )
 
 
@@ -111,6 +114,8 @@ def iter_artifact_members(path: Path) -> Iterator[ArtifactMember]:
 
 def blocked_path_reason(member_name: str) -> str | None:
     normalized = _normalize_text(member_name)
+    if normalized.endswith("/hub_core/templates/project_config_template.yaml"):
+        return None
     for pattern in BLOCKED_PATH_PATTERNS:
         if fnmatch.fnmatch(normalized, pattern):
             return pattern

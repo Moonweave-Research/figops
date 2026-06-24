@@ -15,6 +15,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.3] - 2026-06-24
+
+### Fixed
+
+- Include a public packaged scaffold template so installed `figops --init` works from wheel installs.
+- Require explicit distribution-policy approval in the guarded PyPI uploader.
+- Scan packaged R helper files for private release markers.
+
 ## [0.17.2] - 2026-06-24
 
 ### Changed

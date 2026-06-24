@@ -33,9 +33,10 @@ def test_resolve_wheel_accepts_explicit_wheel(tmp_path: Path) -> None:
 def test_consumer_smoke_commands_use_isolated_uv_with_console_scripts(tmp_path: Path) -> None:
     wheel = tmp_path / "figops-1.2.3-py3-none-any.whl"
 
-    commands = consumer_smoke_commands(wheel, uv_bin="uv-test")
+    commands = consumer_smoke_commands(wheel, uv_bin="uv-test", scaffold_project="/tmp/smoke_project")
 
     assert commands == (
         ("uv-test", "run", "--isolated", "--with", str(wheel), "figops-mcp", "--smoke"),
         ("uv-test", "run", "--isolated", "--with", str(wheel), "figops", "--help"),
+        ("uv-test", "run", "--isolated", "--with", str(wheel), "figops", "--init", "--project", "/tmp/smoke_project"),
     )

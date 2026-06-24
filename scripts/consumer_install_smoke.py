@@ -47,11 +47,14 @@ def resolve_wheel(root: Path, wheel: Path | None = None, dist_dir: str = DEFAULT
     return expected
 
 
-def consumer_smoke_commands(wheel: Path, uv_bin: str = "uv") -> tuple[tuple[str, ...], ...]:
+def consumer_smoke_commands(
+    wheel: Path, uv_bin: str = "uv", scaffold_project: str = "smoke_project"
+) -> tuple[tuple[str, ...], ...]:
     wheel_ref = str(wheel)
     return (
         (uv_bin, "run", "--isolated", "--with", wheel_ref, "figops-mcp", "--smoke"),
         (uv_bin, "run", "--isolated", "--with", wheel_ref, "figops", "--help"),
+        (uv_bin, "run", "--isolated", "--with", wheel_ref, "figops", "--init", "--project", scaffold_project),
     )
 
 
@@ -74,9 +77,13 @@ def run_commands(commands: Sequence[Sequence[str]], cwd: Path) -> list[dict[str,
 
 def inspect_consumer_install(root: Path, wheel: Path | None = None, uv_bin: str = "uv") -> dict[str, object]:
     wheel_path = resolve_wheel(root, wheel)
-    commands = consumer_smoke_commands(wheel_path, uv_bin=uv_bin)
     with tempfile.TemporaryDirectory(prefix="figops-consumer-smoke-") as temp_dir:
         smoke_cwd = Path(temp_dir)
+        commands = consumer_smoke_commands(
+            wheel_path,
+            uv_bin=uv_bin,
+            scaffold_project=str(smoke_cwd / "smoke_project"),
+        )
         results = run_commands(commands, cwd=smoke_cwd)
     blockers = [
         f"Command failed with exit {result['returncode']}: {' '.join(result['command'])}"

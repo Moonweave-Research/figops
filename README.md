@@ -19,20 +19,17 @@ If those two commands work, the package is installed and the MCP surface is aliv
 - **Current distribution name:** `figops`.
 - **Current commands:** `figops` and `figops-mcp` (legacy aliases `graphhub` / `graphhub-mcp` remain for compatibility).
 - **GitHub Release assets:** yes, for users who already have repository access.
-- **Public PyPI:** not yet. The public release gate is intentionally blocked until the license and distribution policy are changed.
+- **Public PyPI:** not uploaded yet. The package policy is now Apache-2.0, and the next gate is TestPyPI/PyPI account publishing.
 
-This means the project is technically ready for controlled sharing, but it is not
-licensed as open source yet. Repository access or a downloaded wheel does not
-grant redistribution, public mirroring, commercial use, or derivative-publication
-rights. Check [LICENSE](./LICENSE) and [NOTICE](./NOTICE) before sharing it.
+This means the built package is ready for public package-distribution checks, while the full repository can remain private until repo-only docs/tests/internal style packs are separated. Check [LICENSE](./LICENSE) and [NOTICE](./NOTICE) before redistributing.
 
 ## Install from the current GitHub release
 
 For internal users with repository access:
 
 ```bash
-gh release download v0.17.2 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.2-py3-none-any.whl
+gh release download v0.17.3 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.3-py3-none-any.whl
 figops-mcp --smoke
 ```
 
@@ -156,7 +153,7 @@ python scripts/github_release_asset_smoke.py
 ```
 
 `python scripts/check_public_release.py` may still block for repo-only private docs/tests.
-For PyPI, the guarded uploader checks the built wheel/sdist package surface instead.
+For PyPI, the guarded uploader checks distribution policy, LICENSE/NOTICE, and the built wheel/sdist package surface instead.
 
 ## When something goes wrong
 
@@ -186,17 +183,13 @@ For PyPI, the guarded uploader checks the built wheel/sdist package surface inst
 
 ## What is next
 
-The next real public-distribution step is not more packaging code. It is a policy
-decision:
+The next public-distribution step is TestPyPI, then PyPI, through the guarded uploader:
 
-1. choose the public license or source-available terms,
-2. keep `figops` as the public PyPI name unless a final legal/product review changes it,
-3. confirm built wheel/sdist artifacts exclude private docs/tests/research markers,
+1. keep `figops` as the public PyPI name unless a final product review changes it,
+2. rebuild wheel/sdist from a clean tree,
+3. confirm package artifacts exclude private docs/tests/research markers,
 4. make `scripts/guarded_pypi_upload.py --repository testpypi` pass in dry-run mode,
-5. then publish to TestPyPI/PyPI through the guarded uploader.
+5. execute TestPyPI upload, install-check from TestPyPI, then execute PyPI upload.
 
 The working checklist is in
 [`docs/packaging/public-release-clearance.md`](./docs/packaging/public-release-clearance.md).
-
-Until then, the supported sharing path is the GitHub Release wheel for users who
-already have repository access.

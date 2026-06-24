@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 DEFAULT_CONFIG_TEMPLATE = "project_config_template.yaml"
+TEMPLATE_PACKAGE_DIR = Path("hub_core") / "templates"
 
 DEFAULT_RAW_CSV = """time,value,molarity
 0.0,1.0,0.1
@@ -244,16 +245,12 @@ def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
     project_path = Path(project_dir).expanduser().resolve()
     hub_root = Path(hub_path).expanduser().resolve()
 
-    template_path = hub_root / DEFAULT_CONFIG_TEMPLATE
-    if not template_path.exists():
-        raise RuntimeError(f"Missing scaffold template: {template_path}")
-
     config_path = project_path / "project_config.yaml"
     if config_path.exists() and not overwrite:
         raise RuntimeError(f"Scaffold aborted: config already exists: {config_path}")
 
     name = _normalize_project_name(project_name, project_path)
-    config_text = _render_config_template(template_path, name)
+    config_text = _render_config_template(load_config_template_text(hub_root), name)
 
     created_paths = []
     _ensure_dir(project_path, created_paths)
@@ -341,10 +338,27 @@ def _normalize_project_name(project_name, project_path):
     return raw.strip()
 
 
-def _render_config_template(template_path, project_name):
-    template_text = template_path.read_text(encoding="utf-8")
+def load_config_template_text(hub_root):
+    """Load the scaffold template from the requested source or installed hub root."""
+    resolved_hub_root = Path(hub_root).expanduser().resolve()
+    template_path = resolved_hub_root / DEFAULT_CONFIG_TEMPLATE
+    if template_path.exists():
+        return template_path.read_text(encoding="utf-8")
+
+    packaged_template_path = resolved_hub_root / TEMPLATE_PACKAGE_DIR / DEFAULT_CONFIG_TEMPLATE
+    if packaged_template_path.exists():
+        return packaged_template_path.read_text(encoding="utf-8")
+
+    raise RuntimeError(f"Missing scaffold template: {template_path} or {packaged_template_path}")
+
+
+def _render_config_template(template_text, project_name):
     return template_text.replace(
         'name: "Ionoelastomer Displacement Analysis"',
+        f'name: "{project_name}"',
+        1,
+    ).replace(
+        'name: "Example Study"',
         f'name: "{project_name}"',
         1,
     )

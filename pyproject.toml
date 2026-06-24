@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "figops"
-version = "0.17.2"
+version = "0.17.3"
 description = "Reproducible plotting and analysis pipeline for research projects"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -57,6 +57,7 @@ py-modules = ["figops_mcp_server", "graphhub_mcp_server", "hub_uv", "orchestrato
 include = ["hub_core*", "plotting*", "themes*"]
 
 [tool.setuptools.package-data]
+hub_core = ["templates/*.yaml"]
 themes = ["*.yaml", "*.R"]
 
 [tool.ruff]

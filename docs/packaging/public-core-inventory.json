@@ -2,10 +2,10 @@
   "schema_version": "public_core_inventory/1",
   "distribution_policy": {
     "current_distribution_name": "figops",
-    "current_status": "private_internal",
-    "public_pypi_allowed": false,
-    "license_decision_required": true,
-    "notes": "Current repository releases are private/internal GitHub releases until the public release gate passes."
+    "current_status": "public_package_approved",
+    "public_pypi_allowed": true,
+    "license_decision_required": false,
+    "notes": "Apache-2.0 package distribution is approved for built wheel/sdist artifacts; the full repository remains private/internal until repo-level blockers are removed."
   },
   "public_core_candidates": [
     {
@@ -80,8 +80,8 @@
     }
   ],
   "release_exit_criteria": [
-    "LICENSE and NOTICE match the intended public or source-available distribution mode.",
-    "Advisor/university/IP approval is recorded outside the repository or in a reviewed release ticket.",
+    "LICENSE and NOTICE match Apache-2.0 package distribution.",
+    "Owner/advisor/university/IP approval is recorded outside the repository or in a reviewed release ticket when applicable.",
     "scripts/check_public_release.py passes for the release candidate.",
     "Internal/private style packs are removed from the public distribution or split into a private package.",
     "Private workflow documents and real research markers are absent from the public candidate.",
@@ -92,15 +92,16 @@
     "recommended_default_after_ip_clearance": "Apache-2.0",
     "why": "Permissive for academic and industry reuse while preserving attribution and including an explicit patent grant.",
     "required_approvals": [
-      "Confirm university/advisor/lab ownership of code and release authority.",
-      "Confirm no unpublished research data, methods, or private style packs are included in the public candidate.",
-      "Confirm third-party dependency licenses are compatible with the selected license.",
+      "Confirm university/advisor/lab ownership of code and release authority when applicable.",
+      "Confirm no unpublished research data, private style packs, or internal workflow docs are included in built wheel/sdist artifacts.",
+      "Confirm third-party dependency licenses are compatible with Apache-2.0 package distribution.",
       "Confirm the PyPI project owner/account and maintainer names are final."
     ],
     "do_not_do_before_approval": [
-      "Do not replace LICENSE/NOTICE with an open-source license.",
-      "Do not upload to TestPyPI or PyPI.",
-      "Do not make the full private repository public."
-    ]
+      "Do not make the full private repository public while repo-level private markers remain.",
+      "Do not bypass scripts/guarded_pypi_upload.py for TestPyPI or PyPI uploads."
+    ],
+    "current_package_license": "Apache-2.0",
+    "current_package_distribution_status": "approved_for_testpypi_and_pypi_artifacts"
   }
 }

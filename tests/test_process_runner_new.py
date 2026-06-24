@@ -175,6 +175,34 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             self.assertTrue((project_dir / "raw" / "example_input.csv").is_file())
             self.assertFalse((project_dir / "data" / "raw").exists())
 
+    def test_scaffold_project_uses_packaged_template_when_root_template_is_absent(self):
+        with tempfile.TemporaryDirectory(prefix="figops_packaged_scaffold_") as tmpdir:
+            tmp_path = Path(tmpdir)
+            hub_without_template = tmp_path / "installed_hub"
+            project_dir = tmp_path / "project"
+            packaged_template_dir = hub_without_template / "hub_core" / "templates"
+            packaged_template_dir.mkdir(parents=True)
+            packaged_template_dir.joinpath("project_config_template.yaml").write_text(
+                Path("hub_core/templates/project_config_template.yaml").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+            scaffold_project(project_dir, hub_without_template, project_name="Packaged Template Smoke")
+
+            config_text = (project_dir / "project_config.yaml").read_text(encoding="utf-8")
+            self.assertIn('name: "Packaged Template Smoke"', config_text)
+            self.assertNotIn("nature_surfur", config_text)
+            self.assertTrue((project_dir / "hub_scripts" / "plot.py").is_file())
+
+    def test_scaffold_project_fails_fast_for_unrelated_hub_without_templates(self):
+        with tempfile.TemporaryDirectory(prefix="figops_missing_scaffold_") as tmpdir:
+            tmp_path = Path(tmpdir)
+            unrelated_hub = tmp_path / "unrelated_hub"
+            unrelated_hub.mkdir()
+
+            with self.assertRaisesRegex(RuntimeError, "Missing scaffold template"):
+                scaffold_project(tmp_path / "project", unrelated_hub, project_name="Should Fail")
+
 
 class TestRunSweepMonkeyPatch(unittest.TestCase):
     """Verify that run_sweep restores hub_core.process_runner.run_command after completion."""

@@ -13,10 +13,10 @@ from .adapters import select_adapters
 from .config_parser import ALLOWED_TARGET_FORMATS, load_yaml_with_unique_keys, validate_config
 from .scaffold import (
     DEFAULT_ANALYZE_R,
-    DEFAULT_CONFIG_TEMPLATE,
     DEFAULT_DIAGRAM_PY,
     DEFAULT_PLOT_PY,
     DEFAULT_PROJECT_CONTEXT_PY,
+    load_config_template_text,
 )
 
 MANIFEST_FILENAME = ".figops_normalization_manifest.json"
@@ -329,10 +329,7 @@ def apply_normalize_project(manifest: dict[str, Any], *, hub_path: Path, overwri
 
 
 def _scaffold_config(hub_path: Path, project_name: str, target_format: str) -> dict[str, Any]:
-    template_path = hub_path.expanduser().resolve() / DEFAULT_CONFIG_TEMPLATE
-    if not template_path.exists():
-        raise RuntimeError(f"Missing scaffold template: {template_path}")
-    config = yaml.safe_load(template_path.read_text(encoding="utf-8"))
+    config = yaml.safe_load(load_config_template_text(hub_path))
     config["project"]["name"] = project_name.strip()
     config["visual_style"]["target_format"] = target_format
     errors = validate_config(config)
