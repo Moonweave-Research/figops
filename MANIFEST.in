@@ -1,0 +1,21 @@
+prune docs
+prune tests
+prune examples
+prune .github
+prune .claude
+prune .demo_graphs
+
+exclude AGENTS.md
+exclude Claude.md
+exclude GEMINI.md
+exclude Research_Central_Architecture.md
+exclude SUB_AGENTS.md
+exclude task.md
+exclude Dockerfile
+exclude conftest.py
+exclude project_config_template.yaml
+exclude renv.lock
+
+global-exclude __pycache__/*
+global-exclude *.py[cod]
+global-exclude .DS_Store
