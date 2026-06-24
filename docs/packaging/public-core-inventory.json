@@ -81,10 +81,26 @@
   ],
   "release_exit_criteria": [
     "LICENSE and NOTICE match the intended public or source-available distribution mode.",
+    "Advisor/university/IP approval is recorded outside the repository or in a reviewed release ticket.",
     "scripts/check_public_release.py passes for the release candidate.",
     "Internal/private style packs are removed from the public distribution or split into a private package.",
     "Private workflow documents and real research markers are absent from the public candidate.",
     "uv build and twine check pass for the final package artifacts.",
     "A clean environment can install the wheel and run figops-mcp --smoke."
-  ]
+  ],
+  "license_clearance": {
+    "recommended_default_after_ip_clearance": "Apache-2.0",
+    "why": "Permissive for academic and industry reuse while preserving attribution and including an explicit patent grant.",
+    "required_approvals": [
+      "Confirm university/advisor/lab ownership of code and release authority.",
+      "Confirm no unpublished research data, methods, or private style packs are included in the public candidate.",
+      "Confirm third-party dependency licenses are compatible with the selected license.",
+      "Confirm the PyPI project owner/account and maintainer names are final."
+    ],
+    "do_not_do_before_approval": [
+      "Do not replace LICENSE/NOTICE with an open-source license.",
+      "Do not upload to TestPyPI or PyPI.",
+      "Do not make the full private repository public."
+    ]
+  }
 }

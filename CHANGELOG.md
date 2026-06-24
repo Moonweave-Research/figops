@@ -15,6 +15,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.1] - 2026-06-24
+
+### Added
+
+- Add a public-release clearance checklist for license/IP review and private-surface separation before PyPI upload.
+- Add an optional structured blocker listing to the public-core status reporter so the remaining gate work can be reviewed by family.
+
 ## [0.17.0] - 2026-06-24
 
 ### Changed
