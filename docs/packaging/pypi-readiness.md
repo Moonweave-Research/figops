@@ -35,7 +35,7 @@ Before uploading to TestPyPI or PyPI, confirm all of the following:
 3. The desired PyPI project name is final. The current name is
    `graph-making-hub`; changing it to `figops` is a separate distribution
    identity decision.
-4. `uv build` succeeds and `twine check dist/*` passes.
+4. `uv build` succeeds, `python scripts/package_metadata_smoke.py` validates the package metadata/console scripts, and `twine check dist/*` passes.
 5. A clean environment can install the wheel and run `graphhub-mcp --smoke`.
 6. The PyPI or TestPyPI account has a verified email address and a scoped API
    token for upload.
@@ -49,10 +49,11 @@ from pathlib import Path
 shutil.rmtree(Path("dist"), ignore_errors=True)
 PY
 uv build
+python scripts/package_metadata_smoke.py
 python scripts/public_package_surface.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 python scripts/guarded_pypi_upload.py --repository testpypi --execute
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.7
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.8
 python scripts/guarded_pypi_upload.py --repository pypi
 python scripts/guarded_pypi_upload.py --repository pypi --execute
 ```
