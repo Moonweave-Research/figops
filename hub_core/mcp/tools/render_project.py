@@ -3,7 +3,9 @@ from __future__ import annotations
 import shutil
 from typing import Any
 
+from hub_core.adapters import select_adapters
 from hub_core.config_parser import master_execution_error, project_role, project_status, validate_config
+from hub_core.data_contract import validate_data_contract_preflight
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.research_ops_enforcement import validate_research_ops_contract
 
@@ -69,6 +71,23 @@ class McpRenderProjectMixin:
                     errors=research_ops["errors"],
                     failure_stage="CONFIG",
                     resolution_hint="Fix declared research-ops contracts or set an explicit opt-out before rendering.",
+                )
+            adapters = select_adapters(config)
+            if not validate_data_contract_preflight(
+                project_path,
+                config,
+                require_existing=True,
+                prefetcher=adapters.prefetcher,
+            ):
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project data contract failed before rendering.",
+                    errors=["Data contract preflight failed for project render."],
+                    failure_stage="VALIDATE",
+                    resolution_hint="Fix declared data_contract inputs before rendering this project figure.",
                 )
             figures = self._project_figure_entries(config)
             selected, selection_errors = self._select_project_figure(

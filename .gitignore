@@ -36,6 +36,7 @@ hub_logs/
 **/hub_logs/
 .demo_graphs/
 .omo/
+.omx/
 .playwright-mcp/
 
 # Secrets / local env

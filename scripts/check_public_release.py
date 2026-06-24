@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hub_core.provenance import read_provenance_fingerprint  # noqa: E402
+from scripts import release_discipline  # noqa: E402
 from themes.style_packs import private_or_internal_style_packs, validate_style_pack_registry  # noqa: E402
 
 PRIVATE_MARKERS = (
@@ -227,6 +228,10 @@ def run_release_check(root: Path, *, check_style_registry: bool = True) -> Relea
         if internal_packs:
             names = ", ".join(str(pack["name"]) for pack in internal_packs)
             blockers.append(f"Internal/private style packs are present: {names}.")
+
+    post_tag_blocker = release_discipline.post_tag_release_blocker(root)
+    if post_tag_blocker is not None:
+        blockers.append(post_tag_blocker)
 
     for path in _iter_text_files(root):
         rel = path.relative_to(root).as_posix()

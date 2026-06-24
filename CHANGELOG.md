@@ -15,6 +15,17 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.16.2] - 2026-06-23
+
+### Fixed
+
+- `hub_uv.py` now boots without importing dependency-heavy `hub_core` package
+  initialization before uv has created the project environment.
+- MCP project rendering now runs data-contract preflight before snapshot/render
+  execution, matching the CLI fail-fast path for missing declared inputs.
+- Public release checks now block post-tag commits that keep package and changelog
+  metadata at the already-tagged version.
+
 ## [0.16.1] - 2026-06-22
 
 ### Changed

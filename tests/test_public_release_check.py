@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image
 
 from hub_core.provenance import embed_provenance_fingerprint
+from scripts import check_public_release
 from scripts.check_public_release import run_release_check
 
 
@@ -140,3 +141,20 @@ def test_public_release_check_scans_png_provenance_fingerprint_for_private_marke
 
     assert not result.ok
     assert any("figure.png" in blocker and "PI_control" in blocker for blocker in result.blockers)
+
+
+def test_public_release_check_blocks_post_tag_changes_without_version_bump(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "LICENSE").write_text("Apache-2.0\n", encoding="utf-8")
+    (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "graph-making-hub"\nversion = "0.16.1"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "CHANGELOG.md").write_text("## [0.16.1] - 2026-06-22\n", encoding="utf-8")
+    monkeypatch.setattr(check_public_release.release_discipline, "_latest_release_tag", lambda _root: "v0.16.1")
+    monkeypatch.setattr(check_public_release.release_discipline, "_commits_since_tag", lambda _root, _tag: 3)
+
+    result = run_release_check(tmp_path, check_style_registry=False)
+
+    assert not result.ok
+    assert any("commits after v0.16.1" in blocker for blocker in result.blockers)
