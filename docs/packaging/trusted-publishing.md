@@ -48,9 +48,9 @@ python -m venv /tmp/figops-testpypi-venv
 /tmp/figops-testpypi-venv/bin/python -m pip install --upgrade pip
 /tmp/figops-testpypi-venv/bin/python -m pip download --no-deps \
   --index-url https://test.pypi.org/simple/ \
-  figops==0.17.3 \
+  figops==0.17.4 \
   -d /tmp/figops-testpypi-dist
-/tmp/figops-testpypi-venv/bin/python -m pip install /tmp/figops-testpypi-dist/figops-0.17.3-py3-none-any.whl
+/tmp/figops-testpypi-venv/bin/python -m pip install /tmp/figops-testpypi-dist/figops-0.17.4-py3-none-any.whl
 /tmp/figops-testpypi-venv/bin/figops --help
 /tmp/figops-testpypi-venv/bin/figops-mcp --smoke
 /tmp/figops-testpypi-venv/bin/figops --init --project /tmp/figops-testpypi-project
@@ -68,7 +68,7 @@ Then verify the public install path:
 ```bash
 python -m venv /tmp/figops-pypi-venv
 /tmp/figops-pypi-venv/bin/python -m pip install --upgrade pip
-/tmp/figops-pypi-venv/bin/python -m pip install figops==0.17.3
+/tmp/figops-pypi-venv/bin/python -m pip install figops==0.17.4
 /tmp/figops-pypi-venv/bin/figops --help
 /tmp/figops-pypi-venv/bin/figops-mcp --smoke
 /tmp/figops-pypi-venv/bin/figops --init --project /tmp/figops-pypi-project
@@ -80,5 +80,5 @@ python -m venv /tmp/figops-pypi-venv
   files. This release path does not need them.
 - Keep GitHub environment protection on `pypi` if you want a final manual
   approval before production upload.
-- PyPI versions are immutable. If `figops==0.17.3` is uploaded with a bad
+- PyPI versions are immutable. If `figops==0.17.4` is uploaded with a bad
   artifact, fix forward with a new version instead of trying to replace it.

@@ -41,15 +41,15 @@ wheel gets working `figops` and `figops-mcp` commands.
 The GitHub release asset remains the supported pre-PyPI sharing path:
 
 ```bash
-gh release download v0.17.3 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
-python -m pip install dist-release/figops-0.17.3-py3-none-any.whl
+gh release download v0.17.4 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
+python -m pip install dist-release/figops-0.17.4-py3-none-any.whl
 figops-mcp --smoke
 ```
 
 Maintainers should attach both built artifacts to each release and verify them:
 
 ```bash
-gh release upload v0.17.3 dist/figops-0.17.3-py3-none-any.whl dist/figops-0.17.3.tar.gz
+gh release upload v0.17.4 dist/figops-0.17.4-py3-none-any.whl dist/figops-0.17.4.tar.gz
 python scripts/github_release_asset_smoke.py
 ```
 
@@ -104,8 +104,8 @@ python scripts/consumer_install_smoke.py
 python scripts/github_release_asset_smoke.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 gh workflow run publish.yml --repo Moonweave-Research/figops --ref main -f repository=testpypi
-python -m pip download --no-deps --index-url https://test.pypi.org/simple/ figops==0.17.3 -d /tmp/figops-testpypi-dist
-python -m pip install /tmp/figops-testpypi-dist/figops-0.17.3-py3-none-any.whl
+python -m pip download --no-deps --index-url https://test.pypi.org/simple/ figops==0.17.4 -d /tmp/figops-testpypi-dist
+python -m pip install /tmp/figops-testpypi-dist/figops-0.17.4-py3-none-any.whl
 python scripts/guarded_pypi_upload.py --repository pypi
 gh workflow run publish.yml --repo Moonweave-Research/figops --ref main -f repository=pypi
 ```

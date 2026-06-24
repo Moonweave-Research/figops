@@ -58,8 +58,8 @@ Expected for a private-repo / public-PyPI path: `guarded_pypi_upload.py` can pas
 For now, use GitHub Release assets only:
 
 ```bash
-gh release download v0.17.3 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.3-py3-none-any.whl
+gh release download v0.17.4 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.4-py3-none-any.whl
 figops-mcp --smoke
 ```
 
