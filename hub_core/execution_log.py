@@ -150,7 +150,7 @@ def append_execution_log(hub_path, record, *, log_dirname=DEFAULT_LOG_DIRNAME, f
     try:
         log_path = _append_jsonl(log_dir, filename, record)
     except OSError as exc:
-        fallback_dir = os.path.join(tempfile.gettempdir(), "graph_making_hub", DEFAULT_LOG_DIRNAME)
+        fallback_dir = os.path.join(tempfile.gettempdir(), "figops", DEFAULT_LOG_DIRNAME)
         logger.warning("⚠️  Execution logging failed at primary path: %s\n   └─ %s", log_path, exc)
         logger.info("   ↪ Retrying with fallback log dir: %s", fallback_dir)
         try:

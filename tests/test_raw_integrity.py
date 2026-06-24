@@ -66,7 +66,7 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
 
             verify_result = verify_raw_integrity(project_dir, config)
             validated = server.call_tool(
-                "graphhub.validate_project",
+                "figops.validate_project",
                 {"project_path": project_dir.name},
             )["structuredContent"]
 
@@ -89,7 +89,7 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
 
             verify_result = verify_raw_integrity(project_dir, config)
             validated = server.call_tool(
-                "graphhub.validate_project",
+                "figops.validate_project",
                 {"project_path": project_dir.name},
             )["structuredContent"]
 
@@ -111,7 +111,7 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=project_dir.parent)
 
             validated = server.call_tool(
-                "graphhub.validate_project",
+                "figops.validate_project",
                 {"project_path": project_dir.name},
             )["structuredContent"]
 
@@ -131,7 +131,7 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=project_dir.parent)
 
             validated = server.call_tool(
-                "graphhub.validate_project",
+                "figops.validate_project",
                 {"project_path": project_dir.name},
             )["structuredContent"]
 
@@ -147,7 +147,7 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=project_dir.parent)
 
             validated = server.call_tool(
-                "graphhub.validate_project",
+                "figops.validate_project",
                 {"project_path": project_dir.name},
             )["structuredContent"]
 
@@ -171,7 +171,7 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=project_dir.parent)
 
             validated = server.call_tool(
-                "graphhub.validate_project",
+                "figops.validate_project",
                 {"project_path": project_dir.name},
             )["structuredContent"]
 
@@ -263,7 +263,7 @@ class RawIntegrityMCPInspectTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root)
 
             result = server.call_tool(
-                "graphhub.inspect_project",
+                "figops.inspect_project",
                 {"project_path": "module"},
             )["structuredContent"]
 

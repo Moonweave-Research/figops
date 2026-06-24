@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make the Surfur graph workflow operational through Graph Hub MCP without using
+Make the Surfur graph workflow operational through FigOps MCP without using
 Athena as a graph router.
 
 ## Scope
@@ -27,7 +27,7 @@ Athena as a graph router.
 2. Review:
    Check candidate rows for missing inputs, missing scripts, and stale outputs.
 3. Smoke:
-   Render one high-confidence target through `graphhub.render_project_figure`
+   Render one high-confidence target through `figops.render_project_figure`
    into a runtime root.
 4. Update:
    Refresh the inventory after project configs or generated data change.
@@ -45,5 +45,5 @@ Athena as a graph router.
   `scripts/project_config.yaml`.
 - Invalid or unreadable configs are surfaced as non-candidate inventory rows
   instead of being silently omitted.
-- Current PI_control gold target renders through Graph Hub MCP.
+- Current PI_control gold target renders through FigOps MCP.
 - Generated inventory documents the exact MCP call sequence.

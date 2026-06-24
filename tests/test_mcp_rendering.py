@@ -277,10 +277,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
         names = set(definitions)
 
-        self.assertIn("graphhub.render_csv_graph", names)
-        self.assertIn("graphhub.render_project_figure", names)
-        self.assertIn("graphhub.collect_artifacts", names)
-        for tool_name in ("graphhub.render_csv_graph", "graphhub.render_project_figure", "graphhub.collect_artifacts"):
+        self.assertIn("figops.render_csv_graph", names)
+        self.assertIn("figops.render_project_figure", names)
+        self.assertIn("figops.collect_artifacts", names)
+        for tool_name in ("figops.render_csv_graph", "figops.render_project_figure", "figops.collect_artifacts"):
             properties = definitions[tool_name]["outputSchema"]["properties"]
             self.assertIn("failure_stage", properties)
             self.assertIn("resolution_hint", properties)
@@ -289,8 +289,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn("latest_alias", properties)
             self.assertIn("latest_dir", properties)
             self.assertIn("layout_report", properties)
-        project_input = definitions["graphhub.render_project_figure"]["inputSchema"]["properties"]
-        project_output = definitions["graphhub.render_project_figure"]["outputSchema"]["properties"]
+        project_input = definitions["figops.render_project_figure"]["inputSchema"]["properties"]
+        project_output = definitions["figops.render_project_figure"]["outputSchema"]["properties"]
         self.assertIn("project_id", project_input)
         self.assertIn("project_path", project_input)
         self.assertIn("figure_id", project_input)
@@ -326,7 +326,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 server = GraphHubMCPServer(research_root=Path(tmpdir))
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "runtime-demo"},
                 )
 
@@ -355,7 +355,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 server = GraphHubMCPServer(research_root=Path(tmpdir))
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "quiet-prefetch"},
                 )
 
@@ -381,11 +381,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 render_server = GraphHubMCPServer(research_root=Path(tmpdir))
                 rendered = self._call(
                     render_server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "restart-demo"},
                 )
                 collect_server = GraphHubMCPServer()
-                collected = self._call(collect_server, "graphhub.collect_artifacts", {"job_id": "restart-demo"})
+                collected = self._call(collect_server, "figops.collect_artifacts", {"job_id": "restart-demo"})
 
             self.assertIn(rendered["status"], {"ok", "warning"})
             self.assertIn(collected["status"], {"ok", "warning"})
@@ -405,7 +405,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -451,7 +451,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(manifest["visual_preflight_status"]["passed"], True)
             provenance = manifest["provenance"]
             self.assertEqual(provenance["job_id"], "render-demo")
-            self.assertEqual(provenance["renderer_surface"], "graphhub.render_csv_graph")
+            self.assertEqual(provenance["renderer_surface"], "figops.render_csv_graph")
             self.assertEqual(provenance["renderer"], "plotting.bridge_renderer.render_bridge_figure")
             self.assertEqual(provenance["source_data_sha256"], provenance["copied_data_sha256"])
             self.assertEqual(len(provenance["config_sha256"]), 64)
@@ -473,7 +473,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(external_data), "x_column": "x", "y_column": "y", "job_id": "outside-data"},
             )
 
@@ -492,7 +492,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(sibling_data), "x_column": "x", "y_column": "y", "job_id": "runtime-parent"},
             )
 
@@ -508,7 +508,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -517,7 +517,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 },
             )
 
-            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "artifact-demo"})
+            collected = self._call(server, "figops.collect_artifacts", {"job_id": "artifact-demo"})
 
             self.assertIn(collected["status"], {"ok", "warning"})
             self.assertEqual(collected["job_id"], "artifact-demo")
@@ -534,7 +534,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(collected["latest_dir"], collected["provenance"]["latest_dir"])
             self.assertEqual(collected["latest_alias"], collected["provenance"]["latest_alias"])
             self.assertEqual(collected["visual_preflight_status"]["passed"], True)
-            self.assertEqual(collected["provenance"]["renderer_surface"], "graphhub.render_csv_graph")
+            self.assertEqual(collected["provenance"]["renderer_surface"], "figops.render_csv_graph")
             self.assertEqual(len(collected["provenance"]["source_data_sha256"]), 64)
             self.assertEqual(len(collected["provenance"]["config_sha256"]), 64)
             self.assertEqual(len(collected["provenance"]["environment_sha256"]), 64)
@@ -549,7 +549,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "project-dry", "dry_run": True},
             )
 
@@ -569,13 +569,13 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 dry_server = GraphHubMCPServer(research_root=root)
                 dry_result = self._call(
                     dry_server,
-                    "graphhub.render_project_figure",
+                    "figops.render_project_figure",
                     {"project_path": str(project), "figure_id": "Fig1", "job_id": "path-parity", "dry_run": True},
                 )
                 render_server = GraphHubMCPServer(research_root=root)
                 render_result = self._call(
                     render_server,
-                    "graphhub.render_project_figure",
+                    "figops.render_project_figure",
                     {"project_path": str(project), "figure_id": "Fig1", "job_id": "path-parity-real"},
                 )
 
@@ -602,7 +602,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "project-render"},
             )
 
@@ -620,7 +620,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(Path(result["manifest_path"]).is_file())
             self.assertTrue(Path(result["status_path"]).is_file())
             manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
-            self.assertEqual(manifest["provenance"]["renderer_surface"], "graphhub.render_project_figure")
+            self.assertEqual(manifest["provenance"]["renderer_surface"], "figops.render_project_figure")
             self.assertEqual(manifest["selected_figure"]["output"], "results/figures/Fig1.png")
             self.assertEqual(manifest["source_project_path"], "01_Project")
             self.assertEqual(manifest["provenance"]["source_project_path"], "01_Project")
@@ -636,7 +636,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "legacy-context-render"},
             )
 
@@ -657,7 +657,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {
                     "project_path": str(project),
                     "figure_id": "FigSynthetic_Response",
@@ -686,7 +686,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {
                     "project_path": str(project),
                     "figure_id": "FigSynthetic_Multipanel",
@@ -716,15 +716,15 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
             self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "project-artifacts"},
             )
 
-            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "project-artifacts"})
+            collected = self._call(server, "figops.collect_artifacts", {"job_id": "project-artifacts"})
 
             self.assertIn(collected["status"], {"ok", "warning"})
             self.assertEqual(collected["job_id"], "project-artifacts")
-            self.assertEqual(collected["provenance"]["renderer_surface"], "graphhub.render_project_figure")
+            self.assertEqual(collected["provenance"]["renderer_surface"], "figops.render_project_figure")
             self.assertEqual(collected["provenance"]["source_project_path"], "01_Project")
             self.assertEqual(len(collected["figures"]), 1)
             self.assertTrue(Path(collected["figures"][0]["path"]).is_file())
@@ -745,7 +745,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "job_id": "ambiguous-project"},
             )
 
@@ -768,14 +768,14 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             absolute_result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "absolute-output"},
             )
             config["figures"][0]["output"] = "../outside.png"
             config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
             parent_result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "parent-output"},
             )
 
@@ -796,7 +796,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "external-project"},
             )
 
@@ -815,7 +815,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "missing-input"},
             )
 
@@ -840,7 +840,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "symlink-input"},
             )
 
@@ -861,7 +861,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "script-fails"},
             )
 
@@ -887,7 +887,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "swallowed-traceback"},
             )
 
@@ -906,7 +906,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
             self.assertTrue(any("KeyError" in line for line in manifest["script_output"]))
             self.assertEqual(manifest["layout_report"]["render_errors"][0]["stage"], "EXPORT")
-            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "swallowed-traceback"})
+            collected = self._call(server, "figops.collect_artifacts", {"job_id": "swallowed-traceback"})
             self.assertEqual(collected["status"], "error")
             self.assertTrue(any("Unknown layout_type duo" in line for line in collected["script_output"]))
             self.assertEqual(collected["layout_report"]["render_errors"][0]["stage"], "EXPORT")
@@ -916,8 +916,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
             args = {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "same-job"}
-            first = self._call(server, "graphhub.render_csv_graph", args)
-            second = self._call(server, "graphhub.render_csv_graph", args)
+            first = self._call(server, "figops.render_csv_graph", args)
+            second = self._call(server, "figops.render_csv_graph", args)
 
             self.assertIn(first["status"], {"ok", "warning"})
             self.assertEqual(second["status"], "error")
@@ -936,7 +936,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(data_path), "x_column": "x", "y_column": "y", "profile": "typo-profile"},
             )
 
@@ -955,7 +955,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(data_path), "x_column": "x", "y_column": "y", "plot_type": "scater"},
             )
 
@@ -974,7 +974,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -1014,7 +1014,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {
                         "data_path": str(data_path),
                         "x_column": "x",
@@ -1056,7 +1056,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {
                         "data_path": str(data_path),
                         "x_column": "x",
@@ -1081,7 +1081,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(data_path), "x_column": "x", "y_column": "y", "plot_type": "heatmap"},
             )
 
@@ -1112,7 +1112,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {
                         "data_path": str(data_path),
                         "x_column": "condition",
@@ -1140,7 +1140,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -1163,7 +1163,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -1186,7 +1186,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -1209,7 +1209,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -1235,7 +1235,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             with patch("hub_core.mcp.render_orchestration.MCP_RENDER_CSV_MAX_BYTES", 4):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
                 )
 
@@ -1252,7 +1252,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(missing_path), "x_column": "x", "y_column": "y"},
             )
 
@@ -1275,7 +1275,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             with patch.dict(os.environ, {"GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES": "4"}, clear=False):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
                 )
 
@@ -1291,7 +1291,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             with patch.dict(os.environ, {"GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES": "not-an-int"}, clear=False):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
                 )
 
@@ -1304,7 +1304,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -1334,7 +1334,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "warning-demo"},
                 )
 
@@ -1366,7 +1366,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {
                         "data_path": str(data_path),
                         "x_column": "x",
@@ -1409,7 +1409,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -1436,7 +1436,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             with patch("hub_core.data_contract._PINT_AVAILABLE", False):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {
                         "data_path": str(data_path),
                         "x_column": "x",
@@ -1467,7 +1467,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -1501,7 +1501,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {
                         "data_path": str(data_path),
                         "x_column": "x",
@@ -1533,7 +1533,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
                 )
 
@@ -1550,7 +1550,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
                 )
 
@@ -1569,7 +1569,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "timeout-demo"},
                 )
 
@@ -1593,7 +1593,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             with patch("hub_core.mcp.render_orchestration._render_bridge_figure_worker", _path_leaking_render_worker):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "path-demo"},
                 )
 
@@ -1619,7 +1619,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(status["status"], "error")
             self.assertEqual(status["failure_stage"], "PLOT")
 
-            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "path-demo"})
+            collected = self._call(server, "figops.collect_artifacts", {"job_id": "path-demo"})
             self.assertEqual(collected["status"], "error")
             self.assertEqual(collected["artifact_status"], "failed")
             self.assertEqual(collected["failure_stage"], "PLOT")
@@ -1642,7 +1642,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(link_dir / data_path.name), "x_column": "x", "y_column": "y"},
             )
 
@@ -1661,7 +1661,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             with patch("hub_core.mcp.render_orchestration._render_bridge_figure_worker", _path_leaking_render_worker):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {
                         "data_path": str(data_path),
                         "x_column": "x",
@@ -1675,7 +1675,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(result["baseline_comparison"]["checked"])
             self.assertEqual(manifest["baseline_comparison"], result["baseline_comparison"])
 
-            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "baseline-failure-demo"})
+            collected = self._call(server, "figops.collect_artifacts", {"job_id": "baseline-failure-demo"})
             self.assertEqual(collected["baseline_comparison"], result["baseline_comparison"])
 
     def test_render_worker_reads_file_result_after_process_exit(self):
@@ -1766,7 +1766,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "contract-path"},
                 )
 
@@ -1787,7 +1787,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": 11,
                 "method": "tools/call",
-                "params": {"name": "graphhub.render_csv_graph", "arguments": {"x_column": "x", "y_column": "y"}},
+                "params": {"name": "figops.render_csv_graph", "arguments": {"x_column": "x", "y_column": "y"}},
             },
         )
 
@@ -1804,7 +1804,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 "id": 12,
                 "method": "tools/call",
                 "params": {
-                    "name": "graphhub.render_csv_graph",
+                    "name": "figops.render_csv_graph",
                     "arguments": {
                         "data_path": "/tmp/input.csv",
                         "x_column": "x",
@@ -1831,7 +1831,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                     "id": 13,
                     "method": "tools/call",
                     "params": {
-                        "name": "graphhub.render_csv_graph",
+                        "name": "figops.render_csv_graph",
                         "arguments": {
                             "data_path": str(data_path),
                             "x_column": "x",
@@ -1856,7 +1856,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -1881,7 +1881,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(data_path), "x_column": "x", "y_column": "y", "semantic_checks": []},
             )
 
@@ -1898,7 +1898,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(data_path), "x_column": "missing", "y_column": "y"},
             )
 
@@ -1915,7 +1915,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {
                     "data_path": str(data_path),
                     "x_column": "x",
@@ -1929,7 +1929,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(result["manual_review_needed"])
             self.assertFalse(result["visual_preflight_status"]["passed"])
 
-            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "preflight-demo"})
+            collected = self._call(server, "figops.collect_artifacts", {"job_id": "preflight-demo"})
             self.assertEqual(collected["status"], "warning")
             self.assertTrue(collected["manual_review_needed"])
             self.assertTrue(collected["warnings"])
@@ -1940,7 +1940,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             with patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime_root)}, clear=False):
                 server = GraphHubMCPServer()
-                result = self._call(server, "graphhub.collect_artifacts", {"job_id": "missing-job"})
+                result = self._call(server, "figops.collect_artifacts", {"job_id": "missing-job"})
 
             self.assertEqual(result["status"], "error")
             self.assertFalse(runtime_root.exists())
@@ -1953,7 +1953,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(data_path), "x_column": "x", "y_column": "y", "dry_run": True},
             )
 
@@ -1975,7 +1975,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=research_root)
 
             # User lists from a narrow root (the project's parent), as in the repro.
-            listed = self._call(server, "graphhub.list_projects", {"root": str(project.parent)})
+            listed = self._call(server, "figops.list_projects", {"root": str(project.parent)})
             project_id = listed["projects"][0]["project_id"]
 
             # Render receives only the project_id, so it scans from research_root —
@@ -2013,7 +2013,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             "job_id": "geom-csv",
         }
         arguments.update(overrides)
-        return server, self._call(server, "graphhub.render_csv_graph", arguments)
+        return server, self._call(server, "figops.render_csv_graph", arguments)
 
     def test_csv_attaches_key_and_manifest(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
@@ -2038,7 +2038,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "geom-project"},
             )
             self.assertIn(result["status"], {"ok", "warning"})
@@ -2060,7 +2060,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "geom-project-real"},
             )
             self.assertIn(result["status"], {"ok", "warning"})
@@ -2091,7 +2091,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "canonical-mismatch"},
             )
 
@@ -2108,7 +2108,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             self.assertEqual(manifest["figure_metadata"], metadata)
             status_payload = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
             self.assertEqual(status_payload["figure_metadata"], metadata)
-            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "canonical-mismatch"})
+            collected = self._call(server, "figops.collect_artifacts", {"job_id": "canonical-mismatch"})
             self.assertEqual(collected["figure_metadata"], metadata)
             self.assertTrue(any("canonical" in warning for warning in collected["warnings"]))
 
@@ -2129,7 +2129,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "canonical-config-warning"},
             )
 
@@ -2160,7 +2160,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "svg-metadata"},
             )
 
@@ -2202,7 +2202,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "FigPTFE_CvS_Fits", "job_id": "family-mismatch"},
             )
 
@@ -2253,7 +2253,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "FigPTFE_CvS_Fits", "job_id": "family-snapshot"},
             )
 
@@ -2295,7 +2295,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Result_A", "job_id": "family-false-positive"},
             )
 
@@ -2328,7 +2328,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "geom-project-overlap"},
             )
 
@@ -2352,7 +2352,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
             result = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "geom-project-boom"},
             )
             self.assertNotEqual(result["status"], "error")
@@ -2388,7 +2388,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             missing_column = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(data_path), "x_column": "x", "y_column": "does_not_exist"},
             )
             self.assertEqual(missing_column["status"], "error")
@@ -2398,7 +2398,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
 
             file_missing = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": "", "x_column": "x", "y_column": "y"},
             )
             self.assertEqual(file_missing["status"], "error")
@@ -2521,11 +2521,11 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
 
     def test_schema_validity_per_tool_scoped(self):
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
-        for tool_name in ("graphhub.render_csv_graph", "graphhub.render_project_figure"):
+        for tool_name in ("figops.render_csv_graph", "figops.render_project_figure"):
             properties = definitions[tool_name]["outputSchema"]["properties"]
             self.assertIn("geometry_diagnostics", properties)
             self.assertIn("layout_report", properties)
-            if tool_name == "graphhub.render_project_figure":
+            if tool_name == "figops.render_project_figure":
                 self.assertIn("figure_metadata", properties)
             geom_schema = properties["geometry_diagnostics"]
             self.assertEqual(set(geom_schema["required"]), {"schema_version", "passed", "checks", "warnings"})
@@ -2536,18 +2536,18 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             self.assertIn("overlaps", report_schema["required"])
             self.assertIn("render_errors", report_schema["required"])
         # per-tool scoping: not declared on non-render tools
-        for tool_name in ("graphhub.health", "graphhub.list_projects"):
+        for tool_name in ("figops.health", "figops.list_projects"):
             self.assertNotIn("geometry_diagnostics", definitions[tool_name]["outputSchema"]["properties"])
         # CSV extras declares the previously-undeclared calculation_checks too (strict-validator gap)
         self.assertIn(
             "calculation_checks",
-            definitions["graphhub.render_csv_graph"]["outputSchema"]["properties"],
+            definitions["figops.render_csv_graph"]["outputSchema"]["properties"],
         )
         # additive non-breakage: real responses validate only because the key is declared.
         # Exercises every response shape against its tool's outputSchema so a stray top-level
         # key would be caught by additionalProperties:False, not just by manual tracing.
-        csv_schema = definitions["graphhub.render_csv_graph"]["outputSchema"]
-        project_schema = definitions["graphhub.render_project_figure"]["outputSchema"]
+        csv_schema = definitions["figops.render_csv_graph"]["outputSchema"]
+        project_schema = definitions["figops.render_project_figure"]["outputSchema"]
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             _, csv_success = self._render_csv(tmpdir)
             self._assert_validates(csv_success, csv_schema)
@@ -2575,7 +2575,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
             csv_error = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(data_path), "x_column": "x", "y_column": "does_not_exist"},
             )
             self.assertEqual(csv_error["status"], "error")
@@ -2589,7 +2589,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             project_success = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "geom-schema-real"},
             )
             self._assert_validates(project_success, project_schema)
@@ -2602,7 +2602,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             project_no_sidecar = self._call(
                 server,
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "geom-schema-stub"},
             )
             self._assert_validates(project_no_sidecar, project_schema)

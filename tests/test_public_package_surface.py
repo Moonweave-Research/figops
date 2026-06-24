@@ -24,10 +24,10 @@ def test_public_package_surface_blocks_tests_in_sdist(tmp_path: Path) -> None:
     dist = tmp_path / "dist"
     dist.mkdir()
     _write_tar_gz(
-        dist / "graph_making_hub-0.16.6.tar.gz",
+        dist / "figops-0.16.6.tar.gz",
         {
-            "graph_making_hub-0.16.6/pyproject.toml": "[project]\nname='x'\n",
-            "graph_making_hub-0.16.6/tests/test_private.py": "def test_x(): pass\n",
+            "figops-0.16.6/pyproject.toml": "[project]\nname='x'\n",
+            "figops-0.16.6/tests/test_private.py": "def test_x(): pass\n",
         },
     )
 
@@ -41,7 +41,7 @@ def test_public_package_surface_blocks_private_marker_in_wheel(tmp_path: Path) -
     dist = tmp_path / "dist"
     dist.mkdir()
     _write_wheel(
-        dist / "graph_making_hub-0.16.6-py3-none-any.whl",
+        dist / "figops-0.16.6-py3-none-any.whl",
         {"themes/journal_theme.py": "STYLE = 'nature_surfur'\n"},
     )
 
@@ -54,10 +54,10 @@ def test_public_package_surface_blocks_private_marker_in_wheel(tmp_path: Path) -
 def test_public_package_surface_accepts_synthetic_minimal_artifacts(tmp_path: Path) -> None:
     dist = tmp_path / "dist"
     dist.mkdir()
-    _write_wheel(dist / "graph_making_hub-0.16.6-py3-none-any.whl", {"hub_core/__init__.py": ""})
+    _write_wheel(dist / "figops-0.16.6-py3-none-any.whl", {"hub_core/__init__.py": ""})
     _write_tar_gz(
-        dist / "graph_making_hub-0.16.6.tar.gz",
-        {"graph_making_hub-0.16.6/pyproject.toml": "[project]\nname='graph-making-hub'\n"},
+        dist / "figops-0.16.6.tar.gz",
+        {"figops-0.16.6/pyproject.toml": "[project]\nname='figops'\n"},
     )
 
     result = inspect_public_package_surface(tmp_path)
@@ -67,8 +67,8 @@ def test_public_package_surface_accepts_synthetic_minimal_artifacts(tmp_path: Pa
 
 
 def test_blocked_path_reason_matches_private_publication_surfaces():
-    assert blocked_path_reason("graph_making_hub-0.16.6/tests/test_private.py") == "*/tests/*"
-    assert blocked_path_reason("graph_making_hub-0.16.6/docs/hks/01.md") == "*/docs/hks/*"
-    assert blocked_path_reason("graph_making_hub-0.16.6/project_config_template.yaml") == (
+    assert blocked_path_reason("figops-0.16.6/tests/test_private.py") == "*/tests/*"
+    assert blocked_path_reason("figops-0.16.6/docs/hks/01.md") == "*/docs/hks/*"
+    assert blocked_path_reason("figops-0.16.6/project_config_template.yaml") == (
         "*/project_config_template.yaml"
     )

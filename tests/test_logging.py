@@ -43,7 +43,7 @@ class TestGraphHubLogging(unittest.TestCase):
             contextlib.redirect_stderr(stderr),
         ):
             configure_logging()
-            get_logger("tests.graphhub.logging").debug("debug log is visible")
+            get_logger("tests.figops.logging").debug("debug log is visible")
 
         self.assertIn("debug log is visible", stderr.getvalue())
 
@@ -75,7 +75,7 @@ class TestGraphHubLogging(unittest.TestCase):
     def test_mcp_stdio_logging_stays_off_framed_stdout(self):
         class LoggingServer(GraphHubMCPServer):
             def call_tool(self, name, arguments):
-                get_logger("tests.graphhub.mcp").warning("LOG_WOULD_CORRUPT_WIRE")
+                get_logger("tests.figops.mcp").warning("LOG_WOULD_CORRUPT_WIRE")
                 return super().call_tool(name, arguments)
 
         body = json.dumps(
@@ -83,7 +83,7 @@ class TestGraphHubLogging(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "tools/call",
-                "params": {"name": "graphhub.health", "arguments": {}},
+                "params": {"name": "figops.health", "arguments": {}},
             }
         ).encode("utf-8")
         input_stream = io.BytesIO(b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)

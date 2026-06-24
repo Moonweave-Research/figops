@@ -1,6 +1,6 @@
 # HKS 02 Style Contract
 
-Graph Hub owns the central style system.
+FigOps owns the central style system.
 
 ## Target Formats
 
@@ -52,7 +52,7 @@ visual_style < preset < per-step inline override
 
 ## Agent Rules
 
-- Call `graphhub.list_styles` before assuming style support.
-- Do not copy Athena's style enum into Graph Hub.
+- Call `figops.list_styles` before assuming style support.
+- Do not copy Athena's style enum into FigOps.
 - Do not invent styles in project configs.
 - If a requested style is missing, return the supported style list and ask whether to map to an existing style or add a new central style.

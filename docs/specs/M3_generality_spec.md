@@ -1,6 +1,6 @@
 # M3 — Generality / decoupling — implementer spec
 
-> Goal (`docs/ROADMAP.md`): a fresh user, in a different environment and domain, can run Graph Hub
+> Goal (`docs/ROADMAP.md`): a fresh user, in a different environment and domain, can run FigOps
 > without the bespoke assumptions. Biggest lever for the "shareable lab tool" north star
 > (generality 3→7). **Depends on M1** (decomposition) — specified at interface/contract level so it
 > doesn't go stale; firm up exact file refs against `hub_core/mcp/` + `hub_core/adapters/` when M1

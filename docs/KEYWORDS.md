@@ -25,7 +25,7 @@
 
 ## 🛠️ [3] System & Hub Automation
 
-- **RESEARCH_HUB_PATH**: Global environment variable pointing to the independent `graph-making-hub` clone.
+- **RESEARCH_HUB_PATH**: Global environment variable pointing to the independent `figops` clone.
 - **DATA_CONTRACT**: The strict CSV schema agreement between analysis and plotting modules.
 - **PROVENANCE_LOG**: Execution metadata (Runtime, Hashes, Environment) recorded in `hub_logs/`.
 - **SMART_BUILD**: Mtime-based skip logic for optimized pipeline execution (`--force` to override).

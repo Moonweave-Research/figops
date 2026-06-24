@@ -33,7 +33,7 @@ def test_doctor_json_reports_structured_readiness(tmp_path):
     completed = subprocess.run(
         [
             sys.executable,
-            "graphhub_mcp_server.py",
+            "figops_mcp_server.py",
             "--hub-path",
             str(HUB_ROOT),
             "--research-root",

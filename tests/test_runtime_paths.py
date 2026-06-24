@@ -86,7 +86,7 @@ class RuntimePathTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
             blocked_cache = Path(tmpdir) / "cache-file"
             blocked_cache.write_text("not a directory", encoding="utf-8")
-            fallback_root = Path(tmpdir) / "graph_making_hub_runtime"
+            fallback_root = Path(tmpdir) / "figops_runtime"
 
             with (
                 patch.dict(
@@ -110,7 +110,7 @@ class RuntimePathTest(unittest.TestCase):
             blocked_cache = Path(tmpdir) / "cache-file"
             blocked_cache.write_text("not a directory", encoding="utf-8")
             preview_tmp = Path(tmpdir) / "preview-temp"
-            fallback_root = preview_tmp / "graph_making_hub_runtime"
+            fallback_root = preview_tmp / "figops_runtime"
 
             with (
                 patch.dict(

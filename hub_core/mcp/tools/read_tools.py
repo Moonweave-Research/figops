@@ -23,7 +23,7 @@ from hub_core.config_parser import (
     validate_config,
 )
 from hub_core.config_placeholders import placeholder_report
-from hub_core.mcp.schemas import describe_graphhub_surface
+from hub_core.mcp.schemas import describe_figops_surface
 from hub_core.naming_lint import empty_naming_lint, lint_project_naming
 from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.raw_integrity import raw_integrity_config, verify_raw_integrity
@@ -33,7 +33,7 @@ from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profile
 
 
 class McpReadToolsMixin:
-    """Read-only Graph Hub MCP tool handlers."""
+    """Read-only FigOps MCP tool handlers."""
 
     def health(self, arguments: dict[str, Any]) -> dict[str, Any]:
         root = self._scan_root(arguments)
@@ -50,12 +50,12 @@ class McpReadToolsMixin:
 
         status = "warning" if warnings else "ok"
         summary = (
-            "Graph Hub MCP surface is available with discovery warnings."
+            "FigOps MCP surface is available with discovery warnings."
             if warnings
-            else "Graph Hub MCP surface is available."
+            else "FigOps MCP surface is available."
         )
         return self._envelope(
-            "graphhub.health",
+            "figops.health",
             arguments,
             status=status,
             summary=summary,
@@ -72,7 +72,7 @@ class McpReadToolsMixin:
     def list_styles(self, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = arguments or {}
         return self._envelope(
-            "graphhub.list_styles",
+            "figops.list_styles",
             arguments,
             summary=f"{len(ALLOWED_TARGET_FORMATS)} target formats and {len(list_profiles())} profiles available.",
             target_formats=sorted(ALLOWED_TARGET_FORMATS),
@@ -86,9 +86,9 @@ class McpReadToolsMixin:
 
     def describe(self, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = arguments or {}
-        surface = describe_graphhub_surface()
+        surface = describe_figops_surface()
         return self._envelope(
-            "graphhub.describe",
+            "figops.describe",
             arguments,
             summary=(
                 f"Described {len(surface['tools'])} tools, {len(surface['plot_types'])} plot type(s), "
@@ -118,7 +118,7 @@ class McpReadToolsMixin:
         serialized = [self._serialize_project(project) for project in projects]
         invalid_count = sum(1 for project in projects if not project.valid)
         return self._envelope(
-            "graphhub.list_projects",
+            "figops.list_projects",
             arguments,
             status="warning" if invalid_count else "ok",
             summary=f"Discovered {len(serialized)} project config(s).",
@@ -131,7 +131,7 @@ class McpReadToolsMixin:
         loaded = self._load_project_config(project_path)
         if loaded["errors"]:
             return self._envelope(
-                "graphhub.inspect_project",
+                "figops.inspect_project",
                 arguments,
                 status="error",
                 summary="Project config could not be inspected.",
@@ -153,7 +153,7 @@ class McpReadToolsMixin:
         placeholders = placeholder_report(config)
 
         return self._envelope(
-            "graphhub.inspect_project",
+            "figops.inspect_project",
             arguments,
             summary=f"Inspected project config at {loaded['config_relpath']}.",
             project_metadata={
@@ -255,7 +255,7 @@ class McpReadToolsMixin:
             summary = "Project config needs changes before rendering."
 
         return self._envelope(
-            "graphhub.validate_project",
+            "figops.validate_project",
             arguments,
             status=status,
             summary=summary,

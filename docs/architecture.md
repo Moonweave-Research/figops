@@ -1,4 +1,4 @@
-# Graph Hub - Architecture
+# FigOps - Architecture
 
 > Companion to `docs/ROADMAP.md`. Describes the current v0.15.0 architecture
 > after the 0.5.0 MCP decomposition and later release work.
@@ -9,7 +9,7 @@ Dependencies point **downward only**. A layer may import from layers below it,
 never above.
 
 ```
-graphhub_mcp_server.py                # entrypoint (stdio); --smoke; thin
+figops_mcp_server.py                # entrypoint (stdio); --smoke; thin
         |
         v
 hub_core/mcp/transport.py             # JSON-RPC 2.0: framing, batch, lifecycle, dispatch
@@ -37,7 +37,7 @@ hub_core/adapters/*                   # opt-in integrations behind generic defau
 themes/                               # styling leaf
 ```
 
-- **transport** knows JSON-RPC framing and dispatch, not Graph Hub domain logic.
+- **transport** knows JSON-RPC framing and dispatch, not FigOps domain logic.
 - **server** is the facade that wires config, roots, registries, and services.
 - **tools** are grouped handler modules under `hub_core/mcp/tools/`.
 - **services** such as config parsing, data contracts, rendering, provenance,
@@ -91,7 +91,7 @@ candidate for a future decomposition pass.
 The MCP tool surface is registry-backed. Tool definitions, schemas, and handler
 wiring live under `hub_core/mcp/`, with grouped handlers in
 `hub_core/mcp/tools/`. This shared surface feeds `tools/list`,
-`graphhub.describe`, RPC validation, write-tool gating, and generated
+`figops.describe`, RPC validation, write-tool gating, and generated
 `docs/tools.md`.
 
 ## Why this shape
@@ -100,5 +100,5 @@ wiring live under `hub_core/mcp/`, with grouped handlers in
   behind a facade, making later changes local and reviewable.
 - **Generality**: adapters and registries let different environments, project
   conventions, and plot types slot in without touching the dispatch core.
-- **DX**: live registries back `graphhub.describe`, `graphhub.doctor`,
-  `graphhub.list_styles`, and generated tool documentation.
+- **DX**: live registries back `figops.describe`, `figops.doctor`,
+  `figops.list_styles`, and generated tool documentation.

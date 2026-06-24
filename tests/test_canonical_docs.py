@@ -62,7 +62,7 @@ class CanonicalDocsMCPValidationTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
+            result = server.call_tool("figops.validate_project", {"project_path": "module"})["structuredContent"]
 
         self.assertFalse(result["valid"])
         self.assertTrue(any("Missing canonical doc" in error for error in result["config_errors"]))
@@ -77,7 +77,7 @@ class CanonicalDocsMCPValidationTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
+            result = server.call_tool("figops.validate_project", {"project_path": "module"})["structuredContent"]
 
         self.assertTrue(result["valid"])
         self.assertEqual(result["config_errors"], [])
@@ -94,7 +94,7 @@ class CanonicalDocsMCPValidationTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.validate_project", {"project_path": "master"})["structuredContent"]
+            result = server.call_tool("figops.validate_project", {"project_path": "master"})["structuredContent"]
 
         self.assertTrue(result["valid"])
         self.assertEqual(result["config_errors"], [])
@@ -110,7 +110,7 @@ class CanonicalDocsMCPValidationTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.validate_project", {"project_path": "module"})["structuredContent"]
+            result = server.call_tool("figops.validate_project", {"project_path": "module"})["structuredContent"]
 
         self.assertFalse(result["valid"])
         self.assertTrue(any("Missing canonical doc" in error for error in result["config_errors"]))
@@ -129,7 +129,7 @@ class CanonicalDocsMCPValidationTest(unittest.TestCase):
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root)
 
-            result = server.call_tool("graphhub.inspect_project", {"project_path": "module"})["structuredContent"]
+            result = server.call_tool("figops.inspect_project", {"project_path": "module"})["structuredContent"]
 
         registry = result["canonical_docs_registry"]
         self.assertEqual([doc["path"] for doc in registry["docs"]], ["docs/charter.md", "docs/missing.md"])

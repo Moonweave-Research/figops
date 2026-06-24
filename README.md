@@ -1,14 +1,14 @@
-# Graph Making Hub / FigOps
+# FigOps
 
-Graph Making Hub helps research teams turn raw analysis outputs into reproducible,
+FigOps helps research teams turn raw analysis outputs into reproducible,
 publication-ready figures. It is meant to be boring in the best way: one config,
 one command, traceable inputs, repeatable outputs.
 
 The short version:
 
 ```bash
-graphhub --help
-graphhub-mcp --smoke
+figops --help
+figops-mcp --smoke
 ```
 
 If those two commands work, the package is installed and the MCP surface is alive.
@@ -16,8 +16,8 @@ If those two commands work, the package is installed and the MCP surface is aliv
 ## Current status
 
 - **Installable package:** yes. The wheel is built and smoke-tested like an external user would run it.
-- **Current distribution name:** `graph-making-hub`.
-- **Current commands:** `graphhub` and `graphhub-mcp`.
+- **Current distribution name:** `figops`.
+- **Current commands:** `figops` and `figops-mcp` (legacy aliases `graphhub` / `graphhub-mcp` remain for compatibility).
 - **GitHub Release assets:** yes, for users who already have repository access.
 - **Public PyPI:** not yet. The public release gate is intentionally blocked until the license and distribution policy are changed.
 
@@ -31,9 +31,9 @@ rights. Check [LICENSE](./LICENSE) and [NOTICE](./NOTICE) before sharing it.
 For internal users with repository access:
 
 ```bash
-gh release download v0.16.11 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/graph_making_hub-0.16.11-py3-none-any.whl
-graphhub-mcp --smoke
+gh release download v0.17.0 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.0-py3-none-any.whl
+figops-mcp --smoke
 ```
 
 For local development from a clone:
@@ -48,7 +48,7 @@ not get polluted with local virtualenv state.
 
 ## What it does
 
-Graph Making Hub coordinates the work around a research figure:
+FigOps coordinates the work around a research figure:
 
 1. read a project's `project_config.yaml`,
 2. validate declared data contracts,
@@ -64,22 +64,22 @@ traceable back to declared inputs, scripts, config, environment, and output file
 
 ```bash
 # Choose a configured project interactively
-graphhub
+figops
 
 # List configured projects
-graphhub --list-projects
+figops --list-projects
 
 # Run the full pipeline for one project
-graphhub --project "ProjectName" --step all
+figops --project "ProjectName" --step all
 
 # Re-render figures only
-graphhub --project "ProjectName" --step plot
+figops --project "ProjectName" --step plot
 
 # Re-render diagrams only
-graphhub --project "ProjectName" --step diagrams
+figops --project "ProjectName" --step diagrams
 
 # Force a clean rerun
-graphhub --project "ProjectName" --step all --force
+figops --project "ProjectName" --step all --force
 ```
 
 From a source checkout, the equivalent command is `python orchestrator.py ...` or
@@ -88,7 +88,7 @@ From a source checkout, the equivalent command is `python orchestrator.py ...` o
 ## Starting a new project
 
 ```bash
-graphhub --init --project "new_project_folder"
+figops --init --project "new_project_folder"
 ```
 
 That creates a scaffold with a `project_config.yaml`, script folders, and output
@@ -123,13 +123,13 @@ figures:
 The package exposes a Model Context Protocol server entry point:
 
 ```bash
-graphhub-mcp --smoke
+figops-mcp --smoke
 ```
 
 A healthy smoke response looks like:
 
 ```json
-{"status": "ok", "health_status": "ok", "tool_surface": "graphhub_mcp"}
+{"status": "ok", "health_status": "ok", "tool_surface": "figops_mcp"}
 ```
 
 Use this before wiring the package into an agent or external MCP client.
@@ -161,10 +161,10 @@ repo is still private/internal and the license is not public/open-source.
 ## When something goes wrong
 
 - `project_config.yaml not found`
-  Run `graphhub --init --project "<project>"` or move into a configured project.
+  Run `figops --init --project "<project>"` or move into a configured project.
 
 - `Project directory not found`
-  Run `graphhub --list-projects` and copy the exact configured name.
+  Run `figops --list-projects` and copy the exact configured name.
 
 - Strict lockfile errors
   `--strict-lock` is for reproducibility checks. For a quick local render, rerun
@@ -190,7 +190,7 @@ The next real public-distribution step is not more packaging code. It is a polic
 decision:
 
 1. choose the public license or source-available terms,
-2. decide whether the PyPI name remains `graph-making-hub` or changes,
+2. keep `figops` as the public PyPI name unless a final legal/product review changes it,
 3. remove or split private docs/tests/style packs from the public release surface,
 4. make `scripts/check_public_release.py` pass,
 5. then publish to TestPyPI/PyPI through the guarded uploader.

@@ -6,7 +6,7 @@
 
 ## Goal
 
-Make existing Graph Hub state trustworthy before exposing it through MCP.
+Make existing FigOps state trustworthy before exposing it through MCP.
 
 Phase 0 fixes the truth surface: project discovery, config classification, style contract sharing, and no-write health/discovery behavior. It does not implement rendering or project normalization.
 
@@ -25,7 +25,7 @@ As of the 2026-06-07 live audit:
 - 13 projects are valid and 1 project is invalid,
 - the invalid project is `02_Surfur_Polymer/유전율 측정`,
 - default discovery excludes `.worktrees/` and Athena `bridge_jobs/`,
-- Athena still narrows Graph Hub's target format set and must be aligned.
+- Athena still narrows FigOps's target format set and must be aligned.
 
 Therefore Phase 0 is no longer blocked by missing discovery, but it is not complete until style-contract parity, no-write checks, and MCP parity tests are present.
 
@@ -41,13 +41,13 @@ Required work:
 6. Produce a read-only graph inventory report that classifies discovered folders as `official`, `suspect`, `legacy`, `invalid`, or `ephemeral`.
 7. Define stable project IDs.
 8. Create a shared style contract helper that exposes target formats and profiles.
-9. Align Athena bridge target format validation with Graph Hub's full target format set.
+9. Align Athena bridge target format validation with FigOps's full target format set.
 10. Confirm runtime-state policy: no new materialized runtime state inside source trees.
 
 Current first workflow:
 
-1. Align Athena `TargetFormat` with Graph Hub's `ALLOWED_TARGET_FORMATS`.
-2. Add a parity test so future Graph Hub style additions fail Athena tests until the bridge contract is updated.
+1. Align Athena `TargetFormat` with FigOps's `ALLOWED_TARGET_FORMATS`.
+2. Add a parity test so future FigOps style additions fail Athena tests until the bridge contract is updated.
 3. Keep existing Athena bridge behavior working.
 
 ## Non-Goals
@@ -101,7 +101,7 @@ Unit tests:
 Parity tests:
 
 - CLI `--list-projects` and discovery service return the same filtered project set.
-- Athena bridge validation accepts Graph Hub target formats.
+- Athena bridge validation accepts FigOps target formats.
 
 No-write tests:
 

@@ -17,7 +17,7 @@ from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profile
 
 
 class McpRenderToolSupportMixin:
-    """Private helpers shared by Graph Hub MCP tool handlers."""
+    """Private helpers shared by FigOps MCP tool handlers."""
 
     @staticmethod
     def _manifest_path_list(manifest: dict[str, Any], key: str) -> list[str]:
@@ -486,7 +486,7 @@ class McpRenderToolSupportMixin:
         semantic_checks: dict[str, Any],
     ) -> dict[str, Any]:
         return {
-            "project": {"name": "Graph Hub MCP Render Job"},
+            "project": {"name": "FigOps MCP Render Job"},
             "visual_style": {
                 "target_format": target_format,
                 "font_scale": 1.0,

@@ -42,7 +42,7 @@ from .tools.render_tools import McpRenderToolsMixin
 from .tools.render_validation import McpRenderValidationMixin
 
 
-class GraphHubMCPServer(
+class FigOpsMCPServer(
     McpReadToolsMixin,
     McpRenderToolsMixin,
     McpRenderProjectMixin,
@@ -55,7 +55,7 @@ class GraphHubMCPServer(
     McpRenderOrchestrationMixin,
     McpSecurityMixin,
 ):
-    """Dependency-free MCP surface over Graph Hub core contracts."""
+    """Dependency-free MCP surface over FigOps core contracts."""
 
     def __init__(
         self,
@@ -98,14 +98,14 @@ class GraphHubMCPServer(
         arguments = dict(arguments or {})
         handler = self._handlers.get(name)
         if handler is None:
-            raise ValueError(f"Unknown Graph Hub MCP tool: {name}")
+            raise ValueError(f"Unknown FigOps MCP tool: {name}")
         if is_write_tool_name(name) and not self.write_tools_enabled:
             structured = self._envelope(
                 name,
                 arguments,
                 status="error",
-                summary=f"{name} is disabled by the Graph Hub MCP write-tool guard.",
-                errors=["Write tools are disabled for this Graph Hub MCP server."],
+                summary=f"{name} is disabled by the FigOps MCP write-tool guard.",
+                errors=["Write tools are disabled for this FigOps MCP server."],
                 manual_review_needed=True,
                 error_category=DISABLED_ERROR.category,
             )

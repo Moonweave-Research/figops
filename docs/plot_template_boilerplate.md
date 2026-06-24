@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 # 단독 실행 시에는 이 환경 변수를 명시적으로 설정합니다.
 hub_path = os.environ.get('RESEARCH_HUB_PATH')
 if not hub_path:
-    raise RuntimeError("RESEARCH_HUB_PATH is required when running this plot script outside Graph Hub.")
+    raise RuntimeError("RESEARCH_HUB_PATH is required when running this plot script outside FigOps.")
 sys.path.insert(0, os.path.join(hub_path, 'themes'))
 
 from journal_theme import apply_journal_theme, get_figsize, SINGLE_COLUMN, DOUBLE_COLUMN
@@ -57,7 +57,7 @@ library(ggplot2)
 # 1. Hub 경로 및 테마 엔진 로드
 hub_path <- Sys.getenv("RESEARCH_HUB_PATH")
 if (hub_path == "") {
-  stop("RESEARCH_HUB_PATH is required when running this plot script outside Graph Hub.")
+  stop("RESEARCH_HUB_PATH is required when running this plot script outside FigOps.")
 }
 source(file.path(hub_path, "themes", "journal_theme.R"))
 

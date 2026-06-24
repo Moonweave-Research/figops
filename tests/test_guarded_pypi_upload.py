@@ -10,7 +10,7 @@ def test_guarded_upload_blocks_private_license(tmp_path: Path) -> None:
     (tmp_path / "NOTICE").write_text("No open source license has been granted.\n", encoding="utf-8")
     dist = tmp_path / "dist"
     dist.mkdir()
-    (dist / "graph_making_hub-0.16.4-py3-none-any.whl").write_text("placeholder", encoding="utf-8")
+    (dist / "figops-0.16.4-py3-none-any.whl").write_text("placeholder", encoding="utf-8")
 
     blockers = guarded_pypi_upload.upload_blockers(tmp_path)
 
@@ -31,7 +31,7 @@ def test_guarded_upload_requires_distribution_files(tmp_path: Path, monkeypatch)
 
 
 def test_guarded_upload_command_defaults_to_testpypi_repository(tmp_path: Path) -> None:
-    wheel = tmp_path / "dist" / "graph_making_hub-0.16.4-py3-none-any.whl"
+    wheel = tmp_path / "dist" / "figops-0.16.4-py3-none-any.whl"
     wheel.parent.mkdir()
     wheel.write_text("placeholder", encoding="utf-8")
 
@@ -41,7 +41,7 @@ def test_guarded_upload_command_defaults_to_testpypi_repository(tmp_path: Path) 
 
 
 def test_guarded_upload_command_uses_default_pypi_target_without_repository_alias(tmp_path: Path) -> None:
-    sdist = tmp_path / "dist" / "graph_making_hub-0.16.4.tar.gz"
+    sdist = tmp_path / "dist" / "figops-0.16.4.tar.gz"
     sdist.parent.mkdir()
     sdist.write_text("placeholder", encoding="utf-8")
 

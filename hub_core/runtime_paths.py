@@ -87,15 +87,15 @@ def preview_runtime_root():
     repo_runtime_root = _repo_runtime_root_from_symlink()
     if repo_runtime_root:
         candidates.append(repo_runtime_root)
-    candidates.append(os.path.join(_default_user_cache_dir(), "Graph_making_hub"))
-    candidates.append(os.path.join(_preview_temp_dir(), "graph_making_hub_runtime"))
+    candidates.append(os.path.join(_default_user_cache_dir(), "FigOps"))
+    candidates.append(os.path.join(_preview_temp_dir(), "figops_runtime"))
 
     for candidate in candidates:
         usable = _preview_usable_runtime_dir(candidate)
         if usable:
             return usable
 
-    return _abspath(os.path.join(_preview_temp_dir(), "graph_making_hub_runtime"))
+    return _abspath(os.path.join(_preview_temp_dir(), "figops_runtime"))
 
 
 def runtime_root_lookup_candidates():
@@ -107,10 +107,10 @@ def runtime_root_lookup_candidates():
     repo_runtime_root = _repo_runtime_root_from_symlink()
     if repo_runtime_root:
         candidates.append(repo_runtime_root)
-    candidates.append(os.path.join(_default_user_cache_dir(), "Graph_making_hub"))
-    candidates.append(os.path.join(_preview_temp_dir(), "graph_making_hub_runtime"))
+    candidates.append(os.path.join(_default_user_cache_dir(), "FigOps"))
+    candidates.append(os.path.join(_preview_temp_dir(), "figops_runtime"))
     try:
-        candidates.append(os.path.join(tempfile.gettempdir(), "graph_making_hub_runtime"))
+        candidates.append(os.path.join(tempfile.gettempdir(), "figops_runtime"))
     except OSError:
         pass
 
@@ -132,15 +132,15 @@ def resolve_runtime_root():
     repo_runtime_root = _repo_runtime_root_from_symlink()
     if repo_runtime_root:
         candidates.append(repo_runtime_root)
-    candidates.append(os.path.join(_default_user_cache_dir(), "Graph_making_hub"))
-    candidates.append(os.path.join(tempfile.gettempdir(), "graph_making_hub_runtime"))
+    candidates.append(os.path.join(_default_user_cache_dir(), "FigOps"))
+    candidates.append(os.path.join(tempfile.gettempdir(), "figops_runtime"))
 
     for candidate in candidates:
         usable = _usable_runtime_dir(candidate)
         if usable:
             return usable
 
-    return os.path.abspath(os.path.join(tempfile.gettempdir(), "graph_making_hub_runtime"))
+    return os.path.abspath(os.path.join(tempfile.gettempdir(), "figops_runtime"))
 
 
 def resolve_hub_logs_dir():

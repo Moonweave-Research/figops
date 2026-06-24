@@ -1,5 +1,5 @@
 """
-Graph Hub -- Batch journal format conversion.
+FigOps -- Batch journal format conversion.
 
 Re-renders all figures in a project for a different target journal
 with a single command, patching visual_style.target_format in the config.

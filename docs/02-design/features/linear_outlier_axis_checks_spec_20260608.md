@@ -1,7 +1,7 @@
 # Linear Fit, Outlier Flag, and Axis Unit Checks Spec
 
 - Date: 2026-06-08
-- Scope: Graph Hub `data_contract.csv_checks[].semantic_checks`
+- Scope: FigOps `data_contract.csv_checks[].semantic_checks`
 - Status: implementation spec for final Phase B calculation-check expansion
 
 ## Goal
@@ -12,7 +12,7 @@ Add the remaining graph-specific calculation checks:
 - `outlier_flag`: validate an outlier/anomaly flag column used by plotting.
 - `axis_unit`: validate declared display axis units against data units.
 
-These checks belong in Graph Hub because fit annotations, excluded/outlier marks, and axis units directly affect whether a rendered figure is scientifically interpretable.
+These checks belong in FigOps because fit annotations, excluded/outlier marks, and axis units directly affect whether a rendered figure is scientifically interpretable.
 
 ## Config Contract
 

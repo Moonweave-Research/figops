@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a project_config.yaml figure inventory for Graph Hub projects."""
+"""Build a project_config.yaml figure inventory for FigOps projects."""
 
 from __future__ import annotations
 
@@ -309,11 +309,11 @@ def render_markdown(entries: list[FigureInventoryEntry], *, title: str, root: Pa
             "For a candidate row, call:",
             "",
             "```text",
-            "graphhub.inspect_project",
-            "graphhub.validate_project",
-            "graphhub.render_project_figure with dry_run=true",
-            "graphhub.render_project_figure",
-            "graphhub.collect_artifacts",
+            "figops.inspect_project",
+            "figops.validate_project",
+            "figops.render_project_figure with dry_run=true",
+            "figops.render_project_figure",
+            "figops.collect_artifacts",
             "```",
             "",
             "Use the concrete subproject path. Do not render a master workspace root directly.",
@@ -332,7 +332,7 @@ def write_outputs(
     if markdown_path:
         markdown_path.parent.mkdir(parents=True, exist_ok=True)
         markdown_path.write_text(
-            render_markdown(entries, title="Graph Hub Figure Target Inventory", root=root),
+            render_markdown(entries, title="FigOps Figure Target Inventory", root=root),
             encoding="utf-8",
         )
     if json_path:
@@ -354,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     entries = build_inventory(args.root, max_depth=args.max_depth)
     write_outputs(entries, markdown_path=args.markdown_out, json_path=args.json_out, root=args.root.resolve())
     if not args.markdown_out and not args.json_out:
-        print(render_markdown(entries, title="Graph Hub Figure Target Inventory", root=args.root.resolve()))
+        print(render_markdown(entries, title="FigOps Figure Target Inventory", root=args.root.resolve()))
     return 0
 
 

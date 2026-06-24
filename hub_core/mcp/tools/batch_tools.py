@@ -30,7 +30,7 @@ class McpBatchToolsMixin:
         **extra: Any,
     ) -> dict[str, Any]:
         return self._envelope(
-            "graphhub.batch_check",
+            "figops.batch_check",
             arguments,
             status="error",
             summary=summary,
@@ -52,7 +52,7 @@ class McpBatchToolsMixin:
         manifest_path = self._find_job_manifest_path(job_id)
         if not manifest_path.exists():
             return self._envelope(
-                "graphhub.collect_artifacts",
+                "figops.collect_artifacts",
                 arguments,
                 status="error",
                 summary="Render job manifest was not found.",
@@ -65,7 +65,7 @@ class McpBatchToolsMixin:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             return self._envelope(
-                "graphhub.collect_artifacts",
+                "figops.collect_artifacts",
                 arguments,
                 status="error",
                 summary="Render job manifest could not be read.",
@@ -117,7 +117,7 @@ class McpBatchToolsMixin:
             persisted_artifact_status if persisted_failed else self._artifact_status(preflight, baseline_comparison)
         )
         return self._envelope(
-            "graphhub.collect_artifacts",
+            "figops.collect_artifacts",
             arguments,
             status=status,
             summary=f"Collected artifacts for render job {job_id}.",
@@ -287,7 +287,7 @@ class McpBatchToolsMixin:
 
         status = "warning" if timed_out else "ok"
         return self._envelope(
-            "graphhub.batch_check",
+            "figops.batch_check",
             arguments,
             status=status,
             summary=(
@@ -352,12 +352,12 @@ class McpBatchToolsMixin:
         max_depth: int,
         timeout_seconds: float,
     ) -> tuple[list[Any], bool, list[str]]:
-        with tempfile.TemporaryDirectory(prefix="graphhub_mcp_batch_worker_") as tmpdir:
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_batch_worker_") as tmpdir:
             result_path = Path(tmpdir) / "result.json"
             process = multiprocessing.Process(
                 target=render_helpers._batch_discovery_worker,
                 args=(str(root), max_depth, str(result_path)),
-                name="graphhub-mcp-batch-discovery",
+                name="figops-mcp-batch-discovery",
             )
             process.start()
             process.join(max(0.0, timeout_seconds))

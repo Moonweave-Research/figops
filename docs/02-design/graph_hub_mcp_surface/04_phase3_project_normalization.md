@@ -6,13 +6,13 @@
 
 ## Goal
 
-Convert scattered graph folders into standard Graph Hub projects while preserving raw data, existing outputs, and project-specific style choices.
+Convert scattered graph folders into standard FigOps projects while preserving raw data, existing outputs, and project-specific style choices.
 
 This phase addresses the original workflow problem: many graph projects exist in many folders, and they need consistent structure and Hub connection without flattening their individual formats.
 
 ## Tools
 
-### `graphhub.scaffold_project`
+### `figops.scaffold_project`
 
 Creates a standardized project folder and starter `project_config.yaml`.
 
@@ -31,7 +31,7 @@ Acceptance criteria:
 - apply mode refuses to overwrite existing files unless explicitly allowed,
 - generated structure follows the ResearchOS project template.
 
-### `graphhub.normalize_project_structure`
+### `figops.normalize_project_structure`
 
 Plans or applies migration of an existing graph folder into the standard Hub structure.
 

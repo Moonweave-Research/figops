@@ -87,7 +87,7 @@ class TestRunCommandRuntimeEnv(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(
             captured["env"]["UV_PROJECT_ENVIRONMENT"],
-            str(Path(runtime_root) / "uv_envs" / "graph-making-hub"),
+            str(Path(runtime_root) / "uv_envs" / "figops"),
         )
         self.assertNotEqual(captured["env"]["UV_PROJECT_ENVIRONMENT"], str(HUB_ROOT / ".venv"))
         self.assertEqual(captured["env"]["UV_CACHE_DIR"], str(Path(runtime_root) / "uv_cache"))

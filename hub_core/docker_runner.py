@@ -4,7 +4,7 @@ import subprocess
 
 from .logging import get_logger
 
-DEFAULT_DOCKER_IMAGE = "graph-making-hub:latest"
+DEFAULT_DOCKER_IMAGE = "figops:latest"
 logger = get_logger(__name__)
 
 

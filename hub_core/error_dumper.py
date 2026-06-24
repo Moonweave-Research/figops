@@ -1,5 +1,5 @@
 """
-Failure snapshot helpers for Graph Hub pipeline runs.
+Failure snapshot helpers for FigOps pipeline runs.
 """
 
 from __future__ import annotations

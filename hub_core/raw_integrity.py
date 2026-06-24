@@ -264,7 +264,7 @@ def _drift_message(*, modified: list[str], added: list[str], removed: list[str])
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Seal or verify Graph Hub raw data integrity manifests.")
+    parser = argparse.ArgumentParser(description="Seal or verify FigOps raw data integrity manifests.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     seal_parser = subparsers.add_parser("seal", help="Write raw integrity manifest for a project.")
     seal_parser.add_argument("project", help="Project root path.")

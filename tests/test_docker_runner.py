@@ -55,7 +55,7 @@ def test_returns_subprocess_returncode(tmp_path):
 
 def test_mounts_hub_separately_when_it_is_outside_root(tmp_path):
     captured = {}
-    hub_path = tmp_path / "graph-making-hub"
+    hub_path = tmp_path / "figops"
     root_dir = tmp_path / "ResearchOS"
 
     def fake_run(cmd, **kwargs):
@@ -76,7 +76,7 @@ def test_mounts_hub_separately_when_it_is_outside_root(tmp_path):
 
 def test_uses_single_workspace_mount_when_hub_is_inside_root(tmp_path):
     captured = {}
-    hub_path = tmp_path / "graph-making-hub"
+    hub_path = tmp_path / "figops"
 
     def fake_run(cmd, **kwargs):
         captured["cmd"] = cmd
@@ -95,7 +95,7 @@ def test_uses_single_workspace_mount_when_hub_is_inside_root(tmp_path):
 
 
 def test_default_image_constant():
-    assert DEFAULT_DOCKER_IMAGE == "graph-making-hub:latest"
+    assert DEFAULT_DOCKER_IMAGE == "figops:latest"
 
 
 def test_timeout_returns_1(tmp_path):

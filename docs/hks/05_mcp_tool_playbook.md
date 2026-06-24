@@ -1,6 +1,6 @@
 # HKS 05 MCP Tool Playbook
 
-This playbook maps common user requests to Graph Hub MCP tools.
+This playbook maps common user requests to FigOps MCP tools.
 
 ## Explicit CSV Render
 
@@ -13,9 +13,9 @@ Render this CSV as a Nature-style line plot with x=time and y=voltage.
 Tool sequence:
 
 ```text
-graphhub.list_styles
-graphhub.render_csv_graph
-graphhub.collect_artifacts
+figops.list_styles
+figops.render_csv_graph
+figops.collect_artifacts
 ```
 
 Required result inspection:
@@ -34,18 +34,18 @@ Required result inspection:
 User request:
 
 ```text
-Render Fig1 for this Graph Hub project using its project_config.yaml style.
+Render Fig1 for this FigOps project using its project_config.yaml style.
 ```
 
 Tool sequence:
 
 ```text
-graphhub.list_projects
-graphhub.inspect_project
-graphhub.validate_project
-graphhub.render_project_figure with dry_run=true
-graphhub.render_project_figure
-graphhub.collect_artifacts
+figops.list_projects
+figops.inspect_project
+figops.validate_project
+figops.render_project_figure with dry_run=true
+figops.render_project_figure
+figops.collect_artifacts
 ```
 
 Required result inspection:
@@ -99,7 +99,7 @@ The Surfur root is a master workspace, not a direct render target:
 ResearchOS/02_Surfur_Polymer
 ```
 
-For graph-only requests, call Graph Hub MCP directly against a concrete
+For graph-only requests, call FigOps MCP directly against a concrete
 subproject. The current gold target is:
 
 ```text
@@ -110,11 +110,11 @@ figure_id = FigPI_CvS_Fits
 Use the same project render sequence:
 
 ```text
-graphhub.inspect_project
-graphhub.validate_project
-graphhub.render_project_figure with dry_run=true
-graphhub.render_project_figure
-graphhub.collect_artifacts
+figops.inspect_project
+figops.validate_project
+figops.render_project_figure with dry_run=true
+figops.render_project_figure
+figops.collect_artifacts
 ```
 
 Do not use Athena as a graph router for this case. Use Athena only when the
@@ -126,13 +126,13 @@ knowledge-base step.
 User request:
 
 ```text
-Check whether Graph Hub MCP is ready.
+Check whether FigOps MCP is ready.
 ```
 
 Tool sequence:
 
 ```text
-graphhub.health
+figops.health
 ```
 
 Use this for readiness and discovery health. Do not use it to generate reports or write workspace state.
@@ -142,14 +142,14 @@ Use this for readiness and discovery health. Do not use it to generate reports o
 User request:
 
 ```text
-Check whether this project is ready for Graph Hub rendering.
+Check whether this project is ready for FigOps rendering.
 ```
 
 Tool sequence:
 
 ```text
-graphhub.inspect_project
-graphhub.validate_project
+figops.inspect_project
+figops.validate_project
 ```
 
 If invalid, report exact config, data contract, lockfile, and style errors.
@@ -165,8 +165,8 @@ Standardize this graph project folder.
 Tool sequence:
 
 ```text
-graphhub.inspect_project
-graphhub.normalize_project_structure with dry_run=true
+figops.inspect_project
+figops.normalize_project_structure with dry_run=true
 ```
 
 Apply only after the user approves the dry-run manifest.
@@ -182,7 +182,7 @@ Review active projects for graph readiness.
 Tool sequence:
 
 ```text
-graphhub.batch_check
+figops.batch_check
 ```
 
 Do not use passive health checks for write/report generation.
@@ -190,7 +190,7 @@ Do not use passive health checks for write/report generation.
 ## Optional Non-Graph Toolbox Escalation
 
 Do not use Athena as the graph router or default natural-language router.
-The agent using Graph Hub should decide whether the request is graph-only,
+The agent using FigOps should decide whether the request is graph-only,
 mixed, or out of scope.
 
 Use Athena or another explicit toolbox only when the request needs a separate
@@ -199,7 +199,7 @@ non-graph capability:
 - solver or literature reasoning,
 - Zotero/local knowledge-base context,
 - legacy Athena slash-command compatibility explicitly requested by the user,
-- a mixed workflow where the non-graph result is passed back into Graph Hub MCP.
+- a mixed workflow where the non-graph result is passed back into FigOps MCP.
 
-If Graph Hub MCP is unavailable, fix or report Graph Hub MCP. Do not hide that
+If FigOps MCP is unavailable, fix or report FigOps MCP. Do not hide that
 failure by routing graph work through Athena.

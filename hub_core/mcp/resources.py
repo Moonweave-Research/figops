@@ -17,7 +17,7 @@ _STRICT_JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
 
 class McpResourcesMixin:
-    """Graph Hub MCP resource handlers."""
+    """FigOps MCP resource handlers."""
 
     def read_resource(self, uri: str) -> dict[str, Any]:
         parsed = self._parse_resource_uri(uri)
@@ -65,7 +65,7 @@ class McpResourcesMixin:
             sanitized = self._sanitize_resource_payload(manifest, {"data_path": manifest.get("source_data_path")})
             return self._resource_text(uri, "application/json", self._json_resource_text(sanitized))
 
-        raise ValueError(f"Unsupported Graph Hub resource URI: {uri}")
+        raise ValueError(f"Unsupported FigOps resource URI: {uri}")
 
     def _styles_payload(self) -> dict[str, Any]:
         return {
@@ -91,21 +91,21 @@ class McpResourcesMixin:
         if not isinstance(uri, str) or not uri.strip():
             raise ValueError("Resource uri is required.")
         parsed = urlsplit(uri)
-        if parsed.scheme != "graphhub":
-            raise ValueError("Resource uri scheme must be graphhub.")
+        if parsed.scheme not in {"figops", "graphhub"}:
+            raise ValueError("Resource uri scheme must be figops.")
         if parsed.query or parsed.fragment:
             raise ValueError("Resource uri query and fragment are not supported.")
         authority = parsed.netloc
         if authority not in {"styles", "profiles", "projects", "jobs"}:
-            raise ValueError(f"Unsupported Graph Hub resource authority: {authority}")
+            raise ValueError(f"Unsupported FigOps resource authority: {authority}")
         if authority in {"styles", "profiles"} and parsed.path:
-            raise ValueError(f"Resource graphhub://{authority} does not accept path segments.")
+            raise ValueError(f"Resource figops://{authority} does not accept path segments.")
         if authority == "projects" and not parsed.path:
             return {"authority": authority, "segments": []}
         if authority == "jobs" and not parsed.path:
-            raise ValueError("Job resource must be graphhub://jobs/{job_id}/manifest.")
+            raise ValueError("Job resource must be figops://jobs/{job_id}/manifest.")
         if authority in {"projects", "jobs"} and not parsed.path.startswith("/"):
-            raise ValueError("Dynamic Graph Hub resource path must start with '/'.")
+            raise ValueError("Dynamic FigOps resource path must start with '/'.")
         raw_segments = parsed.path[1:].split("/") if parsed.path else []
         if any(segment == "" for segment in raw_segments):
             raise ValueError("Resource uri contains an empty path segment.")
@@ -113,9 +113,9 @@ class McpResourcesMixin:
         if any(segment in {"", ".", ".."} or "/" in segment or "\\" in segment for segment in segments):
             raise ValueError("Resource uri contains an invalid path segment.")
         if authority == "projects" and not (len(segments) == 2 and segments[1] == "config"):
-            raise ValueError("Project resource must be graphhub://projects or graphhub://projects/{project_id}/config.")
+            raise ValueError("Project resource must be figops://projects or figops://projects/{project_id}/config.")
         if authority == "jobs" and not (len(segments) == 2 and segments[1] == "manifest"):
-            raise ValueError("Job resource must be graphhub://jobs/{job_id}/manifest.")
+            raise ValueError("Job resource must be figops://jobs/{job_id}/manifest.")
         return {"authority": authority, "segments": segments}
 
     @staticmethod

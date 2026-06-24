@@ -198,7 +198,7 @@ class McpRenderOrchestrationMixin:
         resolution_hint: str,
     ) -> dict[str, Any]:
         return {
-            "engine_target": "graphhub_mcp_render",
+            "engine_target": "figops_mcp_render",
             "job_id": job_id,
             "status": status,
             "summary": summary,
@@ -323,12 +323,12 @@ class McpRenderOrchestrationMixin:
 
     @staticmethod
     def _run_render_bridge_figure(spec_payload: dict[str, Any]) -> None:
-        with tempfile.TemporaryDirectory(prefix="graphhub_mcp_render_worker_") as tmpdir:
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_render_worker_") as tmpdir:
             result_path = Path(tmpdir) / "result.json"
             process = multiprocessing.Process(
                 target=_render_bridge_figure_worker,
                 args=(spec_payload, str(result_path)),
-                name="graphhub-mcp-render",
+                name="figops-mcp-render",
             )
             process.start()
             process.join(MCP_RENDER_TIMEOUT_SECONDS)
@@ -364,7 +364,7 @@ class McpRenderOrchestrationMixin:
     ) -> dict[str, Any]:
         geometry_diagnostics = extra.pop("geometry_diagnostics", _geometry_stub("no figure"))
         return self._envelope(
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             arguments,
             status="error",
             summary=summary,
@@ -810,7 +810,7 @@ class McpRenderOrchestrationMixin:
             "job_id": job_id,
             "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "renderer": "plotting.bridge_renderer.render_bridge_figure",
-            "renderer_surface": "graphhub.render_csv_graph",
+            "renderer_surface": "figops.render_csv_graph",
             "mcp_surface_version": self._read_version(),
             "hub_git_commit": self._git_commit(),
             "python_executable": sys.executable,
@@ -862,7 +862,7 @@ class McpRenderOrchestrationMixin:
             "job_id": job_id,
             "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "renderer": "project_config.figure_script",
-            "renderer_surface": "graphhub.render_project_figure",
+            "renderer_surface": "figops.render_project_figure",
             "mcp_surface_version": self._read_version(),
             "hub_git_commit": self._git_commit(),
             "python_executable": sys.executable,

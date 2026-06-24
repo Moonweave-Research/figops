@@ -1,7 +1,7 @@
 # Log Scale and Error-Bar Calculation Checks Spec
 
 - Date: 2026-06-08
-- Scope: Graph Hub `data_contract.csv_checks[].semantic_checks`
+- Scope: FigOps `data_contract.csv_checks[].semantic_checks`
 - Status: implementation spec for Phase B calculation-check expansion
 
 ## Goal
@@ -12,7 +12,7 @@ Add three graph-specific calculation checks:
 - `error_bar_source`: fail when a declared error-bar column is missing, non-numeric, negative, or null.
 - `mean_sem`: fail when summary data declares SEM but `sem != std / sqrt(n)` within tolerance.
 
-These are Graph Hub responsibilities because log axes and error bars directly affect whether a rendered scientific graph is valid.
+These are FigOps responsibilities because log axes and error bars directly affect whether a rendered scientific graph is valid.
 
 ## Config Contract
 

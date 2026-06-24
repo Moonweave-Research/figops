@@ -113,8 +113,8 @@ class BatchQualityMCPTest(unittest.TestCase):
     def test_tool_definitions_include_batch_check(self):
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
 
-        self.assertIn("graphhub.batch_check", definitions)
-        schema = definitions["graphhub.batch_check"]["inputSchema"]
+        self.assertIn("figops.batch_check", definitions)
+        schema = definitions["figops.batch_check"]["inputSchema"]
         self.assertIn("root", schema["properties"])
         self.assertIn("max_projects", schema["properties"])
         self.assertIn("dry_run", schema["properties"])
@@ -133,7 +133,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "quality-pass"},
                 )
 
@@ -153,10 +153,10 @@ class BatchQualityMCPTest(unittest.TestCase):
             ):
                 rendered = self._call(
                     server,
-                    "graphhub.render_csv_graph",
+                    "figops.render_csv_graph",
                     {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "quality-review"},
                 )
-            collected = self._call(server, "graphhub.collect_artifacts", {"job_id": "quality-review"})
+            collected = self._call(server, "figops.collect_artifacts", {"job_id": "quality-review"})
 
             self.assertEqual(rendered["artifact_status"], "manual_review_needed")
             self.assertEqual(collected["artifact_status"], "manual_review_needed")
@@ -170,7 +170,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             rendered = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "quality-baseline"},
             )
             baseline_path = Path(tmpdir) / "baseline" / "graph.png"
@@ -181,7 +181,7 @@ class BatchQualityMCPTest(unittest.TestCase):
 
             collected = self._call(
                 server,
-                "graphhub.collect_artifacts",
+                "figops.collect_artifacts",
                 {"job_id": "quality-baseline", "baseline_path": str(baseline_path)},
             )
 
@@ -208,7 +208,7 @@ class BatchQualityMCPTest(unittest.TestCase):
                 server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
                 result = self._call(
                     server,
-                    "graphhub.batch_check",
+                    "figops.batch_check",
                     {"root": str(root), "max_depth": 8, "dry_run": True},
                 )
 
@@ -233,7 +233,7 @@ class BatchQualityMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.batch_check",
+                "figops.batch_check",
                 {"root": str(root), "max_depth": 4, "dry_run": True, "include_quarantine": True},
             )
 
@@ -253,7 +253,7 @@ class BatchQualityMCPTest(unittest.TestCase):
 
             result = self._call(
                 server,
-                "graphhub.batch_check",
+                "figops.batch_check",
                 {"root": str(root), "max_depth": 4, "dry_run": False, "batch_id": "batch-demo"},
             )
 
@@ -277,13 +277,13 @@ class BatchQualityMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             first = self._call(
                 server,
-                "graphhub.batch_check",
+                "figops.batch_check",
                 {"root": str(root), "dry_run": False, "batch_id": "batch-first"},
             )
 
             resumed = self._call(
                 server,
-                "graphhub.batch_check",
+                "figops.batch_check",
                 {
                     "root": str(root),
                     "dry_run": False,
@@ -310,7 +310,7 @@ class BatchQualityMCPTest(unittest.TestCase):
 
             resumed = self._call(
                 server,
-                "graphhub.batch_check",
+                "figops.batch_check",
                 {
                     "root": str(root),
                     "dry_run": False,
@@ -336,13 +336,13 @@ class BatchQualityMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             first = self._call(
                 server,
-                "graphhub.batch_check",
+                "figops.batch_check",
                 {"root": str(root_a), "dry_run": False, "batch_id": "batch-root-a"},
             )
 
             resumed = self._call(
                 server,
-                "graphhub.batch_check",
+                "figops.batch_check",
                 {
                     "root": str(root_b),
                     "dry_run": False,
@@ -366,7 +366,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             with patch("hub_core.mcp.render_orchestration.MCP_BATCH_TIMEOUT_SECONDS", 0):
                 result = self._call(
                     server,
-                    "graphhub.batch_check",
+                    "figops.batch_check",
                     {"root": str(root), "dry_run": False, "batch_id": "batch-timeout", "max_projects": 4},
                 )
 
@@ -388,7 +388,7 @@ class BatchQualityMCPTest(unittest.TestCase):
             ):
                 result = self._call(
                     server,
-                    "graphhub.batch_check",
+                    "figops.batch_check",
                     {"root": str(root), "dry_run": False, "batch_id": "batch-discovery-timeout"},
                 )
             elapsed = time.monotonic() - started_at

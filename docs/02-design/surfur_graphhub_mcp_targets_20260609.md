@@ -1,4 +1,4 @@
-# Graph Hub Figure Target Inventory
+# FigOps Figure Target Inventory
 
 Root: `/Users/choemun-yeong/Library/CloudStorage/GoogleDrive-choimoonyoung3631@gmail.com/My Drive/Research/02_Surfur_Polymer`
 
@@ -61,11 +61,11 @@ Root: `/Users/choemun-yeong/Library/CloudStorage/GoogleDrive-choimoonyoung3631@g
 For a candidate row, call:
 
 ```text
-graphhub.inspect_project
-graphhub.validate_project
-graphhub.render_project_figure with dry_run=true
-graphhub.render_project_figure
-graphhub.collect_artifacts
+figops.inspect_project
+figops.validate_project
+figops.render_project_figure with dry_run=true
+figops.render_project_figure
+figops.collect_artifacts
 ```
 
 Use the concrete subproject path. Do not render a master workspace root directly.

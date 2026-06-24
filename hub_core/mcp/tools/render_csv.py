@@ -39,7 +39,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             render_helpers._layout_report_from_geometry(geometry_diagnostics),
         )
         return self._envelope(
-            "graphhub.render_csv_graph",
+            "figops.render_csv_graph",
             arguments,
             status="error",
             summary=summary,
@@ -289,7 +289,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             calculation_warnings = self._calculation_warnings(calculation_checks)
             manual_review_needed = bool(calculation_checks.get("manual_review_needed"))
             return self._envelope(
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 arguments,
                 status="warning" if manual_review_needed else "ok",
                 summary=(
@@ -365,7 +365,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "fit_line": fit_line,
                         "ci_band": ci_band,
                         "significance_markers": significance_markers,
-                        "title": str(arguments.get("title") or "Graph Hub MCP render"),
+                        "title": str(arguments.get("title") or "FigOps MCP render"),
                         "x_axis_label": str(arguments.get("x_axis_label") or x_column),
                         "y_axis_label": str(arguments.get("y_axis_label") or y_column),
                         "target_format": target_format,
@@ -488,7 +488,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 ),
             )
         return self._envelope(
-            "graphhub.render_csv_graph",
+            "figops.render_csv_graph",
             arguments,
             status=status,
             summary="Rendered CSV graph." if status == "ok" else "Rendered CSV graph with preflight warnings.",

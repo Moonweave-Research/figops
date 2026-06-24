@@ -1,10 +1,10 @@
 # HKS 03 Calculation Check Contract
 
-Graph Hub owns graph-specific calculation checks.
+FigOps owns graph-specific calculation checks.
 
 ## Scope
 
-Graph Hub validates calculations that affect figure correctness. It does not replace general physics derivation, literature interpretation, or broad multi-tool reasoning.
+FigOps validates calculations that affect figure correctness. It does not replace general physics derivation, literature interpretation, or broad multi-tool reasoning.
 
 ## Current Checks
 

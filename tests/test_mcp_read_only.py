@@ -156,7 +156,7 @@ class ReadOnlyMCPTest(unittest.TestCase):
             )
 
             server = GraphHubMCPServer(config=config)
-            health = self._call(server, "graphhub.health")
+            health = self._call(server, "figops.health")
 
         self.assertEqual(server.research_root, research_root.resolve())
         self.assertEqual(server.runtime_root, runtime_root.resolve())
@@ -186,7 +186,7 @@ class BlockBridgeRenderer(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, BlockBridgeRenderer())
 from hub_core.mcp import GraphHubMCPServer
 server = GraphHubMCPServer(runtime_root={runtime_root!r})
-result = server.call_tool("graphhub.health", {{}})
+result = server.call_tool("figops.health", {{}})
 assert result["structuredContent"]["status"] in ("ok", "warning")
 """
         completed = subprocess.run(
@@ -203,12 +203,12 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
 
         self.assertTrue(
             {
-                "graphhub.health",
-                "graphhub.describe",
-                "graphhub.list_styles",
-                "graphhub.list_projects",
-                "graphhub.inspect_project",
-                "graphhub.validate_project",
+                "figops.health",
+                "figops.describe",
+                "figops.list_styles",
+                "figops.list_projects",
+                "figops.inspect_project",
+                "figops.validate_project",
             }.issubset(set(definitions))
         )
         for tool in definitions.values():
@@ -218,7 +218,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
     def test_list_styles_uses_graph_hub_canonical_contract(self):
         server = GraphHubMCPServer()
 
-        result = self._call(server, "graphhub.list_styles")
+        result = self._call(server, "figops.list_styles")
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["target_formats"], sorted(ALLOWED_TARGET_FORMATS))
@@ -233,10 +233,10 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         server = GraphHubMCPServer()
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
 
-        result = self._call(server, "graphhub.describe")
+        result = self._call(server, "figops.describe")
         described_tools = {tool["name"]: tool for tool in result["tools"]}
         described_plot_types = {plot_type["name"]: plot_type for plot_type in result["plot_types"]}
-        render_plot_enum = definitions["graphhub.render_csv_graph"]["inputSchema"]["properties"]["plot_type"]["enum"]
+        render_plot_enum = definitions["figops.render_csv_graph"]["inputSchema"]["properties"]["plot_type"]["enum"]
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(set(described_tools), set(definitions))
@@ -267,8 +267,8 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             before = _snapshot_files(root)
 
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root, write_tools_enabled=False)
-            health = self._call(server, "graphhub.health", {"root": str(root)})
-            projects = self._call(server, "graphhub.list_projects", {"root": str(root), "max_depth": 3})
+            health = self._call(server, "figops.health", {"root": str(root)})
+            projects = self._call(server, "figops.list_projects", {"root": str(root), "max_depth": 3})
 
             after = _snapshot_files(root)
             self.assertEqual(after, before)
@@ -293,15 +293,27 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
     def test_write_tool_guard_blocks_dispatch_when_disabled(self):
         server = GraphHubMCPServer(write_tools_enabled=False)
 
-        health = self._call(server, "graphhub.health")
-        styles = self._call(server, "graphhub.list_styles")
+        health = self._call(server, "figops.health")
+        styles = self._call(server, "figops.list_styles")
         blocked = server.call_tool(
-            "graphhub.scaffold_project",
+            "figops.scaffold_project",
             {"project_name": "Blocked", "project_root": "/tmp/blocked", "dry_run": True},
         )
 
         self.assertFalse(health["write_tools_enabled"])
         self.assertEqual(styles["status"], "ok")
+        self.assertTrue(blocked["isError"])
+        self.assertEqual(blocked["structuredContent"]["status"], "error")
+        self.assertIn("Write tools are disabled", blocked["structuredContent"]["errors"][0])
+
+    def test_write_tool_guard_blocks_legacy_alias_when_disabled(self):
+        server = GraphHubMCPServer(write_tools_enabled=False)
+
+        blocked = server.call_tool(
+            "graphhub.scaffold_project",
+            {"project_name": "Blocked", "project_root": "/tmp/blocked", "dry_run": True},
+        )
+
         self.assertTrue(blocked["isError"])
         self.assertEqual(blocked["structuredContent"]["status"], "error")
         self.assertIn("Write tools are disabled", blocked["structuredContent"]["errors"][0])
@@ -312,7 +324,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             server = GraphHubMCPServer()
             self.assertFalse(server.write_tools_enabled)
             blocked = server.call_tool(
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {"project_name": "Blocked", "project_root": "/tmp/blocked", "dry_run": True},
             )
         self.assertTrue(blocked["isError"])
@@ -326,7 +338,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             self.assertTrue(server.write_tools_enabled)
             # Witness that the write guard does not block a write tool when enabled.
             result = server.call_tool(
-                "graphhub.scaffold_project",
+                "figops.scaffold_project",
                 {"project_name": "Allowed", "project_root": str(Path(tmpdir) / "Allowed"), "dry_run": True},
             )
         self.assertNotIn(
@@ -349,7 +361,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
                 clear=False,
             ):
                 server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
-                health = self._call(server, "graphhub.health")
+                health = self._call(server, "figops.health")
 
             self.assertIn(valid_extra.resolve(), server.allowed_data_roots)
             self.assertNotIn(Path("relative-root").resolve(), server.allowed_data_roots)
@@ -369,7 +381,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
                 clear=False,
             ):
                 server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
-                health = self._call(server, "graphhub.health")
+                health = self._call(server, "figops.health")
 
             broad_root = Path(os.path.abspath(os.sep)).resolve()
             self.assertIn(broad_root, server.allowed_data_roots)
@@ -384,7 +396,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
                 clear=False,
             ):
                 strict_server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
-                strict_health = self._call(strict_server, "graphhub.health")
+                strict_health = self._call(strict_server, "figops.health")
 
             self.assertNotIn(broad_root, strict_server.allowed_data_roots)
             self.assertTrue(any("refused broad data root" in warning for warning in strict_health["warnings"]))
@@ -438,7 +450,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
                 clear=False,
             ):
                 server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
-                health = self._call(server, "graphhub.health")
+                health = self._call(server, "figops.health")
 
             self.assertNotIn(root.resolve(), server.allowed_data_roots)
             self.assertTrue(any("GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS" in warning for warning in health["warnings"]))
@@ -458,7 +470,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
                 clear=False,
             ):
                 server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
-                health = self._call(server, "graphhub.health")
+                health = self._call(server, "figops.health")
 
             self.assertIn(multi_user_root.resolve(), server.allowed_data_roots)
             self.assertTrue(any("multi-user parent" in warning for warning in health["warnings"]))
@@ -519,7 +531,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             outside = Path(tmpdir) / "outside"
             outside.mkdir()
             server = GraphHubMCPServer(research_root=research_root, runtime_root=Path(tmpdir) / "runtime")
-            result = self._call(server, "graphhub.list_projects", {"root": str(outside)})
+            result = self._call(server, "figops.list_projects", {"root": str(outside)})
             self.assertEqual(result["status"], "error")
             self.assertIn("root must stay under", result["errors"][0])
 
@@ -528,7 +540,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             research_root = Path(tmpdir) / "research"
             research_root.mkdir()
             server = GraphHubMCPServer(research_root=research_root, runtime_root=Path(tmpdir) / "runtime")
-            result = self._call(server, "graphhub.inspect_project", {"project_path": "/etc"})
+            result = self._call(server, "figops.inspect_project", {"project_path": "/etc"})
             self.assertEqual(result["status"], "error")
             self.assertIn("project_path must stay under", result["errors"][0])
 
@@ -548,7 +560,7 @@ project:
             )
             server = GraphHubMCPServer(research_root=research_root, runtime_root=Path(tmpdir) / "runtime")
 
-            result = self._call(server, "graphhub.inspect_project", {"project_path": str(project)})
+            result = self._call(server, "figops.inspect_project", {"project_path": str(project)})
 
             self.assertEqual(result["status"], "error")
             self.assertIn("Duplicate key 'project'", result["errors"][0])
@@ -563,7 +575,7 @@ project:
                 server = GraphHubMCPServer(research_root=Path(tmpdir))
                 result = self._call(
                     server,
-                    "graphhub.list_projects",
+                    "figops.list_projects",
                     {"root": str(root), "include_worktrees": True, "include_ephemeral": True, "max_depth": 5},
                 )
 
@@ -573,7 +585,7 @@ project:
 
                 inspected = self._call(
                     server,
-                    "graphhub.inspect_project",
+                    "figops.inspect_project",
                     {
                         "root": str(root),
                         "project_id": by_path[".worktrees/feature/04_Worktree"]["project_id"],
@@ -592,8 +604,8 @@ project:
             before = _snapshot_files(root)
 
             server = GraphHubMCPServer(research_root=Path(tmpdir))
-            inspected = self._call(server, "graphhub.inspect_project", {"project_path": str(project)})
-            validated = self._call(server, "graphhub.validate_project", {"project_path": str(project)})
+            inspected = self._call(server, "figops.inspect_project", {"project_path": str(project)})
+            validated = self._call(server, "figops.validate_project", {"project_path": str(project)})
 
             self.assertEqual(_snapshot_files(root), before)
             self.assertEqual(inspected["status"], "ok")
@@ -619,7 +631,7 @@ project:
             before = _snapshot_files(root)
 
             server = GraphHubMCPServer(research_root=Path(tmpdir))
-            validated = self._call(server, "graphhub.validate_project", {"project_path": str(project)})
+            validated = self._call(server, "figops.validate_project", {"project_path": str(project)})
 
             self.assertEqual(_snapshot_files(root), before)
             self.assertEqual(validated["status"], "warning")
@@ -640,12 +652,12 @@ project:
             server = GraphHubMCPServer(research_root=Path(tmpdir))
             validated = self._call(
                 server,
-                "graphhub.validate_project",
+                "figops.validate_project",
                 {"project_path": str(project), "include_naming_lint": True},
             )
             inspected = self._call(
                 server,
-                "graphhub.inspect_project",
+                "figops.inspect_project",
                 {"project_path": str(project), "include_naming_lint": True},
             )
 
@@ -663,7 +675,7 @@ project:
             server = GraphHubMCPServer(research_root=Path(tmpdir))
             validated = self._call(
                 server,
-                "graphhub.validate_project",
+                "figops.validate_project",
                 {"project_path": str(project), "include_naming_lint": True},
             )
 
@@ -680,13 +692,13 @@ project:
                 "jsonrpc": "2.0",
                 "id": 2,
                 "method": "tools/call",
-                "params": {"name": "graphhub.list_styles", "arguments": {}},
+                "params": {"name": "figops.list_styles", "arguments": {}},
             },
         )
 
         listed_tools = {tool["name"] for tool in listed["result"]["tools"]}
-        self.assertIn("graphhub.health", listed_tools)
-        self.assertIn("graphhub.describe", listed_tools)
+        self.assertIn("figops.health", listed_tools)
+        self.assertIn("figops.describe", listed_tools)
         self.assertIn("structuredContent", called["result"])
         self.assertFalse(called["result"]["isError"])
         self.assertEqual(called["result"]["structuredContent"]["target_formats"], sorted(ALLOWED_TARGET_FORMATS))
@@ -708,9 +720,9 @@ project:
         templates = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 12, "method": "resources/templates/list"})
         prompts = _handle_json_rpc(server, {"jsonrpc": "2.0", "id": 13, "method": "prompts/list"})
 
-        self.assertIn("graphhub://styles", {item["uri"] for item in resources["result"]["resources"]})
+        self.assertIn("figops://styles", {item["uri"] for item in resources["result"]["resources"]})
         self.assertIn(
-            "graphhub://projects/{project_id}/config",
+            "figops://projects/{project_id}/config",
             {item["uriTemplate"] for item in templates["result"]["resourceTemplates"]},
         )
         self.assertIn("make_publication_graph_from_csv", {item["name"] for item in prompts["result"]["prompts"]})
@@ -721,9 +733,9 @@ project:
 
         resource = _handle_json_rpc(
             server,
-            {"jsonrpc": "2.0", "id": 20, "method": "resources/read", "params": {"uri": "graphhub://styles"}},
+            {"jsonrpc": "2.0", "id": 20, "method": "resources/read", "params": {"uri": "figops://styles"}},
         )
-        styles = server.call_tool("graphhub.list_styles", {})["structuredContent"]
+        styles = server.call_tool("figops.list_styles", {})["structuredContent"]
         content = resource["result"]["contents"][0]
         payload = json.loads(content["text"])
 
@@ -742,7 +754,7 @@ project:
 
             projects_response = _handle_json_rpc(
                 server,
-                {"jsonrpc": "2.0", "id": 21, "method": "resources/read", "params": {"uri": "graphhub://projects"}},
+                {"jsonrpc": "2.0", "id": 21, "method": "resources/read", "params": {"uri": "figops://projects"}},
             )
             projects_payload = json.loads(projects_response["result"]["contents"][0]["text"])
             legacy_project = next(project for project in projects_payload["projects"] if project["status"] == "legacy")
@@ -752,7 +764,7 @@ project:
                     "jsonrpc": "2.0",
                     "id": 22,
                     "method": "resources/read",
-                    "params": {"uri": f"graphhub://projects/{legacy_project['project_id']}/config"},
+                    "params": {"uri": f"figops://projects/{legacy_project['project_id']}/config"},
                 },
             )
 
@@ -771,7 +783,7 @@ project:
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root, write_tools_enabled=True)
             rendered = self._call(
                 server,
-                "graphhub.render_csv_graph",
+                "figops.render_csv_graph",
                 {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "resource-render"},
             )
 
@@ -781,7 +793,7 @@ project:
                     "jsonrpc": "2.0",
                     "id": 23,
                     "method": "resources/read",
-                    "params": {"uri": "graphhub://jobs/resource-render/manifest"},
+                    "params": {"uri": "figops://jobs/resource-render/manifest"},
                 },
             )
             payload = json.loads(response["result"]["contents"][0]["text"])
@@ -797,12 +809,12 @@ project:
         server = GraphHubMCPServer()
 
         malformed_uris = [
-            "graphhub://styles/",
-            "graphhub://jobs/missing-job/manifest/",
-            "graphhub://jobs/missing-job//manifest",
-            "graphhub://projects/%2E%2E/config",
-            "graphhub://projects/foo%2Fbar/config",
-            "graphhub://styles?x=1",
+            "figops://styles/",
+            "figops://jobs/missing-job/manifest/",
+            "figops://jobs/missing-job//manifest",
+            "figops://projects/%2E%2E/config",
+            "figops://projects/foo%2Fbar/config",
+            "figops://styles?x=1",
         ]
         missing = _handle_json_rpc(
             server,
@@ -810,7 +822,7 @@ project:
                 "jsonrpc": "2.0",
                 "id": 25,
                 "method": "resources/read",
-                "params": {"uri": "graphhub://jobs/missing-job/manifest"},
+                "params": {"uri": "figops://jobs/missing-job/manifest"},
             },
         )
 
@@ -837,7 +849,7 @@ project:
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             projects_response = _handle_json_rpc(
                 server,
-                {"jsonrpc": "2.0", "id": 26, "method": "resources/read", "params": {"uri": "graphhub://projects"}},
+                {"jsonrpc": "2.0", "id": 26, "method": "resources/read", "params": {"uri": "figops://projects"}},
             )
             projects_payload = json.loads(projects_response["result"]["contents"][0]["text"])
             project_id = projects_payload["projects"][0]["project_id"]
@@ -848,7 +860,7 @@ project:
                     "jsonrpc": "2.0",
                     "id": 27,
                     "method": "resources/read",
-                    "params": {"uri": f"graphhub://projects/{project_id}/config"},
+                    "params": {"uri": f"figops://projects/{project_id}/config"},
                 },
             )
 
@@ -890,11 +902,11 @@ project:
         )
         text = response["result"]["messages"][0]["content"]["text"]
 
-        self.assertIn("graphhub.render_csv_graph", text)
+        self.assertIn("figops.render_csv_graph", text)
         self.assertIn("dry_run=true", text)
         self.assertIn("calculation_checks", text)
         self.assertIn("visual_preflight_status", text)
-        self.assertIn("graphhub.collect_artifacts", text)
+        self.assertIn("figops.collect_artifacts", text)
         self.assertIn("manual_review_needed", text)
 
     def test_prompts_get_project_figure_workflow_mentions_project_render(self):
@@ -914,11 +926,11 @@ project:
         )
         text = response["result"]["messages"][0]["content"]["text"]
 
-        self.assertIn("graphhub.inspect_project", text)
-        self.assertIn("graphhub.validate_project", text)
-        self.assertIn("graphhub.render_project_figure", text)
+        self.assertIn("figops.inspect_project", text)
+        self.assertIn("figops.validate_project", text)
+        self.assertIn("figops.render_project_figure", text)
         self.assertIn("dry_run=true", text)
-        self.assertIn("graphhub.collect_artifacts", text)
+        self.assertIn("figops.collect_artifacts", text)
         self.assertIn("manual_review_needed", text)
 
     def test_prompts_get_validation_errors(self):
@@ -960,7 +972,7 @@ project:
                 "jsonrpc": "2.0",
                 "id": 3,
                 "method": "tools/call",
-                "params": {"name": "graphhub.nope", "arguments": {}},
+                "params": {"name": "figops.nope", "arguments": {}},
             },
         )
 
@@ -999,7 +1011,7 @@ project:
     def test_json_rpc_validation_errors_include_taxonomy_data(self):
         server = GraphHubMCPServer()
 
-        response = self._call_rpc(server, "graphhub.list_projects", {"max_depth": 99})
+        response = self._call_rpc(server, "figops.list_projects", {"max_depth": 99})
 
         self.assertEqual(response["error"]["code"], -32602)
         self.assertEqual(
@@ -1016,7 +1028,7 @@ project:
                 "jsonrpc": "2.0",
                 "id": 98,
                 "method": "resources/read",
-                "params": {"uri": "graphhub://jobs/missing-job/manifest"},
+                "params": {"uri": "figops://jobs/missing-job/manifest"},
             },
         )
 
@@ -1030,7 +1042,7 @@ project:
         server = GraphHubMCPServer(write_tools_enabled=False)
 
         response = server.call_tool(
-            "graphhub.scaffold_project",
+            "figops.scaffold_project",
             {"project_name": "Blocked", "project_root": "/tmp/blocked", "dry_run": True},
         )
 
@@ -1047,8 +1059,8 @@ project:
         def fail(_arguments):
             raise RuntimeError("boom")
 
-        server._handlers["graphhub.health"] = fail
-        response = server.call_tool("graphhub.health", {})
+        server._handlers["figops.health"] = fail
+        response = server.call_tool("figops.health", {})
 
         structured = response["structuredContent"]
         self.assertTrue(response["isError"])
@@ -1060,7 +1072,7 @@ project:
     def test_rpc_rejects_max_depth_above_advertised_maximum(self):
         server = GraphHubMCPServer()
 
-        response = self._call_rpc(server, "graphhub.health", {"max_depth": 999})
+        response = self._call_rpc(server, "figops.health", {"max_depth": 999})
 
         self.assertEqual(response["error"]["code"], -32602)
         self.assertIn("max_depth", response["error"]["message"])
@@ -1069,7 +1081,7 @@ project:
     def test_rpc_rejects_max_depth_below_advertised_minimum(self):
         server = GraphHubMCPServer()
 
-        response = self._call_rpc(server, "graphhub.health", {"max_depth": 0})
+        response = self._call_rpc(server, "figops.health", {"max_depth": 0})
 
         self.assertEqual(response["error"]["code"], -32602)
         self.assertIn(">= 1", response["error"]["message"])
@@ -1077,7 +1089,7 @@ project:
     def test_rpc_rejects_max_projects_above_advertised_maximum(self):
         server = GraphHubMCPServer()
 
-        response = self._call_rpc(server, "graphhub.batch_check", {"max_projects": 99})
+        response = self._call_rpc(server, "figops.batch_check", {"max_projects": 99})
 
         self.assertEqual(response["error"]["code"], -32602)
         self.assertIn("max_projects", response["error"]["message"])
@@ -1085,7 +1097,7 @@ project:
     def test_rpc_accepts_in_range_numeric_bounds(self):
         server = GraphHubMCPServer()
 
-        response = self._call_rpc(server, "graphhub.health", {"max_depth": 12})
+        response = self._call_rpc(server, "figops.health", {"max_depth": 12})
 
         self.assertNotIn("error", response)
         self.assertIn("result", response)
@@ -1095,7 +1107,7 @@ project:
 
         response = self._call_rpc(
             server,
-            "graphhub.render_csv_graph",
+            "figops.render_csv_graph",
             {"data_path": "a.csv", "x_column": "x", "y_column": "y", "target_format": "made_up_format"},
         )
 
@@ -1104,7 +1116,7 @@ project:
 
     def test_rpc_accepts_in_enum_profile_alias(self):
         argument_errors = _validate_tool_arguments(
-            "graphhub.render_csv_graph",
+            "figops.render_csv_graph",
             {"data_path": "a.csv", "x_column": "x", "y_column": "y", "profile": "premium"},
         )
 
@@ -1114,7 +1126,7 @@ project:
         # Handler lowercases profile/target_format/output_format, so the enum check
         # must accept mixed-case input it would normalize rather than reject it.
         argument_errors = _validate_tool_arguments(
-            "graphhub.render_csv_graph",
+            "figops.render_csv_graph",
             {
                 "data_path": "a.csv",
                 "x_column": "x",
@@ -1129,7 +1141,7 @@ project:
 
     def test_validate_rejects_render_project_figure_without_selector(self):
         argument_errors = _validate_tool_arguments(
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             {"figure_id": "Fig1"},
         )
 
@@ -1137,7 +1149,7 @@ project:
 
     def test_validate_rejects_render_project_figure_with_both_selectors(self):
         argument_errors = _validate_tool_arguments(
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             {"project_id": "01_Demo", "project_path": "/tmp/demo", "figure_id": "Fig1"},
         )
 
@@ -1145,7 +1157,7 @@ project:
 
     def test_validate_accepts_render_project_figure_with_single_selector(self):
         argument_errors = _validate_tool_arguments(
-            "graphhub.render_project_figure",
+            "figops.render_project_figure",
             {"project_id": "01_Demo", "figure_id": "Fig1"},
         )
 
@@ -1156,7 +1168,7 @@ project:
             missing = Path(tmpdir) / "ResearchOS"
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
 
-            health = self._call(server, "graphhub.health", {"root": str(missing)})
+            health = self._call(server, "figops.health", {"root": str(missing)})
 
             self.assertEqual(health["status"], "warning")
             self.assertTrue(health["warnings"])
@@ -1196,7 +1208,7 @@ project:
         self.assertIn(b"Content-Length:", header)
         response = json.loads(payload.decode("utf-8"))
         self.assertEqual(response["id"], 4)
-        self.assertEqual(response["result"]["tools"][0]["name"], "graphhub.health")
+        self.assertEqual(response["result"]["tools"][0]["name"], "figops.health")
 
     def test_stdio_handler_stdout_does_not_leak_into_the_wire(self):
         import contextlib
@@ -1213,7 +1225,7 @@ project:
             "jsonrpc": "2.0",
             "id": 7,
             "method": "tools/call",
-            "params": {"name": "graphhub.health", "arguments": {}},
+            "params": {"name": "figops.health", "arguments": {}},
         }
         body = json.dumps(request).encode("utf-8")
         input_stream = BytesIO(b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
@@ -1244,7 +1256,7 @@ project:
         self.assertTrue(raw_output.endswith(b"\n"))
         response = json.loads(raw_output.decode("utf-8"))
         self.assertEqual(response["id"], 5)
-        self.assertEqual(response["result"]["tools"][0]["name"], "graphhub.health")
+        self.assertEqual(response["result"]["tools"][0]["name"], "figops.health")
 
     def test_stdio_server_reports_malformed_content_length_frame(self):
         input_stream = BytesIO(b"Content-Length: nope\r\n\r\n{}")
@@ -1276,7 +1288,7 @@ project:
 
     def test_mcp_server_smoke_cli_reports_read_only_status(self):
         completed = subprocess.run(
-            [sys.executable, "graphhub_mcp_server.py", "--smoke"],
+            [sys.executable, "figops_mcp_server.py", "--smoke"],
             cwd=HUB_ROOT,
             text=True,
             capture_output=True,
@@ -1286,7 +1298,7 @@ project:
         self.assertEqual(completed.returncode, 0, completed.stderr)
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "ok")
-        self.assertEqual(payload["tool_surface"], "graphhub_mcp")
+        self.assertEqual(payload["tool_surface"], "figops_mcp")
         self.assertGreater(payload["style_format_count"], 0)
 
 
@@ -1300,7 +1312,7 @@ class JsonRpcProtocolTest(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": 2,
                 "method": "tools/call",
-                "params": {"name": "graphhub.list_styles", "arguments": {}},
+                "params": {"name": "figops.list_styles", "arguments": {}},
             },
         ]
         responses = _dispatch_json_rpc(server, batch)
@@ -1398,7 +1410,7 @@ class JsonRpcProtocolTest(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "tools/call",
-                "params": {"name": "graphhub.list_styles", "arguments": {}},
+                "params": {"name": "figops.list_styles", "arguments": {}},
             },
         )
         self.assertEqual(rejected["error"]["code"], JSONRPC_INVALID_REQUEST)
@@ -1416,7 +1428,7 @@ class JsonRpcProtocolTest(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": 3,
                 "method": "tools/call",
-                "params": {"name": "graphhub.list_styles", "arguments": {}},
+                "params": {"name": "figops.list_styles", "arguments": {}},
             },
         )
         self.assertIn("structuredContent", accepted["result"])
@@ -1431,7 +1443,7 @@ class JsonRpcProtocolTest(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "tools/call",
-                "params": {"name": "graphhub.list_styles", "arguments": {}},
+                "params": {"name": "figops.list_styles", "arguments": {}},
             },
         )
         self.assertIn("structuredContent", response["result"])

@@ -51,7 +51,7 @@ class ResearchOpsRenderGateTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=root / "runtime", write_tools_enabled=True)
 
             response = server.call_tool(
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": "module", "figure_id": "fig1", "dry_run": True},
             )
             result = response["structuredContent"]
@@ -79,7 +79,7 @@ class ResearchOpsRenderGateTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=root / "runtime", write_tools_enabled=True)
 
             response = server.call_tool(
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": "module", "figure_id": "fig1", "dry_run": True},
             )
             result = response["structuredContent"]
@@ -97,7 +97,7 @@ class ResearchOpsRenderGateTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=root / "runtime", write_tools_enabled=True)
 
             response = server.call_tool(
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": "module", "figure_id": "fig1", "dry_run": True},
             )
             result = response["structuredContent"]
@@ -117,7 +117,7 @@ class ResearchOpsRenderGateTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=root / "runtime", write_tools_enabled=True)
 
             response = server.call_tool(
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": "module", "figure_id": "fig1", "dry_run": True},
             )
             result = response["structuredContent"]
@@ -166,7 +166,7 @@ class ResearchOpsRenderGateTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=root / "runtime", write_tools_enabled=True)
 
             response = server.call_tool(
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": "legacy_module", "figure_id": "fig1", "dry_run": True},
             )
             result = response["structuredContent"]

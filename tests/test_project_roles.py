@@ -273,9 +273,9 @@ class ProjectRoleDiscoveryTest(unittest.TestCase):
             _write_config(module, _minimal_module_config("Experiment A"))
             server = GraphHubMCPServer(research_root=root)
 
-            listed = server.call_tool("graphhub.list_projects", {"max_depth": 4})["structuredContent"]["projects"]
+            listed = server.call_tool("figops.list_projects", {"max_depth": 4})["structuredContent"]["projects"]
             inspected = server.call_tool(
-                "graphhub.inspect_project",
+                "figops.inspect_project",
                 {"project_path": "study_master"},
             )["structuredContent"]
 
@@ -310,13 +310,13 @@ class ProjectRoleDiscoveryTest(unittest.TestCase):
             )
             server = GraphHubMCPServer(research_root=root)
 
-            listed = server.call_tool("graphhub.list_projects", {"max_depth": 2})["structuredContent"]["projects"]
+            listed = server.call_tool("figops.list_projects", {"max_depth": 2})["structuredContent"]["projects"]
             inspected = server.call_tool(
-                "graphhub.inspect_project",
+                "figops.inspect_project",
                 {"project_path": "retired_module"},
             )["structuredContent"]
             validated = server.call_tool(
-                "graphhub.validate_project",
+                "figops.validate_project",
                 {"project_path": "retired_module"},
             )["structuredContent"]
 
@@ -341,9 +341,9 @@ class ProjectRoleDiscoveryTest(unittest.TestCase):
             _write_config(module, _minimal_module_config("Experiment A"))
             server = GraphHubMCPServer(research_root=root)
 
-            listed = server.call_tool("graphhub.list_projects", {"max_depth": 4})["structuredContent"]["projects"]
+            listed = server.call_tool("figops.list_projects", {"max_depth": 4})["structuredContent"]["projects"]
             inspected = server.call_tool(
-                "graphhub.inspect_project",
+                "figops.inspect_project",
                 {"project_path": "study_master"},
             )["structuredContent"]
 
@@ -392,7 +392,7 @@ class ProjectRoleExecutionBoundaryTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root, runtime_root=root / "runtime", write_tools_enabled=True)
 
             response = server.call_tool(
-                "graphhub.render_project_figure",
+                "figops.render_project_figure",
                 {"project_path": "study_master", "figure_id": "fig1", "dry_run": True},
             )
             result = response["structuredContent"]

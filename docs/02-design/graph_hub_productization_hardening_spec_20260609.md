@@ -1,8 +1,8 @@
-# Graph Hub Productization Hardening Spec - 2026-06-09
+# FigOps Productization Hardening Spec - 2026-06-09
 
 ## Goal
 
-Prepare Graph Hub for a future public or commercial release without exposing private research workflow value by accident.
+Prepare FigOps for a future public or commercial release without exposing private research workflow value by accident.
 
 This is not a decision to open source the repository. The current license remains proprietary and all-rights-reserved. This spec adds the boundaries and checks needed before any future public edition can be split.
 
@@ -33,7 +33,7 @@ These must stay private unless explicitly reviewed:
 
 ## Style Pack Architecture
 
-Graph Hub should treat visual style as named packs, not ad hoc prompt text.
+FigOps should treat visual style as named packs, not ad hoc prompt text.
 
 Each style pack has:
 
@@ -45,7 +45,7 @@ Each style pack has:
 
 Rules:
 
-- `graphhub.list_styles` must expose style pack metadata so agents know which styles are generic and which are private.
+- `figops.list_styles` must expose style pack metadata so agents know which styles are generic and which are private.
 - `nature_surfur` is internal because it is project-derived.
 - `baseline` profile is public-core.
 - `resistance_premium` is internal because it originated from resistance publication styling.
@@ -99,7 +99,7 @@ Every user-facing MCP failure should include:
 - Create `themes/style_packs.py`.
 - Classify current target formats and profiles by release visibility.
 - Add tests that `nature_surfur` and `resistance_premium` are not public-core.
-- Expose `style_packs` from `graphhub.list_styles`.
+- Expose `style_packs` from `figops.list_styles`.
 
 ### Task 2: Public Release Check
 
@@ -122,7 +122,7 @@ Every user-facing MCP failure should include:
 
 This pass is complete when:
 
-- style pack metadata exists and is returned by `graphhub.list_styles`;
+- style pack metadata exists and is returned by `figops.list_styles`;
 - public release check blocks the current private repo;
 - tests cover style pack classification and release check behavior;
 - docs state what can be public and what stays private;
@@ -130,4 +130,4 @@ This pass is complete when:
 
 ## Current Decision
 
-Proceed with productization hardening while keeping Graph Hub private and proprietary.
+Proceed with productization hardening while keeping FigOps private and proprietary.

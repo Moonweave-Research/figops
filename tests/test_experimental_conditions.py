@@ -165,7 +165,7 @@ class ExperimentalConditionsMCPInspectTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=root)
 
             result = server.call_tool(
-                "graphhub.inspect_project",
+                "figops.inspect_project",
                 {"project_path": "module"},
             )["structuredContent"]
 

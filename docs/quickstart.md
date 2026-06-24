@@ -1,14 +1,14 @@
 # Quickstart: Clone to First Figure
 
-This path uses only the generic Graph Hub defaults: no GDrive prefetch, no Athena bridge,
+This path uses only the generic FigOps defaults: no GDrive prefetch, no Athena bridge,
 and generic project conventions. It should take less than 10 minutes on a machine with
 Python 3.12 and `uv`.
 
 ## 1. Clone and Install
 
 ```bash
-git clone https://github.com/Moonweave-Research/graph-making-hub.git
-cd graph-making-hub
+git clone https://github.com/Moonweave-Research/figops.git
+cd figops
 uv sync
 ```
 
@@ -21,8 +21,8 @@ uv sync
 ## 2. Check the Environment
 
 ```bash
-uv run python graphhub_mcp_server.py doctor
-uv run python graphhub_mcp_server.py --smoke
+uv run python figops_mcp_server.py doctor
+uv run python figops_mcp_server.py --smoke
 ```
 
 `doctor` may report warnings for optional `[io]` dependencies or disabled write tools. That is
@@ -60,7 +60,7 @@ def main() -> int:
     )
 
     scaffold = server.call_tool(
-        "graphhub.scaffold_project",
+        "figops.scaffold_project",
         {
             "project_name": "first_figure_project",
             "project_root": str(project),
@@ -86,7 +86,7 @@ def main() -> int:
         )
 
     render = server.call_tool(
-        "graphhub.render_csv_graph",
+        "figops.render_csv_graph",
         {
             "data_path": str(data),
             "x_column": "time_s",
@@ -127,7 +127,7 @@ render: ok
 .../runtime/mcp_jobs/quickstart-response/results/figures/graph.png
 ```
 
-`render: warning` is a successful render: Graph Hub created the figure and attached a
+`render: warning` is a successful render: FigOps created the figure and attached a
 quality/layout warning for manual review. Open the printed PNG path to inspect the output.
 
 ## 4. Learn the Examples

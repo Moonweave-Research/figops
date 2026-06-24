@@ -182,7 +182,7 @@ def main():
     parser.add_argument("--docker", action="store_true", help="Rerun this orchestrator command inside Docker")
     parser.add_argument("--docker-build", action="store_true", help="Build the Docker image before --docker execution")
     parser.add_argument(
-        "--docker-image", type=str, default="graph-making-hub:latest", help="Docker image tag for --docker mode"
+        "--docker-image", type=str, default="figops:latest", help="Docker image tag for --docker mode"
     )
     parser.add_argument(
         "--read-fingerprint",

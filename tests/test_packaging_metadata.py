@@ -21,12 +21,15 @@ def test_packaging_metadata_declares_build_backend_and_owner_metadata():
 def test_packaging_metadata_pins_public_distribution_surface():
     payload = _pyproject()
 
-    assert payload["project"]["name"] == "graph-making-hub"
+    assert payload["project"]["name"] == "figops"
     assert payload["project"]["scripts"] == {
+        "figops": "orchestrator:main",
+        "figops-mcp": "figops_mcp_server:main",
         "graphhub": "orchestrator:main",
         "graphhub-mcp": "graphhub_mcp_server:main",
     }
     assert payload["tool"]["setuptools"]["py-modules"] == [
+        "figops_mcp_server",
         "graphhub_mcp_server",
         "hub_uv",
         "orchestrator",

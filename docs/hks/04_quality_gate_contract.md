@@ -1,10 +1,10 @@
 # HKS 04 Quality Gate Contract
 
-Graph Hub quality gates separate rendered output from publication-ready output.
+FigOps quality gates separate rendered output from publication-ready output.
 
 ## Required Result Fields
 
-Every write-capable Graph Hub MCP result must preserve:
+Every write-capable FigOps MCP result must preserve:
 
 - `status`
 - `operation_id`
@@ -41,7 +41,7 @@ TIMEOUT
 PLOT
 ```
 
-Clients may add adapter-side `HUB_PATH` when Graph Hub cannot be reached.
+Clients may add adapter-side `HUB_PATH` when FigOps cannot be reached.
 
 ## Manual Review
 

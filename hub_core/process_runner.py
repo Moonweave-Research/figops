@@ -80,7 +80,7 @@ def _fallback_sanitize_path(raw_path: str, allowed_roots: list[Path]) -> Path:
 
 
 def _sanitize_script_path(raw_path: str, project_dir: str) -> str:
-    """Verify script path is within Graph Hub before execution.
+    """Verify script path is within FigOps before execution.
 
     Raises ValueError with a descriptive message if the resolved path
     escapes the hub root.  Returns the resolved absolute path string on success.

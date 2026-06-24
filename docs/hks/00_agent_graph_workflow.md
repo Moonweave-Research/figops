@@ -1,25 +1,25 @@
 # HKS 00 Agent Graph Workflow
 
-This is the common workflow for agents using Graph Hub directly.
+This is the common workflow for agents using FigOps directly.
 
 ## Default Rule
 
-Use Graph Hub directly when the user explicitly asks for graph generation, project graph validation, figure quality checks, or project graph normalization.
+Use FigOps directly when the user explicitly asks for graph generation, project graph validation, figure quality checks, or project graph normalization.
 
-Do not route graph work through Athena. The agent using Graph Hub should decide whether the request is graph-only, mixed, or outside Graph Hub's scope.
+Do not route graph work through Athena. The agent using FigOps should decide whether the request is graph-only, mixed, or outside FigOps's scope.
 
-Use Athena or another explicit toolbox only for a separate non-graph step such as solver/literature context, then pass the resulting data or claim back into Graph Hub MCP.
+Use Athena or another explicit toolbox only for a separate non-graph step such as solver/literature context, then pass the resulting data or claim back into FigOps MCP.
 
 ## Direct MCP Workflow
 
-1. Call `graphhub.list_styles` when style support is unknown.
-2. Call `graphhub.health` when server readiness or project discovery health is uncertain.
-3. Call `graphhub.list_projects` to find known projects.
-4. Call `graphhub.inspect_project` for a selected project.
-5. Call `graphhub.validate_project` before any project-based render or migration.
-6. Call `graphhub.render_project_figure` for configured `project_config.yaml` figures.
-7. Call `graphhub.render_csv_graph` for explicit structured CSV graph requests.
-8. Call `graphhub.collect_artifacts` after render.
+1. Call `figops.list_styles` when style support is unknown.
+2. Call `figops.health` when server readiness or project discovery health is uncertain.
+3. Call `figops.list_projects` to find known projects.
+4. Call `figops.inspect_project` for a selected project.
+5. Call `figops.validate_project` before any project-based render or migration.
+6. Call `figops.render_project_figure` for configured `project_config.yaml` figures.
+7. Call `figops.render_csv_graph` for explicit structured CSV graph requests.
+8. Call `figops.collect_artifacts` after render.
 9. Inspect `manifest_path`, `status_path`, `failure_stage`, `resolution_hint`, `manual_review_needed`, `visual_preflight_status`, and `provenance`.
 
 ## Required Agent Behavior
@@ -29,7 +29,7 @@ Use Athena or another explicit toolbox only for a separate non-graph step such a
 - Do not hide `manual_review_needed=true`.
 - Do not claim publication readiness from syntax-only render success.
 - Do not read raw data, PDFs, images, or binary outputs into chat unless explicitly required.
-- Keep Graph Hub independent from Athena.
+- Keep FigOps independent from Athena.
 
 ## Stop Conditions
 

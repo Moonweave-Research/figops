@@ -1,11 +1,11 @@
-# Graph Hub Direct MCP Workflow For Surfur - 2026-06-09
+# FigOps Direct MCP Workflow For Surfur - 2026-06-09
 
 ## Decision
 
-Use Graph Hub MCP directly for graph work. Do not route graph-only requests
+Use FigOps MCP directly for graph work. Do not route graph-only requests
 through Athena by default.
 
-The Surfur research folder is a master workspace, not one runnable Graph Hub
+The Surfur research folder is a master workspace, not one runnable FigOps
 project:
 
 ```text
@@ -29,7 +29,7 @@ Figure:
 FigPI_CvS_Fits
 ```
 
-This target existed before Graph Hub became MCP-based and now serves as the
+This target existed before FigOps became MCP-based and now serves as the
 real-project acceptance check for the MCP surface.
 
 ## User-Facing Scenario
@@ -43,11 +43,11 @@ When the user says:
 the agent should:
 
 1. identify the concrete subproject path, not the Surfur root;
-2. call `graphhub.inspect_project`;
-3. call `graphhub.validate_project`;
-4. run `graphhub.render_project_figure` with `dry_run=true`;
-5. run `graphhub.render_project_figure`;
-6. call `graphhub.collect_artifacts`;
+2. call `figops.inspect_project`;
+3. call `figops.validate_project`;
+4. run `figops.render_project_figure` with `dry_run=true`;
+5. run `figops.render_project_figure`;
+6. call `figops.collect_artifacts`;
 7. report `status`, `manual_review_needed`, `output_path`, `manifest_path`,
    `failure_stage`, and `resolution_hint`.
 
@@ -69,7 +69,7 @@ Valid Surfur render targets are subprojects such as:
 
 ## Verification Command
 
-From the Graph Hub repository:
+From the FigOps repository:
 
 ```bash
 python hub_uv.py run python - <<'PY'
@@ -83,7 +83,7 @@ server = GraphHubMCPServer(
     runtime_root=Path("/Users/choemun-yeong/ws/research-runtime/graphhub-real-smoke"),
 )
 result = server.call_tool(
-    "graphhub.render_project_figure",
+    "figops.render_project_figure",
     {
         "project_path": str(project_path),
         "figure_id": "FigPI_CvS_Fits",

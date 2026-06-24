@@ -30,7 +30,7 @@ project/
 
 ## Style Selection
 
-Projects select styles; they do not redefine central Graph Hub styles.
+Projects select styles; they do not redefine central FigOps styles.
 
 ```yaml
 visual_style:
@@ -53,8 +53,8 @@ presets:
 
 ## Validation Rules
 
-- `visual_style.target_format` must be one of Graph Hub's canonical target formats.
-- `visual_style.profile` must be a known Graph Hub profile or alias.
+- `visual_style.target_format` must be one of FigOps's canonical target formats.
+- `visual_style.profile` must be a known FigOps profile or alias.
 - `data_contract.csv_checks[].path` is required.
 - `data_contract.csv_checks[].semantic_checks.<column>.monotonic` may be one of
   `increasing`, `decreasing`, `nondecreasing`, or `nonincreasing`.

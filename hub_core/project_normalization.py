@@ -19,8 +19,8 @@ from .scaffold import (
     DEFAULT_PROJECT_CONTEXT_PY,
 )
 
-MANIFEST_FILENAME = ".graphhub_normalization_manifest.json"
-SCAFFOLD_MANIFEST_FILENAME = ".graphhub_scaffold_manifest.json"
+MANIFEST_FILENAME = ".figops_normalization_manifest.json"
+SCAFFOLD_MANIFEST_FILENAME = ".figops_scaffold_manifest.json"
 
 _SCRIPT_SUFFIXES = {".py", ".r"}
 _DATA_SUFFIXES = {".csv", ".tsv", ".txt", ".parquet", ".h5", ".hdf5", ".feather"}

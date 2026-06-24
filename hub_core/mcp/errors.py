@@ -40,7 +40,7 @@ INTERNAL_ERROR = McpErrorTaxonomyEntry(
     category="internal",
     code="GRAPHHUB_INTERNAL",
     jsonrpc_code=JSONRPC_INTERNAL_ERROR,
-    description="An unexpected Graph Hub or runtime failure occurred.",
+    description="An unexpected FigOps or runtime failure occurred.",
 )
 
 ERROR_TAXONOMY = {

@@ -1,6 +1,6 @@
 # QA Guide — Smoke Test & Figure Regression (v4.0)
 
-이 문서는 독립 `graph-making-hub` repository의 최소 품질 보증 절차를 정의합니다.
+이 문서는 독립 `figops` repository의 최소 품질 보증 절차를 정의합니다.
 
 일상 실행 가이드는 `README.md`를 먼저 보고, 이 문서는 운영 검증이나 릴리스 전 점검 때만 사용한다.
 

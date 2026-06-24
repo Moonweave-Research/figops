@@ -242,7 +242,7 @@ def _read_data_safe(data_path, pd, hdf_key: str = "/data"):
             import pyarrow  # noqa: F401
         except ImportError as exc:
             raise ImportError(
-                "pyarrow is required to read Parquet files. Install with: uv pip install 'graph-making-hub[io]'"
+                "pyarrow is required to read Parquet files. Install with: uv pip install 'figops[io]'"
             ) from exc
         return pd.read_parquet(data_path)
 
@@ -251,7 +251,7 @@ def _read_data_safe(data_path, pd, hdf_key: str = "/data"):
             import tables  # noqa: F401
         except ImportError as exc:
             raise ImportError(
-                "PyTables (tables) is required to read HDF5 files. Install with: uv pip install 'graph-making-hub[io]'"
+                "PyTables (tables) is required to read HDF5 files. Install with: uv pip install 'figops[io]'"
             ) from exc
         try:
             return pd.read_hdf(data_path, key=hdf_key)
@@ -278,7 +278,7 @@ def _read_data_safe(data_path, pd, hdf_key: str = "/data"):
             import pyarrow  # noqa: F401
         except ImportError as exc:
             raise ImportError(
-                "pyarrow is required to read Feather files. Install with: uv pip install 'graph-making-hub[io]'"
+                "pyarrow is required to read Feather files. Install with: uv pip install 'figops[io]'"
             ) from exc
         return pd.read_feather(data_path)
 

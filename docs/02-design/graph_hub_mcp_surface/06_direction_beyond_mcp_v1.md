@@ -5,7 +5,7 @@
 
 ## Purpose
 
-This document captures where Graph Hub should go after MCP v1 is stable. These items are intentionally downstream of discovery truth, read-only MCP, controlled rendering, project normalization, and visual quality gates.
+This document captures where FigOps should go after MCP v1 is stable. These items are intentionally downstream of discovery truth, read-only MCP, controlled rendering, project normalization, and visual quality gates.
 
 ## 1. Graph Inventory Board
 

@@ -1,7 +1,7 @@
 """
 hub_core/style_init.py
 ======================
-Graph Hub 스타일 초기화 헬퍼.
+FigOps 스타일 초기화 헬퍼.
 
 hub_scripts/*.py 상단에서 한 줄로 호출하여
 project_config.yaml → process_runner → env var → apply_journal_theme

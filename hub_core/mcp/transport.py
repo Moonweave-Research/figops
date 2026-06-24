@@ -30,9 +30,9 @@ def run_stdio_server(
 ) -> int:
     """Run a JSON-RPC stdio MCP server (newline-delimited or Content-Length framed)."""
     if server is None:
-        from hub_core.mcp.server import GraphHubMCPServer
+        from hub_core.mcp.server import FigOpsMCPServer
 
-        active_server = GraphHubMCPServer()
+        active_server = FigOpsMCPServer()
     else:
         active_server = server
     in_stream = input_stream or sys.stdin.buffer
@@ -107,7 +107,7 @@ def _handle_json_rpc(server: Any, request: dict[str, Any]) -> dict[str, Any] | N
             "result": {
                 "protocolVersion": protocol_version,
                 "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
-                "serverInfo": {"name": "graph-making-hub", "version": server._read_version()},
+                "serverInfo": {"name": "figops", "version": server._read_version()},
             },
         }
     if method == "ping":
