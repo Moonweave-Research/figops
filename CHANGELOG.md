@@ -15,6 +15,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.2] - 2026-06-24
+
+### Changed
+
+- Switch FigOps licensing metadata and repository license files to Apache-2.0 for public package distribution.
+- Split the PyPI upload guard from the private repository scan so uploads are blocked by package-artifact and license checks rather than private internal docs that are not shipped.
+
 ## [0.17.1] - 2026-06-24
 
 ### Added

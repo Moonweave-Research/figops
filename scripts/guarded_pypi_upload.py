@@ -14,7 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.check_public_release import ReleaseCheckResult, run_release_check  # noqa: E402
+from scripts.check_public_release import ReleaseCheckResult, run_license_check  # noqa: E402
+from scripts.public_package_surface import inspect_public_package_surface  # noqa: E402
 
 DEFAULT_DIST_GLOB = "dist/*"
 
@@ -37,10 +38,13 @@ def build_upload_command(repository: str, dist_paths: Sequence[Path]) -> list[st
 
 
 def upload_blockers(root: Path, dist_glob: str = DEFAULT_DIST_GLOB) -> tuple[str, ...]:
-    release_result = run_release_check(root)
-    blockers = list(release_result.blockers)
+    license_result = run_license_check(root)
+    blockers = list(license_result.blockers)
     if not expand_dist_paths(root, dist_glob):
         blockers.append(f"No distribution files found for glob: {dist_glob}")
+        return tuple(sorted(set(blockers)))
+    package_result = inspect_public_package_surface(root, dist_glob)
+    blockers.extend(str(blocker) for blocker in package_result["blockers"])
     return tuple(sorted(set(blockers)))
 
 
@@ -73,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
-    release_result = run_release_check(root)
+    release_result = ReleaseCheckResult(blockers=upload_blockers(root, args.dist_glob), warnings=())
     _print_release_result(release_result)
     dist_paths = expand_dist_paths(root, args.dist_glob)
     if not dist_paths:

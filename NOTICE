@@ -1,12 +1,7 @@
-Graph Making Hub
-Copyright (c) 2026 Moonweave Research.
+FigOps
+Copyright 2026 Choemun Yeong
 
-Current distribution status:
+Licensed under the Apache License, Version 2.0.
 
-- Private repository.
-- No open source license has been granted.
-- Internal research use only unless a separate written license says otherwise.
-
-Do not copy code, styles, project templates, MCP server code, or research
-workflow documents from this repository into another product, repository, or
-service without explicit permission from Moonweave Research.
+This product includes software developed for reproducible research figure
+operations and plotting workflows.

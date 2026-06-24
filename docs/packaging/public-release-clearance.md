@@ -53,17 +53,15 @@ python scripts/consumer_install_smoke.py
 uv run --with twine python -m twine check dist/*
 ```
 
-Expected today: `check_public_release.py` remains blocked because this repository
-still has proprietary licensing text and private/internal content. That is the
-correct state until the approvals above are complete.
+Expected for a private-repo / public-PyPI path: `guarded_pypi_upload.py` can pass once license and built artifacts are clean, while `check_public_release.py` may still report repo-only private docs/tests that are not shipped in the wheel or sdist.
 
 ## Safe current distribution path
 
 For now, use GitHub Release assets only:
 
 ```bash
-gh release download v0.17.1 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.1-py3-none-any.whl
+gh release download v0.17.2 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.2-py3-none-any.whl
 figops-mcp --smoke
 ```
 
@@ -75,7 +73,7 @@ things:
 1. Replace LICENSE/NOTICE with the approved license text and attribution.
 2. Remove or split private style packs and private docs from the public release
    candidate.
-3. Make `scripts/check_public_release.py` pass.
+3. Make `scripts/guarded_pypi_upload.py --repository testpypi` pass in dry-run mode.
 4. Rebuild and smoke-test the wheel/sdist.
 5. Publish to TestPyPI first through `scripts/guarded_pypi_upload.py`.
 
