@@ -15,6 +15,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python graphhub_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.16.4] - 2026-06-24
+
+### Added
+
+- Add a fail-closed guarded TestPyPI/PyPI upload wrapper that runs the public
+  release gate before constructing or executing `twine upload`.
+- Update PyPI readiness docs to route uploads through the guarded wrapper.
+
 ## [0.16.3] - 2026-06-24
 
 ### Added
