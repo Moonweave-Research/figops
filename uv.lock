@@ -269,8 +269,8 @@ wheels = [
 
 [[package]]
 name = "graph-making-hub"
-version = "0.16.2"
-source = { virtual = "." }
+version = "0.16.3"
+source = { editable = "." }
 dependencies = [
     { name = "adjusttext" },
     { name = "lxml" },

@@ -1,9 +1,20 @@
+[build-system]
+requires = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "graph-making-hub"
-version = "0.16.2"
+version = "0.16.3"
 description = "Reproducible plotting and analysis pipeline for research projects"
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [
+    { name = "Choemun Yeong" },
+]
+maintainers = [
+    { name = "Moonweave Research" },
+]
+license-files = ["LICENSE", "NOTICE"]
 dependencies = [
     "matplotlib>=3.7,<4",
     "numpy>=1.24,<3",
@@ -26,6 +37,24 @@ io = [
     "pyarrow>=14.0",
     "tables>=3.9",
 ]
+
+[project.scripts]
+graphhub = "orchestrator:main"
+graphhub-mcp = "graphhub_mcp_server:main"
+
+[project.urls]
+Homepage = "https://github.com/Moonweave-Research/figops"
+Repository = "https://github.com/Moonweave-Research/figops"
+Issues = "https://github.com/Moonweave-Research/figops/issues"
+
+[tool.setuptools]
+py-modules = ["graphhub_mcp_server", "hub_uv", "orchestrator"]
+
+[tool.setuptools.packages.find]
+include = ["hub_core*", "plotting*", "themes*"]
+
+[tool.setuptools.package-data]
+themes = ["*.yaml", "*.R"]
 
 [tool.ruff]
 target-version = "py312"
