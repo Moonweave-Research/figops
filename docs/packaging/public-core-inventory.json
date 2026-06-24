@@ -1,0 +1,90 @@
+{
+  "schema_version": "public_core_inventory/1",
+  "distribution_policy": {
+    "current_distribution_name": "graph-making-hub",
+    "current_status": "private_internal",
+    "public_pypi_allowed": false,
+    "license_decision_required": true,
+    "notes": "Current repository releases are private/internal GitHub releases until the public release gate passes."
+  },
+  "public_core_candidates": [
+    {
+      "area": "mcp_protocol_surface",
+      "paths": [
+        "graphhub_mcp_server.py",
+        "hub_core/mcp/transport.py",
+        "hub_core/mcp/schemas.py",
+        "hub_core/mcp/server.py"
+      ],
+      "status": "candidate",
+      "notes": "Generic MCP framing, tool schemas, and server facade can be part of a reviewed public core."
+    },
+    {
+      "area": "generic_project_contracts",
+      "paths": [
+        "project_config_template.yaml",
+        "hub_core/config_parser.py",
+        "hub_core/project_normalization.py"
+      ],
+      "status": "candidate_with_review",
+      "notes": "Generic schema and normalization logic are candidates after private target formats and examples are separated."
+    },
+    {
+      "area": "synthetic_examples",
+      "paths": [
+        "examples/synthetic_project",
+        "examples/multipanel_project"
+      ],
+      "status": "candidate",
+      "notes": "Synthetic fixtures are the preferred public demonstration surface."
+    },
+    {
+      "area": "journal_core_styles",
+      "paths": [
+        "themes/style_packs.py",
+        "themes/journal_theme.py",
+        "themes/palettes.py"
+      ],
+      "status": "candidate_with_review",
+      "notes": "Only style packs with visibility public_core are candidates for public release."
+    }
+  ],
+  "private_or_internal_components": [
+    {
+      "area": "internal_style_packs",
+      "markers": [
+        "nature_surfur",
+        "resistance_premium"
+      ],
+      "status": "blocks_public_release",
+      "notes": "Project-derived style formats and profiles must stay private/internal unless explicitly reviewed."
+    },
+    {
+      "area": "private_workflow_documents",
+      "path_prefixes": [
+        "docs/hks/",
+        "docs/02-design/"
+      ],
+      "status": "blocks_public_release",
+      "notes": "Internal workflow documents encode lab operating practice and must not ship in a public package."
+    },
+    {
+      "area": "private_research_markers",
+      "markers": [
+        "02_Surfur_Polymer",
+        "PI_control",
+        "저항 측정"
+      ],
+      "status": "blocks_public_release",
+      "notes": "Real project identifiers must be removed or replaced with synthetic fixtures."
+    }
+  ],
+  "release_exit_criteria": [
+    "LICENSE and NOTICE match the intended public or source-available distribution mode.",
+    "scripts/check_public_release.py passes for the release candidate.",
+    "Internal/private style packs are removed from the public distribution or split into a private package.",
+    "Private workflow documents and real research markers are absent from the public candidate.",
+    "uv build and twine check pass for the final package artifacts.",
+    "A clean environment can install the wheel and run graphhub-mcp --smoke."
+  ]
+}
