@@ -35,6 +35,25 @@ python scripts/consumer_install_smoke.py
 This does not publish anything. It verifies that someone installing the built
 wheel gets working `graphhub` and `graphhub-mcp` commands.
 
+
+## Internal GitHub release distribution
+
+Until the public license gate is resolved, the supported share path is a
+GitHub release asset for people who already have repository access:
+
+```bash
+gh release download v0.16.10 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
+python -m pip install dist-release/graph_making_hub-0.16.10-py3-none-any.whl
+graphhub-mcp --smoke
+```
+
+Maintainers should attach both built artifacts to each release and verify them:
+
+```bash
+gh release upload v0.16.10 dist/graph_making_hub-0.16.10-py3-none-any.whl dist/graph_making_hub-0.16.10.tar.gz
+python scripts/github_release_asset_smoke.py
+```
+
 ## Current distribution boundary
 
 This repository is still private/internal. A GitHub release can be published for
@@ -65,9 +84,10 @@ uv build
 python scripts/package_metadata_smoke.py
 python scripts/public_package_surface.py
 python scripts/consumer_install_smoke.py
+python scripts/github_release_asset_smoke.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 python scripts/guarded_pypi_upload.py --repository testpypi --execute
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.9
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.10
 python scripts/guarded_pypi_upload.py --repository pypi
 python scripts/guarded_pypi_upload.py --repository pypi --execute
 ```
