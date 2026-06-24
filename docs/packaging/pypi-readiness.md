@@ -42,15 +42,15 @@ Until the public license gate is resolved, the supported share path is a
 GitHub release asset for people who already have repository access:
 
 ```bash
-gh release download v0.17.0 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
-python -m pip install dist-release/figops-0.17.0-py3-none-any.whl
+gh release download v0.17.1 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
+python -m pip install dist-release/figops-0.17.1-py3-none-any.whl
 figops-mcp --smoke
 ```
 
 Maintainers should attach both built artifacts to each release and verify them:
 
 ```bash
-gh release upload v0.17.0 dist/figops-0.17.0-py3-none-any.whl dist/figops-0.17.0.tar.gz
+gh release upload v0.17.1 dist/figops-0.17.1-py3-none-any.whl dist/figops-0.17.1.tar.gz
 python scripts/github_release_asset_smoke.py
 ```
 
@@ -59,6 +59,17 @@ python scripts/github_release_asset_smoke.py
 This repository is still private/internal. A GitHub release can be published for
 internal FigOps use, but public PyPI upload is blocked until the distribution
 policy changes.
+
+Use the clearance checklist and structured blocker report before changing that
+policy:
+
+```bash
+python scripts/public_core_inventory.py --status --include-blockers
+```
+
+See [public-release-clearance.md](./public-release-clearance.md) for the
+license/IP approval checklist and the recommended Apache-2.0 path after
+approval.
 
 Before uploading to TestPyPI or PyPI, confirm all of the following:
 
@@ -86,7 +97,7 @@ python scripts/consumer_install_smoke.py
 python scripts/github_release_asset_smoke.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 python scripts/guarded_pypi_upload.py --repository testpypi --execute
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps figops==0.17.0
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps figops==0.17.1
 python scripts/guarded_pypi_upload.py --repository pypi
 python scripts/guarded_pypi_upload.py --repository pypi --execute
 ```

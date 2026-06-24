@@ -31,8 +31,8 @@ rights. Check [LICENSE](./LICENSE) and [NOTICE](./NOTICE) before sharing it.
 For internal users with repository access:
 
 ```bash
-gh release download v0.17.0 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.0-py3-none-any.whl
+gh release download v0.17.1 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.1-py3-none-any.whl
 figops-mcp --smoke
 ```
 
@@ -194,6 +194,9 @@ decision:
 3. remove or split private docs/tests/style packs from the public release surface,
 4. make `scripts/check_public_release.py` pass,
 5. then publish to TestPyPI/PyPI through the guarded uploader.
+
+The working checklist is in
+[`docs/packaging/public-release-clearance.md`](./docs/packaging/public-release-clearance.md).
 
 Until then, the supported sharing path is the GitHub Release wheel for users who
 already have repository access.

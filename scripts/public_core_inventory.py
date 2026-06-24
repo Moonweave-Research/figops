@@ -74,6 +74,18 @@ def blocker_family(blocker: str) -> str:
 
 
 def public_core_status(root: Path = REPO_ROOT) -> dict[str, Any]:
+    return build_public_core_status(root)
+
+
+def release_blocker_summary(root: Path = REPO_ROOT) -> dict[str, list[str]]:
+    release_result = run_release_check(root)
+    grouped: dict[str, list[str]] = {}
+    for blocker in release_result.blockers:
+        grouped.setdefault(blocker_family(blocker), []).append(blocker)
+    return {family: sorted(blockers) for family, blockers in sorted(grouped.items())}
+
+
+def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool = False) -> dict[str, Any]:
     inventory = load_public_core_inventory(root)
     inventory_errors = validate_public_core_inventory(inventory)
     release_result = run_release_check(root)
@@ -85,7 +97,7 @@ def public_core_status(root: Path = REPO_ROOT) -> dict[str, Any]:
         and isinstance(policy, dict)
         and policy.get("public_pypi_allowed") is True
     )
-    return {
+    payload = {
         "schema_version": inventory.get("schema_version"),
         "inventory_path": str((root / INVENTORY_RELATIVE_PATH).resolve()),
         "inventory_valid": not inventory_errors,
@@ -98,16 +110,28 @@ def public_core_status(root: Path = REPO_ROOT) -> dict[str, Any]:
         },
         "pypi_upload_allowed": pypi_upload_allowed,
     }
+    if include_blockers:
+        payload["release_gate"]["blockers_by_family"] = release_blocker_summary(root)
+    return payload
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=REPO_ROOT, help="Repository root to inspect")
     parser.add_argument("--status", action="store_true", help="Emit current release status plus inventory validity")
+    parser.add_argument(
+        "--include-blockers",
+        action="store_true",
+        help="When used with --status, include sorted release blockers grouped by blocker family",
+    )
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
-    payload = public_core_status(root) if args.status else load_public_core_inventory(root)
+    payload = (
+        build_public_core_status(root, include_blockers=args.include_blockers)
+        if args.status
+        else load_public_core_inventory(root)
+    )
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     if args.status:
         return 0 if payload["inventory_valid"] else 1
