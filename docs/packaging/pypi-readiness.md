@@ -22,6 +22,19 @@ graphhub --help
 graphhub-mcp --smoke
 ```
 
+## Consumer install smoke
+
+Before a package is shared outside the repository, build the wheel and run the
+same console commands through an isolated consumer-style install path:
+
+```bash
+uv build
+python scripts/consumer_install_smoke.py
+```
+
+This does not publish anything. It verifies that someone installing the built
+wheel gets working `graphhub` and `graphhub-mcp` commands.
+
 ## Current distribution boundary
 
 This repository is still private/internal. A GitHub release can be published for
@@ -36,7 +49,7 @@ Before uploading to TestPyPI or PyPI, confirm all of the following:
    `graph-making-hub`; changing it to `figops` is a separate distribution
    identity decision.
 4. `uv build` succeeds, `python scripts/package_metadata_smoke.py` validates the package metadata/console scripts, and `twine check dist/*` passes.
-5. A clean environment can install the wheel and run `graphhub-mcp --smoke`.
+5. `python scripts/consumer_install_smoke.py` proves a consumer-style wheel install can run `graphhub --help` and `graphhub-mcp --smoke`.
 6. The PyPI or TestPyPI account has a verified email address and a scoped API
    token for upload.
 
@@ -51,9 +64,10 @@ PY
 uv build
 python scripts/package_metadata_smoke.py
 python scripts/public_package_surface.py
+python scripts/consumer_install_smoke.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 python scripts/guarded_pypi_upload.py --repository testpypi --execute
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.8
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps graph-making-hub==0.16.9
 python scripts/guarded_pypi_upload.py --repository pypi
 python scripts/guarded_pypi_upload.py --repository pypi --execute
 ```
