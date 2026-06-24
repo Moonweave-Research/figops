@@ -15,6 +15,17 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.4] - 2026-06-24
+
+### Added
+
+- Add a manual GitHub Actions Trusted Publishing workflow for TestPyPI/PyPI uploads.
+- Document exact PyPI/TestPyPI pending publisher values and install-smoke steps.
+
+### Changed
+
+- Update public distribution docs and README to point at Trusted Publishing instead of direct token-based uploads.
+
 ## [0.17.3] - 2026-06-24
 
 ### Fixed

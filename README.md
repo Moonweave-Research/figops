@@ -28,8 +28,8 @@ This means the built package is ready for public package-distribution checks, wh
 For internal users with repository access:
 
 ```bash
-gh release download v0.17.3 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.3-py3-none-any.whl
+gh release download v0.17.4 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.4-py3-none-any.whl
 figops-mcp --smoke
 ```
 
@@ -153,7 +153,7 @@ python scripts/github_release_asset_smoke.py
 ```
 
 `python scripts/check_public_release.py` may still block for repo-only private docs/tests.
-For PyPI, the guarded uploader checks distribution policy, LICENSE/NOTICE, and the built wheel/sdist package surface instead.
+For PyPI, the manual Trusted Publishing workflow runs the guarded uploader before publishing, so distribution policy, LICENSE/NOTICE, and the built wheel/sdist package surface are checked first.
 
 ## When something goes wrong
 
@@ -183,13 +183,14 @@ For PyPI, the guarded uploader checks distribution policy, LICENSE/NOTICE, and t
 
 ## What is next
 
-The next public-distribution step is TestPyPI, then PyPI, through the guarded uploader:
+The next public-distribution step is TestPyPI, then PyPI, through the manual Trusted Publishing workflow:
 
 1. keep `figops` as the public PyPI name unless a final product review changes it,
 2. rebuild wheel/sdist from a clean tree,
 3. confirm package artifacts exclude private docs/tests/research markers,
 4. make `scripts/guarded_pypi_upload.py --repository testpypi` pass in dry-run mode,
-5. execute TestPyPI upload, install-check from TestPyPI, then execute PyPI upload.
+5. run `publish.yml` for TestPyPI, install-check from TestPyPI, then run `publish.yml` for PyPI.
 
 The working checklist is in
-[`docs/packaging/public-release-clearance.md`](./docs/packaging/public-release-clearance.md).
+[`docs/packaging/public-release-clearance.md`](./docs/packaging/public-release-clearance.md), with exact publishing setup in
+[`docs/packaging/trusted-publishing.md`](./docs/packaging/trusted-publishing.md).
