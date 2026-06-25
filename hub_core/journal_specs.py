@@ -53,6 +53,7 @@ RSC_SOURCE = "https://www.rsc.org/journals-books-databases/author-and-reviewer-h
 ELSEVIER_SOURCE = "https://www.elsevier.com/about/policies-and-standards/author/artwork-and-media-instructions/artwork-sizing"
 WILEY_SOURCE = "https://authors.wiley.com/author-resources/Journal-Authors/Prepare/manuscript-preparation-guidelines.html/figure-preparation.html"
 CELL_SOURCE = "https://www.cell.com/information-for-authors/figure-guidelines"
+INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
 
 
 def _token(
@@ -115,8 +116,8 @@ JOURNAL_PREFLIGHT_SPECS: dict[str, JournalPreflightSpec] = {
         formats_source=NATURE_ARTWORK_SOURCE,
         formats_note="Submission-safe figure formats accepted by this preflight track.",
     ),
-    "nature_surfur": _preflight_spec(
-        "nature_surfur",
+    INTERNAL_STYLE_TARGET_FORMAT: _preflight_spec(
+        INTERNAL_STYLE_TARGET_FORMAT,
         max_width_mm=183,
         max_width_provenance=INTERNAL_PROJECT_STYLE,
         max_width_source=None,

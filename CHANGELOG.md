@@ -15,6 +15,16 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.8] - 2026-06-25
+
+### Added
+
+- Add provenance-aware journal preflight metadata and a style report CLI so official journal guidance, Graph Hub assumptions, and internal policies are distinguishable.
+
+### Changed
+
+- Preserve existing preflight result compatibility while attaching provenance, enforcement, and source metadata to each check.
+
 ## [0.17.7] - 2026-06-25
 
 ### Added

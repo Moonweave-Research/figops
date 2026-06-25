@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "figops"
-version = "0.17.7"
+version = "0.17.8"
 description = "Reproducible plotting and analysis pipeline for research projects"
 readme = "README.md"
 requires-python = ">=3.12"
