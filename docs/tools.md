@@ -1266,6 +1266,12 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "series_column": {
       "type": "string"
     },
+    "series_styles": {
+      "additionalProperties": {
+        "type": "object"
+      },
+      "type": "object"
+    },
     "significance_markers": {
       "items": {
         "type": "object"
@@ -1708,6 +1714,12 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
           },
           "series_column": {
             "type": "string"
+          },
+          "series_styles": {
+            "additionalProperties": {
+              "type": "object"
+            },
+            "type": "object"
           },
           "title": {
             "type": "string"

@@ -210,6 +210,7 @@ class BridgeFigureSpec:
     fit_line: bool = False
     ci_band: bool = False
     significance_markers: tuple[dict, ...] = ()
+    series_styles: dict[str, dict] | None = None
 
 
 def render_bridge_figure(spec: BridgeFigureSpec) -> str:
@@ -731,6 +732,59 @@ def _annotate_points(
             )
 
 
+def _series_style_override(spec: BridgeFigureSpec, series_name: object) -> dict[str, object]:
+    styles = spec.series_styles or {}
+    if not isinstance(styles, dict):
+        return {}
+    style = styles.get(str(series_name))
+    if style is None and series_name == "__single__":
+        style = styles.get("__single__") or styles.get("default")
+    return dict(style) if isinstance(style, dict) else {}
+
+
+def _series_style(spec: BridgeFigureSpec, series_index: int, series_name: object) -> dict[str, object]:
+    style = dict(get_series_style(series_index))
+    override = _series_style_override(spec, series_name)
+    if "marker" in override:
+        marker = str(override.get("marker") or "").strip()
+        if marker:
+            style["marker"] = marker
+    if "linestyle" in override:
+        style["linestyle"] = str(override.get("linestyle") or style.get("linestyle") or "-")
+    if "hatch" in override:
+        style["hatch"] = str(override.get("hatch") or "")
+    fill = str(override.get("fill") or "").strip().lower()
+    markerfacecolor = override.get("facecolor", override.get("markerfacecolor"))
+    markeredgecolor = override.get("edgecolor", override.get("markeredgecolor"))
+    if fill in {"none", "open"}:
+        markerfacecolor = "none"
+    elif fill in {"filled", "full"} and markerfacecolor is None:
+        markerfacecolor = None
+    if markerfacecolor is not None:
+        style["markerfacecolor"] = str(markerfacecolor)
+    if markeredgecolor is not None:
+        style["markeredgecolor"] = str(markeredgecolor)
+    return style
+
+
+def _marker_color_kwargs(sty: dict[str, object]) -> dict[str, object]:
+    kwargs: dict[str, object] = {}
+    if "markerfacecolor" in sty:
+        kwargs["facecolors"] = sty["markerfacecolor"]
+    if "markeredgecolor" in sty:
+        kwargs["edgecolors"] = sty["markeredgecolor"]
+    return kwargs
+
+
+def _line_marker_color_kwargs(sty: dict[str, object]) -> dict[str, object]:
+    kwargs: dict[str, object] = {}
+    if "markerfacecolor" in sty:
+        kwargs["markerfacecolor"] = sty["markerfacecolor"]
+    if "markeredgecolor" in sty:
+        kwargs["markeredgecolor"] = sty["markeredgecolor"]
+    return kwargs
+
+
 def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: bool, small_panel: bool = False) -> None:
     grouped = _group_points(points, spec)
     has_multi_series = any(key != "__single__" for key in grouped)
@@ -742,7 +796,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
         ys = [point["y"] for point in series_points]
         yerr = _yerr_values(series_points, spec)
         legend_label = _display_label(series_name, compress_labels=spec.compress_labels) if has_multi_series else None
-        sty = get_series_style(idx)
+        sty = _series_style(spec, idx, series_name)
 
         cap_size = spec.yerr_cap_width
         cap_thick = max(0.5, spec.yerr_cap_width * 0.4)
@@ -757,6 +811,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
                     linewidth=1.2,
                     markersize=marker_size,
                     markeredgewidth=marker_edge_width,
+                    **_line_marker_color_kwargs(sty),
                     capsize=cap_size,
                     capthick=cap_thick,
                     label=legend_label,
@@ -770,6 +825,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
                     linewidth=1.2,
                     markersize=marker_size,
                     markeredgewidth=marker_edge_width,
+                    **_line_marker_color_kwargs(sty),
                     label=legend_label,
                 )
         else:
@@ -782,6 +838,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
                     linestyle="none",
                     markersize=marker_size,
                     markeredgewidth=marker_edge_width,
+                    **_line_marker_color_kwargs(sty),
                     capsize=cap_size,
                     capthick=cap_thick,
                     label=legend_label,
@@ -793,6 +850,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
                     s=scatter_size,
                     marker=sty["marker"],
                     linewidths=marker_edge_width,
+                    **_marker_color_kwargs(sty),
                     label=legend_label,
                 )
 
@@ -1324,7 +1382,7 @@ def _draw_grouped_broken_xy(ax_top, ax_bot, points: list[dict], spec: BridgeFigu
         ys = [point["y"] for point in series_points]
         yerr = _yerr_values(series_points, spec)
         legend_label = _display_label(series_name, compress_labels=spec.compress_labels) if has_multi_series else None
-        sty = get_series_style(idx)
+        sty = _series_style(spec, idx, series_name)
 
         _draw_broken_xy_series(
             ax_top,
@@ -1380,6 +1438,7 @@ def _draw_broken_xy_series(
                 linewidth=1.2,
                 markersize=marker_size,
                 markeredgewidth=marker_edge_width,
+                **_line_marker_color_kwargs(sty),
                 capsize=cap_size,
                 capthick=cap_thick,
                 label=label,
@@ -1393,6 +1452,7 @@ def _draw_broken_xy_series(
                 linewidth=1.2,
                 markersize=marker_size,
                 markeredgewidth=marker_edge_width,
+                **_line_marker_color_kwargs(sty),
                 label=label,
             )
     elif yerr is not None:
@@ -1404,12 +1464,21 @@ def _draw_broken_xy_series(
             linestyle="none",
             markersize=marker_size,
             markeredgewidth=marker_edge_width,
+            **_line_marker_color_kwargs(sty),
             capsize=cap_size,
             capthick=cap_thick,
             label=label,
         )
     else:
-        ax.scatter(xs, ys, s=scatter_size, marker=sty["marker"], linewidths=marker_edge_width, label=label)
+        ax.scatter(
+            xs,
+            ys,
+            s=scatter_size,
+            marker=sty["marker"],
+            linewidths=marker_edge_width,
+            **_marker_color_kwargs(sty),
+            label=label,
+        )
 
 
 def _annotate_broken_axis_points(ax_top, ax_bot, series_points: list[dict], spec: BridgeFigureSpec) -> None:
@@ -1722,7 +1791,7 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
             xs = [category_to_position[point["x"]] + offset_start + series_index * width for point in series_points]
             ys = [point["y"] for point in series_points]
             yerr = _yerr_values(series_points, spec)
-            sty = get_series_style(series_index)
+            sty = _series_style(spec, series_index, series_name)
             bars = ax.bar(
                 xs,
                 ys,
