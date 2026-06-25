@@ -901,6 +901,38 @@ def _apply_axis_scales_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec)
         _apply_axis_scales(axis, spec)
 
 
+def _normalized_span_annotation(
+    annotation: dict[str, object],
+    index: int,
+    *,
+    field: str,
+    bounds: tuple[str, str],
+) -> dict[str, object]:
+    span = annotation[field]
+    if not isinstance(span, dict):
+        raise ValueError(f"annotations[{index}].{field} must be an object")
+    lower_key, upper_key = bounds
+    try:
+        lower = float(span[lower_key])
+        upper = float(span[upper_key])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"annotations[{index}].{field} requires numeric {lower_key} and {upper_key}") from exc
+    if not math.isfinite(lower) or not math.isfinite(upper):
+        raise ValueError(f"annotations[{index}].{field} bounds must be finite")
+    try:
+        alpha = float(annotation.get("alpha", 0.12))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"annotations[{index}].alpha must be numeric") from exc
+    return {
+        "kind": field,
+        lower_key: lower,
+        upper_key: upper,
+        "text": str(annotation.get("text") or "").strip(),
+        "color": str(annotation.get("color") or "black"),
+        "alpha": alpha,
+    }
+
+
 def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...]:
     if annotations in (None, (), []):
         return ()
@@ -940,7 +972,17 @@ def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...
                 }
             )
             continue
-        missing = [key for key in ("x", "y", "text") if key not in annotation]
+        if annotation.get("hspan") is not None:
+            normalized.append(
+                _normalized_span_annotation(annotation, index, field="hspan", bounds=("ymin", "ymax"))
+            )
+            continue
+        if annotation.get("vspan") is not None:
+            normalized.append(
+                _normalized_span_annotation(annotation, index, field="vspan", bounds=("xmin", "xmax"))
+            )
+            continue
+        missing = [key for key in ("x", "y") if key not in annotation]
         if missing:
             raise ValueError(f"annotations[{index}] missing required field(s): {', '.join(missing)}")
         try:
@@ -951,9 +993,9 @@ def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...
         if not math.isfinite(x) or not math.isfinite(y):
             raise ValueError(f"annotations[{index}] x and y must be finite")
         text = str(annotation.get("text") or "").strip()
-        if not text:
-            raise ValueError(f"annotations[{index}] text must be non-empty")
         arrow_to = annotation.get("arrow_to")
+        if not text and arrow_to is None:
+            raise ValueError(f"annotations[{index}] text must be non-empty unless arrow_to is provided")
         normalized_arrow = None
         if arrow_to is not None:
             if not isinstance(arrow_to, dict):
@@ -966,16 +1008,20 @@ def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...
             if not math.isfinite(arrow_x) or not math.isfinite(arrow_y):
                 raise ValueError(f"annotations[{index}].arrow_to x and y must be finite")
             normalized_arrow = {"x": arrow_x, "y": arrow_y}
-        normalized.append(
-            {
-                "kind": "point",
-                "x": x,
-                "y": y,
-                "text": text,
-                "arrow_to": normalized_arrow,
-                "color": str(annotation.get("color") or "black"),
-            }
-        )
+        arrowstyle = str(annotation.get("arrowstyle") or "->").strip() or "->"
+        connectionstyle = str(annotation.get("connectionstyle") or "").strip()
+        item = {
+            "kind": "point",
+            "x": x,
+            "y": y,
+            "text": text,
+            "arrow_to": normalized_arrow,
+            "color": str(annotation.get("color") or "black"),
+            "arrowstyle": arrowstyle,
+        }
+        if connectionstyle:
+            item["connectionstyle"] = connectionstyle
+        normalized.append(item)
     return tuple(normalized)
 
 
@@ -993,6 +1039,10 @@ def _annotation_font_size() -> float:
         except (KeyError, ValueError, TypeError):
             continue
     return 6.5
+
+
+def _span_midpoint(lower: float, upper: float) -> float:
+    return math.sqrt(lower * upper) if lower > 0 and upper > 0 else 0.5 * (lower + upper)
 
 
 def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
@@ -1015,11 +1065,62 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
             )
             region_text = str(annotation["text"])
             if region_text:
-                center_x = math.sqrt(xmin * xmax) if xmin > 0 and xmax > 0 else 0.5 * (xmin + xmax)
                 ax.text(
-                    center_x,
-                    0.5 * (ymin + ymax),
+                    _span_midpoint(xmin, xmax),
+                    _span_midpoint(ymin, ymax),
                     region_text,
+                    color=color,
+                    fontsize=font_size,
+                    ha="center",
+                    va="center",
+                    zorder=1,
+                    clip_on=True,
+                )
+            continue
+        if annotation.get("kind") == "hspan":
+            ymin = float(annotation["ymin"])
+            ymax = float(annotation["ymax"])
+            ax.axhspan(
+                ymin,
+                ymax,
+                color=color,
+                alpha=float(annotation["alpha"]),
+                linewidth=0,
+                zorder=0,
+            )
+            span_text = str(annotation["text"])
+            if span_text:
+                ax.text(
+                    0.5,
+                    _span_midpoint(ymin, ymax),
+                    span_text,
+                    transform=ax.get_yaxis_transform(),
+                    color=color,
+                    fontsize=font_size,
+                    ha="center",
+                    va="center",
+                    zorder=1,
+                    clip_on=True,
+                )
+            continue
+        if annotation.get("kind") == "vspan":
+            xmin = float(annotation["xmin"])
+            xmax = float(annotation["xmax"])
+            ax.axvspan(
+                xmin,
+                xmax,
+                color=color,
+                alpha=float(annotation["alpha"]),
+                linewidth=0,
+                zorder=0,
+            )
+            span_text = str(annotation["text"])
+            if span_text:
+                ax.text(
+                    _span_midpoint(xmin, xmax),
+                    0.5,
+                    span_text,
+                    transform=ax.get_xaxis_transform(),
                     color=color,
                     fontsize=font_size,
                     ha="center",
@@ -1033,13 +1134,20 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
         text = str(annotation["text"])
         arrow_to = annotation.get("arrow_to")
         if isinstance(arrow_to, dict):
+            arrowprops = {
+                "arrowstyle": str(annotation.get("arrowstyle") or "->"),
+                "color": color,
+                "linewidth": 0.8,
+            }
+            if annotation.get("connectionstyle"):
+                arrowprops["connectionstyle"] = str(annotation["connectionstyle"])
             ax.annotate(
                 text,
                 xy=(float(arrow_to["x"]), float(arrow_to["y"])),
                 xytext=(x, y),
                 color=color,
                 fontsize=font_size,
-                arrowprops={"arrowstyle": "->", "color": color, "linewidth": 0.8},
+                arrowprops=arrowprops,
                 ha="left",
                 va="bottom",
                 zorder=6,

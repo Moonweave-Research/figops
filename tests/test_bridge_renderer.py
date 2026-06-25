@@ -2035,6 +2035,70 @@ class AnnotationStyleTest(unittest.TestCase):
         self.assertEqual(ax.text.call_args.args[2], "TARGET")
         self.assertAlmostEqual(ax.text.call_args.kwargs["fontsize"], _annotation_font_size())
 
+    def test_draw_annotations_renders_curved_arrow_without_text(self):
+        apply_journal_theme(target_format="nature", profile_name="baseline")
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            annotations=(
+                {
+                    "x": 2.0,
+                    "y": 200.0,
+                    "text": "",
+                    "arrow_to": {"x": 1.0, "y": 20.0},
+                    "arrowstyle": "-|>",
+                    "connectionstyle": "arc3,rad=0.25",
+                    "color": "black",
+                },
+            ),
+        )
+        ax = MagicMock()
+        _draw_annotations(ax, spec)
+
+        self.assertEqual(ax.annotate.call_count, 1)
+        call = ax.annotate.call_args
+        self.assertEqual(call.args[0], "")
+        self.assertEqual(call.kwargs["xy"], (1.0, 20.0))
+        self.assertEqual(call.kwargs["xytext"], (2.0, 200.0))
+        self.assertEqual(call.kwargs["arrowprops"]["arrowstyle"], "-|>")
+        self.assertEqual(call.kwargs["arrowprops"]["connectionstyle"], "arc3,rad=0.25")
+        self.assertTrue(call.kwargs["clip_on"])
+
+    def test_draw_annotations_renders_hspan_and_vspan(self):
+        apply_journal_theme(target_format="nature", profile_name="baseline")
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            annotations=(
+                {"hspan": {"ymin": 10.0, "ymax": 1000.0}, "text": "band", "color": "#ccc", "alpha": 0.4},
+                {"vspan": {"xmin": 1.0, "xmax": 100.0}, "text": "window", "color": "#ddd"},
+            ),
+        )
+        ax = MagicMock()
+        y_transform = object()
+        x_transform = object()
+        ax.get_yaxis_transform.return_value = y_transform
+        ax.get_xaxis_transform.return_value = x_transform
+        _draw_annotations(ax, spec)
+
+        ax.axhspan.assert_called_once_with(10.0, 1000.0, color="#ccc", alpha=0.4, linewidth=0, zorder=0)
+        ax.axvspan.assert_called_once_with(1.0, 100.0, color="#ddd", alpha=0.12, linewidth=0, zorder=0)
+        self.assertEqual(ax.text.call_count, 2)
+        self.assertEqual(ax.text.call_args_list[0].args[0], 0.5)
+        self.assertEqual(ax.text.call_args_list[0].args[2], "band")
+        self.assertIs(ax.text.call_args_list[0].kwargs["transform"], y_transform)
+        self.assertEqual(ax.text.call_args_list[1].args[2], "window")
+        self.assertEqual(ax.text.call_args_list[1].args[1], 0.5)
+        self.assertIs(ax.text.call_args_list[1].kwargs["transform"], x_transform)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1133,6 +1133,84 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             csv_check = config["data_contract"]["csv_checks"][0]
             self.assertEqual(csv_check["required_columns"], ["x", "y", "condition"])
 
+    def test_render_csv_graph_forwards_curved_arrow_and_spans(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "annotations.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y\n1,10\n2,100\n", encoding="utf-8")
+            runtime_root = tmp_root / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "plot_type": "scatter",
+                        "annotations": [
+                            {
+                                "x": 2,
+                                "y": 200,
+                                "text": "",
+                                "arrow_to": {"x": 1, "y": 20},
+                                "arrowstyle": "-|>",
+                                "connectionstyle": "arc3,rad=0.25",
+                            },
+                            {"hspan": {"ymin": 10, "ymax": 20}, "text": "band", "color": "#ccc", "alpha": 0.4},
+                            {"vspan": {"xmin": 1, "xmax": 2}, "text": "window"},
+                        ],
+                        "job_id": "render-annotation-primitives",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["annotations"][0]["text"], "")
+            self.assertEqual(captured["annotations"][0]["arrowstyle"], "-|>")
+            self.assertEqual(captured["annotations"][0]["connectionstyle"], "arc3,rad=0.25")
+            self.assertEqual(captured["annotations"][1]["hspan"], {"ymin": 10, "ymax": 20})
+            self.assertEqual(captured["annotations"][2]["vspan"], {"xmin": 1, "xmax": 2})
+
+    def test_render_csv_graph_rejects_invalid_span_annotation(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "bad_annotations.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y\n1,10\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "scatter",
+                    "annotations": [{"hspan": {"ymin": 10}}],
+                    "job_id": "render-bad-annotation-span",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertIn("hspan must contain ymin and ymax", "\n".join(result["errors"]))
+
     def test_render_csv_graph_forwards_scatter_yerr_columns(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             tmp_root = Path(tmpdir)
