@@ -1,32 +1,19 @@
 # FigOps
 
-FigOps helps research teams turn raw analysis outputs into reproducible,
-publication-ready figures. It is meant to be boring in the best way: one config,
-one command, traceable inputs, repeatable outputs.
+[![PyPI](https://img.shields.io/pypi/v/figops.svg)](https://pypi.org/project/figops/)
+[![Python](https://img.shields.io/pypi/pyversions/figops.svg)](https://pypi.org/project/figops/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+[![CI](https://github.com/Moonweave-Research/figops/actions/workflows/ci.yml/badge.svg)](https://github.com/Moonweave-Research/figops/actions/workflows/ci.yml)
 
-The short version:
+**From messy analysis folders to traceable, publication-ready figures.**
 
-```bash
-python -m pip install figops
-figops --help
-figops-mcp --smoke
-```
+FigOps is a small research-ops toolkit for figure work: it reads a project
+config, checks the declared data contract, runs analysis and plotting scripts,
+applies journal/presentation styling, and records enough provenance to make the
+figure auditable later.
 
-If those commands work, the public package is installed and the MCP surface is alive.
-
-## Current status
-
-- **Public package:** yes, `figops==0.17.4` is live on PyPI.
-- **Current distribution name:** `figops`.
-- **Current commands:** `figops` and `figops-mcp` (legacy aliases `graphhub` / `graphhub-mcp` remain for compatibility).
-- **GitHub Release assets:** yes, the matching wheel and sdist are attached to `v0.17.4`.
-- **License:** Apache-2.0 for public package distribution. Check [LICENSE](./LICENSE) and [NOTICE](./NOTICE) before redistributing.
-
-The repository can remain private/internal while the built wheel and sdist are distributed publicly. Repo-only docs, tests, and internal style packs are not the public API.
-
-## Install from PyPI
-
-For normal users:
+It is intentionally boring in the best way: one config, one command, clear
+inputs, repeatable outputs.
 
 ```bash
 python -m pip install figops
@@ -34,17 +21,52 @@ figops --help
 figops-mcp --smoke
 ```
 
-For a pinned install:
+If those commands work, the CLI is installed and the MCP surface is alive.
+
+---
+
+## Why FigOps exists
+
+Research figures often start as a few scripts and a folder of exported data.
+That works until the figure changes, a collaborator asks where a value came
+from, or a manuscript revision needs the same plot in a different journal style.
+
+FigOps keeps that workflow lightweight while making the important parts explicit:
+
+- **Data is the API** — inputs are declared, checked, and traceable.
+- **Figures are rebuildable** — analysis, plotting, diagrams, and assembly live
+  behind the same project contract.
+- **Style is reusable** — journal and presentation targets are selected through
+  config instead of one-off plotting edits.
+- **Agents can inspect safely** — the MCP server exposes read, render, and smoke
+  surfaces for tool-assisted figure workflows.
+
+## Current release
+
+| Item | Status |
+| --- | --- |
+| Package | [`figops==0.17.4`](https://pypi.org/project/figops/0.17.4/) is live on PyPI |
+| Python | 3.12+ |
+| License | Apache-2.0 for public package distribution |
+| Commands | `figops`, `figops-mcp` |
+| Compatibility aliases | `graphhub`, `graphhub-mcp` |
+| GitHub Release | [`v0.17.4`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.4) |
+
+## Install
+
+For normal use:
+
+```bash
+python -m pip install figops
+```
+
+For a pinned, reproducible install:
 
 ```bash
 python -m pip install figops==0.17.4
 ```
 
-The package is available at <https://pypi.org/project/figops/>.
-
-## Install from the current GitHub release
-
-For users who need the exact release asset:
+If you need the exact GitHub Release asset:
 
 ```bash
 gh release download v0.17.4 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
@@ -52,65 +74,53 @@ python -m pip install dist-release/figops-0.17.4-py3-none-any.whl
 figops-mcp --smoke
 ```
 
-For local development from a clone:
+## Quick start
+
+Create a new figure project:
 
 ```bash
-python hub_uv.py run python orchestrator.py --list-projects
-python hub_uv.py run python -m pytest tests/test_runtime_paths.py -q
+figops --init --project my_figure_project
+cd my_figure_project
 ```
 
-`hub_uv.py` keeps the Python runtime outside the repo so the working tree does
-not get polluted with local virtualenv state.
+That creates a scaffold with:
 
-## What it does
+```text
+my_figure_project/
+├── project_config.yaml
+├── raw/
+│   └── example_input.csv
+└── hub_scripts/
+    ├── analyze.R
+    ├── plot.py
+    └── project_context.py
+```
 
-FigOps coordinates the work around a research figure:
-
-1. read a project's `project_config.yaml`,
-2. validate declared data contracts,
-3. run analysis scripts when needed,
-4. render figures and diagrams,
-5. apply journal/presentation styling,
-6. write provenance so the run can be audited later.
-
-It is designed around a simple rule: **data is the API**. A figure should be
-traceable back to declared inputs, scripts, config, environment, and output files.
-
-## Daily commands
+Run the project:
 
 ```bash
-# Choose a configured project interactively
-figops
-
-# List configured projects
-figops --list-projects
-
-# Run the full pipeline for one project
-figops --project "ProjectName" --step all
-
-# Re-render figures only
-figops --project "ProjectName" --step plot
-
-# Re-render diagrams only
-figops --project "ProjectName" --step diagrams
-
-# Force a clean rerun
-figops --project "ProjectName" --step all --force
+figops --project . --step all
 ```
 
-From a source checkout, the equivalent command is `python orchestrator.py ...` or
-`python hub_uv.py run python orchestrator.py ...`.
-
-## Starting a new project
+For a first sanity check, list the available CLI options:
 
 ```bash
-figops --init --project "new_project_folder"
+figops --help
 ```
 
-That creates a scaffold with a `project_config.yaml`, script folders, and output
-folders. The config is the contract between your data, analysis, and figures.
+## What FigOps does
 
-A minimal project shape looks like this:
+A FigOps run coordinates the work around a research figure:
+
+1. read `project_config.yaml`,
+2. resolve declared input files,
+3. validate data contracts and research-ops rules,
+4. run analysis scripts when needed,
+5. render figures, diagrams, or assembled panels,
+6. apply the selected style profile,
+7. write provenance and runtime metadata for auditability.
+
+A minimal config looks like this:
 
 ```yaml
 project:
@@ -134,9 +144,44 @@ figures:
     cache: true
 ```
 
-## MCP smoke check
+R is only required when your configured analysis scripts use R. Python plotting
+and package/MCP smoke checks run from the Python package install.
 
-The package exposes a Model Context Protocol server entry point:
+## Everyday commands
+
+```bash
+# Choose a configured project interactively
+figops
+
+# List configured projects
+figops --list-projects
+
+# Run the full pipeline for one project
+figops --project "ProjectName" --step all
+
+# Re-render figures only
+figops --project "ProjectName" --step plot
+
+# Re-render diagrams only
+figops --project "ProjectName" --step diagrams
+
+# Force a clean rerun and bypass cache
+figops --project "ProjectName" --step all --force
+```
+
+From a source checkout, use the repo-local runtime wrapper:
+
+```bash
+python hub_uv.py run python orchestrator.py --list-projects
+python hub_uv.py run python -m pytest tests/test_runtime_paths.py -q
+```
+
+`hub_uv.py` keeps the Python runtime outside the repository so the working tree
+does not get polluted with local virtualenv state.
+
+## MCP for agents
+
+FigOps includes a Model Context Protocol server entry point:
 
 ```bash
 figops-mcp --smoke
@@ -148,11 +193,23 @@ A healthy smoke response looks like:
 {"status": "ok", "health_status": "ok", "tool_surface": "figops_mcp"}
 ```
 
-Use this before wiring the package into an agent or external MCP client.
+Use this before wiring FigOps into Claude, Codex, or another MCP-capable client.
+For compatibility with earlier local setups, `graphhub-mcp` remains available as
+an alias.
 
-## Quality gates
+## Troubleshooting
 
-The repository currently verifies release candidates with these checks:
+| Symptom | What to try |
+| --- | --- |
+| `project_config.yaml not found` | Run `figops --init --project "<project>"` or move into a configured project. |
+| `Project directory not found` | Run `figops --list-projects` and copy the exact configured name. |
+| Strict lockfile errors | `--strict-lock` is for reproducibility checks. For quick local rendering, rerun without strict mode. |
+| Google Drive files feel stuck | Let Drive finish syncing, then rerun. The prefetch layer can help with declared inputs, but it cannot repair a broken Drive login/session. |
+| R script fails immediately | Confirm `Rscript` is available if your project config uses `lang: R`. |
+
+## For maintainers
+
+Release candidates are checked with the packaging and test gates below:
 
 ```bash
 uv build
@@ -164,7 +221,8 @@ python hub_uv.py run python -m pytest -q
 python hub_uv.py run ruff check .
 ```
 
-Maintainers also verify GitHub Release assets and public package installability:
+After release assets are uploaded, verify both the GitHub artifact and the public
+install path:
 
 ```bash
 python scripts/github_release_asset_smoke.py
@@ -172,36 +230,27 @@ python -m pip install figops==0.17.4
 figops-mcp --smoke
 ```
 
-`python scripts/check_public_release.py` may still block for repo-only private docs/tests.
-For PyPI, the manual Trusted Publishing workflow runs the guarded uploader before publishing, so distribution policy, LICENSE/NOTICE, and the built wheel/sdist package surface are checked first.
+Publishing uses the manual Trusted Publishing workflow in
+[`.github/workflows/publish.yml`](./.github/workflows/publish.yml): TestPyPI
+first, install smoke, then PyPI. See
+[`docs/packaging/trusted-publishing.md`](./docs/packaging/trusted-publishing.md)
+for the exact runbook.
 
-## When something goes wrong
+## Repository map
 
-- `project_config.yaml not found`
-  Run `figops --init --project "<project>"` or move into a configured project.
+| Path | Purpose |
+| --- | --- |
+| `orchestrator.py` | CLI entry point and top-level pipeline coordinator |
+| `hub_core/` | Config loading, validation, cache, provenance, process execution, MCP logic |
+| `hub_core/mcp/` | MCP server, schemas, transport, resources, prompts, and tool handlers |
+| `plotting/` | Reusable plotting helpers and figure assembly utilities |
+| `themes/` | Journal and presentation style presets |
+| `examples/` | Small synthetic projects and package-facing examples |
+| `scripts/` | Release, packaging, and distribution checks |
+| `tests/` | Regression and contract tests |
+| `docs/packaging/` | PyPI readiness, clearance checklist, and Trusted Publishing runbook |
 
-- `Project directory not found`
-  Run `figops --list-projects` and copy the exact configured name.
-
-- Strict lockfile errors
-  `--strict-lock` is for reproducibility checks. For a quick local render, rerun
-  without strict mode; for release or audit work, add/fix the lockfiles.
-
-- Google Drive files feel stuck
-  Let Drive finish syncing, then rerun. The hub also has a prefetch layer for
-  declared inputs, but it cannot repair a broken Drive login/session.
-
-## Repo map
-
-- `orchestrator.py` — CLI entry point.
-- `hub_core/` — config parsing, validation, cache, provenance, process execution, MCP logic.
-- `plotting/` — reusable plotting helpers.
-- `themes/` — journal and presentation style presets.
-- `scripts/` — release, packaging, and distribution checks.
-- `tests/` — regression and contract tests.
-- `docs/packaging/pypi-readiness.md` — current packaging and public-release boundary.
-
-## What is next
+## Next release checklist
 
 The public package is live. For the next release, keep the same conservative path:
 
@@ -209,8 +258,11 @@ The public package is live. For the next release, keep the same conservative pat
 2. rebuild wheel/sdist from a clean tree,
 3. confirm package artifacts exclude private docs/tests/research markers,
 4. publish to TestPyPI through `.github/workflows/publish.yml`,
-5. install-check from TestPyPI, then promote the same version to PyPI.
+5. install-check from TestPyPI,
+6. promote the same version to PyPI,
+7. install-check from public PyPI.
 
-The release checklist is in
-[`docs/packaging/public-release-clearance.md`](./docs/packaging/public-release-clearance.md), with exact publishing steps in
-[`docs/packaging/trusted-publishing.md`](./docs/packaging/trusted-publishing.md).
+## License
+
+FigOps is distributed under the Apache-2.0 license. See [LICENSE](./LICENSE) and
+[NOTICE](./NOTICE).
