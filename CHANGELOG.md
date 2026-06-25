@@ -15,6 +15,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.6] - 2026-06-25
+
+### Fixed
+
+- Match CSV-graph annotation text size to active style tokens so annotation renders no longer trip `font_size_token_drift`.
+- Clip annotation text and arrows to their axes so edge callouts no longer expand tight bounding boxes and collapse narrow figures.
+
 ## [0.17.5] - 2026-06-25
 
 ### Added
