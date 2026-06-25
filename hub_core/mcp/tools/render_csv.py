@@ -78,6 +78,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
         failure_stage: str,
         resolution_hint: str,
         is_dry_run: bool | None = None,
+        tool_name: str = "figops.render_csv_graph",
         **extra: Any,
     ) -> dict[str, Any]:
         geometry_diagnostics = extra.pop(
@@ -89,7 +90,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             render_helpers._layout_report_from_geometry(geometry_diagnostics),
         )
         return self._envelope(
-            "figops.render_csv_graph",
+            tool_name,
             arguments,
             status="error",
             summary=summary,
@@ -138,6 +139,9 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
         aggregate = str(arguments.get("aggregate") or "").strip().lower()
         raw_annotate_values = arguments.get("annotate_values", False)
         raw_bar_error_column = arguments.get("bar_error_column", "")
+        raw_yerr_column = arguments.get("yerr_column", "")
+        raw_yerr_minus_column = arguments.get("yerr_minus_column", "")
+        raw_yerr_cap_width = arguments.get("yerr_cap_width")
         raw_facet_ncols = arguments.get("facet_ncols")
         raw_facet_nrows = arguments.get("facet_nrows")
         try:
@@ -159,6 +163,9 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             )
         annotate_values = raw_annotate_values
         bar_error_column = ""
+        yerr_column = ""
+        yerr_minus_column = ""
+        yerr_cap_width = 3.0
         render_arg_errors: list[str] = []
         if not isinstance(annotate_values, bool):
             render_arg_errors.append("annotate_values must be a boolean.")
@@ -174,6 +181,36 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     render_arg_errors.append("bar_error_column must be a non-empty string when provided.")
                 elif plot_type != "bar":
                     render_arg_errors.append("bar_error_column is only supported for plot_type 'bar'.")
+        for raw_error_column, field_name in (
+            (raw_yerr_column, "yerr_column"),
+            (raw_yerr_minus_column, "yerr_minus_column"),
+        ):
+            if raw_error_column is None or raw_error_column == "":
+                continue
+            if not isinstance(raw_error_column, str):
+                render_arg_errors.append(f"{field_name} must be a string.")
+                continue
+            stripped_error_column = raw_error_column.strip()
+            if not stripped_error_column:
+                render_arg_errors.append(f"{field_name} must be a non-empty string when provided.")
+                continue
+            if plot_type not in {"line", "scatter", "xy"}:
+                render_arg_errors.append(f"{field_name} is only supported for plot_type 'line', 'scatter', or 'xy'.")
+                continue
+            if field_name == "yerr_column":
+                yerr_column = stripped_error_column
+            else:
+                yerr_minus_column = stripped_error_column
+        if raw_yerr_cap_width is not None:
+            try:
+                yerr_cap_width = float(raw_yerr_cap_width)
+            except (TypeError, ValueError):
+                render_arg_errors.append("yerr_cap_width must be numeric.")
+            else:
+                if yerr_cap_width < 0:
+                    render_arg_errors.append("yerr_cap_width must be non-negative.")
+        if yerr_column and bar_error_column:
+            render_arg_errors.append("Use yerr_column for line/scatter/xy or bar_error_column for bar, not both.")
         if series_column and plot_type not in {"line", "scatter", "xy"}:
             render_arg_errors.append("series_column is only supported for plot_type 'line', 'scatter', or 'xy'.")
         if render_arg_errors:
@@ -277,12 +314,12 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 failure_stage="CONTRACT",
                 resolution_hint="Provide semantic_checks as an object keyed by CSV column.",
             )
-        if bar_error_column:
+        if bar_error_column or yerr_column:
             try:
                 semantic_checks = self._semantic_checks_with_bar_error_column(
                     semantic_checks,
                     y_column=y_column,
-                    bar_error_column=bar_error_column,
+                    bar_error_column=bar_error_column or yerr_column,
                 )
             except ValueError as exc:
                 return self._csv_render_error(
@@ -325,6 +362,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 *([z_column] if z_column else []),
                 *([facet_column] if facet_column else []),
                 *([series_column] if series_column else []),
+                *([yerr_column] if yerr_column else []),
+                *([yerr_minus_column] if yerr_minus_column else []),
                 *[str(key) for key in semantic_checks],
             ],
             semantic_checks=semantic_checks,
@@ -422,7 +461,9 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "facet_order": facet_order,
                         "aggregate": aggregate,
                         "annotate_values": annotate_values,
-                        "yerr_column": bar_error_column,
+                        "yerr_column": bar_error_column or yerr_column,
+                        "yerr_minus_column": yerr_minus_column,
+                        "yerr_cap_width": yerr_cap_width,
                         "fit_line": fit_line,
                         "ci_band": ci_band,
                         "significance_markers": significance_markers,
@@ -575,4 +616,385 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
             calculation_checks=calculation_checks,
+        )
+
+    def render_csv_multipanel(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        dry_run = bool(arguments.get("dry_run", False))
+        overwrite = bool(arguments.get("overwrite", False))
+        job_id = self._render_job_id(arguments.get("job_id"))
+        self._activate_runtime_root_for_runtime_access()
+        job_root = self._mcp_jobs_root() / job_id
+        target_format = str(arguments.get("target_format") or "nature").strip().lower()
+        profile = str(arguments.get("profile") or DEFAULT_PROFILE).strip() or DEFAULT_PROFILE
+        output_format = str(arguments.get("output_format") or "png").strip().lower().lstrip(".")
+        panels_arg = arguments.get("panels")
+        try:
+            rows = int(arguments.get("rows") or 1)
+            cols = int(arguments.get("cols") or (len(panels_arg) if isinstance(panels_arg, list) else 1))
+            panel_height_mm = float(arguments.get("panel_height_mm") or 65.0)
+            font_scale = float(arguments.get("font_scale") or 1.0)
+        except (TypeError, ValueError):
+            return self._csv_render_error(
+                arguments,
+                summary="Multipanel render request has invalid layout settings.",
+                errors=["rows, cols, panel_height_mm, and font_scale must be numeric."],
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Provide numeric multipanel layout settings.",
+                tool_name="figops.render_csv_multipanel",
+            )
+
+        if not isinstance(panels_arg, list) or not panels_arg:
+            return self._csv_render_error(
+                arguments,
+                summary="Multipanel render request has invalid panel settings.",
+                errors=["panels must be a non-empty array."],
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Provide one or more CSV panel objects.",
+                tool_name="figops.render_csv_multipanel",
+            )
+        if rows < 1 or cols < 1:
+            return self._csv_render_error(
+                arguments,
+                summary="Multipanel render request has invalid layout settings.",
+                errors=["rows and cols must be positive integers."],
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Use positive rows and cols.",
+                tool_name="figops.render_csv_multipanel",
+            )
+        if rows * cols < len(panels_arg):
+            return self._csv_render_error(
+                arguments,
+                summary="Multipanel render request has too many panels for the grid.",
+                errors=[f"rows * cols must fit {len(panels_arg)} panel(s); got {rows} * {cols}."],
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Increase rows or cols, or remove panels.",
+                tool_name="figops.render_csv_multipanel",
+            )
+        if panel_height_mm <= 0 or font_scale <= 0:
+            return self._csv_render_error(
+                arguments,
+                summary="Multipanel render request has invalid layout settings.",
+                errors=["panel_height_mm and font_scale must be positive."],
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Use positive panel_height_mm and font_scale.",
+                tool_name="figops.render_csv_multipanel",
+            )
+        style_errors = self._render_style_errors(target_format, output_format, profile)
+        if style_errors:
+            return self._csv_render_error(
+                arguments,
+                summary="Multipanel render request has invalid style settings.",
+                errors=style_errors,
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Use a supported target_format, output_format, and profile.",
+                tool_name="figops.render_csv_multipanel",
+            )
+
+        source_paths = []
+        panel_specs = []
+        contract_errors: list[str] = []
+        calculation_checks = {"checks": [], "quality_passed": True, "manual_review_needed": False}
+        for index, panel in enumerate(panels_arg):
+            if not isinstance(panel, dict):
+                contract_errors.append(f"panels[{index}] must be an object.")
+                continue
+            try:
+                data_path = self._input_file_path(panel.get("data_path"))
+                x_column = self._required_string(panel, "x_column")
+                y_column = self._required_string(panel, "y_column")
+                plot_type = str(panel.get("plot_type") or "scatter").strip().lower()
+                x_scale = _normalized_axis_scale_arg(panel.get("x_scale"), field_name=f"panels[{index}].x_scale")
+                y_scale = _normalized_axis_scale_arg(panel.get("y_scale"), field_name=f"panels[{index}].y_scale")
+                annotations = _normalized_annotation_args(panel.get("annotations"))
+                facet_column = str(panel.get("facet_column") or "").strip()
+                series_column = str(panel.get("series_column") or "").strip()
+                yerr_column = str(panel.get("yerr_column") or "").strip()
+                yerr_minus_column = str(panel.get("yerr_minus_column") or "").strip()
+                yerr_cap_width = float(panel.get("yerr_cap_width", 3.0))
+            except (TypeError, ValueError) as exc:
+                contract_errors.append(f"panels[{index}]: {exc}")
+                continue
+            if plot_type not in PLOT_TYPES:
+                contract_errors.append(f"panels[{index}].plot_type {plot_type!r} is not supported.")
+                continue
+            if plot_type == "facet" and not facet_column:
+                contract_errors.append(f"panels[{index}] plot_type 'facet' requires facet_column.")
+                continue
+            if plot_type == "heatmap" and not str(panel.get("z_column") or "").strip():
+                contract_errors.append(f"panels[{index}] plot_type 'heatmap' requires z_column.")
+                continue
+            if series_column and plot_type not in {"line", "scatter", "xy"}:
+                contract_errors.append(
+                    f"panels[{index}].series_column is only supported for plot_type 'line', 'scatter', or 'xy'."
+                )
+                continue
+            if (yerr_column or yerr_minus_column) and plot_type not in {"line", "scatter", "xy"}:
+                contract_errors.append(
+                    f"panels[{index}] yerr columns are only supported for plot_type 'line', 'scatter', or 'xy'."
+                )
+                continue
+            if yerr_cap_width < 0:
+                contract_errors.append(f"panels[{index}].yerr_cap_width must be non-negative.")
+                continue
+
+            semantic_checks = {}
+            if yerr_column:
+                semantic_checks = self._semantic_checks_with_bar_error_column(
+                    semantic_checks,
+                    y_column=y_column,
+                    bar_error_column=yerr_column,
+                )
+            required_columns = [
+                x_column,
+                y_column,
+                *([str(panel.get("z_column") or "").strip()] if plot_type == "heatmap" else []),
+                *([facet_column] if facet_column else []),
+                *([series_column] if series_column else []),
+                *([yerr_column] if yerr_column else []),
+                *([yerr_minus_column] if yerr_minus_column else []),
+            ]
+            contract = self._validate_render_data_contract(
+                data_path,
+                required_columns=required_columns,
+                semantic_checks=semantic_checks,
+                axis_scales={x_column: x_scale, y_column: y_scale},
+            )
+            if contract["errors"]:
+                contract_errors.extend(f"panels[{index}]: {error}" for error in contract["errors"])
+            calculation_checks["checks"].extend(contract["calculation_checks"].get("checks", []))
+            calculation_checks["quality_passed"] = (
+                calculation_checks["quality_passed"] and contract["calculation_checks"].get("quality_passed", True)
+            )
+            calculation_checks["manual_review_needed"] = (
+                calculation_checks["manual_review_needed"]
+                or contract["calculation_checks"].get("manual_review_needed", False)
+            )
+            source_paths.append(data_path)
+            panel_specs.append(
+                {
+                    "source_data_path": data_path,
+                    "plot_type": plot_type,
+                    "x_column": x_column,
+                    "y_column": y_column,
+                    "z_column": str(panel.get("z_column") or "").strip(),
+                    "facet_column": facet_column,
+                    "series_column": series_column,
+                    "x_scale": x_scale,
+                    "y_scale": y_scale,
+                    "annotations": annotations,
+                    "yerr_column": yerr_column,
+                    "yerr_minus_column": yerr_minus_column,
+                    "yerr_cap_width": yerr_cap_width,
+                    "title": str(panel.get("title") or ""),
+                    "x_axis_label": str(panel.get("x_axis_label") or x_column),
+                    "y_axis_label": str(panel.get("y_axis_label") or y_column),
+                    "target_format": target_format,
+                    "profile_name": profile,
+                }
+            )
+        if contract_errors:
+            return self._csv_render_error(
+                arguments,
+                summary="Multipanel render request failed validation.",
+                errors=contract_errors,
+                is_dry_run=dry_run,
+                failure_stage="CONTRACT",
+                resolution_hint="Fix panel CSV paths, columns, plot types, scales, or error-bar inputs.",
+                tool_name="figops.render_csv_multipanel",
+            )
+        if dry_run:
+            return self._envelope(
+                "figops.render_csv_multipanel",
+                arguments,
+                status="ok",
+                summary="Multipanel CSV render dry run passed.",
+                warnings=self._calculation_warnings(calculation_checks),
+                manual_review_needed=bool(calculation_checks.get("manual_review_needed")),
+                is_dry_run=True,
+                calculation_checks=calculation_checks,
+            )
+        if job_root.exists() and not overwrite:
+            return self._csv_render_error(
+                arguments,
+                summary="Render job already exists.",
+                errors=[f"Render job already exists: {self._runtime_uri(job_root)}. Set overwrite=true to replace it."],
+                is_dry_run=False,
+                failure_stage="CONFIG",
+                resolution_hint="Use a unique job_id or set overwrite=true.",
+                tool_name="figops.render_csv_multipanel",
+            )
+
+        output_path = job_root / "outputs" / f"multipanel.{output_format}"
+        config_path = job_root / "config" / "multipanel.yaml"
+        manifest_path = job_root / "manifest.json"
+        status_path = job_root / "status.json"
+        latest_dir = self.runtime_root / "_latest" / "mcp_render"
+        created_paths: list[str] = []
+        try:
+            job_root.mkdir(parents=True, exist_ok=True)
+            (job_root / "data").mkdir(parents=True, exist_ok=True)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            prefetch_config = self._render_project_config(
+                target_format=target_format,
+                profile=profile,
+                output_format=output_format,
+                x_column=panel_specs[0]["x_column"],
+                y_column=panel_specs[0]["y_column"],
+                z_column="",
+                facet_column="",
+                series_column="",
+                semantic_checks={},
+            )
+            with redirect_stdout(sys.stderr):
+                select_adapters(prefetch_config).prefetcher.ensure_local([str(path) for path in source_paths])
+
+            render_panels = []
+            copied_data_paths = []
+            for index, panel in enumerate(panel_specs):
+                copied_path = job_root / "data" / f"panel_{index + 1}.csv"
+                shutil.copy2(panel.pop("source_data_path"), copied_path)
+                copied_data_paths.append(str(copied_path))
+                created_paths.append(str(copied_path))
+                render_panels.append({"csv_path": str(copied_path), "output_path": "", **panel})
+            config_path.write_text(
+                yaml.safe_dump(
+                    {
+                        "tool": "figops.render_csv_multipanel",
+                        "target_format": target_format,
+                        "profile": profile,
+                        "output_format": output_format,
+                        "panels": render_panels,
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            created_paths.append(str(config_path))
+            with self._geometry_diagnostics_env(job_root):
+                self._run_render_multipanel_figure(
+                    {
+                        "panels": render_panels,
+                        "output_path": str(output_path),
+                        "rows": rows,
+                        "cols": cols,
+                        "target_format": target_format,
+                        "column_width": str(arguments.get("column_width") or "double"),
+                        "panel_height_mm": panel_height_mm,
+                        "panel_labels": bool(arguments.get("panel_labels", True)),
+                        "font_scale": font_scale,
+                        "profile_name": profile,
+                        "compose_mode": str(arguments.get("compose_mode") or "draft"),
+                    }
+                )
+            geometry_diagnostics = render_helpers._read_geometry_sidecar(job_root)
+            geometry_warnings = render_helpers._geometry_warnings(geometry_diagnostics)
+            layout_report = render_helpers._layout_report_from_geometry(geometry_diagnostics)
+            figures = self._rendered_figure_artifacts(output_path)
+            created_paths.extend(str(figure["path"]) for figure in figures)
+            preflight = self._visual_preflight_with_geometry_overlaps(output_path, target_format, geometry_diagnostics)
+            preflight_warnings = self._preflight_warnings(preflight)
+            baseline_comparison = self._baseline_comparison(output_path, arguments.get("baseline_path"))
+            baseline_warnings = self._baseline_warnings(baseline_comparison)
+            calculation_warnings = self._calculation_warnings(calculation_checks)
+            manual_review_needed = (
+                not bool(preflight.get("passed"))
+                or bool(preflight_warnings)
+                or (baseline_comparison["checked"] and not baseline_comparison["matched"])
+                or bool(calculation_checks.get("manual_review_needed"))
+                or geometry_diagnostics.get("passed") is False
+            )
+            status = "warning" if manual_review_needed else "ok"
+            artifact_status = self._artifact_status(preflight, baseline_comparison)
+            provenance = {
+                "job_id": job_id,
+                "renderer": "plotting.bridge_renderer.render_multipanel_figure",
+                "renderer_surface": "figops.render_csv_multipanel",
+                "mcp_surface_version": self._read_version(),
+                "hub_git_commit": self._git_commit(),
+                "source_data_paths": [str(path) for path in source_paths],
+                "copied_data_paths": copied_data_paths,
+                "output_sha256": self._file_sha256(output_path) if output_path.is_file() else "",
+            }
+            created_paths.extend([str(manifest_path), str(status_path)])
+            manifest = render_helpers._build_manifest(
+                job_id=job_id,
+                job_root=job_root,
+                config_path=config_path,
+                status_path=status_path,
+                latest_dir=latest_dir,
+                figures=figures,
+                created_paths=created_paths,
+                style_summary={"target_format": target_format, "profile": profile, "output_format": output_format},
+                visual_preflight_status=preflight,
+                geometry_diagnostics=geometry_diagnostics,
+                layout_report=layout_report,
+                artifact_status=artifact_status,
+                baseline_comparison=baseline_comparison,
+                manual_review_needed=manual_review_needed,
+                provenance=provenance,
+                calculation_checks=calculation_checks,
+            )
+            status_payload = self._render_status_payload(
+                job_id=job_id,
+                status=status,
+                summary="Rendered CSV multipanel." if status == "ok" else "Rendered CSV multipanel with warnings.",
+                manifest_path=manifest_path,
+                output_path=output_path,
+                artifact_status=artifact_status,
+                manual_review_needed=manual_review_needed,
+                failure_stage="",
+                resolution_hint="",
+            )
+            status_payload["calculation_checks"] = calculation_checks
+            status_payload["provenance"] = provenance
+            status_payload["layout_report"] = layout_report
+            render_helpers._write_manifest_and_status(manifest, manifest_path, status_payload, status_path, latest_dir)
+        except Exception as exc:
+            return self._csv_render_error(
+                arguments,
+                summary="Multipanel render execution failed.",
+                errors=[str(exc)],
+                is_dry_run=False,
+                created_paths=created_paths,
+                job_id=job_id,
+                job_root=str(job_root),
+                failure_stage="PLOT",
+                resolution_hint="Inspect the render engine error and multipanel input settings.",
+                tool_name="figops.render_csv_multipanel",
+            )
+        return self._envelope(
+            "figops.render_csv_multipanel",
+            arguments,
+            status=status,
+            summary="Rendered CSV multipanel." if status == "ok" else "Rendered CSV multipanel with warnings.",
+            created_paths=created_paths,
+            artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
+            warnings=preflight_warnings + baseline_warnings + calculation_warnings + geometry_warnings,
+            manual_review_needed=manual_review_needed,
+            is_dry_run=False,
+            job_id=job_id,
+            job_root=str(job_root),
+            output_path=str(output_path),
+            config_path=str(config_path),
+            manifest_path=str(manifest_path),
+            status_path=str(status_path),
+            latest_dir=str(latest_dir),
+            latest_alias=str(latest_dir),
+            style_summary=manifest["style_summary"],
+            visual_preflight_status=preflight,
+            geometry_diagnostics=geometry_diagnostics,
+            layout_report=layout_report,
+            failure_stage="",
+            resolution_hint="",
+            artifact_status=artifact_status,
+            baseline_comparison=baseline_comparison,
+            calculation_checks=calculation_checks,
+            provenance=provenance,
         )

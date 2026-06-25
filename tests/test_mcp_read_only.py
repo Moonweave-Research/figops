@@ -324,8 +324,8 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             server = GraphHubMCPServer()
             self.assertFalse(server.write_tools_enabled)
             blocked = server.call_tool(
-                "figops.scaffold_project",
-                {"project_name": "Blocked", "project_root": "/tmp/blocked", "dry_run": True},
+                "figops.render_csv_multipanel",
+                {"panels": [], "dry_run": True},
             )
         self.assertTrue(blocked["isError"])
 

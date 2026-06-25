@@ -260,10 +260,13 @@ def test_render_csv_schema_accepts_axis_scale_series_and_annotations_args():
     assert properties["y_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
     assert properties["series_column"] == {"type": "string"}
     assert properties["annotations"] == {"type": "array", "items": {"type": "object"}}
+    assert properties["yerr_column"] == {"type": "string"}
+    assert properties["yerr_minus_column"] == {"type": "string"}
+    assert properties["yerr_cap_width"] == {"type": "number", "minimum": 0, "default": 3.0}
 
     with tempfile.TemporaryDirectory(prefix="graphhub_series_annotation_schema_") as tmpdir:
         data_path = Path(tmpdir) / "series.csv"
-        data_path.write_text("x,y,condition\n1,10,A\n2,100,B\n", encoding="utf-8")
+        data_path.write_text("x,y,yerr_lo,yerr_hi,condition\n1,10,1,2,A\n2,100,3,4,B\n", encoding="utf-8")
         errors = _validate_tool_arguments(
             "figops.render_csv_graph",
             {
@@ -271,6 +274,9 @@ def test_render_csv_schema_accepts_axis_scale_series_and_annotations_args():
                 "x_column": "x",
                 "y_column": "y",
                 "series_column": "condition",
+                "yerr_column": "yerr_hi",
+                "yerr_minus_column": "yerr_lo",
+                "yerr_cap_width": 2.5,
                 "x_scale": "linear",
                 "y_scale": "log",
                 "annotations": [{"x": 2, "y": 100, "text": "callout"}],
@@ -308,6 +314,43 @@ def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
                 "facet_ncols": 2,
                 "facet_nrows": 1,
                 "plot_type": "facet",
+            },
+            definitions,
+        )
+
+    assert errors == []
+
+
+def test_render_csv_multipanel_schema_accepts_panel_specs():
+    definitions = list_tool_definitions()
+    render_tool = next(tool for tool in definitions if tool["name"] == "figops.render_csv_multipanel")
+    properties = render_tool["inputSchema"]["properties"]
+    assert properties["panels"]["minItems"] == 1
+    panel_properties = properties["panels"]["items"]["properties"]
+    assert panel_properties["data_path"]["type"] == "string"
+    assert panel_properties["x_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
+    assert panel_properties["yerr_column"] == {"type": "string"}
+    assert properties["compose_mode"] == {"type": "string", "enum": ["draft", "manuscript"], "default": "draft"}
+    assert properties["font_scale"] == {"type": "number", "default": 1.0}
+
+    with tempfile.TemporaryDirectory(prefix="graphhub_multipanel_schema_") as tmpdir:
+        data_path = Path(tmpdir) / "panel.csv"
+        data_path.write_text("x,y,sem\n1,10,1\n2,100,2\n", encoding="utf-8")
+        errors = _validate_tool_arguments(
+            "figops.render_csv_multipanel",
+            {
+                "panels": [
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "plot_type": "scatter",
+                        "x_scale": "log",
+                        "yerr_column": "sem",
+                    }
+                ],
+                "rows": 1,
+                "cols": 1,
             },
             definitions,
         )

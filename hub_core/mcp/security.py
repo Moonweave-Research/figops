@@ -11,6 +11,7 @@ from hub_core.utils import get_hub_path, get_research_root
 
 WRITE_TOOL_NAMES = (
     "figops.render_csv_graph",
+    "figops.render_csv_multipanel",
     "figops.render_project_figure",
     "figops.scaffold_project",
     "figops.normalize_project_structure",

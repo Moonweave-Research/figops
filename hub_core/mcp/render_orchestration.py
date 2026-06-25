@@ -86,6 +86,22 @@ def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_path: str)
         )
 
 
+def _render_multipanel_figure_worker(spec_payload: dict[str, Any], result_path: str) -> None:
+    os.environ.setdefault("MPLBACKEND", "Agg")
+    try:
+        with redirect_stdout(sys.stderr):
+            from plotting.bridge_renderer import BridgeFigureSpec, MultiPanelSpec, render_multipanel_figure
+
+            panel_specs = tuple(BridgeFigureSpec(**panel) for panel in spec_payload.pop("panels"))
+            output_path = render_multipanel_figure(MultiPanelSpec(panels=panel_specs, **spec_payload))
+        _write_worker_result(result_path, {"status": "ok", "output_path": output_path})
+    except Exception as exc:
+        _write_worker_result(
+            result_path,
+            {"status": "error", "error": str(exc), "traceback": traceback.format_exc().splitlines()},
+        )
+
+
 def _batch_discovery_worker(root: str, max_depth: int, result_path: str) -> None:
     os.environ.setdefault("MPLBACKEND", "Agg")
     try:
@@ -346,6 +362,34 @@ class McpRenderOrchestrationMixin:
                 trace = result.get("traceback") if isinstance(result.get("traceback"), list) else []
                 message = "\n".join(str(line) for line in trace[-SCRIPT_OUTPUT_TAIL_LINES:]) or str(
                     result.get("error") or "Render worker failed."
+                )
+                raise RuntimeError(message)
+
+    @staticmethod
+    def _run_render_multipanel_figure(spec_payload: dict[str, Any]) -> None:
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_multipanel_worker_") as tmpdir:
+            result_path = Path(tmpdir) / "result.json"
+            process = multiprocessing.Process(
+                target=_render_multipanel_figure_worker,
+                args=(spec_payload, str(result_path)),
+                name="figops-mcp-multipanel-render",
+            )
+            process.start()
+            process.join(MCP_RENDER_TIMEOUT_SECONDS)
+            if process.is_alive():
+                process.terminate()
+                process.join(5)
+                if process.is_alive():
+                    process.kill()
+                    process.join(5)
+                raise TimeoutError(f"Render timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.")
+            if process.exitcode not in (0, None):
+                raise RuntimeError(f"Render worker exited with code {process.exitcode}.")
+            result = _read_worker_result(result_path, "Multipanel render")
+            if result.get("status") != "ok":
+                trace = result.get("traceback") if isinstance(result.get("traceback"), list) else []
+                message = "\n".join(str(line) for line in trace[-SCRIPT_OUTPUT_TAIL_LINES:]) or str(
+                    result.get("error") or "Multipanel render worker failed."
                 )
                 raise RuntimeError(message)
 

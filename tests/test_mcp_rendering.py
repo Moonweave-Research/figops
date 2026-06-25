@@ -1133,6 +1133,58 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             csv_check = config["data_contract"]["csv_checks"][0]
             self.assertEqual(csv_check["required_columns"], ["x", "y", "condition"])
 
+    def test_render_csv_graph_forwards_scatter_yerr_columns(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "series_yerr.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                "x,y,yerr_lo,yerr_hi,condition\n1,10,1,2,A\n2,100,3,4,A\n1,20,2,3,B\n2,200,4,5,B\n",
+                encoding="utf-8",
+            )
+            runtime_root = tmp_root / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "plot_type": "scatter",
+                        "series_column": "condition",
+                        "yerr_column": "yerr_hi",
+                        "yerr_minus_column": "yerr_lo",
+                        "yerr_cap_width": 2.5,
+                        "job_id": "render-scatter-yerr",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["yerr_column"], "yerr_hi")
+            self.assertEqual(captured["yerr_minus_column"], "yerr_lo")
+            self.assertEqual(captured["yerr_cap_width"], 2.5)
+            config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
+            csv_check = config["data_contract"]["csv_checks"][0]
+            self.assertEqual(
+                csv_check["semantic_checks"],
+                {"y": {"error_bar_source": {"column": "yerr_hi", "source": "yerr_hi"}}},
+            )
+
     def test_render_csv_graph_rejects_log_scale_with_nonpositive_data(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             tmp_root = Path(tmpdir)
@@ -1156,6 +1208,170 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "CONTRACT")
             self.assertTrue(any("log scale" in error for error in result["errors"]))
+
+    def test_render_csv_graph_rejects_missing_scatter_yerr_column(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "scatter",
+                    "yerr_column": "missing_sem",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertTrue(any("missing_sem" in error for error in result["errors"]))
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_multipanel_forwards_independent_panel_specs(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            panel_a = tmp_root / "input" / "a.csv"
+            panel_b = tmp_root / "input" / "b.csv"
+            panel_a.parent.mkdir(parents=True, exist_ok=True)
+            panel_a.write_text("era,rho,sem\nA,100,10\nB,1000,100\n", encoding="utf-8")
+            panel_b.write_text("rho,eps,sem\n100,10,1\n1000,8,2\n", encoding="utf-8")
+            runtime_root = tmp_root / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_multipanel_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_multipanel",
+                    {
+                        "panels": [
+                            {
+                                "data_path": str(panel_a),
+                                "x_column": "era",
+                                "y_column": "rho",
+                                "plot_type": "scatter",
+                                "y_scale": "log",
+                                "yerr_column": "sem",
+                                "title": "panel a",
+                            },
+                            {
+                                "data_path": str(panel_b),
+                                "x_column": "rho",
+                                "y_column": "eps",
+                                "plot_type": "scatter",
+                                "x_scale": "log",
+                                "title": "panel b",
+                            },
+                        ],
+                        "rows": 1,
+                        "cols": 2,
+                        "job_id": "render-csv-multipanel",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["rows"], 1)
+            self.assertEqual(captured["cols"], 2)
+            self.assertEqual(captured["panels"][0]["plot_type"], "scatter")
+            self.assertEqual(captured["panels"][0]["y_scale"], "log")
+            self.assertEqual(captured["panels"][0]["yerr_column"], "sem")
+            self.assertEqual(captured["panels"][1]["x_scale"], "log")
+            self.assertEqual(result["provenance"]["renderer_surface"], "figops.render_csv_multipanel")
+
+    def test_render_csv_multipanel_rejects_missing_panel_column(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_multipanel",
+                {
+                    "panels": [
+                        {
+                            "data_path": str(data_path),
+                            "x_column": "x",
+                            "y_column": "missing_y",
+                            "plot_type": "scatter",
+                        }
+                    ],
+                    "job_id": "bad-multipanel",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertTrue(any("missing_y" in error for error in result["errors"]))
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_multipanel_rejects_grid_that_cannot_fit_panels(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_multipanel",
+                {
+                    "panels": [
+                        {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
+                        {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
+                    ],
+                    "rows": 1,
+                    "cols": 1,
+                    "job_id": "bad-multipanel-grid",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertTrue(any("rows * cols" in error for error in result["errors"]))
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_multipanel_rejects_heatmap_without_z_column(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_grid_csv(Path(tmpdir) / "input" / "grid.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_multipanel",
+                {
+                    "panels": [
+                        {
+                            "data_path": str(data_path),
+                            "x_column": "x",
+                            "y_column": "y",
+                            "plot_type": "heatmap",
+                        }
+                    ],
+                    "job_id": "bad-multipanel-heatmap",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertTrue(any("z_column" in error for error in result["errors"]))
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
 
     def test_render_csv_graph_rejects_facet_series_until_shared_legend_is_supported(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -2633,7 +2849,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
 
     def test_schema_validity_per_tool_scoped(self):
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
-        for tool_name in ("figops.render_csv_graph", "figops.render_project_figure"):
+        for tool_name in ("figops.render_csv_graph", "figops.render_csv_multipanel", "figops.render_project_figure"):
             properties = definitions[tool_name]["outputSchema"]["properties"]
             self.assertIn("geometry_diagnostics", properties)
             self.assertIn("layout_report", properties)

@@ -1319,6 +1319,17 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       ],
       "type": "string"
     },
+    "yerr_cap_width": {
+      "default": 3.0,
+      "minimum": 0,
+      "type": "number"
+    },
+    "yerr_column": {
+      "type": "string"
+    },
+    "yerr_minus_column": {
+      "type": "string"
+    },
     "z_column": {
       "type": "string"
     }
@@ -1553,6 +1564,475 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     },
     "output_path": {
       "type": "string"
+    },
+    "resolution_hint": {
+      "type": "string"
+    },
+    "script_output": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "skipped_paths": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
+    "status_path": {
+      "type": "string"
+    },
+    "style_summary": {
+      "type": "object"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "visual_preflight_status": {
+      "type": "object"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `figops.render_csv_multipanel`
+
+Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP job workspace.
+
+**Input schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "baseline_path": {
+      "description": "Optional baseline figure path to compare the rendered output against.",
+      "type": "string"
+    },
+    "cols": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "column_width": {
+      "default": "double",
+      "type": "string"
+    },
+    "compose_mode": {
+      "default": "draft",
+      "enum": [
+        "draft",
+        "manuscript"
+      ],
+      "type": "string"
+    },
+    "dry_run": {
+      "default": false,
+      "type": "boolean"
+    },
+    "font_scale": {
+      "default": 1.0,
+      "type": "number"
+    },
+    "job_id": {
+      "description": "Stable render job ID; auto-generated when omitted.",
+      "type": "string"
+    },
+    "output_format": {
+      "default": "png",
+      "enum": [
+        "pdf",
+        "png",
+        "svg"
+      ],
+      "type": "string"
+    },
+    "overwrite": {
+      "default": false,
+      "type": "boolean"
+    },
+    "panel_height_mm": {
+      "default": 65.0,
+      "minimum": 1,
+      "type": "number"
+    },
+    "panel_labels": {
+      "default": true,
+      "type": "boolean"
+    },
+    "panels": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "annotations": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "data_path": {
+            "description": "CSV input path under an allowed data root.",
+            "type": "string"
+          },
+          "facet_column": {
+            "type": "string"
+          },
+          "plot_type": {
+            "default": "scatter",
+            "enum": [
+              "bar",
+              "box",
+              "facet",
+              "heatmap",
+              "line",
+              "scatter",
+              "violin",
+              "xy"
+            ],
+            "type": "string"
+          },
+          "series_column": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "x_axis_label": {
+            "type": "string"
+          },
+          "x_column": {
+            "type": "string"
+          },
+          "x_scale": {
+            "default": "linear",
+            "enum": [
+              "linear",
+              "log"
+            ],
+            "type": "string"
+          },
+          "y_axis_label": {
+            "type": "string"
+          },
+          "y_column": {
+            "type": "string"
+          },
+          "y_scale": {
+            "default": "linear",
+            "enum": [
+              "linear",
+              "log"
+            ],
+            "type": "string"
+          },
+          "yerr_cap_width": {
+            "default": 3.0,
+            "minimum": 0,
+            "type": "number"
+          },
+          "yerr_column": {
+            "type": "string"
+          },
+          "yerr_minus_column": {
+            "type": "string"
+          },
+          "z_column": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data_path",
+          "x_column",
+          "y_column"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "profile": {
+      "default": "baseline",
+      "enum": [
+        "base",
+        "baseline",
+        "cell",
+        "cell_press",
+        "default",
+        "premium",
+        "publication",
+        "resistance",
+        "resistance_premium",
+        "wiley"
+      ],
+      "type": "string"
+    },
+    "rows": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "target_format": {
+      "default": "nature",
+      "enum": [
+        "acs",
+        "cell",
+        "default",
+        "elsevier",
+        "nature",
+        "nature_surfur",
+        "ppt",
+        "rsc",
+        "science",
+        "wiley"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "panels"
+  ],
+  "type": "object"
+}
+```
+
+**Output schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact_resources": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "artifact_status": {
+      "type": "string"
+    },
+    "baseline_comparison": {
+      "type": "object"
+    },
+    "calculation_checks": {
+      "type": "object"
+    },
+    "config_path": {
+      "type": "string"
+    },
+    "created_paths": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "error_category": {
+      "enum": [
+        "validation",
+        "not_found",
+        "internal",
+        "disabled"
+      ],
+      "type": "string"
+    },
+    "error_code": {
+      "type": "string"
+    },
+    "errors": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "failure_stage": {
+      "type": "string"
+    },
+    "geometry_diagnostics": {
+      "properties": {
+        "checks": {
+          "items": {
+            "properties": {
+              "data": {
+                "type": "object"
+              },
+              "detail": {
+                "type": "string"
+              },
+              "name": {
+                "enum": [
+                  "tick_label_overlaps",
+                  "tick_label_crowding",
+                  "artists_outside_axes",
+                  "artists_outside_figure",
+                  "legend_data_collision",
+                  "axis_label_title_overlap",
+                  "figure_title_panel_title_overlap",
+                  "colorbar_overlap",
+                  "blank_area_ratio",
+                  "point_annotation_overlaps",
+                  "artist_overlaps",
+                  "legend_internal_overlaps",
+                  "marker_marker_overlaps",
+                  "text_axis_edge_proximity",
+                  "legend_marker_consistency",
+                  "label_offset_consistency",
+                  "font_size_token_drift",
+                  "journal_compliance"
+                ],
+                "type": "string"
+              },
+              "passed": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "passed",
+              "detail"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "passed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "schema_version": {
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "passed",
+        "checks",
+        "warnings"
+      ],
+      "type": "object"
+    },
+    "is_dry_run": {
+      "type": "boolean"
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "job_root": {
+      "type": "string"
+    },
+    "jsonrpc_code": {
+      "type": "integer"
+    },
+    "latest_alias": {
+      "type": "string"
+    },
+    "latest_dir": {
+      "type": "string"
+    },
+    "layout_report": {
+      "properties": {
+        "clipped": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "density": {
+          "type": "object"
+        },
+        "font_roles": {
+          "type": "object"
+        },
+        "overlaps": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "passed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "placement_consistency": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "render_errors": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "passed",
+        "overlaps",
+        "clipped",
+        "font_roles",
+        "placement_consistency",
+        "density",
+        "render_errors",
+        "warnings"
+      ],
+      "type": "object"
+    },
+    "manifest_path": {
+      "type": "string"
+    },
+    "manual_review_needed": {
+      "type": "boolean"
+    },
+    "modified_paths": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "operation_id": {
+      "type": "string"
+    },
+    "output_path": {
+      "type": "string"
+    },
+    "provenance": {
+      "type": "object"
     },
     "resolution_hint": {
       "type": "string"
