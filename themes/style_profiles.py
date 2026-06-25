@@ -9,6 +9,8 @@ share to keep "look-and-feel" consistent across projects.
 import os
 from copy import deepcopy
 
+from cycler import cycler
+
 DEFAULT_PROFILE = "baseline"
 INTERNAL_RESISTANCE_PROFILE = "_".join(("resistance", "premium"))
 
@@ -26,6 +28,7 @@ def get_series_style(index: int) -> dict:
         "linestyle": LINESTYLE_CYCLE[index % len(LINESTYLE_CYCLE)],
         "hatch": HATCH_CYCLE[index % len(HATCH_CYCLE)],
     }
+
 
 STYLE_PROFILES = {
     "baseline": {
@@ -63,6 +66,69 @@ STYLE_PROFILES = {
             "timeseries_line_width": 0.8,
             "timeseries_alpha": 0.9,
             "timeseries_palette": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"],
+        },
+    },
+    "publication": {
+        "description": (
+            "Journal-safe polished look: CVD-safe Okabe-Ito series palette and white "
+            "marker edges. Pairs with any target_format; figure width, font floors, and "
+            "line weights stay governed by the journal track and enforced by QA."
+        ),
+        "rc_overrides": {
+            "axes.prop_cycle": cycler(
+                color=[
+                    "#0072B2",
+                    "#D55E00",
+                    "#009E73",
+                    "#E69F00",
+                    "#56B4E9",
+                    "#CC79A7",
+                    "#7F7F7F",
+                    "#000000",
+                ]
+            ),
+            "lines.markeredgecolor": "white",
+            "lines.markeredgewidth": 0.5,
+            "axes.titlesize": 8.0,
+            "axes.labelsize": 7.5,
+            "legend.fontsize": 6.5,
+            "xtick.labelsize": 6.5,
+            "ytick.labelsize": 6.5,
+            "lines.linewidth": 1.2,
+            "axes.linewidth": 0.6,
+        },
+        "tokens": {
+            "forward_color": "#D55E00",
+            "reverse_color": "#0072B2",
+            "accent_color": "#111111",
+            "neutral_color": "#7f8c8d",
+            "wt_colors": {},
+            "main_line_width": 1.2,
+            "main_marker_size": 5.0,
+            "main_marker_edge_width": 0.6,
+            "error_cap_size": 2.0,
+            "error_line_width": 0.8,
+            "jitter_size": 14.0,
+            "jitter_line_width": 0.6,
+            "jitter_alpha": 0.75,
+            "jitter_sigma": 0.07,
+            "violin_kde_points": 100,
+            "violin_kde_bw_method": "scott",
+            "violin_width": 0.5,
+            "bar_edge_width": 0.5,
+            "grid_y": False,
+            "grid_color": "#e0e0e0",
+            "grid_line_style": ":",
+            "grid_line_width": 0.3,
+            "grid_alpha": 0.8,
+            "zero_line_style": "--",
+            "zero_line_width": 0.4,
+            "zero_line_alpha": 0.4,
+            "figure_height_mm": 68.0,
+            "timeseries_panel_height_mm": 45.0,
+            "timeseries_line_width": 0.8,
+            "timeseries_alpha": 0.9,
+            "timeseries_palette": ["#0072B2", "#D55E00", "#009E73", "#E69F00", "#CC79A7"],
         },
     },
     INTERNAL_RESISTANCE_PROFILE: {
