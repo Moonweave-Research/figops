@@ -1963,6 +1963,66 @@ class BridgeRendererUnitTest(unittest.TestCase):
             plt.close(fig)
 
 
+class SeriesStyleOverrideTest(unittest.TestCase):
+    def test_render_xy_plot_applies_series_marker_fill_and_edge_overrides(self):
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            series_column="series",
+            series_styles={
+                "Reference": {"marker": "o", "fill": "none", "edgecolor": "black"},
+                "This work": {"marker": "s", "facecolor": "#1f77b4", "edgecolor": "#1f77b4"},
+            },
+        )
+        points = [
+            {"x": 1.0, "y": 2.0, "series": "Reference", "label": ""},
+            {"x": 2.0, "y": 3.0, "series": "This work", "label": ""},
+        ]
+        ax = MagicMock()
+        ax.margins.return_value = (0.05, 0.05)
+
+        _render_xy_plot(ax, points, spec, line=False)
+
+        self.assertEqual(ax.scatter.call_count, 2)
+        reference_call = ax.scatter.call_args_list[0]
+        this_work_call = ax.scatter.call_args_list[1]
+        self.assertEqual(reference_call.kwargs["marker"], "o")
+        self.assertEqual(reference_call.kwargs["facecolors"], "none")
+        self.assertEqual(reference_call.kwargs["edgecolors"], "black")
+        self.assertEqual(this_work_call.kwargs["marker"], "s")
+        self.assertEqual(this_work_call.kwargs["facecolors"], "#1f77b4")
+        self.assertEqual(this_work_call.kwargs["edgecolors"], "#1f77b4")
+
+    def test_render_xy_plot_applies_series_styles_to_errorbar_markers(self):
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            series_column="series",
+            yerr_column="err",
+            series_styles={"Reference": {"marker": "D", "fill": "none", "edgecolor": "black"}},
+        )
+        points = [
+            {"x": 1.0, "y": 2.0, "yerr": 0.1, "yerr_minus": None, "series": "Reference", "label": ""},
+        ]
+        ax = MagicMock()
+        ax.margins.return_value = (0.05, 0.05)
+
+        _render_xy_plot(ax, points, spec, line=False)
+
+        ax.errorbar.assert_called_once()
+        self.assertEqual(ax.errorbar.call_args.kwargs["fmt"], "D")
+        self.assertEqual(ax.errorbar.call_args.kwargs["markerfacecolor"], "none")
+        self.assertEqual(ax.errorbar.call_args.kwargs["markeredgecolor"], "black")
+
+
 class AnnotationStyleTest(unittest.TestCase):
     def setUp(self):
         self._saved_rc = plt.rcParams.copy()

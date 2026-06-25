@@ -44,6 +44,43 @@ def _normalized_span_annotation_arg(
     return item
 
 
+def _normalized_series_style_args(value: Any) -> dict[str, dict[str, str]]:
+    if value in (None, {}, []):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("series_styles must be an object keyed by series label.")
+    allowed_keys = {
+        "marker",
+        "fill",
+        "facecolor",
+        "edgecolor",
+        "markerfacecolor",
+        "markeredgecolor",
+        "linestyle",
+        "hatch",
+    }
+    normalized: dict[str, dict[str, str]] = {}
+    for series_name, style in value.items():
+        key = str(series_name).strip()
+        if not key:
+            raise ValueError("series_styles keys must be non-empty series labels.")
+        if not isinstance(style, dict):
+            raise ValueError(f"series_styles[{key!r}] must be an object.")
+        item: dict[str, str] = {}
+        for style_key, raw_style_value in style.items():
+            if style_key not in allowed_keys:
+                raise ValueError(
+                    f"series_styles[{key!r}] has unsupported key {style_key!r}; "
+                    f"supported keys: {', '.join(sorted(allowed_keys))}."
+                )
+            text = str(raw_style_value or "").strip()
+            if text:
+                item[style_key] = text
+        if item:
+            normalized[key] = item
+    return normalized
+
+
 def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
     if value in (None, (), []):
         return ()
@@ -187,6 +224,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             x_scale = _normalized_axis_scale_arg(arguments.get("x_scale"), field_name="x_scale")
             y_scale = _normalized_axis_scale_arg(arguments.get("y_scale"), field_name="y_scale")
             annotations = _normalized_annotation_args(arguments.get("annotations"))
+            series_styles = _normalized_series_style_args(arguments.get("series_styles"))
         except ValueError as exc:
             return self._csv_render_error(
                 arguments,
@@ -194,7 +232,9 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 errors=[str(exc)],
                 is_dry_run=dry_run,
                 failure_stage="CONFIG",
-                resolution_hint=("Provide valid ordering, facet sizing, axis-scale, and annotation arguments."),
+                resolution_hint=(
+                    "Provide valid ordering, facet sizing, axis-scale, annotation, and series style arguments."
+                ),
             )
         annotate_values = raw_annotate_values
         bar_error_column = ""
@@ -486,6 +526,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "z_column": z_column,
                         "facet_column": facet_column,
                         "series_column": series_column,
+                        "series_styles": series_styles,
                         "x_scale": x_scale,
                         "y_scale": y_scale,
                         "annotations": annotations,
@@ -747,6 +788,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 x_scale = _normalized_axis_scale_arg(panel.get("x_scale"), field_name=f"panels[{index}].x_scale")
                 y_scale = _normalized_axis_scale_arg(panel.get("y_scale"), field_name=f"panels[{index}].y_scale")
                 annotations = _normalized_annotation_args(panel.get("annotations"))
+                series_styles = _normalized_series_style_args(panel.get("series_styles"))
                 facet_column = str(panel.get("facet_column") or "").strip()
                 series_column = str(panel.get("series_column") or "").strip()
                 yerr_column = str(panel.get("yerr_column") or "").strip()
@@ -820,6 +862,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     "z_column": str(panel.get("z_column") or "").strip(),
                     "facet_column": facet_column,
                     "series_column": series_column,
+                    "series_styles": series_styles,
                     "x_scale": x_scale,
                     "y_scale": y_scale,
                     "annotations": annotations,

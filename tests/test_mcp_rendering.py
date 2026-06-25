@@ -1109,6 +1109,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                         "y_column": "y",
                         "plot_type": "scatter",
                         "series_column": "condition",
+                        "series_styles": {"A": {"marker": "o", "fill": "none", "edgecolor": "black"}},
                         "x_scale": "linear",
                         "y_scale": "log",
                         "annotations": [
@@ -1126,6 +1127,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertIn(result["status"], {"ok", "warning"})
             self.assertEqual(captured["series_column"], "condition")
+            self.assertEqual(captured["series_styles"], {"A": {"marker": "o", "fill": "none", "edgecolor": "black"}})
             self.assertEqual(captured["x_scale"], "linear")
             self.assertEqual(captured["y_scale"], "log")
             self.assertEqual(captured["annotations"][0]["text"], "~10x")
@@ -1210,6 +1212,32 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "CONFIG")
             self.assertIn("hspan must contain ymin and ymax", "\n".join(result["errors"]))
+
+    def test_render_csv_graph_rejects_invalid_series_style_key(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "bad_series_style.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y,condition\n1,10,A\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "scatter",
+                    "series_column": "condition",
+                    "series_styles": {"A": {"unknown": "value"}},
+                    "job_id": "render-bad-series-style",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertIn("unsupported key", "\n".join(result["errors"]))
 
     def test_render_csv_graph_forwards_scatter_yerr_columns(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -1317,7 +1345,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             panel_b = tmp_root / "input" / "b.csv"
             panel_a.parent.mkdir(parents=True, exist_ok=True)
             panel_a.write_text("era,rho,sem\nA,100,10\nB,1000,100\n", encoding="utf-8")
-            panel_b.write_text("rho,eps,sem\n100,10,1\n1000,8,2\n", encoding="utf-8")
+            panel_b.write_text("rho,eps,sem,condition\n100,10,1,Reference\n1000,8,2,This work\n", encoding="utf-8")
             runtime_root = tmp_root / "runtime"
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             captured = {}
@@ -1354,6 +1382,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                                 "y_column": "eps",
                                 "plot_type": "scatter",
                                 "x_scale": "log",
+                                "series_column": "condition",
+                                "series_styles": {"Reference": {"marker": "o", "fill": "none", "edgecolor": "black"}},
                                 "title": "panel b",
                             },
                         ],
@@ -1370,6 +1400,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["panels"][0]["y_scale"], "log")
             self.assertEqual(captured["panels"][0]["yerr_column"], "sem")
             self.assertEqual(captured["panels"][1]["x_scale"], "log")
+            self.assertEqual(captured["panels"][1]["series_column"], "condition")
+            self.assertEqual(
+                captured["panels"][1]["series_styles"],
+                {"Reference": {"marker": "o", "fill": "none", "edgecolor": "black"}},
+            )
             self.assertEqual(result["provenance"]["renderer_surface"], "figops.render_csv_multipanel")
 
     def test_render_csv_multipanel_rejects_missing_panel_column(self):
