@@ -45,12 +45,12 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 
 | Item | Status |
 | --- | --- |
-| Package | [`figops==0.17.6`](https://pypi.org/project/figops/0.17.6/) is live on PyPI |
+| Package | [`figops==0.17.7`](https://pypi.org/project/figops/0.17.7/) is live on PyPI |
 | Python | 3.12+ |
 | License | Apache-2.0 for public package distribution |
 | Commands | `figops`, `figops-mcp` |
 | Compatibility aliases | `graphhub`, `graphhub-mcp` |
-| GitHub Release | [`v0.17.6`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.6) |
+| GitHub Release | [`v0.17.7`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.7) |
 
 ## Install
 
@@ -63,14 +63,14 @@ python -m pip install figops
 For a pinned, reproducible install:
 
 ```bash
-python -m pip install figops==0.17.6
+python -m pip install figops==0.17.7
 ```
 
 If you need the exact GitHub Release asset:
 
 ```bash
-gh release download v0.17.6 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.6-py3-none-any.whl
+gh release download v0.17.7 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.7-py3-none-any.whl
 figops-mcp --smoke
 ```
 
@@ -226,7 +226,7 @@ install path:
 
 ```bash
 python scripts/github_release_asset_smoke.py
-python -m pip install figops==0.17.6
+python -m pip install figops==0.17.7
 figops-mcp --smoke
 ```
 

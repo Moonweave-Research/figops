@@ -15,6 +15,12 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.7] - 2026-06-25
+
+### Added
+
+- Add shaded-region / target-zone annotation support to CSV graph rendering and MCP render inputs.
+
 ## [0.17.6] - 2026-06-25
 
 ### Fixed
