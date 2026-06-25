@@ -2004,6 +2004,37 @@ class AnnotationStyleTest(unittest.TestCase):
         self.assertAlmostEqual(ax.annotate.call_args.kwargs["fontsize"], expected)
         self.assertTrue(ax.annotate.call_args.kwargs["clip_on"])
 
+    def test_draw_annotations_renders_region_span_with_label(self):
+        apply_journal_theme(target_format="nature", profile_name="baseline")
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            annotations=(
+                {
+                    "region": {"xmin": 1e9, "xmax": 1e12, "ymin": 15.0, "ymax": 50.0},
+                    "text": "TARGET",
+                    "color": "#3b7d3b",
+                    "alpha": 0.15,
+                },
+            ),
+        )
+        ax = MagicMock()
+        _draw_annotations(ax, spec)
+
+        self.assertEqual(ax.fill_between.call_count, 1)
+        span_args = ax.fill_between.call_args.args
+        self.assertEqual(span_args[0], [1e9, 1e12])
+        self.assertEqual((span_args[1], span_args[2]), (15.0, 50.0))
+        self.assertAlmostEqual(ax.fill_between.call_args.kwargs["alpha"], 0.15)
+        # centered label uses the token font size, not the 10 pt default
+        self.assertEqual(ax.text.call_count, 1)
+        self.assertEqual(ax.text.call_args.args[2], "TARGET")
+        self.assertAlmostEqual(ax.text.call_args.kwargs["fontsize"], _annotation_font_size())
+
 
 if __name__ == "__main__":
     unittest.main()
