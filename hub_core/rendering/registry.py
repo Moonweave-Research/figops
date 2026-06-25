@@ -107,6 +107,8 @@ _STATISTICAL_OVERLAY_ARG_SCHEMA = {
         "fit_line": {"type": "boolean"},
         "ci_band": {"type": "boolean"},
         "significance_markers": {"type": "array"},
+        "guide_curves": {"type": "array"},
+        "fill_between": {"type": "array"},
     },
 }
 
@@ -164,6 +166,8 @@ PLOT_TYPES: dict[str, PlotType] = {
             supports_fit_line=True,
             supports_ci_band=True,
             supports_significance_markers=True,
+            supports_guide_curves=True,
+            supports_fill_between=True,
         ),
     ),
     "scatter": PlotType(
@@ -176,6 +180,8 @@ PLOT_TYPES: dict[str, PlotType] = {
             supports_fit_line=True,
             supports_ci_band=True,
             supports_significance_markers=True,
+            supports_guide_curves=True,
+            supports_fill_between=True,
         ),
     ),
     "xy": PlotType(
@@ -188,6 +194,8 @@ PLOT_TYPES: dict[str, PlotType] = {
             supports_fit_line=True,
             supports_ci_band=True,
             supports_significance_markers=True,
+            supports_guide_curves=True,
+            supports_fill_between=True,
         ),
     ),
     "heatmap": PlotType(

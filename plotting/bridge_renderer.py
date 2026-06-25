@@ -211,6 +211,8 @@ class BridgeFigureSpec:
     ci_band: bool = False
     significance_markers: tuple[dict, ...] = ()
     series_styles: dict[str, dict] | None = None
+    guide_curves: tuple[dict, ...] = ()
+    fill_between: tuple[dict, ...] = ()
 
 
 def render_bridge_figure(spec: BridgeFigureSpec) -> str:
@@ -228,6 +230,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
 
         points = _load_points(csv_path, spec)
         _validate_bar_aggregate(spec)
+        _validate_manual_overlays(spec)
         _validate_statistical_overlays(points, spec)
         _validate_axis_scales(points, spec)
         _normalized_annotations(spec.annotations)
@@ -240,6 +243,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
                 _draw_annotations_on_visible_axes(fig, ax, spec)
             else:
                 _render_plot(ax, points, spec)
+                _draw_manual_overlays(ax, csv_path, spec)
                 _draw_statistical_overlays(ax, points, spec)
                 _draw_overlay_baselines(ax, spec.overlay_baselines)
                 _apply_axes_metadata(ax, spec)
@@ -526,8 +530,10 @@ def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
     """Render a single CSV-based panel into *ax* (multipanel helper)."""
     points = _load_points(Path(panel.csv_path), panel)
     _validate_axis_scales(points, panel)
+    _validate_manual_overlays(panel)
     _normalized_annotations(panel.annotations)
     _render_plot(ax, points, panel)
+    _draw_manual_overlays(ax, Path(panel.csv_path), panel)
     _draw_overlay_baselines(ax, panel.overlay_baselines)
     _apply_axes_metadata(ax, panel)
     if panel.title:
@@ -564,6 +570,11 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
             col = getattr(spec, col_attr)
             if col:
                 required.append(col)
+        for region in spec.fill_between:
+            for key in ("x_column", "y1_column", "y2_column"):
+                col = region.get(key)
+                if col:
+                    required.append(str(col))
         if spec.plot_type == "heatmap" and spec.z_column:
             required.append(spec.z_column)
         missing = [c for c in required if c not in headers]
@@ -599,6 +610,7 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
                     "yerr": yerr_val,
                     "yerr_minus": yerr_minus_val,
                     "facet": row[spec.facet_column] if spec.facet_column else "",
+                    "raw": dict(row),
                 }
             )
     if skipped:
@@ -872,6 +884,22 @@ def _has_statistical_overlays(spec: BridgeFigureSpec) -> bool:
     return bool(spec.fit_line or spec.ci_band or spec.significance_markers)
 
 
+def _has_manual_overlays(spec: BridgeFigureSpec) -> bool:
+    return bool(spec.guide_curves or spec.fill_between)
+
+
+def _validate_manual_overlays(spec: BridgeFigureSpec) -> None:
+    if not _has_manual_overlays(spec):
+        return
+    plot_type = str(spec.plot_type or "").strip().lower()
+    if plot_type not in {"line", "scatter", "xy"}:
+        raise ValueError(
+            f"manual overlays are only supported for plot_type 'line', 'scatter', or 'xy'; got {spec.plot_type!r}"
+        )
+    if spec.y_break_range is not None:
+        raise ValueError("manual overlays do not support y_break_range")
+
+
 def _validate_statistical_overlays(points: list[dict], spec: BridgeFigureSpec) -> None:
     if not _has_statistical_overlays(spec):
         return
@@ -907,6 +935,138 @@ def _numeric_xy_arrays(points: list[dict], *, min_points: int, context: str) -> 
     if len(set(xs)) < 2:
         raise ValueError(f"{context} requires at least two distinct x values")
     return np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)
+
+
+def _finite_float(value: object, *, context: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{context} must be numeric") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"{context} must be finite")
+    return number
+
+
+def _overlay_xy_arrays(overlay: dict, *, field_name: str) -> tuple[list[float], list[float]]:
+    if not isinstance(overlay, dict):
+        raise ValueError(f"{field_name} entries must be objects")
+    points = overlay.get("points")
+    if points is not None:
+        if not isinstance(points, (list, tuple)):
+            raise ValueError(f"{field_name}.points must be an array")
+        xs: list[float] = []
+        ys: list[float] = []
+        if len(points) < 2:
+            raise ValueError(f"{field_name}.points must contain at least two points")
+        for index, point in enumerate(points):
+            if not isinstance(point, dict):
+                raise ValueError(f"{field_name}.points[{index}] must be an object")
+            missing = [key for key in ("x", "y") if key not in point]
+            if missing:
+                raise ValueError(f"{field_name}.points[{index}] missing required field(s): {', '.join(missing)}")
+            xs.append(_finite_float(point["x"], context=f"{field_name}.points[{index}].x"))
+            ys.append(_finite_float(point["y"], context=f"{field_name}.points[{index}].y"))
+        return xs, ys
+
+    x_values = overlay.get("x")
+    y_values = overlay.get("y")
+    if not isinstance(x_values, (list, tuple)) or not isinstance(y_values, (list, tuple)):
+        raise ValueError(f"{field_name} requires points or x/y arrays")
+    if len(x_values) != len(y_values):
+        raise ValueError(f"{field_name}.x and {field_name}.y must have the same length")
+    if len(x_values) < 2:
+        raise ValueError(f"{field_name}.x and {field_name}.y must contain at least two points")
+    return (
+        [_finite_float(value, context=f"{field_name}.x[{index}]") for index, value in enumerate(x_values)],
+        [_finite_float(value, context=f"{field_name}.y[{index}]") for index, value in enumerate(y_values)],
+    )
+
+
+def _fill_between_arrays(
+    csv_path: Path,
+    overlay: dict,
+    *,
+    field_name: str,
+) -> tuple[list[float], list[float], list[float]]:
+    if not isinstance(overlay, dict):
+        raise ValueError(f"{field_name} entries must be objects")
+    points = overlay.get("points")
+    if points is not None:
+        if not isinstance(points, (list, tuple)):
+            raise ValueError(f"{field_name}.points must be an array")
+        xs: list[float] = []
+        y1s: list[float] = []
+        y2s: list[float] = []
+        if len(points) < 2:
+            raise ValueError(f"{field_name}.points must contain at least two points")
+        for index, point in enumerate(points):
+            if not isinstance(point, dict):
+                raise ValueError(f"{field_name}.points[{index}] must be an object")
+            missing = [key for key in ("x", "y1", "y2") if key not in point]
+            if missing:
+                raise ValueError(f"{field_name}.points[{index}] missing required field(s): {', '.join(missing)}")
+            xs.append(_finite_float(point["x"], context=f"{field_name}.points[{index}].x"))
+            y1s.append(_finite_float(point["y1"], context=f"{field_name}.points[{index}].y1"))
+            y2s.append(_finite_float(point["y2"], context=f"{field_name}.points[{index}].y2"))
+        return xs, y1s, y2s
+
+    x_column = str(overlay.get("x_column") or "").strip()
+    y1_column = str(overlay.get("y1_column") or "").strip()
+    y2_column = str(overlay.get("y2_column") or "").strip()
+    if not x_column or not y1_column or not y2_column:
+        raise ValueError(f"{field_name} requires points or x_column, y1_column, and y2_column")
+    xs: list[float] = []
+    y1s: list[float] = []
+    y2s: list[float] = []
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        headers = reader.fieldnames or []
+        missing = [column for column in (x_column, y1_column, y2_column) if column not in headers]
+        if missing:
+            raise ValueError(f"{field_name} CSV column(s) missing: {', '.join(missing)}")
+        for row_index, row in enumerate(reader, start=2):
+            xs.append(_finite_float(row[x_column], context=f"{field_name}.{x_column} row {row_index}"))
+            y1s.append(_finite_float(row[y1_column], context=f"{field_name}.{y1_column} row {row_index}"))
+            y2s.append(_finite_float(row[y2_column], context=f"{field_name}.{y2_column} row {row_index}"))
+    if len(xs) < 2:
+        raise ValueError(f"{field_name} requires at least two rows")
+    return xs, y1s, y2s
+
+
+def _overlay_line_kwargs(overlay: dict) -> dict[str, object]:
+    kwargs: dict[str, object] = {
+        "color": str(overlay.get("color") or "black"),
+        "linewidth": float(overlay.get("linewidth", 1.0)),
+        "linestyle": str(overlay.get("linestyle") or "-"),
+        "zorder": float(overlay.get("zorder", 4)),
+    }
+    if overlay.get("label"):
+        kwargs["label"] = str(overlay["label"])
+    return kwargs
+
+
+def _draw_manual_overlays(ax, csv_path: Path, spec: BridgeFigureSpec) -> None:
+    for index, overlay in enumerate(spec.fill_between or ()):
+        region = dict(overlay)
+        if not region.get("points") and not str(region.get("x_column") or "").strip():
+            region["x_column"] = spec.x_column
+        xs, y1s, y2s = _fill_between_arrays(csv_path, region, field_name=f"fill_between[{index}]")
+        kwargs: dict[str, object] = {
+            "color": str(region.get("color") or "black"),
+            "alpha": float(region.get("alpha", 0.15)),
+            "linewidth": 0,
+            "zorder": float(region.get("zorder", 1)),
+        }
+        if region.get("label"):
+            kwargs["label"] = str(region["label"])
+        ax.fill_between(xs, y1s, y2s, **kwargs)
+
+    for index, overlay in enumerate(spec.guide_curves or ()):
+        xs, ys = _overlay_xy_arrays(overlay, field_name=f"guide_curves[{index}]")
+        ax.plot(xs, ys, **_overlay_line_kwargs(overlay))
+
+    if any(isinstance(overlay, dict) and overlay.get("label") for overlay in (*spec.fill_between, *spec.guide_curves)):
+        ax.legend(**_legend_kwargs(ax, spec, n_series=1))
 
 
 def _normalized_axis_scale(value: str, *, field_name: str) -> str:
