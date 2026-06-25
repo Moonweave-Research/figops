@@ -43,8 +43,14 @@ jobs:
         uses: r-lib/actions/setup-r@v2
         with:
           r-version: release
-      - name: Run tests
-        run: uv run python -m pytest -q
+      - name: Run release-critical tests
+        run: >-
+          uv run python -m pytest -q
+          tests/test_guarded_pypi_upload.py
+          tests/test_package_metadata_smoke.py
+          tests/test_packaging_metadata.py
+          tests/test_public_package_surface.py
+          tests/test_release_discipline.py
       - name: Build distributions
         run: uv build
       - name: Package metadata smoke
