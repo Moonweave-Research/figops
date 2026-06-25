@@ -5,7 +5,7 @@ import unittest
 import warnings
 from csv import DictWriter
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import matplotlib
 
@@ -17,10 +17,12 @@ from plotting.bridge_renderer import (
     BridgeFigureSpec,
     MultiPanelSpec,
     _annotate_points,
+    _annotation_font_size,
     _apply_axes_metadata,
     _apply_layout,
     _avoid_smart_legend_data_collision,
     _display_label,
+    _draw_annotations,
     _figsize_for_format,
     _render_bar_plot,
     _render_heatmap_plot,
@@ -569,11 +571,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertEqual(observed["xtick_labels"], ["control", "treated"])
             self.assertGreaterEqual(len(observed["violin_bodies"]), 2)
             self.assertTrue(
-                all(
-                    len(path.vertices) >= 500
-                    for body in observed["violin_bodies"]
-                    for path in body.get_paths()
-                )
+                all(len(path.vertices) >= 500 for body in observed["violin_bodies"] for path in body.get_paths())
             )
             self.assertEqual(sum(len(collection.get_offsets()) for collection in observed["point_collections"]), 24)
 
@@ -616,8 +614,6 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
             self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
             self.assertEqual(_sha256(Path(out)), _sha256(baseline))
-
-
 
     def test_axis_scales_series_and_annotations_render_on_bridge_figure(self):
         with tempfile.TemporaryDirectory(prefix="bridge_log_series_annotation_") as tmpdir:
@@ -852,9 +848,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
                         self.assertEqual({artist.get_markersize() for artist in ax.lines}, {3.2})
                     else:
                         scatter_sizes = {
-                            round(float(size), 4)
-                            for collection in ax.collections
-                            for size in collection.get_sizes()
+                            round(float(size), 4) for collection in ax.collections for size in collection.get_sizes()
                         }
                         self.assertEqual(scatter_sizes, {8.0425})
                     _assert_marker_footprints_inside_axes(self, fig, [ax])
@@ -1289,12 +1283,9 @@ class BridgeRendererUnitTest(unittest.TestCase):
             legend_layout="smart",
         )
         # 상단 (y=0.8~1.0)에 데이터 집중
-        points = [
-            {"x": x/10, "y": 0.9, "label": "", "series": "S1", "yerr": None}
-            for x in range(10)
-        ] + [
-            {"x": x/10, "y": 0.1, "label": "", "series": "S2", "yerr": None}
-            for x in range(2) # 하단은 듬성듬성
+        points = [{"x": x / 10, "y": 0.9, "label": "", "series": "S1", "yerr": None} for x in range(10)] + [
+            {"x": x / 10, "y": 0.1, "label": "", "series": "S2", "yerr": None}
+            for x in range(2)  # 하단은 듬성듬성
         ]
 
         fig, ax = plt.subplots()
@@ -1308,7 +1299,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             # bbox_to_anchor 확인 (Axes 좌표계 0~1)
             # 상단(y=0.9)에 데이터가 많으므로 범례는 하단(y < 0.5)으로 가야 함
             bbox = legend.get_bbox_to_anchor().transformed(ax.transAxes.inverted())
-            self.assertLess(bbox.y0 + bbox.height/2, 0.5)
+            self.assertLess(bbox.y0 + bbox.height / 2, 0.5)
         finally:
             plt.close(fig)
 
@@ -1970,6 +1961,48 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertEqual(ax.get_ylabel(), "Response")
         finally:
             plt.close(fig)
+
+
+class AnnotationStyleTest(unittest.TestCase):
+    def setUp(self):
+        self._saved_rc = plt.rcParams.copy()
+
+    def tearDown(self):
+        plt.rcParams.update(self._saved_rc)
+
+    def test_annotation_font_size_uses_style_token_not_default(self):
+        apply_journal_theme(target_format="nature", profile_name="baseline")
+        size = _annotation_font_size()
+        self.assertAlmostEqual(size, float(plt.rcParams["xtick.labelsize"]))
+        # Regression: previously inherited matplotlib's 10 pt default and tripped
+        # the font_size_token_drift geometry check.
+        self.assertLess(size, 10.0)
+
+    def test_draw_annotations_apply_token_fontsize_and_clip(self):
+        apply_journal_theme(target_format="nature", profile_name="baseline")
+        expected = _annotation_font_size()
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            annotations=(
+                {"x": 1.0, "y": 2.0, "text": "plain"},
+                {"x": 1.0, "y": 2.0, "text": "arrow", "arrow_to": {"x": 3.0, "y": 4.0}},
+            ),
+        )
+        ax = MagicMock()
+        _draw_annotations(ax, spec)
+
+        self.assertEqual(ax.text.call_count, 1)
+        self.assertAlmostEqual(ax.text.call_args.kwargs["fontsize"], expected)
+        self.assertTrue(ax.text.call_args.kwargs["clip_on"])
+
+        self.assertEqual(ax.annotate.call_count, 1)
+        self.assertAlmostEqual(ax.annotate.call_args.kwargs["fontsize"], expected)
+        self.assertTrue(ax.annotate.call_args.kwargs["clip_on"])
 
 
 if __name__ == "__main__":

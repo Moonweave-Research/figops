@@ -15,6 +15,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.font_manager import FontProperties
 
 from hub_core.rendering import PLOT_TYPES, render_plot
 from plotting.axis_break import _draw_break_marks
@@ -819,8 +820,7 @@ def _validate_statistical_overlays(points: list[dict], spec: BridgeFigureSpec) -
     plot_type = str(spec.plot_type or "").strip().lower()
     if plot_type not in {"line", "scatter", "xy"}:
         raise ValueError(
-            "statistical overlays are only supported for plot_type 'line', 'scatter', or 'xy'; "
-            f"got {spec.plot_type!r}"
+            f"statistical overlays are only supported for plot_type 'line', 'scatter', or 'xy'; got {spec.plot_type!r}"
         )
     if spec.y_break_range is not None:
         raise ValueError("statistical overlays do not support y_break_range")
@@ -890,11 +890,7 @@ def _apply_axis_scales(ax, spec: BridgeFigureSpec) -> None:
 
 
 def _visible_plot_axes(fig, fallback_ax=None) -> list:
-    axes = [
-        ax
-        for ax in fig.axes
-        if ax.get_visible() and getattr(ax, "_graph_hub_role", "") != "colorbar"
-    ]
+    axes = [ax for ax in fig.axes if ax.get_visible() and getattr(ax, "_graph_hub_role", "") != "colorbar"]
     if not axes and fallback_ax is not None:
         axes = [fallback_ax]
     return axes
@@ -952,7 +948,24 @@ def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...
     return tuple(normalized)
 
 
+def _annotation_font_size() -> float:
+    """Resolve the active style's small-text size in points.
+
+    Annotations previously inherited matplotlib's default ``font.size`` (10 pt),
+    which is off the style-token scale and trips the ``font_size_token_drift``
+    geometry check. Reuse the active tick-label size so annotation text matches
+    the rest of the figure.
+    """
+    for key in ("xtick.labelsize", "legend.fontsize"):
+        try:
+            return float(FontProperties(size=plt.rcParams[key]).get_size_in_points())
+        except (KeyError, ValueError, TypeError):
+            continue
+    return 6.5
+
+
 def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
+    font_size = _annotation_font_size()
     for annotation in _normalized_annotations(spec.annotations):
         color = str(annotation["color"])
         x = float(annotation["x"])
@@ -965,13 +978,26 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
                 xy=(float(arrow_to["x"]), float(arrow_to["y"])),
                 xytext=(x, y),
                 color=color,
+                fontsize=font_size,
                 arrowprops={"arrowstyle": "->", "color": color, "linewidth": 0.8},
                 ha="left",
                 va="bottom",
                 zorder=6,
+                annotation_clip=True,
+                clip_on=True,
             )
         else:
-            ax.text(x, y, text, color=color, ha="left", va="bottom", zorder=6)
+            ax.text(
+                x,
+                y,
+                text,
+                color=color,
+                fontsize=font_size,
+                ha="left",
+                va="bottom",
+                zorder=6,
+                clip_on=True,
+            )
 
 
 def _draw_annotations_on_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
@@ -1377,9 +1403,7 @@ def _resolve_facet_grid(n_facets: int, spec: BridgeFigureSpec) -> tuple[int, int
     n_rows = _optional_positive_int(spec.facet_nrows, "facet_nrows")
     if n_cols is not None and n_rows is not None:
         if n_cols * n_rows < n_facets:
-            raise ValueError(
-                f"facet_ncols * facet_nrows must hold {n_facets} facets; got {n_cols} * {n_rows}."
-            )
+            raise ValueError(f"facet_ncols * facet_nrows must hold {n_facets} facets; got {n_cols} * {n_rows}.")
         return n_rows, n_cols
     if n_cols is not None:
         return math.ceil(n_facets / n_cols), n_cols
