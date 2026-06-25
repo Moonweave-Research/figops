@@ -30,7 +30,7 @@ jobs:
   build:
     name: Build and verify distributions
     needs: release-ref
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
