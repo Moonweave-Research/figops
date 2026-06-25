@@ -32,6 +32,19 @@ def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
     for index, annotation in enumerate(value):
         if not isinstance(annotation, dict):
             raise ValueError(f"annotations[{index}] must be an object.")
+        if annotation.get("region") is not None:
+            region = annotation["region"]
+            if not isinstance(region, dict) or any(key not in region for key in ("xmin", "xmax", "ymin", "ymax")):
+                raise ValueError(f"annotations[{index}].region must contain xmin, xmax, ymin, ymax.")
+            region_item: dict[str, Any] = {"region": {key: region[key] for key in ("xmin", "xmax", "ymin", "ymax")}}
+            if annotation.get("text"):
+                region_item["text"] = str(annotation["text"]).strip()
+            if "color" in annotation:
+                region_item["color"] = str(annotation.get("color") or "black")
+            if "alpha" in annotation:
+                region_item["alpha"] = annotation["alpha"]
+            normalized.append(region_item)
+            continue
         missing = [key for key in ("x", "y", "text") if key not in annotation]
         if missing:
             raise ValueError(f"annotations[{index}] missing required field(s): {', '.join(missing)}.")
@@ -142,9 +155,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 errors=[str(exc)],
                 is_dry_run=dry_run,
                 failure_stage="CONFIG",
-                resolution_hint=(
-                    "Provide valid ordering, facet sizing, axis-scale, and annotation arguments."
-                ),
+                resolution_hint=("Provide valid ordering, facet sizing, axis-scale, and annotation arguments."),
             )
         annotate_values = raw_annotate_values
         bar_error_column = ""
@@ -164,9 +175,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 elif plot_type != "bar":
                     render_arg_errors.append("bar_error_column is only supported for plot_type 'bar'.")
         if series_column and plot_type not in {"line", "scatter", "xy"}:
-            render_arg_errors.append(
-                "series_column is only supported for plot_type 'line', 'scatter', or 'xy'."
-            )
+            render_arg_errors.append("series_column is only supported for plot_type 'line', 'scatter', or 'xy'.")
         if render_arg_errors:
             return self._csv_render_error(
                 arguments,

@@ -910,6 +910,36 @@ def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...
     for index, annotation in enumerate(annotations):
         if not isinstance(annotation, dict):
             raise ValueError(f"annotations[{index}] must be an object")
+        region = annotation.get("region")
+        if region is not None:
+            if not isinstance(region, dict):
+                raise ValueError(f"annotations[{index}].region must be an object")
+            try:
+                xmin = float(region["xmin"])
+                xmax = float(region["xmax"])
+                ymin = float(region["ymin"])
+                ymax = float(region["ymax"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"annotations[{index}].region requires numeric xmin, xmax, ymin, ymax") from exc
+            if not all(math.isfinite(value) for value in (xmin, xmax, ymin, ymax)):
+                raise ValueError(f"annotations[{index}].region bounds must be finite")
+            try:
+                alpha = float(annotation.get("alpha", 0.12))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"annotations[{index}].alpha must be numeric") from exc
+            normalized.append(
+                {
+                    "kind": "region",
+                    "xmin": xmin,
+                    "xmax": xmax,
+                    "ymin": ymin,
+                    "ymax": ymax,
+                    "text": str(annotation.get("text") or "").strip(),
+                    "color": str(annotation.get("color") or "black"),
+                    "alpha": alpha,
+                }
+            )
+            continue
         missing = [key for key in ("x", "y", "text") if key not in annotation]
         if missing:
             raise ValueError(f"annotations[{index}] missing required field(s): {', '.join(missing)}")
@@ -938,6 +968,7 @@ def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...
             normalized_arrow = {"x": arrow_x, "y": arrow_y}
         normalized.append(
             {
+                "kind": "point",
                 "x": x,
                 "y": y,
                 "text": text,
@@ -968,6 +999,35 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
     font_size = _annotation_font_size()
     for annotation in _normalized_annotations(spec.annotations):
         color = str(annotation["color"])
+        if annotation.get("kind") == "region":
+            xmin = float(annotation["xmin"])
+            xmax = float(annotation["xmax"])
+            ymin = float(annotation["ymin"])
+            ymax = float(annotation["ymax"])
+            ax.fill_between(
+                [xmin, xmax],
+                ymin,
+                ymax,
+                color=color,
+                alpha=float(annotation["alpha"]),
+                linewidth=0,
+                zorder=0,
+            )
+            region_text = str(annotation["text"])
+            if region_text:
+                center_x = math.sqrt(xmin * xmax) if xmin > 0 and xmax > 0 else 0.5 * (xmin + xmax)
+                ax.text(
+                    center_x,
+                    0.5 * (ymin + ymax),
+                    region_text,
+                    color=color,
+                    fontsize=font_size,
+                    ha="center",
+                    va="center",
+                    zorder=1,
+                    clip_on=True,
+                )
+            continue
         x = float(annotation["x"])
         y = float(annotation["y"])
         text = str(annotation["text"])
