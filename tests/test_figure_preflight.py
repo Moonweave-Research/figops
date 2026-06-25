@@ -9,6 +9,7 @@ import pytest  # noqa: E402
 from PIL import Image  # noqa: E402
 
 from hub_core.figure_preflight import validate_figure_preflight  # noqa: E402
+from hub_core.journal_specs import ERROR
 
 
 @pytest.fixture(autouse=True)
@@ -33,6 +34,9 @@ def test_valid_600dpi_png_passes(tmp_path: Path):
     dpi_check = next(c for c in result["checks"] if c["name"] == "dpi")
     assert dpi_check["passed"] is True
     assert "600" in dpi_check["detail"]
+    assert dpi_check["provenance"]
+    assert dpi_check["enforcement"] == ERROR
+    assert "source_note" in dpi_check
 
 
 def test_low_dpi_png_fails(tmp_path: Path):
@@ -147,6 +151,8 @@ def test_oversized_raster_file_size_warns_not_fails(tmp_path: Path):
     # Dense/photographic rasters can legitimately exceed the 0.5x raw bound,
     # so this is a warning, not a hard gate.
     assert size_check["passed"] is True
+    assert size_check["enforcement"] == "advisory"
+    assert size_check["provenance"] == "graphhub_assumption"
     assert any("exceeds expected" in warning for warning in result["warnings"])
 
 
@@ -166,4 +172,47 @@ def test_oversized_vector_file_size_fails(tmp_path: Path):
 
     size_check = next(c for c in result["checks"] if c["name"] == "file_size")
     assert size_check["passed"] is False
+    assert size_check["enforcement"] == ERROR
     assert any("exceeds 50MB limit" in warning for warning in result["warnings"])
+
+
+def test_internal_nature_surfur_preflight_is_marked_internal(tmp_path: Path):
+    png = _save_dummy_figure(tmp_path / "fig.png", dpi=600)
+
+    result = validate_figure_preflight(png, "nature_surfur")
+
+    assert result["passed"] is True
+    fmt_check = next(c for c in result["checks"] if c["name"] == "format")
+    assert fmt_check["provenance"] == "internal_project_style"
+    assert "not a separate journal standard" in fmt_check["source_note"]
+
+
+def test_wiley_preflight_target_is_supported(tmp_path: Path):
+    png = _save_dummy_figure(tmp_path / "fig.png", dpi=300)
+
+    result = validate_figure_preflight(png, "wiley")
+
+    assert result["passed"] is True
+    dpi_check = next(c for c in result["checks"] if c["name"] == "dpi")
+    assert "min: 300" in dpi_check["detail"]
+
+
+def test_jpeg_passes_only_when_target_registry_allows_it(tmp_path: Path):
+    jpg = tmp_path / "fig.jpg"
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
+    ax.plot([1, 2, 3])
+    fig.savefig(jpg, dpi=300, format="jpg")
+    plt.close(fig)
+
+    wiley = validate_figure_preflight(jpg, "wiley")
+    nature = validate_figure_preflight(jpg, "nature")
+
+    assert next(c for c in wiley["checks"] if c["name"] == "format")["passed"] is True
+    assert next(c for c in nature["checks"] if c["name"] == "format")["passed"] is False
+
+
+def test_unknown_preflight_target_reports_supported_targets(tmp_path: Path):
+    png = _save_dummy_figure(tmp_path / "fig.png", dpi=600)
+
+    with pytest.raises(ValueError, match="nature_surfur"):
+        validate_figure_preflight(png, "default")

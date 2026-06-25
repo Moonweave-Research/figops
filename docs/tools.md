@@ -1252,6 +1252,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
         "cell_press",
         "default",
         "premium",
+        "publication",
         "resistance",
         "resistance_premium",
         "wiley"
@@ -1665,6 +1666,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
         "cell_press",
         "default",
         "premium",
+        "publication",
         "resistance",
         "resistance_premium",
         "wiley"
