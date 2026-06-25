@@ -13,5 +13,8 @@ class McpRenderToolsMixin(McpRenderToolSupportMixin):
     def render_csv_graph(self, arguments: dict[str, Any]) -> dict[str, Any]:
         return McpRenderCsvMixin.render_csv_graph(self, arguments)
 
+    def render_csv_multipanel(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        return McpRenderCsvMixin.render_csv_multipanel(self, arguments)
+
     def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
         return McpRenderProjectMixin.render_project_figure(self, arguments)

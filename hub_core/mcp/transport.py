@@ -226,7 +226,7 @@ def _validate_tool_arguments(
         errors = [
             f"Missing required tool argument(s): {key}"
             for key in required
-            if key not in arguments or not isinstance(arguments.get(key), str) or not arguments.get(key).strip()
+            if key not in arguments or not _required_tool_argument_present(arguments.get(key), properties.get(key, {}))
         ]
         if schema.get("additionalProperties") is False:
             unknown = sorted(set(arguments) - set(properties))
@@ -258,6 +258,17 @@ def _validate_tool_arguments(
                 errors.extend(_validate_tool_argument_constraints(key, value, prop_schema))
         return errors
     return []
+
+
+def _required_tool_argument_present(value: Any, prop_schema: dict[str, Any]) -> bool:
+    expected_type = prop_schema.get("type") if isinstance(prop_schema, dict) else None
+    if expected_type == "string":
+        return isinstance(value, str) and bool(value.strip())
+    if expected_type == "array":
+        return isinstance(value, list) and bool(value)
+    if expected_type == "object":
+        return isinstance(value, dict) and bool(value)
+    return value is not None
 
 
 def _enum_contains(value: Any, enum: list[Any]) -> bool:
