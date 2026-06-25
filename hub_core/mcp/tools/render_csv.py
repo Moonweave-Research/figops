@@ -23,6 +23,27 @@ def _normalized_axis_scale_arg(value: Any, *, field_name: str) -> str:
     return scale
 
 
+def _normalized_span_annotation_arg(
+    annotation: dict[str, Any],
+    index: int,
+    *,
+    field: str,
+    bounds: tuple[str, str],
+) -> dict[str, Any]:
+    span = annotation[field]
+    lower_key, upper_key = bounds
+    if not isinstance(span, dict) or lower_key not in span or upper_key not in span:
+        raise ValueError(f"annotations[{index}].{field} must contain {lower_key} and {upper_key}.")
+    item: dict[str, Any] = {field: {lower_key: span[lower_key], upper_key: span[upper_key]}}
+    if annotation.get("text"):
+        item["text"] = str(annotation["text"]).strip()
+    if "color" in annotation:
+        item["color"] = str(annotation.get("color") or "black")
+    if "alpha" in annotation:
+        item["alpha"] = annotation["alpha"]
+    return item
+
+
 def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
     if value in (None, (), []):
         return ()
@@ -45,7 +66,17 @@ def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
                 region_item["alpha"] = annotation["alpha"]
             normalized.append(region_item)
             continue
-        missing = [key for key in ("x", "y", "text") if key not in annotation]
+        if annotation.get("hspan") is not None:
+            normalized.append(
+                _normalized_span_annotation_arg(annotation, index, field="hspan", bounds=("ymin", "ymax"))
+            )
+            continue
+        if annotation.get("vspan") is not None:
+            normalized.append(
+                _normalized_span_annotation_arg(annotation, index, field="vspan", bounds=("xmin", "xmax"))
+            )
+            continue
+        missing = [key for key in ("x", "y") if key not in annotation]
         if missing:
             raise ValueError(f"annotations[{index}] missing required field(s): {', '.join(missing)}.")
         item = {
@@ -53,15 +84,19 @@ def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
             "y": annotation["y"],
             "text": str(annotation.get("text") or "").strip(),
         }
-        if not item["text"]:
-            raise ValueError(f"annotations[{index}] text must be non-empty.")
+        arrow_to = annotation.get("arrow_to")
+        if not item["text"] and arrow_to is None:
+            raise ValueError(f"annotations[{index}] text must be non-empty unless arrow_to is provided.")
         if "color" in annotation:
             item["color"] = str(annotation.get("color") or "black")
-        if annotation.get("arrow_to") is not None:
-            arrow_to = annotation["arrow_to"]
+        if arrow_to is not None:
             if not isinstance(arrow_to, dict) or "x" not in arrow_to or "y" not in arrow_to:
                 raise ValueError(f"annotations[{index}].arrow_to must contain x and y.")
             item["arrow_to"] = {"x": arrow_to["x"], "y": arrow_to["y"]}
+        if "arrowstyle" in annotation:
+            item["arrowstyle"] = str(annotation.get("arrowstyle") or "->").strip() or "->"
+        if annotation.get("connectionstyle"):
+            item["connectionstyle"] = str(annotation["connectionstyle"]).strip()
         normalized.append(item)
     return tuple(normalized)
 
