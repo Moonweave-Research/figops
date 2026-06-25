@@ -15,6 +15,18 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.5] - 2026-06-25
+
+### Added
+
+- Add log-scale axis options, series splitting, and annotations for `figops.render_csv_graph` scatter/line/xy renders.
+- Add a geometry diagnostic for figure-title to facet-panel-title overlap.
+
+### Fixed
+
+- Reserve headroom for facet suptitles so panel headers no longer collide with the figure title.
+- Embed and preserve PNG DPI metadata during journal saves and provenance fingerprinting.
+
 ## [0.17.4] - 2026-06-24
 
 ### Added
