@@ -7,25 +7,44 @@ one command, traceable inputs, repeatable outputs.
 The short version:
 
 ```bash
+python -m pip install figops
 figops --help
 figops-mcp --smoke
 ```
 
-If those two commands work, the package is installed and the MCP surface is alive.
+If those commands work, the public package is installed and the MCP surface is alive.
 
 ## Current status
 
-- **Installable package:** yes. The wheel is built and smoke-tested like an external user would run it.
+- **Public package:** yes, `figops==0.17.4` is live on PyPI.
 - **Current distribution name:** `figops`.
 - **Current commands:** `figops` and `figops-mcp` (legacy aliases `graphhub` / `graphhub-mcp` remain for compatibility).
-- **GitHub Release assets:** yes, for users who already have repository access.
-- **Public PyPI:** not uploaded yet. The package policy is now Apache-2.0, and the next gate is TestPyPI/PyPI account publishing.
+- **GitHub Release assets:** yes, the matching wheel and sdist are attached to `v0.17.4`.
+- **License:** Apache-2.0 for public package distribution. Check [LICENSE](./LICENSE) and [NOTICE](./NOTICE) before redistributing.
 
-This means the built package is ready for public package-distribution checks, while the full repository can remain private until repo-only docs/tests/internal style packs are separated. Check [LICENSE](./LICENSE) and [NOTICE](./NOTICE) before redistributing.
+The repository can remain private/internal while the built wheel and sdist are distributed publicly. Repo-only docs, tests, and internal style packs are not the public API.
+
+## Install from PyPI
+
+For normal users:
+
+```bash
+python -m pip install figops
+figops --help
+figops-mcp --smoke
+```
+
+For a pinned install:
+
+```bash
+python -m pip install figops==0.17.4
+```
+
+The package is available at <https://pypi.org/project/figops/>.
 
 ## Install from the current GitHub release
 
-For internal users with repository access:
+For users who need the exact release asset:
 
 ```bash
 gh release download v0.17.4 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
@@ -145,11 +164,12 @@ python hub_uv.py run python -m pytest -q
 python hub_uv.py run ruff check .
 ```
 
-After the GitHub Release is created and the wheel/sdist are uploaded, maintainers
-also run:
+Maintainers also verify GitHub Release assets and public package installability:
 
 ```bash
 python scripts/github_release_asset_smoke.py
+python -m pip install figops==0.17.4
+figops-mcp --smoke
 ```
 
 `python scripts/check_public_release.py` may still block for repo-only private docs/tests.
@@ -183,14 +203,14 @@ For PyPI, the manual Trusted Publishing workflow runs the guarded uploader befor
 
 ## What is next
 
-The next public-distribution step is TestPyPI, then PyPI, through the manual Trusted Publishing workflow:
+The public package is live. For the next release, keep the same conservative path:
 
-1. keep `figops` as the public PyPI name unless a final product review changes it,
+1. bump the version,
 2. rebuild wheel/sdist from a clean tree,
 3. confirm package artifacts exclude private docs/tests/research markers,
-4. make `scripts/guarded_pypi_upload.py --repository testpypi` pass in dry-run mode,
-5. run `publish.yml` for TestPyPI, install-check from TestPyPI, then run `publish.yml` for PyPI.
+4. publish to TestPyPI through `.github/workflows/publish.yml`,
+5. install-check from TestPyPI, then promote the same version to PyPI.
 
-The working checklist is in
-[`docs/packaging/public-release-clearance.md`](./docs/packaging/public-release-clearance.md), with exact publishing setup in
+The release checklist is in
+[`docs/packaging/public-release-clearance.md`](./docs/packaging/public-release-clearance.md), with exact publishing steps in
 [`docs/packaging/trusted-publishing.md`](./docs/packaging/trusted-publishing.md).
