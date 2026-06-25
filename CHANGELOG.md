@@ -15,6 +15,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.9] - 2026-06-25
+
+### Added
+
+- Add MCP and bridge-renderer support for guide curves and fill-between shaded overlays on line/scatter/xy figures.
+- Document and expose the new overlay inputs through the generated MCP tool reference and plot-type registry.
+
+
 ## [0.17.8] - 2026-06-25
 
 ### Added
