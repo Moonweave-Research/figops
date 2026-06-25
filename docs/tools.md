@@ -1209,8 +1209,20 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       ],
       "type": "string"
     },
+    "fill_between": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
     "fit_line": {
       "type": "boolean"
+    },
+    "guide_curves": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
     },
     "job_id": {
       "description": "Stable render job ID; auto-generated when omitted.",
@@ -1697,6 +1709,18 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
           },
           "facet_column": {
             "type": "string"
+          },
+          "fill_between": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "guide_curves": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
           },
           "plot_type": {
             "default": "scatter",
@@ -3547,7 +3571,9 @@ Run a bounded project discovery and validation batch check with optional runtime
 {
   "supports_broken_axis": true,
   "supports_ci_band": true,
+  "supports_fill_between": true,
   "supports_fit_line": true,
+  "supports_guide_curves": true,
   "supports_series": true,
   "supports_significance_markers": true,
   "supports_statistical_overlays": true,
@@ -3563,8 +3589,14 @@ Run a bounded project discovery and validation batch check with optional runtime
     "ci_band": {
       "type": "boolean"
     },
+    "fill_between": {
+      "type": "array"
+    },
     "fit_line": {
       "type": "boolean"
+    },
+    "guide_curves": {
+      "type": "array"
     },
     "significance_markers": {
       "type": "array"
@@ -3610,7 +3642,9 @@ Run a bounded project discovery and validation batch check with optional runtime
 {
   "supports_broken_axis": true,
   "supports_ci_band": true,
+  "supports_fill_between": true,
   "supports_fit_line": true,
+  "supports_guide_curves": true,
   "supports_series": true,
   "supports_significance_markers": true,
   "supports_statistical_overlays": true,
@@ -3626,8 +3660,14 @@ Run a bounded project discovery and validation batch check with optional runtime
     "ci_band": {
       "type": "boolean"
     },
+    "fill_between": {
+      "type": "array"
+    },
     "fit_line": {
       "type": "boolean"
+    },
+    "guide_curves": {
+      "type": "array"
     },
     "significance_markers": {
       "type": "array"
@@ -3742,7 +3782,9 @@ Run a bounded project discovery and validation batch check with optional runtime
 {
   "supports_broken_axis": true,
   "supports_ci_band": true,
+  "supports_fill_between": true,
   "supports_fit_line": true,
+  "supports_guide_curves": true,
   "supports_series": true,
   "supports_significance_markers": true,
   "supports_statistical_overlays": true,
@@ -3758,8 +3800,14 @@ Run a bounded project discovery and validation batch check with optional runtime
     "ci_band": {
       "type": "boolean"
     },
+    "fill_between": {
+      "type": "array"
+    },
     "fit_line": {
       "type": "boolean"
+    },
+    "guide_curves": {
+      "type": "array"
     },
     "significance_markers": {
       "type": "array"

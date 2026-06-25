@@ -260,6 +260,8 @@ def test_render_csv_schema_accepts_axis_scale_series_and_annotations_args():
     assert properties["y_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
     assert properties["series_column"] == {"type": "string"}
     assert properties["annotations"] == {"type": "array", "items": {"type": "object"}}
+    assert properties["guide_curves"] == {"type": "array", "items": {"type": "object"}}
+    assert properties["fill_between"] == {"type": "array", "items": {"type": "object"}}
     assert properties["yerr_column"] == {"type": "string"}
     assert properties["yerr_minus_column"] == {"type": "string"}
     assert properties["yerr_cap_width"] == {"type": "number", "minimum": 0, "default": 3.0}
@@ -280,6 +282,8 @@ def test_render_csv_schema_accepts_axis_scale_series_and_annotations_args():
                 "x_scale": "linear",
                 "y_scale": "log",
                 "annotations": [{"x": 2, "y": 100, "text": "callout"}],
+                "guide_curves": [{"points": [{"x": 1, "y": 20}, {"x": 2, "y": 90}]}],
+                "fill_between": [{"x_column": "x", "y1_column": "yerr_lo", "y2_column": "yerr_hi"}],
             },
             definitions,
         )
@@ -329,6 +333,8 @@ def test_render_csv_multipanel_schema_accepts_panel_specs():
     panel_properties = properties["panels"]["items"]["properties"]
     assert panel_properties["data_path"]["type"] == "string"
     assert panel_properties["x_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
+    assert panel_properties["guide_curves"] == {"type": "array", "items": {"type": "object"}}
+    assert panel_properties["fill_between"] == {"type": "array", "items": {"type": "object"}}
     assert panel_properties["yerr_column"] == {"type": "string"}
     assert properties["compose_mode"] == {"type": "string", "enum": ["draft", "manuscript"], "default": "draft"}
     assert properties["font_scale"] == {"type": "number", "default": 1.0}
@@ -347,6 +353,8 @@ def test_render_csv_multipanel_schema_accepts_panel_specs():
                         "plot_type": "scatter",
                         "x_scale": "log",
                         "yerr_column": "sem",
+                        "guide_curves": [{"x": [1, 2], "y": [12, 80]}],
+                        "fill_between": [{"points": [{"x": 1, "y1": 9, "y2": 11}, {"x": 2, "y1": 95, "y2": 105}]}],
                     }
                 ],
                 "rows": 1,

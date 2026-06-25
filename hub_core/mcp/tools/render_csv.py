@@ -81,6 +81,82 @@ def _normalized_series_style_args(value: Any) -> dict[str, dict[str, str]]:
     return normalized
 
 
+def _normalized_guide_curve_args(value: Any) -> tuple[dict[str, Any], ...]:
+    if value in (None, (), []):
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("guide_curves must be an array of objects.")
+    normalized: list[dict[str, Any]] = []
+    for index, overlay in enumerate(value):
+        if not isinstance(overlay, dict):
+            raise ValueError(f"guide_curves[{index}] must be an object.")
+        item: dict[str, Any] = {}
+        if overlay.get("points") is not None:
+            points = overlay["points"]
+            if not isinstance(points, (list, tuple)):
+                raise ValueError(f"guide_curves[{index}].points must be an array.")
+            item["points"] = list(points)
+        else:
+            if not isinstance(overlay.get("x"), (list, tuple)) or not isinstance(overlay.get("y"), (list, tuple)):
+                raise ValueError(f"guide_curves[{index}] requires points or x/y arrays.")
+            item["x"] = list(overlay["x"])
+            item["y"] = list(overlay["y"])
+        for key in ("color", "linestyle", "linewidth", "label", "zorder"):
+            if key in overlay:
+                item[key] = overlay[key]
+        item.setdefault("color", "black")
+        normalized.append(item)
+    return tuple(normalized)
+
+
+def _normalized_fill_between_args(value: Any) -> tuple[dict[str, Any], ...]:
+    if value in (None, (), []):
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("fill_between must be an array of objects.")
+    normalized: list[dict[str, Any]] = []
+    for index, overlay in enumerate(value):
+        if not isinstance(overlay, dict):
+            raise ValueError(f"fill_between[{index}] must be an object.")
+        item: dict[str, Any] = {}
+        if overlay.get("points") is not None:
+            points = overlay["points"]
+            if not isinstance(points, (list, tuple)):
+                raise ValueError(f"fill_between[{index}].points must be an array.")
+            item["points"] = list(points)
+        else:
+            missing = [key for key in ("x_column", "y1_column", "y2_column") if not str(overlay.get(key) or "").strip()]
+            if missing:
+                raise ValueError(
+                    f"fill_between[{index}] requires points or column field(s): {', '.join(missing)}."
+                )
+            item["x_column"] = str(overlay["x_column"]).strip()
+            item["y1_column"] = str(overlay["y1_column"]).strip()
+            item["y2_column"] = str(overlay["y2_column"]).strip()
+        for key in ("color", "alpha", "label", "zorder"):
+            if key in overlay:
+                item[key] = overlay[key]
+        item.setdefault("alpha", 0.2)
+        normalized.append(item)
+    return tuple(normalized)
+
+
+def _fill_between_required_columns(
+    fill_between: tuple[dict[str, Any], ...],
+    *,
+    existing: tuple[str, ...] = (),
+) -> list[str]:
+    seen = {str(column).strip() for column in existing if str(column or "").strip()}
+    columns: list[str] = []
+    for overlay in fill_between:
+        for key in ("x_column", "y1_column", "y2_column"):
+            column = str(overlay.get(key) or "").strip()
+            if column and column not in seen:
+                seen.add(column)
+                columns.append(column)
+    return columns
+
+
 def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
     if value in (None, (), []):
         return ()
@@ -136,6 +212,7 @@ def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
             item["connectionstyle"] = str(annotation["connectionstyle"]).strip()
         normalized.append(item)
     return tuple(normalized)
+
 
 
 class McpRenderCsvMixin(McpRenderToolSupportMixin):
@@ -225,6 +302,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             y_scale = _normalized_axis_scale_arg(arguments.get("y_scale"), field_name="y_scale")
             annotations = _normalized_annotation_args(arguments.get("annotations"))
             series_styles = _normalized_series_style_args(arguments.get("series_styles"))
+            guide_curves = _normalized_guide_curve_args(arguments.get("guide_curves"))
+            fill_between = _normalized_fill_between_args(arguments.get("fill_between"))
         except ValueError as exc:
             return self._csv_render_error(
                 arguments,
@@ -288,6 +367,10 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             render_arg_errors.append("Use yerr_column for line/scatter/xy or bar_error_column for bar, not both.")
         if series_column and plot_type not in {"line", "scatter", "xy"}:
             render_arg_errors.append("series_column is only supported for plot_type 'line', 'scatter', or 'xy'.")
+        if (guide_curves or fill_between) and plot_type not in {"line", "scatter", "xy"}:
+            render_arg_errors.append(
+                "guide_curves and fill_between are only supported for plot_type 'line', 'scatter', or 'xy'."
+            )
         if render_arg_errors:
             return self._csv_render_error(
                 arguments,
@@ -415,6 +498,12 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             facet_column=facet_column,
             series_column=series_column,
             semantic_checks=semantic_checks,
+            extra_required_columns=_fill_between_required_columns(
+                fill_between,
+                existing=tuple(
+                    column for column in (x_column, y_column, z_column, facet_column, series_column) if column
+                ),
+            ),
         )
         config_errors = validate_config(config)
         if config_errors:
@@ -439,6 +528,22 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 *([series_column] if series_column else []),
                 *([yerr_column] if yerr_column else []),
                 *([yerr_minus_column] if yerr_minus_column else []),
+                *_fill_between_required_columns(
+                    fill_between,
+                    existing=tuple(
+                        column
+                        for column in (
+                            x_column,
+                            y_column,
+                            z_column,
+                            facet_column,
+                            series_column,
+                            yerr_column,
+                            yerr_minus_column,
+                        )
+                        if column
+                    ),
+                ),
                 *[str(key) for key in semantic_checks],
             ],
             semantic_checks=semantic_checks,
@@ -530,6 +635,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "x_scale": x_scale,
                         "y_scale": y_scale,
                         "annotations": annotations,
+                        "guide_curves": guide_curves,
+                        "fill_between": fill_between,
                         "facet_scales": facet_scales,
                         "facet_ncols": facet_ncols,
                         "facet_nrows": facet_nrows,
@@ -789,6 +896,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 y_scale = _normalized_axis_scale_arg(panel.get("y_scale"), field_name=f"panels[{index}].y_scale")
                 annotations = _normalized_annotation_args(panel.get("annotations"))
                 series_styles = _normalized_series_style_args(panel.get("series_styles"))
+                guide_curves = _normalized_guide_curve_args(panel.get("guide_curves"))
+                fill_between = _normalized_fill_between_args(panel.get("fill_between"))
                 facet_column = str(panel.get("facet_column") or "").strip()
                 series_column = str(panel.get("series_column") or "").strip()
                 yerr_column = str(panel.get("yerr_column") or "").strip()
@@ -816,6 +925,12 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     f"panels[{index}] yerr columns are only supported for plot_type 'line', 'scatter', or 'xy'."
                 )
                 continue
+            if (guide_curves or fill_between) and plot_type not in {"line", "scatter", "xy"}:
+                contract_errors.append(
+                    f"panels[{index}] guide_curves and fill_between are only supported for plot_type "
+                    "'line', 'scatter', or 'xy'."
+                )
+                continue
             if yerr_cap_width < 0:
                 contract_errors.append(f"panels[{index}].yerr_cap_width must be non-negative.")
                 continue
@@ -835,6 +950,22 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 *([series_column] if series_column else []),
                 *([yerr_column] if yerr_column else []),
                 *([yerr_minus_column] if yerr_minus_column else []),
+                *_fill_between_required_columns(
+                    fill_between,
+                    existing=tuple(
+                        column
+                        for column in (
+                            x_column,
+                            y_column,
+                            str(panel.get("z_column") or "").strip() if plot_type == "heatmap" else "",
+                            facet_column,
+                            series_column,
+                            yerr_column,
+                            yerr_minus_column,
+                        )
+                        if column
+                    ),
+                ),
             ]
             contract = self._validate_render_data_contract(
                 data_path,
@@ -866,6 +997,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     "x_scale": x_scale,
                     "y_scale": y_scale,
                     "annotations": annotations,
+                    "guide_curves": guide_curves,
+                    "fill_between": fill_between,
                     "yerr_column": yerr_column,
                     "yerr_minus_column": yerr_minus_column,
                     "yerr_cap_width": yerr_cap_width,

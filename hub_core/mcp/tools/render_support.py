@@ -503,7 +503,9 @@ class McpRenderToolSupportMixin:
         facet_column: str,
         series_column: str,
         semantic_checks: dict[str, Any],
+        extra_required_columns: list[str] | None = None,
     ) -> dict[str, Any]:
+        extra_required_columns = extra_required_columns or []
         return {
             "project": {"name": "FigOps MCP Render Job"},
             "visual_style": {
@@ -522,6 +524,7 @@ class McpRenderToolSupportMixin:
                             *([z_column] if z_column else []),
                             *([facet_column] if facet_column else []),
                             *([series_column] if series_column else []),
+                            *extra_required_columns,
                         ],
                         "semantic_checks": semantic_checks,
                     }

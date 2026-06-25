@@ -11,6 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.collections import PolyCollection
 
 from hub_core.geometry_diagnostics import _marker_footprint_box_entries, diagnose_figure_geometry
 from plotting.bridge_renderer import (
@@ -23,6 +24,7 @@ from plotting.bridge_renderer import (
     _avoid_smart_legend_data_collision,
     _display_label,
     _draw_annotations,
+    _draw_manual_overlays,
     _figsize_for_format,
     _render_bar_plot,
     _render_heatmap_plot,
@@ -279,6 +281,57 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertIn("Coated, B, Unaln.", labels)
         finally:
             plt.close(fig)
+
+    def test_render_bridge_figure_draws_guide_curve_and_fill_between_region(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_overlay_primitives_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = tmpdir_path / "overlay.csv"
+            csv_path.write_text(
+                "x,y,lower,upper\n0,1,0.5,1.5\n1,2,1.5,2.5\n2,3,2.5,3.5\n",
+                encoding="utf-8",
+            )
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "overlay.png"),
+                plot_type="scatter",
+                x_column="x",
+                y_column="y",
+                title="overlay primitives",
+                guide_curves=(
+                    {
+                        "points": [{"x": 0, "y": 1.1}, {"x": 1, "y": 2.2}, {"x": 2, "y": 3.1}],
+                        "label": "guide",
+                        "color": "red",
+                    },
+                ),
+                fill_between=(
+                    {
+                        "y1_column": "lower",
+                        "y2_column": "upper",
+                        "label": "band",
+                        "color": "blue",
+                        "alpha": 0.2,
+                    },
+                ),
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                ax = fig.axes[0]
+                observed["line_labels"] = [line.get_label() for line in ax.lines]
+                observed["band_labels"] = [
+                    collection.get_label()
+                    for collection in ax.collections
+                    if isinstance(collection, PolyCollection)
+                ]
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                out = render_bridge_figure(spec)
+
+            self.assertTrue(Path(out).exists())
+            self.assertIn("guide", observed["line_labels"])
+            self.assertIn("band", observed["band_labels"])
 
     def test_bar_plot_aggregate_mean_collapses_duplicate_categories(self):
         with tempfile.TemporaryDirectory(prefix="bridge_bar_aggregate_mean_") as tmpdir:
@@ -2158,6 +2211,46 @@ class AnnotationStyleTest(unittest.TestCase):
         self.assertEqual(ax.text.call_args_list[1].args[2], "window")
         self.assertEqual(ax.text.call_args_list[1].args[1], 0.5)
         self.assertIs(ax.text.call_args_list[1].kwargs["transform"], x_transform)
+
+    def test_draw_manual_overlays_renders_guide_curve_and_fill_between_columns(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_manual_overlay_") as tmpdir:
+            csv_path = Path(tmpdir) / "overlay.csv"
+            csv_path.write_text("x,y,low,high\n1,10,8,12\n2,20,18,23\n", encoding="utf-8")
+            ax = MagicMock()
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(Path(tmpdir) / "out.png"),
+                plot_type="scatter",
+                x_column="x",
+                y_column="y",
+                title="manual overlays",
+                guide_curves=(
+                    {
+                        "points": [{"x": 1, "y": 9}, {"x": 2, "y": 21}],
+                        "color": "red",
+                        "linestyle": "--",
+                        "label": "guide",
+                    },
+                ),
+                fill_between=(
+                    {
+                        "x_column": "x",
+                        "y1_column": "low",
+                        "y2_column": "high",
+                        "color": "#dddddd",
+                        "alpha": 0.25,
+                    },
+                ),
+            )
+
+            _draw_manual_overlays(ax, csv_path, spec)
+
+            ax.fill_between.assert_called_once()
+            self.assertEqual(ax.fill_between.call_args.args, ([1.0, 2.0], [8.0, 18.0], [12.0, 23.0]))
+            self.assertEqual(ax.fill_between.call_args.kwargs["alpha"], 0.25)
+            ax.plot.assert_called_once()
+            self.assertEqual(ax.plot.call_args.args, ([1.0, 2.0], [9.0, 21.0]))
+            self.assertEqual(ax.plot.call_args.kwargs["linestyle"], "--")
 
 
 if __name__ == "__main__":

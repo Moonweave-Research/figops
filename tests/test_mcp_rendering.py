@@ -1188,6 +1188,59 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["annotations"][1]["hspan"], {"ymin": 10, "ymax": 20})
             self.assertEqual(captured["annotations"][2]["vspan"], {"xmin": 1, "xmax": 2})
 
+    def test_render_csv_graph_forwards_guide_curve_and_fill_between_region(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "overlay.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                "x,y,lower,upper\n0,1,0.5,1.5\n1,2,1.5,2.5\n2,3,2.5,3.5\n",
+                encoding="utf-8",
+            )
+            runtime_root = tmp_root / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "plot_type": "scatter",
+                        "guide_curves": [
+                            {
+                                "points": [{"x": 0, "y": 1.1}, {"x": 1, "y": 2.2}, {"x": 2, "y": 3.1}],
+                                "label": "guide",
+                            }
+                        ],
+                        "fill_between": [
+                            {"x_column": "x", "y1_column": "lower", "y2_column": "upper", "label": "band"}
+                        ],
+                        "job_id": "render-overlay-primitives",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["guide_curves"][0]["label"], "guide")
+            self.assertEqual(captured["fill_between"][0]["y1_column"], "lower")
+            config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
+            csv_check = config["data_contract"]["csv_checks"][0]
+            self.assertEqual(csv_check["required_columns"], ["x", "y", "lower", "upper"])
+
     def test_render_csv_graph_rejects_invalid_span_annotation(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             tmp_root = Path(tmpdir)
@@ -1345,7 +1398,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             panel_b = tmp_root / "input" / "b.csv"
             panel_a.parent.mkdir(parents=True, exist_ok=True)
             panel_a.write_text("era,rho,sem\nA,100,10\nB,1000,100\n", encoding="utf-8")
-            panel_b.write_text("rho,eps,sem,condition\n100,10,1,Reference\n1000,8,2,This work\n", encoding="utf-8")
+            panel_b.write_text(
+                "rho,eps,sem,condition,lower,upper\n100,10,1,Reference,8,12\n1000,8,2,This work,6,10\n",
+                encoding="utf-8",
+            )
             runtime_root = tmp_root / "runtime"
             server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
             captured = {}
@@ -1383,7 +1439,20 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                                 "plot_type": "scatter",
                                 "x_scale": "log",
                                 "series_column": "condition",
-                                "series_styles": {"Reference": {"marker": "o", "fill": "none", "edgecolor": "black"}},
+                                "series_styles": {
+                                    "Reference": {"marker": "o", "fill": "none", "edgecolor": "black"}
+                                },
+                                "guide_curves": [
+                                    {"points": [{"x": 100, "y": 9}, {"x": 1000, "y": 9}], "label": "guide"}
+                                ],
+                                "fill_between": [
+                                    {
+                                        "x_column": "rho",
+                                        "y1_column": "lower",
+                                        "y2_column": "upper",
+                                        "label": "band",
+                                    }
+                                ],
                                 "title": "panel b",
                             },
                         ],
@@ -1401,10 +1470,14 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["panels"][0]["yerr_column"], "sem")
             self.assertEqual(captured["panels"][1]["x_scale"], "log")
             self.assertEqual(captured["panels"][1]["series_column"], "condition")
+            self.assertEqual(captured["panels"][1]["guide_curves"][0]["label"], "guide")
+            self.assertEqual(captured["panels"][1]["fill_between"][0]["y2_column"], "upper")
             self.assertEqual(
                 captured["panels"][1]["series_styles"],
                 {"Reference": {"marker": "o", "fill": "none", "edgecolor": "black"}},
             )
+            self.assertEqual(captured["panels"][1]["guide_curves"][0]["color"], "black")
+            self.assertEqual(captured["panels"][1]["fill_between"][0]["alpha"], 0.2)
             self.assertEqual(result["provenance"]["renderer_surface"], "figops.render_csv_multipanel")
 
     def test_render_csv_multipanel_rejects_missing_panel_column(self):
