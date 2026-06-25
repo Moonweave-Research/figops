@@ -315,9 +315,12 @@ def _embed_png_fingerprint(path: str, payload_str: str) -> bool:
         for key, val in existing.items():
             if isinstance(key, str) and isinstance(val, str):
                 meta.add_text(key, val)
+        save_kwargs = {}
+        if isinstance(existing.get("dpi"), tuple):
+            save_kwargs["dpi"] = existing["dpi"]
 
         meta.add_text("Research-Fingerprint", payload_str)
-        img.save(path, pnginfo=meta)
+        img.save(path, pnginfo=meta, **save_kwargs)
         img.close()
         return True
     except Exception:

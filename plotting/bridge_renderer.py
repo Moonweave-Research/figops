@@ -184,6 +184,9 @@ class BridgeFigureSpec:
     y_axis_label: str = ""
     label_column: str = ""
     series_column: str = ""
+    x_scale: str = "linear"
+    y_scale: str = "linear"
+    annotations: tuple[dict, ...] = ()
     yerr_column: str = ""
     yerr_cap_width: float = 3.0
     yerr_minus_column: str = ""
@@ -224,17 +227,23 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         points = _load_points(csv_path, spec)
         _validate_bar_aggregate(spec)
         _validate_statistical_overlays(points, spec)
+        _validate_axis_scales(points, spec)
+        _normalized_annotations(spec.annotations)
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
         try:
             if spec.y_break_range is not None:
                 ax.set_visible(False)
                 _render_broken_axis_plot(fig, points, spec)
+                _apply_axis_scales_to_visible_axes(fig, ax, spec)
+                _draw_annotations_on_visible_axes(fig, ax, spec)
             else:
                 _render_plot(ax, points, spec)
                 _draw_statistical_overlays(ax, points, spec)
                 _draw_overlay_baselines(ax, spec.overlay_baselines)
                 _apply_axes_metadata(ax, spec)
                 ax.set_title(spec.title)
+                _apply_axis_scales_to_visible_axes(fig, ax, spec)
+                _draw_annotations_on_visible_axes(fig, ax, spec)
                 _apply_layout(fig, ax, spec)
                 _separate_top_legend_title(ax, spec)
             save_journal_fig(fig, output_path)
@@ -514,11 +523,15 @@ def _split_bias(total_mm: float, primary_mm: float, secondary_mm: float) -> tupl
 def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
     """Render a single CSV-based panel into *ax* (multipanel helper)."""
     points = _load_points(Path(panel.csv_path), panel)
+    _validate_axis_scales(points, panel)
+    _normalized_annotations(panel.annotations)
     _render_plot(ax, points, panel)
     _draw_overlay_baselines(ax, panel.overlay_baselines)
     _apply_axes_metadata(ax, panel)
     if panel.title:
         ax.set_title(panel.title)
+    _apply_axis_scales(ax, panel)
+    _draw_annotations(ax, panel)
     _apply_layout(fig, ax, panel, allow_figure_layout=False)
 
 
@@ -836,6 +849,139 @@ def _numeric_xy_arrays(points: list[dict], *, min_points: int, context: str) -> 
     if len(set(xs)) < 2:
         raise ValueError(f"{context} requires at least two distinct x values")
     return np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)
+
+
+def _normalized_axis_scale(value: str, *, field_name: str) -> str:
+    scale = str(value or "linear").strip().lower()
+    if scale not in {"linear", "log"}:
+        raise ValueError(f"{field_name} must be 'linear' or 'log'")
+    return scale
+
+
+def _validate_axis_scales(points: list[dict], spec: BridgeFigureSpec) -> None:
+    x_scale = _normalized_axis_scale(spec.x_scale, field_name="x_scale")
+    y_scale = _normalized_axis_scale(spec.y_scale, field_name="y_scale")
+    if x_scale == "linear" and y_scale == "linear":
+        return
+    for axis_name, scale in (("x", x_scale), ("y", y_scale)):
+        if scale != "log":
+            continue
+        bad_values = []
+        for point in points:
+            value = point[axis_name]
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                bad_values.append(value)
+                continue
+            if not math.isfinite(numeric) or numeric <= 0:
+                bad_values.append(value)
+        if bad_values:
+            raise ValueError(f"{axis_name}_scale='log' requires finite numeric {axis_name} values > 0")
+
+
+def _apply_axis_scales(ax, spec: BridgeFigureSpec) -> None:
+    x_scale = _normalized_axis_scale(spec.x_scale, field_name="x_scale")
+    y_scale = _normalized_axis_scale(spec.y_scale, field_name="y_scale")
+    if x_scale != "linear":
+        ax.set_xscale(x_scale)
+    if y_scale != "linear":
+        ax.set_yscale(y_scale)
+
+
+def _visible_plot_axes(fig, fallback_ax=None) -> list:
+    axes = [
+        ax
+        for ax in fig.axes
+        if ax.get_visible() and getattr(ax, "_graph_hub_role", "") != "colorbar"
+    ]
+    if not axes and fallback_ax is not None:
+        axes = [fallback_ax]
+    return axes
+
+
+def _apply_axis_scales_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
+    for axis in _visible_plot_axes(fig, fallback_ax):
+        _apply_axis_scales(axis, spec)
+
+
+def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...]:
+    if annotations in (None, (), []):
+        return ()
+    if not isinstance(annotations, (list, tuple)):
+        raise ValueError("annotations must be an array of objects")
+    normalized: list[dict[str, object]] = []
+    for index, annotation in enumerate(annotations):
+        if not isinstance(annotation, dict):
+            raise ValueError(f"annotations[{index}] must be an object")
+        missing = [key for key in ("x", "y", "text") if key not in annotation]
+        if missing:
+            raise ValueError(f"annotations[{index}] missing required field(s): {', '.join(missing)}")
+        try:
+            x = float(annotation["x"])
+            y = float(annotation["y"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"annotations[{index}] x and y must be numeric") from exc
+        if not math.isfinite(x) or not math.isfinite(y):
+            raise ValueError(f"annotations[{index}] x and y must be finite")
+        text = str(annotation.get("text") or "").strip()
+        if not text:
+            raise ValueError(f"annotations[{index}] text must be non-empty")
+        arrow_to = annotation.get("arrow_to")
+        normalized_arrow = None
+        if arrow_to is not None:
+            if not isinstance(arrow_to, dict):
+                raise ValueError(f"annotations[{index}].arrow_to must be an object")
+            try:
+                arrow_x = float(arrow_to["x"])
+                arrow_y = float(arrow_to["y"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"annotations[{index}].arrow_to requires numeric x and y") from exc
+            if not math.isfinite(arrow_x) or not math.isfinite(arrow_y):
+                raise ValueError(f"annotations[{index}].arrow_to x and y must be finite")
+            normalized_arrow = {"x": arrow_x, "y": arrow_y}
+        normalized.append(
+            {
+                "x": x,
+                "y": y,
+                "text": text,
+                "arrow_to": normalized_arrow,
+                "color": str(annotation.get("color") or "black"),
+            }
+        )
+    return tuple(normalized)
+
+
+def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
+    for annotation in _normalized_annotations(spec.annotations):
+        color = str(annotation["color"])
+        x = float(annotation["x"])
+        y = float(annotation["y"])
+        text = str(annotation["text"])
+        arrow_to = annotation.get("arrow_to")
+        if isinstance(arrow_to, dict):
+            ax.annotate(
+                text,
+                xy=(float(arrow_to["x"]), float(arrow_to["y"])),
+                xytext=(x, y),
+                color=color,
+                arrowprops={"arrowstyle": "->", "color": color, "linewidth": 0.8},
+                ha="left",
+                va="bottom",
+                zorder=6,
+            )
+        else:
+            ax.text(x, y, text, color=color, ha="left", va="bottom", zorder=6)
+
+
+def _draw_annotations_on_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
+    if not spec.annotations:
+        return
+    axes = _visible_plot_axes(fig, fallback_ax)
+    if spec.plot_type == "facet":
+        axes = axes[:1]
+    for axis in axes:
+        _draw_annotations(axis, spec)
 
 
 def _normalized_significance_markers(markers: object) -> tuple[dict[str, float | str | None], ...]:
@@ -1223,6 +1369,7 @@ def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
 
     if spec.title:
         fig.suptitle(spec.title)
+    _apply_facet_headroom(fig, spec)
 
 
 def _resolve_facet_grid(n_facets: int, spec: BridgeFigureSpec) -> tuple[int, int]:
@@ -1726,6 +1873,11 @@ def _legend_kwargs(ax, spec: BridgeFigureSpec, *, n_series: int) -> dict:
 
 
 def _apply_layout(fig, ax, spec: BridgeFigureSpec, *, allow_figure_layout: bool = True) -> None:
+    if spec.plot_type == "facet":
+        if allow_figure_layout:
+            _apply_facet_headroom(fig, spec)
+        return
+
     layout = _resolved_legend_layout(spec)
     if layout in ("right_outside", "top_outside", "standard"):
         if not allow_figure_layout:
@@ -1747,6 +1899,16 @@ def _apply_layout(fig, ax, spec: BridgeFigureSpec, *, allow_figure_layout: bool 
         pass
     if layout == "smart":
         _avoid_smart_legend_data_collision(fig, ax, spec)
+
+
+def _apply_facet_headroom(fig, spec: BridgeFigureSpec) -> None:
+    try:
+        if spec.title:
+            fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.92), pad=0.5, h_pad=0.8, w_pad=0.6)
+        else:
+            fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.6)
+    except Exception:
+        pass
 
 
 def _resolved_legend_layout(spec: BridgeFigureSpec) -> str:
