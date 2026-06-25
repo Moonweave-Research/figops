@@ -1,6 +1,6 @@
 # Trusted Publishing runbook
 
-FigOps publishes to TestPyPI/PyPI through GitHub Actions Trusted Publishing,
+FigOps `0.17.4` is live on TestPyPI and PyPI. Future releases publish to TestPyPI/PyPI through GitHub Actions Trusted Publishing,
 not long-lived PyPI API tokens. The workflow is manual-only so the maintainer
 chooses when a build is promoted.
 

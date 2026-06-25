@@ -1,6 +1,6 @@
 # Public release clearance checklist
 
-FigOps can already be shared as a GitHub Release wheel with people who have repository access. Public package distribution now uses Apache-2.0, and PyPI/TestPyPI uploads go through the guarded technical checklist plus the manual Trusted Publishing workflow.
+FigOps is published publicly as `figops` on PyPI and can also be shared as a GitHub Release wheel/sdist. Public package distribution uses Apache-2.0, and future PyPI/TestPyPI uploads go through the guarded technical checklist plus the manual Trusted Publishing workflow.
 
 This checklist is intentionally conservative. It is not legal advice; it is the
 release gate that keeps the project safe while ownership and publication rights
@@ -24,7 +24,7 @@ LICENSE/NOTICE are now Apache-2.0 for package distribution. Keep the full reposi
 
 ## Required human approvals
 
-Before any TestPyPI or PyPI upload, confirm these items:
+Before any future TestPyPI or PyPI upload, confirm these items:
 
 1. Who owns the code: you personally, the lab, the university, a grant-funded
    project, or a mixed set of contributors?
@@ -55,7 +55,14 @@ Expected for a private-repo / public-PyPI path: `guarded_pypi_upload.py` can pas
 
 ## Safe current distribution path
 
-For now, use GitHub Release assets only:
+Use PyPI for normal installs:
+
+```bash
+python -m pip install figops==0.17.4
+figops-mcp --smoke
+```
+
+Use GitHub Release assets when you need the exact attached artifact:
 
 ```bash
 gh release download v0.17.4 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
@@ -63,7 +70,7 @@ python -m pip install dist-release/figops-0.17.4-py3-none-any.whl
 figops-mcp --smoke
 ```
 
-## First public-release PR after approval
+## Future public-release PRs
 
 For PyPI release PRs, keep the scope narrow:
 
@@ -72,5 +79,6 @@ For PyPI release PRs, keep the scope narrow:
 3. Smoke-test installed commands from the built wheel, including `figops --init`.
 4. Publish to TestPyPI first through `.github/workflows/publish.yml` with `repository=testpypi`.
 5. Install-check from TestPyPI before publishing the same version to PyPI through the same workflow with `repository=pypi`.
+6. Install-check from public PyPI after the workflow succeeds.
 
 Do not combine this with broad feature work. See `docs/packaging/trusted-publishing.md` for the exact PyPI/TestPyPI pending publisher values and workflow commands.

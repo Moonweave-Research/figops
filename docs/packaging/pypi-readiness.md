@@ -1,7 +1,6 @@
 # PyPI packaging readiness
 
-FigOps now has enough Python packaging metadata to build a
-wheel and source distribution for the current distribution name:
+FigOps is published on PyPI as `figops`. It also has enough Python packaging metadata to build a wheel and source distribution for the current distribution name:
 
 ```bash
 python -m build
@@ -36,9 +35,16 @@ This does not publish anything. It verifies that someone installing the built
 wheel gets working `figops` and `figops-mcp` commands.
 
 
-## Internal GitHub release distribution
+## Public and GitHub release distribution
 
-The GitHub release asset remains the supported pre-PyPI sharing path:
+The primary public install path is PyPI:
+
+```bash
+python -m pip install figops==0.17.4
+figops-mcp --smoke
+```
+
+The GitHub release asset remains available when an exact attached artifact is needed:
 
 ```bash
 gh release download v0.17.4 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
@@ -67,7 +73,7 @@ See [public-release-clearance.md](./public-release-clearance.md) for the
 license/IP approval checklist and the recommended Apache-2.0 path after
 approval.
 
-Before uploading to TestPyPI or PyPI, confirm all of the following:
+Before uploading a future version to TestPyPI or PyPI, confirm all of the following:
 
 1. LICENSE and NOTICE grant Apache-2.0 package distribution rights.
 2. `python scripts/guarded_pypi_upload.py --repository testpypi` prints an upload command after package-artifact checks pass.
@@ -90,7 +96,7 @@ The workflow fails closed when dispatched from any ref other than `refs/heads/ma
 See [trusted-publishing.md](./trusted-publishing.md) for the exact publisher
 values, commands, and post-upload install smoke checks.
 
-## Upload commands after policy approval
+## Future upload commands after policy approval
 
 ```bash
 python - <<'PY'
@@ -109,6 +115,8 @@ python -m pip download --no-deps --index-url https://test.pypi.org/simple/ figop
 python -m pip install /tmp/figops-testpypi-dist/figops-0.17.4-py3-none-any.whl
 python scripts/guarded_pypi_upload.py --repository pypi
 gh workflow run publish.yml --repo Moonweave-Research/figops --ref main -f repository=pypi
+python -m pip install figops==0.17.4
+figops-mcp --smoke
 ```
 
 The guarded uploader refuses to clear uploads when distribution policy, license files, built artifacts, or package-surface scans are blocked. Do not bypass it from this repository; the workflow runs the same guard before publishing.
