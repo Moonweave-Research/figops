@@ -16,6 +16,43 @@ from hub_core.rendering import PLOT_TYPES
 from themes.style_profiles import DEFAULT_PROFILE
 
 
+def _normalized_axis_scale_arg(value: Any, *, field_name: str) -> str:
+    scale = str(value or "linear").strip().lower()
+    if scale not in {"linear", "log"}:
+        raise ValueError(f"{field_name} must be 'linear' or 'log'.")
+    return scale
+
+
+def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
+    if value in (None, (), []):
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("annotations must be an array of objects.")
+    normalized: list[dict[str, Any]] = []
+    for index, annotation in enumerate(value):
+        if not isinstance(annotation, dict):
+            raise ValueError(f"annotations[{index}] must be an object.")
+        missing = [key for key in ("x", "y", "text") if key not in annotation]
+        if missing:
+            raise ValueError(f"annotations[{index}] missing required field(s): {', '.join(missing)}.")
+        item = {
+            "x": annotation["x"],
+            "y": annotation["y"],
+            "text": str(annotation.get("text") or "").strip(),
+        }
+        if not item["text"]:
+            raise ValueError(f"annotations[{index}] text must be non-empty.")
+        if "color" in annotation:
+            item["color"] = str(annotation.get("color") or "black")
+        if annotation.get("arrow_to") is not None:
+            arrow_to = annotation["arrow_to"]
+            if not isinstance(arrow_to, dict) or "x" not in arrow_to or "y" not in arrow_to:
+                raise ValueError(f"annotations[{index}].arrow_to must contain x and y.")
+            item["arrow_to"] = {"x": arrow_to["x"], "y": arrow_to["y"]}
+        normalized.append(item)
+    return tuple(normalized)
+
+
 class McpRenderCsvMixin(McpRenderToolSupportMixin):
     """CSV-graph rendering MCP tool handlers."""
 
@@ -67,6 +104,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             y_column = self._required_string(arguments, "y_column")
             z_column = str(arguments.get("z_column") or "").strip()
             facet_column = str(arguments.get("facet_column") or "").strip()
+            series_column = str(arguments.get("series_column") or "").strip()
         except ValueError as exc:
             return self._csv_render_error(
                 arguments,
@@ -94,15 +132,18 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             facet_order = self._order_arg(arguments.get("facet_order"), "facet_order", allow_numbers=False)
             facet_ncols = _optional_positive_int_arg(raw_facet_ncols, "facet_ncols")
             facet_nrows = _optional_positive_int_arg(raw_facet_nrows, "facet_nrows")
+            x_scale = _normalized_axis_scale_arg(arguments.get("x_scale"), field_name="x_scale")
+            y_scale = _normalized_axis_scale_arg(arguments.get("y_scale"), field_name="y_scale")
+            annotations = _normalized_annotation_args(arguments.get("annotations"))
         except ValueError as exc:
             return self._csv_render_error(
                 arguments,
-                summary="Render request has invalid facet/category layout settings.",
+                summary="Render request has invalid plot argument settings.",
                 errors=[str(exc)],
                 is_dry_run=dry_run,
                 failure_stage="CONFIG",
                 resolution_hint=(
-                    "Provide category_order/facet_order arrays and positive integer facet_ncols/facet_nrows."
+                    "Provide valid ordering, facet sizing, axis-scale, and annotation arguments."
                 ),
             )
         annotate_values = raw_annotate_values
@@ -122,6 +163,10 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     render_arg_errors.append("bar_error_column must be a non-empty string when provided.")
                 elif plot_type != "bar":
                     render_arg_errors.append("bar_error_column is only supported for plot_type 'bar'.")
+        if series_column and plot_type not in {"line", "scatter", "xy"}:
+            render_arg_errors.append(
+                "series_column is only supported for plot_type 'line', 'scatter', or 'xy'."
+            )
         if render_arg_errors:
             return self._csv_render_error(
                 arguments,
@@ -247,6 +292,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             y_column=y_column,
             z_column=z_column,
             facet_column=facet_column,
+            series_column=series_column,
             semantic_checks=semantic_checks,
         )
         config_errors = validate_config(config)
@@ -269,9 +315,11 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 y_column,
                 *([z_column] if z_column else []),
                 *([facet_column] if facet_column else []),
+                *([series_column] if series_column else []),
                 *[str(key) for key in semantic_checks],
             ],
             semantic_checks=semantic_checks,
+            axis_scales={x_column: x_scale, y_column: y_scale},
         )
         contract_errors = contract_result["errors"]
         calculation_checks = contract_result["calculation_checks"]
@@ -354,6 +402,10 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "y_column": y_column,
                         "z_column": z_column,
                         "facet_column": facet_column,
+                        "series_column": series_column,
+                        "x_scale": x_scale,
+                        "y_scale": y_scale,
+                        "annotations": annotations,
                         "facet_scales": facet_scales,
                         "facet_ncols": facet_ncols,
                         "facet_nrows": facet_nrows,

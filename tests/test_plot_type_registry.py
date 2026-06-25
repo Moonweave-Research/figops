@@ -251,6 +251,35 @@ def test_facet_plot_type_publishes_contract():
     }
 
 
+
+def test_render_csv_schema_accepts_axis_scale_series_and_annotations_args():
+    definitions = list_tool_definitions()
+    render_tool = next(tool for tool in definitions if tool["name"] == "figops.render_csv_graph")
+    properties = render_tool["inputSchema"]["properties"]
+    assert properties["x_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
+    assert properties["y_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
+    assert properties["series_column"] == {"type": "string"}
+    assert properties["annotations"] == {"type": "array", "items": {"type": "object"}}
+
+    with tempfile.TemporaryDirectory(prefix="graphhub_series_annotation_schema_") as tmpdir:
+        data_path = Path(tmpdir) / "series.csv"
+        data_path.write_text("x,y,condition\n1,10,A\n2,100,B\n", encoding="utf-8")
+        errors = _validate_tool_arguments(
+            "figops.render_csv_graph",
+            {
+                "data_path": str(data_path),
+                "x_column": "x",
+                "y_column": "y",
+                "series_column": "condition",
+                "x_scale": "linear",
+                "y_scale": "log",
+                "annotations": [{"x": 2, "y": 100, "text": "callout"}],
+            },
+            definitions,
+        )
+
+    assert errors == []
+
 def test_render_csv_schema_accepts_facet_column_for_facet_plot_type():
     definitions = list_tool_definitions()
     render_tool = next(tool for tool in definitions if tool["name"] == "figops.render_csv_graph")

@@ -1073,6 +1073,118 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["facet_ncols"], 4)
             self.assertEqual(captured["facet_nrows"], 1)
 
+
+
+    def test_render_csv_graph_forwards_log_scale_series_and_annotations(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "series.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                "x,y,condition\n1,10,A\n2,100,A\n1,20,B\n2,200,B\n",
+                encoding="utf-8",
+            )
+            runtime_root = tmp_root / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "plot_type": "scatter",
+                        "series_column": "condition",
+                        "x_scale": "linear",
+                        "y_scale": "log",
+                        "annotations": [
+                            {
+                                "x": 2,
+                                "y": 200,
+                                "text": "~10x",
+                                "arrow_to": {"x": 1, "y": 20},
+                                "color": "black",
+                            }
+                        ],
+                        "job_id": "render-series-log-annotated",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["series_column"], "condition")
+            self.assertEqual(captured["x_scale"], "linear")
+            self.assertEqual(captured["y_scale"], "log")
+            self.assertEqual(captured["annotations"][0]["text"], "~10x")
+            config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
+            csv_check = config["data_contract"]["csv_checks"][0]
+            self.assertEqual(csv_check["required_columns"], ["x", "y", "condition"])
+
+    def test_render_csv_graph_rejects_log_scale_with_nonpositive_data(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "bad_log.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y\n0,1\n1,-2\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "x_scale": "log",
+                    "y_scale": "log",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertTrue(any("log scale" in error for error in result["errors"]))
+
+    def test_render_csv_graph_rejects_facet_series_until_shared_legend_is_supported(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "facet_series.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                "x,y,phase,condition\n0,1,A,control\n1,2,A,treated\n0,3,B,control\n1,4,B,treated\n",
+                encoding="utf-8",
+            )
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "facet",
+                    "facet_column": "phase",
+                    "series_column": "condition",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertTrue(any("series_column" in error for error in result["errors"]))
+
     def test_render_csv_graph_rejects_heatmap_without_z_column(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_grid_csv(Path(tmpdir) / "input" / "grid.csv")

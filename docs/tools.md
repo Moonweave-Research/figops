@@ -1151,6 +1151,12 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "default": false,
       "type": "boolean"
     },
+    "annotations": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
     "bar_error_column": {
       "type": "string"
     },
@@ -1256,6 +1262,9 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "description": "Optional per-column semantic constraints keyed by CSV column name.",
       "type": "object"
     },
+    "series_column": {
+      "type": "string"
+    },
     "significance_markers": {
       "items": {
         "type": "object"
@@ -1287,10 +1296,26 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "x_column": {
       "type": "string"
     },
+    "x_scale": {
+      "default": "linear",
+      "enum": [
+        "linear",
+        "log"
+      ],
+      "type": "string"
+    },
     "y_axis_label": {
       "type": "string"
     },
     "y_column": {
+      "type": "string"
+    },
+    "y_scale": {
+      "default": "linear",
+      "enum": [
+        "linear",
+        "log"
+      ],
       "type": "string"
     },
     "z_column": {
@@ -1376,6 +1401,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                   "artists_outside_figure",
                   "legend_data_collision",
                   "axis_label_title_overlap",
+                  "figure_title_panel_title_overlap",
                   "colorbar_overlap",
                   "blank_area_ratio",
                   "point_annotation_overlaps",
@@ -1747,6 +1773,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
                   "artists_outside_figure",
                   "legend_data_collision",
                   "axis_label_title_overlap",
+                  "figure_title_panel_title_overlap",
                   "colorbar_overlap",
                   "blank_area_ratio",
                   "point_annotation_overlaps",

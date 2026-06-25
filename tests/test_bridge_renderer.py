@@ -30,7 +30,7 @@ from plotting.bridge_renderer import (
     _resolved_legend_layout,
     render_bridge_figure,
 )
-from themes.journal_theme import apply_journal_theme
+from themes.journal_theme import apply_journal_theme, save_journal_fig
 
 
 def _sha256(path: Path) -> str:
@@ -389,6 +389,13 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 out = render_bridge_figure(spec)
 
             self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
+            from PIL import Image
+
+            with Image.open(out) as image:
+                dpi = image.info.get("dpi")
+            self.assertIsNotNone(dpi)
+            self.assertAlmostEqual(dpi[0], 600, delta=1)
+            self.assertAlmostEqual(dpi[1], 600, delta=1)
             self.assertEqual(_sha256(Path(out)), _sha256(baseline))
 
     def test_heatmap_plot_renders_mesh_and_colorbar(self):
@@ -609,6 +616,117 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
             self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
             self.assertEqual(_sha256(Path(out)), _sha256(baseline))
+
+
+
+    def test_axis_scales_series_and_annotations_render_on_bridge_figure(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_log_series_annotation_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = tmpdir_path / "series.csv"
+            csv_path.write_text(
+                "x,y,condition\n1,10,A\n2,100,A\n1,20,B\n2,200,B\n",
+                encoding="utf-8",
+            )
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "series.png"),
+                plot_type="scatter",
+                x_column="x",
+                y_column="y",
+                title="Series",
+                series_column="condition",
+                y_scale="log",
+                annotations=({"x": 2.0, "y": 200.0, "text": "~10x", "arrow_to": {"x": 1.0, "y": 20.0}},),
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path, **_kwargs):
+                ax = fig.axes[0]
+                observed["yscale"] = ax.get_yscale()
+                observed["legend"] = [text.get_text() for text in ax.get_legend().get_texts()]
+                observed["texts"] = [text.get_text() for text in ax.texts]
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                render_bridge_figure(spec)
+
+            self.assertEqual(observed["yscale"], "log")
+            self.assertEqual(observed["legend"], ["A", "B"])
+            self.assertIn("~10x", observed["texts"])
+
+    def test_save_journal_png_embeds_dpi_metadata(self):
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory(prefix="bridge_png_dpi_") as tmpdir:
+            out = Path(tmpdir) / "figure.png"
+            fig, ax = plt.subplots()
+            try:
+                ax.plot([0, 1], [1, 2])
+                save_journal_fig(fig, out)
+            finally:
+                plt.close(fig)
+
+            with Image.open(out) as image:
+                dpi = image.info.get("dpi")
+            self.assertIsNotNone(dpi)
+            self.assertAlmostEqual(dpi[0], 600, delta=1)
+            self.assertAlmostEqual(dpi[1], 600, delta=1)
+
+    def test_facet_suptitle_reserves_headroom_and_diagnostics_check_it(self):
+        points = [
+            {"x": 0.0, "y": 1.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "A"},
+            {"x": 1.0, "y": 2.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "A"},
+            {"x": 0.0, "y": 3.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "B"},
+            {"x": 1.0, "y": 4.0, "label": "", "series": "", "yerr": None, "yerr_minus": None, "facet": "B"},
+        ]
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="facet",
+            x_column="x",
+            y_column="y",
+            title="Long facet title that must not collide with panel headers",
+            facet_column="phase",
+            facet_ncols=2,
+        )
+
+        fig, ax = plt.subplots(figsize=(89 / 25.4, 71 / 25.4), dpi=100)
+        try:
+            _render_plot(ax, points, spec)
+            _apply_layout(fig, ax, spec)
+            axes = [facet_ax for facet_ax in fig.axes if facet_ax.get_visible()]
+            result = diagnose_figure_geometry(fig, axes, layout_locked=False)
+            check = _geometry_check(result, "figure_title_panel_title_overlap")
+            self.assertTrue(check["passed"], check)
+        finally:
+            plt.close(fig)
+
+    def test_facet_annotations_render_once_not_once_per_panel(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_facet_annotation_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_facet_csv(tmpdir_path, "facet.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "facet.png"),
+                plot_type="facet",
+                x_column="cycle",
+                y_column="stress",
+                title="Facet annotation",
+                facet_column="phase",
+                annotations=({"x": 1.0, "y": 1.0, "text": "callout"},),
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path, **_kwargs):
+                observed["annotation_count"] = sum(
+                    1 for axis in fig.axes for text in axis.texts if text.get_text() == "callout"
+                )
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                render_bridge_figure(spec)
+
+            self.assertEqual(observed["annotation_count"], 1)
 
     def test_facet_plot_type_renders_one_subplot_per_facet(self):
         with tempfile.TemporaryDirectory(prefix="bridge_facet_") as tmpdir:

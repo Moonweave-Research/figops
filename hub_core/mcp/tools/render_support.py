@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
+import numpy as np
+
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
 from hub_core.data_contract import _read_data_safe, _validate_semantic_constraints
 from hub_core.figure_preflight import validate_figure_preflight
@@ -424,6 +426,7 @@ class McpRenderToolSupportMixin:
         *,
         required_columns: list[str],
         semantic_checks: dict[str, Any],
+        axis_scales: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         calculation_checks: list[dict[str, Any]] = []
         empty_summary = {"checks": [], "quality_passed": True, "manual_review_needed": False}
@@ -454,6 +457,21 @@ class McpRenderToolSupportMixin:
         if missing:
             return {"errors": [f"Missing required columns: {missing}"], "calculation_checks": empty_summary}
 
+        scale_errors: list[str] = []
+        for requested_col, scale in (axis_scales or {}).items():
+            if str(scale or "linear").strip().lower() != "log":
+                continue
+            actual_col = stripped_to_actual.get(str(requested_col).strip())
+            if actual_col is None:
+                continue
+            numeric = pd.to_numeric(df[actual_col], errors="coerce")
+            invalid_count = int((numeric.isna() | ~np.isfinite(numeric) | (numeric <= 0)).sum())
+            if invalid_count:
+                scale_errors.append(
+                    f"Column '{requested_col}' has {invalid_count} non-positive/non-numeric value(s); "
+                    "log scale requires finite values > 0."
+                )
+
         semantic_errors, _row_violations = _validate_semantic_constraints(
             df,
             semantic_checks,
@@ -463,7 +481,7 @@ class McpRenderToolSupportMixin:
             source_config_path="project_config.yaml",
         )
         return {
-            "errors": list(semantic_errors),
+            "errors": [*scale_errors, *list(semantic_errors)],
             "calculation_checks": {
                 "checks": calculation_checks,
                 "quality_passed": not any(
@@ -483,6 +501,7 @@ class McpRenderToolSupportMixin:
         y_column: str,
         z_column: str,
         facet_column: str,
+        series_column: str,
         semantic_checks: dict[str, Any],
     ) -> dict[str, Any]:
         return {
@@ -502,6 +521,7 @@ class McpRenderToolSupportMixin:
                             y_column,
                             *([z_column] if z_column else []),
                             *([facet_column] if facet_column else []),
+                            *([series_column] if series_column else []),
                         ],
                         "semantic_checks": semantic_checks,
                     }

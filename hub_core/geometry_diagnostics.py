@@ -48,6 +48,7 @@ _WARNING_ELIGIBLE = frozenset(
         "artists_outside_axes",
         "artists_outside_figure",
         "axis_label_title_overlap",
+        "figure_title_panel_title_overlap",
         "colorbar_overlap",
         "point_annotation_overlaps",
         "artist_overlaps",
@@ -99,6 +100,7 @@ def diagnose_figure_geometry(
         checks.append(_marker_marker_overlaps(ax, renderer, axis_index))
         checks.append(_text_axis_edge_proximity(ax, renderer, axis_index))
         checks.append(_legend_marker_consistency(ax, axis_index))
+    checks.append(_figure_title_panel_title_overlap(fig, data_axes, renderer))
     checks.append(_label_offset_consistency(fig, data_axes, renderer))
     checks.append(_font_size_token_drift(data_axes, font_token_sizes))
     if journal_compliance:
@@ -640,6 +642,52 @@ def _axis_label_title_overlap(ax: Axes, renderer: Any, axis_index: int) -> dict[
         "passed": overlaps == 0,
         "detail": f"{overlaps} label/title overlaps (axis {axis_index})",
         "data": {"axis_index": int(axis_index), "overlap_count": int(overlaps)},
+    }
+
+
+def _figure_title_panel_title_overlap(fig: Figure, data_axes: list[Axes], renderer: Any) -> dict[str, Any]:
+    name = "figure_title_panel_title_overlap"
+    suptitle = getattr(fig, "_suptitle", None)
+    if suptitle is None or not suptitle.get_text() or not _is_paintable(suptitle):
+        return {
+            "name": name,
+            "passed": True,
+            "detail": "skipped: no figure title",
+            "data": {"overlap_count": 0, "overlaps": []},
+        }
+    suptitle_bb = _extent(suptitle, renderer)
+    if suptitle_bb is None:
+        return {
+            "name": name,
+            "passed": True,
+            "detail": "skipped: figure title extent unavailable",
+            "data": {"overlap_count": 0, "overlaps": []},
+        }
+
+    overlaps: list[dict[str, Any]] = []
+    for axis_index, ax in enumerate(data_axes):
+        title = getattr(ax, "title", None)
+        if title is None or not title.get_text() or not _is_paintable(title):
+            continue
+        title_bb = _extent(title, renderer)
+        if title_bb is None:
+            continue
+        overlap = _overlap_fraction(suptitle_bb, title_bb)
+        if overlap > 0:
+            overlaps.append(
+                {
+                    "axis_index": int(axis_index),
+                    "figure_title": suptitle.get_text(),
+                    "panel_title": title.get_text(),
+                    "overlap_fraction": round(float(overlap), 4),
+                    "severity": _overlap_severity(overlap),
+                }
+            )
+    return {
+        "name": name,
+        "passed": len(overlaps) == 0,
+        "detail": f"{len(overlaps)} figure-title/panel-title overlaps",
+        "data": {"overlap_count": int(len(overlaps)), "overlaps": overlaps},
     }
 
 

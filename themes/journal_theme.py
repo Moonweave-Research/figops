@@ -1107,6 +1107,8 @@ def save_journal_fig(
     metadata = kwargs.pop("metadata", {}) or {}
     file_path = Path(filename)
     suffix = file_path.suffix.lower()
+    if suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff"}:
+        kwargs.setdefault("dpi", 600)
 
     # 도구 버전 정보 차단 — 환경별 바이너리 해시 불일치 방지
     metadata.setdefault("Creator", None)
