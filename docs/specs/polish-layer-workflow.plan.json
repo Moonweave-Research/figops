@@ -1,0 +1,869 @@
+{
+  "schema_version": "0.5",
+  "plan_id": "figops-polish-layer-finalization-v1",
+  "created_by": "keelplane",
+  "source_prompt": "$keelplane 전체 구현부터 일단은 문서화부터 구현 리뷰 검증 다시 리뷰 이런 진짜 최종 완성하기 위한 워크플로우를 한번 진행해보자",
+  "activation": {
+    "decision": "activate",
+    "matched_thresholds": [
+      "resumable-handoffs",
+      "multi-surface-fanout",
+      "planned-fanout",
+      "adversarial-verification",
+      "human-gates"
+    ],
+    "downgrade_target": null,
+    "reason": "The FigOps polish layer spans docs, MCP schemas, renderer behavior, fixtures, tests, reviews, and release readiness, so it needs staged handoffs and independent verification."
+  },
+  "objective": "Deliver a journal-compliant FigOps polish layer that improves visual finish without weakening reproducibility or journal-format constraints, with documentation, implementation, review, verification, second review, and release-ready evidence.",
+  "surfaces": [
+    {
+      "id": "figops-repo",
+      "kind": "repo",
+      "locator": "/Users/choemun-yeong/workspace/graph-making-hub",
+      "access_mode": "write-approved"
+    },
+    {
+      "id": "mcp-schema-surface",
+      "kind": "artifact",
+      "locator": "hub_core/mcp/schemas.py and hub_core/mcp/tools/render_csv.py",
+      "access_mode": "write-approved"
+    },
+    {
+      "id": "renderer-surface",
+      "kind": "artifact",
+      "locator": "plotting/bridge_renderer.py, plotting/utils.py, themes/style_profiles.py",
+      "access_mode": "write-approved"
+    },
+    {
+      "id": "test-surface",
+      "kind": "artifact",
+      "locator": "tests/test_mcp_normalization.py, tests/test_mcp_rendering.py, tests/test_bridge_renderer.py, tests/test_geometry_diagnostics.py, tests/test_visual_regression.py",
+      "access_mode": "write-approved"
+    },
+    {
+      "id": "docs-surface",
+      "kind": "document",
+      "locator": "docs/specs, docs/tools.md, README.md, CHANGELOG.md",
+      "access_mode": "write-approved"
+    },
+    {
+      "id": "pnu-reference-figures",
+      "kind": "data-source",
+      "locator": "/Users/choemun-yeong/Library/CloudStorage/GoogleDrive-choimoonyoung3631@gmail.com/My Drive/Research/03_Pusan_Sample/results/figures/pnu_260616",
+      "access_mode": "read-only"
+    }
+  ],
+  "assumptions": [
+    {
+      "claim": "The current branch is clean enough to start a focused polish workflow.",
+      "verification": "Run git status --short --branch before each wave and stop if unrelated dirty work appears."
+    },
+    {
+      "claim": "Polish improvements must remain journal-track compliant rather than adding arbitrary custom plotting freedom.",
+      "verification": "Every implementation slice must run targeted journal/theme tests and preserve compliance diagnostics."
+    },
+    {
+      "claim": "The highest leverage first implementation is typed MCP affordances plus small renderer-exposed polish controls, not a new plotting engine.",
+      "verification": "Map each planned change to existing renderer or MCP gaps before editing and reject changes that create a parallel API."
+    },
+    {
+      "claim": "Visual quality must be tested through artifacts, not only argument normalization.",
+      "verification": "Each feature slice needs a schema or normalization test plus a render or diagnostics test proving the value reaches figure output."
+    }
+  ],
+  "patterns": [
+    "Sequential",
+    "Parallel Fan-Out / Fan-In",
+    "Adversarial Verify",
+    "Human Gate",
+    "Resume And Cache"
+  ],
+  "phases": [
+    {
+      "id": "p0-scope-lock",
+      "name": "Scope lock and current-state inventory",
+      "entry_criteria": [
+        "Repository path is available",
+        "User requested full finalization workflow"
+      ],
+      "exit_criteria": [
+        "Current branch and dirty-state recorded",
+        "Polish scope and non-goals recorded"
+      ],
+      "depends_on": [],
+      "worker_ids": [
+        "lead"
+      ],
+      "outputs": [
+        "docs/specs/polish-layer-current-state-inventory.md"
+      ]
+    },
+    {
+      "id": "p1-document-spec",
+      "name": "Documentation-first product and technical spec",
+      "entry_criteria": [
+        "p0 inventory exists"
+      ],
+      "exit_criteria": [
+        "Spec names prioritized feature slices",
+        "Spec includes non-goals and release gates"
+      ],
+      "depends_on": [
+        "p0-scope-lock"
+      ],
+      "worker_ids": [
+        "doc-writer",
+        "lead"
+      ],
+      "outputs": [
+        "docs/specs/polish-layer-finalization.md",
+        "docs/specs/polish-layer-workflow.plan.json"
+      ]
+    },
+    {
+      "id": "p2-gap-fixtures",
+      "name": "Fixture and current-gap audit",
+      "entry_criteria": [
+        "p1 spec accepted as working source",
+        "No implementation edits started"
+      ],
+      "exit_criteria": [
+        "Ugly fixture list exists",
+        "Current FigOps behavior classified by gap type",
+        "Acceptance tests for first slice are named"
+      ],
+      "depends_on": [
+        "p1-document-spec"
+      ],
+      "worker_ids": [
+        "auditor",
+        "verifier"
+      ],
+      "outputs": [
+        "polish-gap-audit-report.md",
+        "fixture-manifest.json"
+      ]
+    },
+    {
+      "id": "p3-implement-wave1",
+      "name": "Small implementation wave",
+      "entry_criteria": [
+        "p2 audit selects one bounded slice",
+        "Tests to fail or extend are named"
+      ],
+      "exit_criteria": [
+        "Implementation patch is minimal",
+        "Targeted tests pass",
+        "Docs updated for changed surface"
+      ],
+      "depends_on": [
+        "p2-gap-fixtures"
+      ],
+      "worker_ids": [
+        "executor"
+      ],
+      "outputs": [
+        "implementation.patch",
+        "targeted-test-log.txt",
+        "docs-update.md"
+      ]
+    },
+    {
+      "id": "p4-first-review",
+      "name": "First independent review",
+      "entry_criteria": [
+        "p3 patch and test log exist"
+      ],
+      "exit_criteria": [
+        "Findings are confirmed, refuted, or fixed",
+        "No unresolved high severity regression remains"
+      ],
+      "depends_on": [
+        "p3-implement-wave1"
+      ],
+      "worker_ids": [
+        "reviewer"
+      ],
+      "outputs": [
+        "first-review-findings.md"
+      ]
+    },
+    {
+      "id": "p5-verification",
+      "name": "Verification and visual evidence",
+      "entry_criteria": [
+        "p4 high severity issues resolved or explicitly deferred"
+      ],
+      "exit_criteria": [
+        "Schema, normalization, render, and diagnostics checks pass",
+        "Any skipped validation is documented"
+      ],
+      "depends_on": [
+        "p4-first-review"
+      ],
+      "worker_ids": [
+        "verifier"
+      ],
+      "outputs": [
+        "verification-receipt.md",
+        "full-test-log.txt",
+        "render-artifacts-manifest.json"
+      ]
+    },
+    {
+      "id": "p6-final-review",
+      "name": "Second adversarial review",
+      "entry_criteria": [
+        "p5 verification receipt exists"
+      ],
+      "exit_criteria": [
+        "Reviewer fails to refute completion claims",
+        "Release blockers list is empty or gated"
+      ],
+      "depends_on": [
+        "p5-verification"
+      ],
+      "worker_ids": [
+        "reviewer",
+        "lead"
+      ],
+      "outputs": [
+        "final-review.md"
+      ]
+    },
+    {
+      "id": "p7-release-ready",
+      "name": "Release readiness and handoff",
+      "entry_criteria": [
+        "p6 final review passes"
+      ],
+      "exit_criteria": [
+        "Changelog or release notes drafted",
+        "PR body and merge checklist are ready",
+        "Public release remains gated"
+      ],
+      "depends_on": [
+        "p6-final-review"
+      ],
+      "worker_ids": [
+        "lead"
+      ],
+      "outputs": [
+        "release-readiness.md",
+        "pr-body.md"
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "lead",
+      "role": "Research Hub Commander",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "force push",
+        "history rewrite",
+        "secret access",
+        "unrequested public release"
+      ],
+      "context_budget": {
+        "max_files": 24,
+        "max_tokens": 60000,
+        "must_include": [
+          "AGENTS.md",
+          "pyproject.toml",
+          "docs/specs",
+          "git status output"
+        ],
+        "must_exclude": [
+          ".venv",
+          "dist artifacts unless release phase"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "repository path",
+          "user objective",
+          "workflow.plan.json"
+        ],
+        "required_output_schema": "markdown receipt with decisions, touched files, commands, and next gate",
+        "stop_conditions": [
+          "phase exit criteria met",
+          "risk gate reached",
+          "unrelated dirty work detected"
+        ]
+      },
+      "ownership": [
+        "phase integration",
+        "risk gates",
+        "final synthesis"
+      ]
+    },
+    {
+      "id": "doc-writer",
+      "role": "writer",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": false,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "code edits",
+        "test weakening",
+        "release edits"
+      ],
+      "context_budget": {
+        "max_files": 12,
+        "max_tokens": 30000,
+        "must_include": [
+          "prior polish review",
+          "docs/specs",
+          "README.md"
+        ],
+        "must_exclude": [
+          "unrelated docs"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "repository path",
+          "docs/specs/polish-layer-current-state-inventory.md",
+          "workflow.plan.json"
+        ],
+        "required_output_schema": "spec markdown with research, product position, architecture, gates, fixtures, and plan",
+        "stop_conditions": [
+          "spec complete",
+          "scope ambiguity found"
+        ]
+      },
+      "ownership": [
+        "documentation",
+        "non-goals",
+        "acceptance criteria"
+      ]
+    },
+    {
+      "id": "auditor",
+      "role": "explore",
+      "tool_permissions": {
+        "read": true,
+        "write": false,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "source edits",
+        "generated release artifacts",
+        "test edits"
+      ],
+      "context_budget": {
+        "max_files": 32,
+        "max_tokens": 50000,
+        "must_include": [
+          "hub_core/mcp/schemas.py",
+          "hub_core/mcp/tools/render_csv.py",
+          "plotting/bridge_renderer.py",
+          "tests"
+        ],
+        "must_exclude": [
+          ".venv",
+          "dist"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "repository path",
+          "docs/specs/polish-layer-finalization.md"
+        ],
+        "required_output_schema": "gap audit markdown plus fixture manifest json",
+        "stop_conditions": [
+          "all P1 gaps classified",
+          "no new high-value gaps after one dry pass"
+        ]
+      },
+      "ownership": [
+        "current-gap audit",
+        "fixture design"
+      ]
+    },
+    {
+      "id": "executor",
+      "role": "executor",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "broad refactor",
+        "new dependency",
+        "public API break without migration",
+        "test weakening"
+      ],
+      "context_budget": {
+        "max_files": 18,
+        "max_tokens": 50000,
+        "must_include": [
+          "selected fixture",
+          "selected tests",
+          "implementation target files"
+        ],
+        "must_exclude": [
+          "unrelated modules"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "repository path",
+          "fixture-manifest.json",
+          "selected slice",
+          "acceptance tests"
+        ],
+        "required_output_schema": "patch summary with tests and changed files",
+        "stop_conditions": [
+          "targeted tests pass",
+          "scope expansion needed",
+          "risk gate reached"
+        ]
+      },
+      "ownership": [
+        "minimal implementation",
+        "targeted tests",
+        "local docs sync"
+      ]
+    },
+    {
+      "id": "reviewer",
+      "role": "code-reviewer",
+      "tool_permissions": {
+        "read": true,
+        "write": false,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "fixing code directly",
+        "approving unverified claims",
+        "style-only nit blocking"
+      ],
+      "context_budget": {
+        "max_files": 24,
+        "max_tokens": 50000,
+        "must_include": [
+          "current diff",
+          "tests touched",
+          "spec acceptance criteria"
+        ],
+        "must_exclude": [
+          "unrelated historical diffs"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "repository path",
+          "implementation.patch",
+          "targeted-test-log.txt"
+        ],
+        "required_output_schema": "findings-first review with severity, file-line evidence, and refutation attempts",
+        "stop_conditions": [
+          "no high severity findings",
+          "blocker found"
+        ]
+      },
+      "ownership": [
+        "adversarial review",
+        "regression surfacing"
+      ]
+    },
+    {
+      "id": "verifier",
+      "role": "verifier",
+      "tool_permissions": {
+        "read": true,
+        "write": false,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "source edits",
+        "changing expected outputs to pass",
+        "release publication"
+      ],
+      "context_budget": {
+        "max_files": 20,
+        "max_tokens": 40000,
+        "must_include": [
+          "test logs",
+          "render artifacts",
+          "docs/tools.md if regenerated"
+        ],
+        "must_exclude": [
+          "unrelated generated files"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "repository path",
+          "first-review-findings.md",
+          "implementation.patch"
+        ],
+        "required_output_schema": "verification receipt with exact commands, exit codes, and evidence artifacts",
+        "stop_conditions": [
+          "claims falsified",
+          "verification complete",
+          "environment blocker documented"
+        ]
+      },
+      "ownership": [
+        "independent verification",
+        "evidence receipts"
+      ]
+    }
+  ],
+  "handoffs": [
+    {
+      "from_phase": "p0-scope-lock",
+      "to_phase": "p1-document-spec",
+      "artifact": "docs/specs/polish-layer-current-state-inventory.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "branch",
+          "dirty_state",
+          "scope",
+          "non_goals"
+        ],
+        "validation_command": "test -s docs/specs/polish-layer-current-state-inventory.md"
+      }
+    },
+    {
+      "from_phase": "p1-document-spec",
+      "to_phase": "p2-gap-fixtures",
+      "artifact": "docs/specs/polish-layer-finalization.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "research",
+          "product_position",
+          "architecture",
+          "execution_model",
+          "safety_gates",
+          "fixtures",
+          "release_plan"
+        ],
+        "validation_command": "test -s docs/specs/polish-layer-finalization.md"
+      }
+    },
+    {
+      "from_phase": "p2-gap-fixtures",
+      "to_phase": "p3-implement-wave1",
+      "artifact": "fixture-manifest.json",
+      "artifact_schema": {
+        "format": "json",
+        "required_fields": [
+          "fixtures",
+          "expected_failures",
+          "selected_wave1_slice"
+        ],
+        "validation_command": "python -m json.tool fixture-manifest.json >/dev/null"
+      }
+    },
+    {
+      "from_phase": "p3-implement-wave1",
+      "to_phase": "p4-first-review",
+      "artifact": "implementation.patch",
+      "artifact_schema": {
+        "format": "patch",
+        "required_fields": [
+          "files",
+          "diff",
+          "tests"
+        ],
+        "validation_command": "git diff --check"
+      }
+    },
+    {
+      "from_phase": "p4-first-review",
+      "to_phase": "p5-verification",
+      "artifact": "first-review-findings.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "findings",
+          "severity",
+          "evidence",
+          "status"
+        ],
+        "validation_command": "test -s first-review-findings.md"
+      }
+    },
+    {
+      "from_phase": "p5-verification",
+      "to_phase": "p6-final-review",
+      "artifact": "verification-receipt.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "commands",
+          "exit_codes",
+          "artifacts",
+          "skips"
+        ],
+        "validation_command": "test -s verification-receipt.md"
+      }
+    },
+    {
+      "from_phase": "p6-final-review",
+      "to_phase": "p7-release-ready",
+      "artifact": "final-review.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "completion_claims",
+          "refutation_attempts",
+          "remaining_risks"
+        ],
+        "validation_command": "test -s final-review.md"
+      }
+    }
+  ],
+  "parallelism": {
+    "shape": "hybrid",
+    "concurrency_cap": 3,
+    "fan_in_rule": "Fan in after p2 gap audit and again after p6 final review; implementation waves stay sequential unless selected slices touch disjoint files.",
+    "barriers": [
+      "p1 spec before implementation",
+      "p2 audit before selected slice",
+      "p5 verification before final review",
+      "user approval before public release"
+    ]
+  },
+  "verification": [
+    {
+      "claim_or_output": "Spec matches repo reality",
+      "falsifier": "Find a claimed capability absent from current source or a source capability omitted from P1 scope",
+      "evidence_required": [
+        "file:line citations",
+        "git status",
+        "spec checklist"
+      ]
+    },
+    {
+      "claim_or_output": "Implementation reaches MCP users",
+      "falsifier": "Feature only changes renderer internals without schema, normalization, docs, or MCP route coverage",
+      "evidence_required": [
+        "schema diff",
+        "normalization tests",
+        "docs/tools or tool doc evidence"
+      ]
+    },
+    {
+      "claim_or_output": "Implementation reaches pixels or diagnostics",
+      "falsifier": "Tests only inspect Python objects and do not render or inspect output artifacts where visual behavior matters",
+      "evidence_required": [
+        "render test",
+        "artifact manifest",
+        "geometry diagnostics receipt"
+      ]
+    },
+    {
+      "claim_or_output": "Journal compliance remains intact",
+      "falsifier": "New style controls bypass journal_theme constraints or reduce compliance diagnostics",
+      "evidence_required": [
+        "journal theme tests",
+        "targeted renderer tests",
+        "review note"
+      ]
+    },
+    {
+      "claim_or_output": "Final completion is release ready",
+      "falsifier": "Unresolved high severity review item, failed targeted test, dirty generated files, or missing changelog note",
+      "evidence_required": [
+        "final review",
+        "test log",
+        "git diff summary",
+        "release checklist"
+      ]
+    }
+  ],
+  "risk_gates": [
+    {
+      "trigger": "write actions in repository",
+      "safe_default": "stop before write actions and ask for approval",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "shell commands for tests and generation",
+      "safe_default": "stop before shell commands and ask for approval",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "new dependency introduction",
+      "safe_default": "do not add dependency without approval",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "public release publication",
+      "safe_default": "stop before public release and ask for approval",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "history rewrite or force push",
+      "safe_default": "do not rewrite history without approval",
+      "requires_user_approval": true
+    }
+  ],
+  "budget": {
+    "max_agents": 6,
+    "max_rounds": 7,
+    "max_retries": 2,
+    "time_box": "One focused feature cycle before PR; stop after two review-fix loops without new high severity findings.",
+    "file_touch_limit": "Prefer under 12 source files per implementation wave; docs and tests may add focused fixtures."
+  },
+  "resume": {
+    "cacheable_outputs": [
+      "docs/specs/polish-layer-current-state-inventory.md",
+      "docs/specs/polish-layer-finalization.md",
+      "docs/specs/polish-layer-workflow.plan.json",
+      "fixture-manifest.json",
+      "targeted-test-log.txt",
+      "first-review-findings.md",
+      "verification-receipt.md",
+      "final-review.md"
+    ],
+    "invalidators": [
+      "branch changes from origin/main",
+      "schema or renderer files modified outside this workflow",
+      "test suite baseline changes",
+      "user changes priority order"
+    ],
+    "restart_points": [
+      "p1-document-spec",
+      "p2-gap-fixtures",
+      "p3-implement-wave1",
+      "p5-verification",
+      "p7-release-ready"
+    ]
+  },
+  "execution_path": {
+    "mode": "subagent-plan",
+    "consumer": "codex-agent",
+    "first_slice": {
+      "instruction": "Create the documentation-first FigOps polish layer spec and machine-readable workflow plan in docs/specs without implementation edits.",
+      "inputs": [
+        "repository path",
+        "user objective",
+        "prior polish review",
+        "current git status"
+      ],
+      "expected_output": "docs/specs/polish-layer-finalization.md and docs/specs/polish-layer-workflow.plan.json with validation evidence",
+      "completion_check": "python -m json.tool docs/specs/polish-layer-workflow.plan.json succeeds and the spec contains research, product position, architecture, execution model, safety gates, fixtures, and release plan",
+      "forbidden_actions": [
+        "source code edits",
+        "test edits",
+        "dependency changes",
+        "release publication"
+      ]
+    },
+    "first_wave": {
+      "id": "w1-documentation",
+      "concurrency_cap": 1,
+      "slices": [
+        {
+          "id": "s1-doc-spec",
+          "instruction": "Author docs/specs/polish-layer-finalization.md from the current repo audit and write docs/specs/polish-layer-workflow.plan.json as the source of truth.",
+          "inputs": [
+            "repository path",
+            "prior polish review",
+            "workflow schema"
+          ],
+          "expected_output": "Spec and plan files are present and internally consistent.",
+          "completion_check": "Both files validate with json.tool and section grep checks.",
+          "forbidden_actions": [
+            "source code edits",
+            "test edits",
+            "dependency changes",
+            "release publication"
+          ]
+        }
+      ],
+      "entry_gate": "Repository is on a clean or workflow-owned dirty state and the user requested documentation-first execution.",
+      "exit_gate": "Documentation receipt exists with validation commands and no source edits.",
+      "fan_in": "No fan-in needed for the first documentation slice."
+    },
+    "waves": [
+      {
+        "id": "w2-audit-fixtures",
+        "depends_on": [
+          "w1-documentation"
+        ],
+        "concurrency_cap": 2,
+        "slices": [
+          "s2-gap-audit",
+          "s3-fixture-manifest"
+        ],
+        "entry_gate": "Prior receipt is verified and documentation exit gate passed.",
+        "exit_gate": "Audit report and fixture manifest identify one bounded implementation slice."
+      },
+      {
+        "id": "w3-implementation",
+        "depends_on": [
+          "w2-audit-fixtures"
+        ],
+        "concurrency_cap": 1,
+        "slices": [
+          "s4-red-tests",
+          "s5-implementation",
+          "s6-doc-sync"
+        ],
+        "entry_gate": "Prior receipt is verified and selected slice has acceptance tests.",
+        "exit_gate": "Targeted tests pass and diff stays within selected slice."
+      },
+      {
+        "id": "w4-review-verify",
+        "depends_on": [
+          "w3-implementation"
+        ],
+        "concurrency_cap": 2,
+        "slices": [
+          "s7-first-review",
+          "s8-verification"
+        ],
+        "entry_gate": "Prior receipt is verified and implementation patch exists.",
+        "exit_gate": "High severity review findings are fixed or gated and verification receipt passes."
+      },
+      {
+        "id": "w5-final-review-release-ready",
+        "depends_on": [
+          "w4-review-verify"
+        ],
+        "concurrency_cap": 1,
+        "slices": [
+          "s9-final-review",
+          "s10-release-ready"
+        ],
+        "entry_gate": "Prior receipt is verified and verification exit gate passed.",
+        "exit_gate": "Final review fails to refute completion claims and release checklist is ready."
+      }
+    ]
+  }
+}

@@ -259,9 +259,21 @@ def test_render_csv_schema_accepts_axis_scale_series_and_annotations_args():
     assert properties["x_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
     assert properties["y_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
     assert properties["series_column"] == {"type": "string"}
-    assert properties["annotations"] == {"type": "array", "items": {"type": "object"}}
-    assert properties["guide_curves"] == {"type": "array", "items": {"type": "object"}}
-    assert properties["fill_between"] == {"type": "array", "items": {"type": "object"}}
+    assert properties["series_styles"]["additionalProperties"]["additionalProperties"] is False
+    assert "markeredgecolor" in properties["series_styles"]["additionalProperties"]["properties"]
+    assert properties["annotations"]["items"]["anyOf"] == [
+        {"required": ["x", "y", "text"]},
+        {"required": ["x", "y", "arrow_to"]},
+        {"required": ["region"]},
+        {"required": ["hspan"]},
+        {"required": ["vspan"]},
+    ]
+    assert properties["annotations"]["items"]["properties"]["arrow_to"]["required"] == ["x", "y"]
+    assert properties["guide_curves"]["items"]["anyOf"] == [{"required": ["points"]}, {"required": ["x", "y"]}]
+    assert properties["fill_between"]["items"]["anyOf"] == [
+        {"required": ["points"]},
+        {"required": ["x_column", "y1_column", "y2_column"]},
+    ]
     assert properties["yerr_column"] == {"type": "string"}
     assert properties["yerr_minus_column"] == {"type": "string"}
     assert properties["yerr_cap_width"] == {"type": "number", "minimum": 0, "default": 3.0}
@@ -333,8 +345,15 @@ def test_render_csv_multipanel_schema_accepts_panel_specs():
     panel_properties = properties["panels"]["items"]["properties"]
     assert panel_properties["data_path"]["type"] == "string"
     assert panel_properties["x_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
-    assert panel_properties["guide_curves"] == {"type": "array", "items": {"type": "object"}}
-    assert panel_properties["fill_between"] == {"type": "array", "items": {"type": "object"}}
+    assert panel_properties["guide_curves"]["items"]["properties"]["points"]["items"]["required"] == ["x", "y"]
+    assert panel_properties["fill_between"]["items"]["properties"]["points"]["items"]["required"] == ["x", "y1", "y2"]
+    assert panel_properties["annotations"]["items"]["properties"]["hspan"]["required"] == ["ymin", "ymax"]
+    assert panel_properties["series_styles"]["additionalProperties"]["properties"]["fill"]["enum"] == [
+        "full",
+        "filled",
+        "none",
+        "open",
+    ]
     assert panel_properties["yerr_column"] == {"type": "string"}
     assert properties["compose_mode"] == {"type": "string", "enum": ["draft", "manuscript"], "default": "draft"}
     assert properties["font_scale"] == {"type": "number", "default": 1.0}

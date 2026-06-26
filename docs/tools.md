@@ -1152,7 +1152,171 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "type": "boolean"
     },
     "annotations": {
+      "description": "Point text/callout annotations plus rectangular region, hspan, and vspan overlays.",
       "items": {
+        "anyOf": [
+          {
+            "required": [
+              "x",
+              "y",
+              "text"
+            ]
+          },
+          {
+            "required": [
+              "x",
+              "y",
+              "arrow_to"
+            ]
+          },
+          {
+            "required": [
+              "region"
+            ]
+          },
+          {
+            "required": [
+              "hspan"
+            ]
+          },
+          {
+            "required": [
+              "vspan"
+            ]
+          }
+        ],
+        "properties": {
+          "alpha": {
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "arrow_to": {
+            "properties": {
+              "x": {
+                "type": [
+                  "number",
+                  "string"
+                ]
+              },
+              "y": {
+                "type": [
+                  "number",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "type": "object"
+          },
+          "arrowstyle": {
+            "default": "->",
+            "type": "string"
+          },
+          "color": {
+            "default": "black",
+            "type": "string"
+          },
+          "connectionstyle": {
+            "type": "string"
+          },
+          "hspan": {
+            "properties": {
+              "ymax": {
+                "type": [
+                  "number",
+                  "string"
+                ]
+              },
+              "ymin": {
+                "type": [
+                  "number",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "ymin",
+              "ymax"
+            ],
+            "type": "object"
+          },
+          "region": {
+            "properties": {
+              "xmax": {
+                "type": [
+                  "number",
+                  "string"
+                ]
+              },
+              "xmin": {
+                "type": [
+                  "number",
+                  "string"
+                ]
+              },
+              "ymax": {
+                "type": [
+                  "number",
+                  "string"
+                ]
+              },
+              "ymin": {
+                "type": [
+                  "number",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "xmin",
+              "xmax",
+              "ymin",
+              "ymax"
+            ],
+            "type": "object"
+          },
+          "text": {
+            "type": "string"
+          },
+          "vspan": {
+            "properties": {
+              "xmax": {
+                "type": [
+                  "number",
+                  "string"
+                ]
+              },
+              "xmin": {
+                "type": [
+                  "number",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "xmin",
+              "xmax"
+            ],
+            "type": "object"
+          },
+          "x": {
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "y": {
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        },
         "type": "object"
       },
       "type": "array"
@@ -1210,7 +1374,84 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "type": "string"
     },
     "fill_between": {
+      "description": "Manual filled bands from point triplets or CSV x/y1/y2 columns.",
       "items": {
+        "anyOf": [
+          {
+            "required": [
+              "points"
+            ]
+          },
+          {
+            "required": [
+              "x_column",
+              "y1_column",
+              "y2_column"
+            ]
+          }
+        ],
+        "properties": {
+          "alpha": {
+            "default": 0.2,
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "color": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "properties": {
+                "x": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "y1": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "y2": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "x",
+                "y1",
+                "y2"
+              ],
+              "type": "object"
+            },
+            "minItems": 2,
+            "type": "array"
+          },
+          "x_column": {
+            "type": "string"
+          },
+          "y1_column": {
+            "type": "string"
+          },
+          "y2_column": {
+            "type": "string"
+          },
+          "zorder": {
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        },
         "type": "object"
       },
       "type": "array"
@@ -1219,7 +1460,90 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "type": "boolean"
     },
     "guide_curves": {
+      "description": "Manual guide curves from point objects or parallel x/y arrays.",
       "items": {
+        "anyOf": [
+          {
+            "required": [
+              "points"
+            ]
+          },
+          {
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        ],
+        "properties": {
+          "color": {
+            "default": "black",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "linestyle": {
+            "type": "string"
+          },
+          "linewidth": {
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "points": {
+            "items": {
+              "properties": {
+                "x": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "y": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ],
+              "type": "object"
+            },
+            "minItems": 2,
+            "type": "array"
+          },
+          "x": {
+            "items": {
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "minItems": 2,
+            "type": "array"
+          },
+          "y": {
+            "items": {
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "minItems": 2,
+            "type": "array"
+          },
+          "zorder": {
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        },
         "type": "object"
       },
       "type": "array"
@@ -1280,8 +1604,42 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     },
     "series_styles": {
       "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "edgecolor": {
+            "type": "string"
+          },
+          "facecolor": {
+            "type": "string"
+          },
+          "fill": {
+            "enum": [
+              "full",
+              "filled",
+              "none",
+              "open"
+            ],
+            "type": "string"
+          },
+          "hatch": {
+            "type": "string"
+          },
+          "linestyle": {
+            "type": "string"
+          },
+          "marker": {
+            "type": "string"
+          },
+          "markeredgecolor": {
+            "type": "string"
+          },
+          "markerfacecolor": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
+      "description": "Per-series style overrides keyed by exact series label.",
       "type": "object"
     },
     "significance_markers": {
@@ -1698,7 +2056,171 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
         "additionalProperties": false,
         "properties": {
           "annotations": {
+            "description": "Point text/callout annotations plus rectangular region, hspan, and vspan overlays.",
             "items": {
+              "anyOf": [
+                {
+                  "required": [
+                    "x",
+                    "y",
+                    "text"
+                  ]
+                },
+                {
+                  "required": [
+                    "x",
+                    "y",
+                    "arrow_to"
+                  ]
+                },
+                {
+                  "required": [
+                    "region"
+                  ]
+                },
+                {
+                  "required": [
+                    "hspan"
+                  ]
+                },
+                {
+                  "required": [
+                    "vspan"
+                  ]
+                }
+              ],
+              "properties": {
+                "alpha": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "arrow_to": {
+                  "properties": {
+                    "x": {
+                      "type": [
+                        "number",
+                        "string"
+                      ]
+                    },
+                    "y": {
+                      "type": [
+                        "number",
+                        "string"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "type": "object"
+                },
+                "arrowstyle": {
+                  "default": "->",
+                  "type": "string"
+                },
+                "color": {
+                  "default": "black",
+                  "type": "string"
+                },
+                "connectionstyle": {
+                  "type": "string"
+                },
+                "hspan": {
+                  "properties": {
+                    "ymax": {
+                      "type": [
+                        "number",
+                        "string"
+                      ]
+                    },
+                    "ymin": {
+                      "type": [
+                        "number",
+                        "string"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ymin",
+                    "ymax"
+                  ],
+                  "type": "object"
+                },
+                "region": {
+                  "properties": {
+                    "xmax": {
+                      "type": [
+                        "number",
+                        "string"
+                      ]
+                    },
+                    "xmin": {
+                      "type": [
+                        "number",
+                        "string"
+                      ]
+                    },
+                    "ymax": {
+                      "type": [
+                        "number",
+                        "string"
+                      ]
+                    },
+                    "ymin": {
+                      "type": [
+                        "number",
+                        "string"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "xmin",
+                    "xmax",
+                    "ymin",
+                    "ymax"
+                  ],
+                  "type": "object"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "vspan": {
+                  "properties": {
+                    "xmax": {
+                      "type": [
+                        "number",
+                        "string"
+                      ]
+                    },
+                    "xmin": {
+                      "type": [
+                        "number",
+                        "string"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "xmin",
+                    "xmax"
+                  ],
+                  "type": "object"
+                },
+                "x": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "y": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                }
+              },
               "type": "object"
             },
             "type": "array"
@@ -1711,13 +2233,173 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             "type": "string"
           },
           "fill_between": {
+            "description": "Manual filled bands from point triplets or CSV x/y1/y2 columns.",
             "items": {
+              "anyOf": [
+                {
+                  "required": [
+                    "points"
+                  ]
+                },
+                {
+                  "required": [
+                    "x_column",
+                    "y1_column",
+                    "y2_column"
+                  ]
+                }
+              ],
+              "properties": {
+                "alpha": {
+                  "default": 0.2,
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "color": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "points": {
+                  "items": {
+                    "properties": {
+                      "x": {
+                        "type": [
+                          "number",
+                          "string"
+                        ]
+                      },
+                      "y1": {
+                        "type": [
+                          "number",
+                          "string"
+                        ]
+                      },
+                      "y2": {
+                        "type": [
+                          "number",
+                          "string"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y1",
+                      "y2"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "x_column": {
+                  "type": "string"
+                },
+                "y1_column": {
+                  "type": "string"
+                },
+                "y2_column": {
+                  "type": "string"
+                },
+                "zorder": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                }
+              },
               "type": "object"
             },
             "type": "array"
           },
           "guide_curves": {
+            "description": "Manual guide curves from point objects or parallel x/y arrays.",
             "items": {
+              "anyOf": [
+                {
+                  "required": [
+                    "points"
+                  ]
+                },
+                {
+                  "required": [
+                    "x",
+                    "y"
+                  ]
+                }
+              ],
+              "properties": {
+                "color": {
+                  "default": "black",
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "linestyle": {
+                  "type": "string"
+                },
+                "linewidth": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "points": {
+                  "items": {
+                    "properties": {
+                      "x": {
+                        "type": [
+                          "number",
+                          "string"
+                        ]
+                      },
+                      "y": {
+                        "type": [
+                          "number",
+                          "string"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "x": {
+                  "items": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "y": {
+                  "items": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "zorder": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                }
+              },
               "type": "object"
             },
             "type": "array"
@@ -1741,8 +2423,42 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
           },
           "series_styles": {
             "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "edgecolor": {
+                  "type": "string"
+                },
+                "facecolor": {
+                  "type": "string"
+                },
+                "fill": {
+                  "enum": [
+                    "full",
+                    "filled",
+                    "none",
+                    "open"
+                  ],
+                  "type": "string"
+                },
+                "hatch": {
+                  "type": "string"
+                },
+                "linestyle": {
+                  "type": "string"
+                },
+                "marker": {
+                  "type": "string"
+                },
+                "markeredgecolor": {
+                  "type": "string"
+                },
+                "markerfacecolor": {
+                  "type": "string"
+                }
+              },
               "type": "object"
             },
+            "description": "Per-series style overrides keyed by exact series label.",
             "type": "object"
           },
           "title": {
