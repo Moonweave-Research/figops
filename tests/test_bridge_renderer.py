@@ -2075,6 +2075,98 @@ class SeriesStyleOverrideTest(unittest.TestCase):
         self.assertEqual(ax.errorbar.call_args.kwargs["markerfacecolor"], "none")
         self.assertEqual(ax.errorbar.call_args.kwargs["markeredgecolor"], "black")
 
+    def test_render_xy_plot_applies_series_visual_hierarchy_overrides(self):
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            series_column="series",
+            series_styles={
+                "Reference": {
+                    "color": "#888888",
+                    "alpha": "0.35",
+                    "size": "18",
+                    "zorder": "2",
+                    "label": "Literature",
+                },
+                "This work": {
+                    "color": "#1f77b4",
+                    "alpha": "1",
+                    "size": "42",
+                    "zorder": "5",
+                    "label": "This work",
+                },
+            },
+        )
+        points = [
+            {"x": 1.0, "y": 2.0, "series": "Reference", "label": ""},
+            {"x": 2.0, "y": 3.0, "series": "This work", "label": ""},
+        ]
+        ax = MagicMock()
+        ax.margins.return_value = (0.05, 0.05)
+
+        _render_xy_plot(ax, points, spec, line=False)
+
+        reference_call = ax.scatter.call_args_list[0]
+        this_work_call = ax.scatter.call_args_list[1]
+        self.assertNotIn("c", reference_call.kwargs)
+        self.assertEqual(reference_call.kwargs["facecolors"], "#888888")
+        self.assertEqual(reference_call.kwargs["edgecolors"], "#888888")
+        self.assertEqual(reference_call.kwargs["alpha"], 0.35)
+        self.assertEqual(reference_call.kwargs["s"], 18.0)
+        self.assertEqual(reference_call.kwargs["zorder"], 2.0)
+        self.assertEqual(reference_call.kwargs["label"], "Literature")
+        self.assertNotIn("c", this_work_call.kwargs)
+        self.assertEqual(this_work_call.kwargs["facecolors"], "#1f77b4")
+        self.assertEqual(this_work_call.kwargs["edgecolors"], "#1f77b4")
+        self.assertEqual(this_work_call.kwargs["alpha"], 1.0)
+        self.assertEqual(this_work_call.kwargs["s"], 42.0)
+        self.assertEqual(this_work_call.kwargs["zorder"], 5.0)
+        self.assertEqual(this_work_call.kwargs["label"], "This work")
+
+    def test_render_xy_plot_applies_line_visual_hierarchy_overrides(self):
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="line",
+            x_column="x",
+            y_column="y",
+            title="t",
+            series_column="series",
+            series_styles={
+                "A": {
+                    "color": "#444444",
+                    "alpha": "0.6",
+                    "linewidth": "2.4",
+                    "size": "6",
+                    "zorder": "3",
+                    "label": "Series A",
+                }
+            },
+        )
+        points = [
+            {"x": 1.0, "y": 2.0, "series": "A", "label": ""},
+            {"x": 2.0, "y": 3.0, "series": "A", "label": ""},
+        ]
+        ax = MagicMock()
+        ax.margins.return_value = (0.05, 0.05)
+
+        _render_xy_plot(ax, points, spec, line=True)
+
+        ax.plot.assert_called_once()
+        kwargs = ax.plot.call_args.kwargs
+        self.assertEqual(kwargs["color"], "#444444")
+        self.assertEqual(kwargs["markerfacecolor"], "#444444")
+        self.assertEqual(kwargs["markeredgecolor"], "#444444")
+        self.assertEqual(kwargs["alpha"], 0.6)
+        self.assertEqual(kwargs["linewidth"], 2.4)
+        self.assertEqual(kwargs["markersize"], 6.0)
+        self.assertEqual(kwargs["zorder"], 3.0)
+        self.assertEqual(kwargs["label"], "Series A")
+
 
 class AnnotationStyleTest(unittest.TestCase):
     def setUp(self):

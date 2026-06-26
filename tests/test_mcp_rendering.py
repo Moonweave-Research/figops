@@ -1109,7 +1109,19 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                         "y_column": "y",
                         "plot_type": "scatter",
                         "series_column": "condition",
-                        "series_styles": {"A": {"marker": "o", "fill": "none", "edgecolor": "black"}},
+                        "series_styles": {
+                            "A": {
+                                "marker": "o",
+                                "fill": "none",
+                                "edgecolor": "black",
+                                "color": "#777777",
+                                "alpha": "0.4",
+                                "size": "18",
+                                "linewidth": "1.8",
+                                "zorder": "3",
+                                "label": "Literature",
+                            }
+                        },
                         "x_scale": "linear",
                         "y_scale": "log",
                         "annotations": [
@@ -1127,7 +1139,22 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertIn(result["status"], {"ok", "warning"})
             self.assertEqual(captured["series_column"], "condition")
-            self.assertEqual(captured["series_styles"], {"A": {"marker": "o", "fill": "none", "edgecolor": "black"}})
+            self.assertEqual(
+                captured["series_styles"],
+                {
+                    "A": {
+                        "marker": "o",
+                        "fill": "none",
+                        "edgecolor": "black",
+                        "color": "#777777",
+                        "alpha": "0.4",
+                        "size": "18",
+                        "linewidth": "1.8",
+                        "zorder": "3",
+                        "label": "Literature",
+                    }
+                },
+            )
             self.assertEqual(captured["x_scale"], "linear")
             self.assertEqual(captured["y_scale"], "log")
             self.assertEqual(captured["annotations"][0]["text"], "~10x")
