@@ -222,6 +222,12 @@ _SERIES_STYLE_SCHEMA = _object_schema(
         "markeredgecolor": {"type": "string"},
         "linestyle": {"type": "string"},
         "hatch": {"type": "string"},
+        "color": {"type": "string"},
+        "alpha": _NUMBER_OR_STRING_SCHEMA,
+        "size": _NUMBER_OR_STRING_SCHEMA,
+        "linewidth": _NUMBER_OR_STRING_SCHEMA,
+        "zorder": _NUMBER_OR_STRING_SCHEMA,
+        "label": {"type": "string"},
     }
 )
 

@@ -58,6 +58,12 @@ def _normalized_series_style_args(value: Any) -> dict[str, dict[str, str]]:
         "markeredgecolor",
         "linestyle",
         "hatch",
+        "color",
+        "alpha",
+        "size",
+        "linewidth",
+        "zorder",
+        "label",
     }
     normalized: dict[str, dict[str, str]] = {}
     for series_name, style in value.items():
@@ -73,7 +79,9 @@ def _normalized_series_style_args(value: Any) -> dict[str, dict[str, str]]:
                     f"series_styles[{key!r}] has unsupported key {style_key!r}; "
                     f"supported keys: {', '.join(sorted(allowed_keys))}."
                 )
-            text = str(raw_style_value or "").strip()
+            if raw_style_value is None:
+                continue
+            text = str(raw_style_value).strip()
             if text:
                 item[style_key] = text
         if item:

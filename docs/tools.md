@@ -1606,6 +1606,15 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
+          "alpha": {
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "color": {
+            "type": "string"
+          },
           "edgecolor": {
             "type": "string"
           },
@@ -1624,8 +1633,17 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
           "hatch": {
             "type": "string"
           },
+          "label": {
+            "type": "string"
+          },
           "linestyle": {
             "type": "string"
+          },
+          "linewidth": {
+            "type": [
+              "number",
+              "string"
+            ]
           },
           "marker": {
             "type": "string"
@@ -1635,6 +1653,18 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
           },
           "markerfacecolor": {
             "type": "string"
+          },
+          "size": {
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "zorder": {
+            "type": [
+              "number",
+              "string"
+            ]
           }
         },
         "type": "object"
@@ -2425,6 +2455,15 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             "additionalProperties": {
               "additionalProperties": false,
               "properties": {
+                "alpha": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "color": {
+                  "type": "string"
+                },
                 "edgecolor": {
                   "type": "string"
                 },
@@ -2443,8 +2482,17 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                 "hatch": {
                   "type": "string"
                 },
+                "label": {
+                  "type": "string"
+                },
                 "linestyle": {
                   "type": "string"
+                },
+                "linewidth": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
                 },
                 "marker": {
                   "type": "string"
@@ -2454,6 +2502,18 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                 },
                 "markerfacecolor": {
                   "type": "string"
+                },
+                "size": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                "zorder": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
                 }
               },
               "type": "object"

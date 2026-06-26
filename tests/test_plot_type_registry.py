@@ -260,7 +260,14 @@ def test_render_csv_schema_accepts_axis_scale_series_and_annotations_args():
     assert properties["y_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
     assert properties["series_column"] == {"type": "string"}
     assert properties["series_styles"]["additionalProperties"]["additionalProperties"] is False
-    assert "markeredgecolor" in properties["series_styles"]["additionalProperties"]["properties"]
+    series_style_props = properties["series_styles"]["additionalProperties"]["properties"]
+    assert "markeredgecolor" in series_style_props
+    assert series_style_props["color"] == {"type": "string"}
+    assert series_style_props["alpha"] == {"type": ["number", "string"]}
+    assert series_style_props["size"] == {"type": ["number", "string"]}
+    assert series_style_props["linewidth"] == {"type": ["number", "string"]}
+    assert series_style_props["zorder"] == {"type": ["number", "string"]}
+    assert series_style_props["label"] == {"type": "string"}
     assert properties["annotations"]["items"]["anyOf"] == [
         {"required": ["x", "y", "text"]},
         {"required": ["x", "y", "arrow_to"]},
