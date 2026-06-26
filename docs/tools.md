@@ -1156,49 +1156,85 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "items": {
         "anyOf": [
           {
-            "required": [
-              "x",
-              "y",
-              "text"
-            ]
-          },
-          {
-            "required": [
-              "x",
-              "y",
-              "arrow_to"
-            ]
-          },
-          {
-            "required": [
-              "region"
-            ]
-          },
-          {
-            "required": [
-              "hspan"
-            ]
-          },
-          {
-            "required": [
-              "vspan"
-            ]
-          }
-        ],
-        "properties": {
-          "alpha": {
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "arrow_to": {
             "properties": {
+              "arrow_to": {
+                "properties": {
+                  "x": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "y": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "type": "object"
+              },
+              "arrowstyle": {
+                "default": "->",
+                "type": "string"
+              },
+              "avoid_overlap": {
+                "default": false,
+                "type": "boolean"
+              },
+              "color": {
+                "default": "black",
+                "type": "string"
+              },
+              "connectionstyle": {
+                "type": "string"
+              },
+              "placement_preset": {
+                "enum": [
+                  "above",
+                  "below",
+                  "left",
+                  "right",
+                  "upper_left",
+                  "upper_right",
+                  "lower_left",
+                  "lower_right"
+                ],
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
               "x": {
                 "type": [
                   "number",
                   "string"
                 ]
+              },
+              "xytext_offset": {
+                "properties": {
+                  "dx": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "dy": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
+                "required": [
+                  "dx",
+                  "dy"
+                ],
+                "type": "object"
               },
               "y": {
                 "type": [
@@ -1209,30 +1245,93 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
             },
             "required": [
               "x",
-              "y"
+              "y",
+              "text"
             ],
             "type": "object"
           },
-          "arrowstyle": {
-            "default": "->",
-            "type": "string"
-          },
-          "color": {
-            "default": "black",
-            "type": "string"
-          },
-          "connectionstyle": {
-            "type": "string"
-          },
-          "hspan": {
+          {
             "properties": {
-              "ymax": {
+              "arrow_to": {
+                "properties": {
+                  "x": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "y": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "type": "object"
+              },
+              "arrowstyle": {
+                "default": "->",
+                "type": "string"
+              },
+              "avoid_overlap": {
+                "default": false,
+                "type": "boolean"
+              },
+              "color": {
+                "default": "black",
+                "type": "string"
+              },
+              "connectionstyle": {
+                "type": "string"
+              },
+              "placement_preset": {
+                "enum": [
+                  "above",
+                  "below",
+                  "left",
+                  "right",
+                  "upper_left",
+                  "upper_right",
+                  "lower_left",
+                  "lower_right"
+                ],
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "x": {
                 "type": [
                   "number",
                   "string"
                 ]
               },
-              "ymin": {
+              "xytext_offset": {
+                "properties": {
+                  "dx": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "dy": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
+                "required": [
+                  "dx",
+                  "dy"
+                ],
+                "type": "object"
+              },
+              "y": {
                 "type": [
                   "number",
                   "string"
@@ -1240,84 +1339,153 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
               }
             },
             "required": [
-              "ymin",
-              "ymax"
+              "x",
+              "y",
+              "arrow_to"
             ],
             "type": "object"
           },
-          "region": {
+          {
             "properties": {
-              "xmax": {
+              "alpha": {
                 "type": [
                   "number",
                   "string"
                 ]
               },
-              "xmin": {
-                "type": [
-                  "number",
-                  "string"
-                ]
+              "color": {
+                "default": "black",
+                "type": "string"
               },
-              "ymax": {
-                "type": [
-                  "number",
-                  "string"
-                ]
+              "region": {
+                "properties": {
+                  "xmax": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "xmin": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "ymax": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "ymin": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
+                "required": [
+                  "xmin",
+                  "xmax",
+                  "ymin",
+                  "ymax"
+                ],
+                "type": "object"
               },
-              "ymin": {
-                "type": [
-                  "number",
-                  "string"
-                ]
+              "text": {
+                "type": "string"
               }
             },
             "required": [
-              "xmin",
-              "xmax",
-              "ymin",
-              "ymax"
+              "region"
             ],
             "type": "object"
           },
-          "text": {
-            "type": "string"
-          },
-          "vspan": {
+          {
             "properties": {
-              "xmax": {
+              "alpha": {
                 "type": [
                   "number",
                   "string"
                 ]
               },
-              "xmin": {
+              "color": {
+                "default": "black",
+                "type": "string"
+              },
+              "hspan": {
+                "properties": {
+                  "ymax": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "ymin": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
+                "required": [
+                  "ymin",
+                  "ymax"
+                ],
+                "type": "object"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "hspan"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "alpha": {
                 "type": [
                   "number",
                   "string"
                 ]
+              },
+              "color": {
+                "default": "black",
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "vspan": {
+                "properties": {
+                  "xmax": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "xmin": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
+                "required": [
+                  "xmin",
+                  "xmax"
+                ],
+                "type": "object"
               }
             },
             "required": [
-              "xmin",
-              "xmax"
+              "vspan"
             ],
             "type": "object"
-          },
-          "x": {
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "y": {
-            "type": [
-              "number",
-              "string"
-            ]
           }
-        },
-        "type": "object"
+        ]
       },
       "type": "array"
     },
@@ -2090,49 +2258,85 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             "items": {
               "anyOf": [
                 {
-                  "required": [
-                    "x",
-                    "y",
-                    "text"
-                  ]
-                },
-                {
-                  "required": [
-                    "x",
-                    "y",
-                    "arrow_to"
-                  ]
-                },
-                {
-                  "required": [
-                    "region"
-                  ]
-                },
-                {
-                  "required": [
-                    "hspan"
-                  ]
-                },
-                {
-                  "required": [
-                    "vspan"
-                  ]
-                }
-              ],
-              "properties": {
-                "alpha": {
-                  "type": [
-                    "number",
-                    "string"
-                  ]
-                },
-                "arrow_to": {
                   "properties": {
+                    "arrow_to": {
+                      "properties": {
+                        "x": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "y": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "type": "object"
+                    },
+                    "arrowstyle": {
+                      "default": "->",
+                      "type": "string"
+                    },
+                    "avoid_overlap": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "color": {
+                      "default": "black",
+                      "type": "string"
+                    },
+                    "connectionstyle": {
+                      "type": "string"
+                    },
+                    "placement_preset": {
+                      "enum": [
+                        "above",
+                        "below",
+                        "left",
+                        "right",
+                        "upper_left",
+                        "upper_right",
+                        "lower_left",
+                        "lower_right"
+                      ],
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
                     "x": {
                       "type": [
                         "number",
                         "string"
                       ]
+                    },
+                    "xytext_offset": {
+                      "properties": {
+                        "dx": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "dy": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "dx",
+                        "dy"
+                      ],
+                      "type": "object"
                     },
                     "y": {
                       "type": [
@@ -2143,30 +2347,93 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                   },
                   "required": [
                     "x",
-                    "y"
+                    "y",
+                    "text"
                   ],
                   "type": "object"
                 },
-                "arrowstyle": {
-                  "default": "->",
-                  "type": "string"
-                },
-                "color": {
-                  "default": "black",
-                  "type": "string"
-                },
-                "connectionstyle": {
-                  "type": "string"
-                },
-                "hspan": {
+                {
                   "properties": {
-                    "ymax": {
+                    "arrow_to": {
+                      "properties": {
+                        "x": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "y": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "type": "object"
+                    },
+                    "arrowstyle": {
+                      "default": "->",
+                      "type": "string"
+                    },
+                    "avoid_overlap": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "color": {
+                      "default": "black",
+                      "type": "string"
+                    },
+                    "connectionstyle": {
+                      "type": "string"
+                    },
+                    "placement_preset": {
+                      "enum": [
+                        "above",
+                        "below",
+                        "left",
+                        "right",
+                        "upper_left",
+                        "upper_right",
+                        "lower_left",
+                        "lower_right"
+                      ],
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "x": {
                       "type": [
                         "number",
                         "string"
                       ]
                     },
-                    "ymin": {
+                    "xytext_offset": {
+                      "properties": {
+                        "dx": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "dy": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "dx",
+                        "dy"
+                      ],
+                      "type": "object"
+                    },
+                    "y": {
                       "type": [
                         "number",
                         "string"
@@ -2174,84 +2441,153 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                     }
                   },
                   "required": [
-                    "ymin",
-                    "ymax"
+                    "x",
+                    "y",
+                    "arrow_to"
                   ],
                   "type": "object"
                 },
-                "region": {
+                {
                   "properties": {
-                    "xmax": {
+                    "alpha": {
                       "type": [
                         "number",
                         "string"
                       ]
                     },
-                    "xmin": {
-                      "type": [
-                        "number",
-                        "string"
-                      ]
+                    "color": {
+                      "default": "black",
+                      "type": "string"
                     },
-                    "ymax": {
-                      "type": [
-                        "number",
-                        "string"
-                      ]
+                    "region": {
+                      "properties": {
+                        "xmax": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "xmin": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "ymax": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "ymin": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "xmin",
+                        "xmax",
+                        "ymin",
+                        "ymax"
+                      ],
+                      "type": "object"
                     },
-                    "ymin": {
-                      "type": [
-                        "number",
-                        "string"
-                      ]
+                    "text": {
+                      "type": "string"
                     }
                   },
                   "required": [
-                    "xmin",
-                    "xmax",
-                    "ymin",
-                    "ymax"
+                    "region"
                   ],
                   "type": "object"
                 },
-                "text": {
-                  "type": "string"
-                },
-                "vspan": {
+                {
                   "properties": {
-                    "xmax": {
+                    "alpha": {
                       "type": [
                         "number",
                         "string"
                       ]
                     },
-                    "xmin": {
+                    "color": {
+                      "default": "black",
+                      "type": "string"
+                    },
+                    "hspan": {
+                      "properties": {
+                        "ymax": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "ymin": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "ymin",
+                        "ymax"
+                      ],
+                      "type": "object"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "hspan"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "alpha": {
                       "type": [
                         "number",
                         "string"
                       ]
+                    },
+                    "color": {
+                      "default": "black",
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "vspan": {
+                      "properties": {
+                        "xmax": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "xmin": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "xmin",
+                        "xmax"
+                      ],
+                      "type": "object"
                     }
                   },
                   "required": [
-                    "xmin",
-                    "xmax"
+                    "vspan"
                   ],
                   "type": "object"
-                },
-                "x": {
-                  "type": [
-                    "number",
-                    "string"
-                  ]
-                },
-                "y": {
-                  "type": [
-                    "number",
-                    "string"
-                  ]
                 }
-              },
-              "type": "object"
+              ]
             },
             "type": "array"
           },

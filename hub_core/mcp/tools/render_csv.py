@@ -175,6 +175,7 @@ def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
         if not isinstance(annotation, dict):
             raise ValueError(f"annotations[{index}] must be an object.")
         if annotation.get("region") is not None:
+            _reject_non_point_callout_args(annotation, index)
             region = annotation["region"]
             if not isinstance(region, dict) or any(key not in region for key in ("xmin", "xmax", "ymin", "ymax")):
                 raise ValueError(f"annotations[{index}].region must contain xmin, xmax, ymin, ymax.")
@@ -188,11 +189,13 @@ def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
             normalized.append(region_item)
             continue
         if annotation.get("hspan") is not None:
+            _reject_non_point_callout_args(annotation, index)
             normalized.append(
                 _normalized_span_annotation_arg(annotation, index, field="hspan", bounds=("ymin", "ymax"))
             )
             continue
         if annotation.get("vspan") is not None:
+            _reject_non_point_callout_args(annotation, index)
             normalized.append(
                 _normalized_span_annotation_arg(annotation, index, field="vspan", bounds=("xmin", "xmax"))
             )
@@ -218,8 +221,43 @@ def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
             item["arrowstyle"] = str(annotation.get("arrowstyle") or "->").strip() or "->"
         if annotation.get("connectionstyle"):
             item["connectionstyle"] = str(annotation["connectionstyle"]).strip()
+        if annotation.get("xytext_offset") is not None:
+            offset = annotation["xytext_offset"]
+            if not isinstance(offset, dict) or "dx" not in offset or "dy" not in offset:
+                raise ValueError(f"annotations[{index}].xytext_offset must contain dx and dy.")
+            item["xytext_offset"] = {"dx": offset["dx"], "dy": offset["dy"]}
+        if annotation.get("placement_preset"):
+            preset = str(annotation["placement_preset"]).strip().lower().replace("-", "_")
+            allowed_presets = {
+                "above",
+                "below",
+                "left",
+                "right",
+                "upper_left",
+                "upper_right",
+                "lower_left",
+                "lower_right",
+            }
+            if preset not in allowed_presets:
+                raise ValueError(f"annotations[{index}].placement_preset has unsupported value {preset!r}.")
+            item["placement_preset"] = preset
+        if "avoid_overlap" in annotation:
+            if not isinstance(annotation["avoid_overlap"], bool):
+                raise ValueError(f"annotations[{index}].avoid_overlap must be a boolean.")
+            item["avoid_overlap"] = annotation["avoid_overlap"]
         normalized.append(item)
     return tuple(normalized)
+
+
+def _reject_non_point_callout_args(annotation: dict[str, Any], index: int) -> None:
+    unsupported = [
+        key
+        for key in ("xytext_offset", "placement_preset", "avoid_overlap")
+        if key in annotation and annotation.get(key) is not None
+    ]
+    if unsupported:
+        joined = ", ".join(unsupported)
+        raise ValueError(f"annotations[{index}] {joined} only apply to point annotations.")
 
 
 

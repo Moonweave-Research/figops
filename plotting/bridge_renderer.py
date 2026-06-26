@@ -1161,6 +1161,64 @@ def _apply_axis_scales_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec)
         _apply_axis_scales(axis, spec)
 
 
+_CALLOUT_OFFSET_PRESETS: dict[str, tuple[float, float]] = {
+    "above": (0.0, 10.0),
+    "below": (0.0, -10.0),
+    "left": (-10.0, 0.0),
+    "right": (10.0, 0.0),
+    "upper_left": (-8.0, 8.0),
+    "upper_right": (8.0, 8.0),
+    "lower_left": (-8.0, -8.0),
+    "lower_right": (8.0, -8.0),
+}
+_AVOID_OVERLAP_OFFSETS: tuple[tuple[float, float], ...] = (
+    (8.0, 8.0),
+    (-8.0, 8.0),
+    (8.0, -8.0),
+    (-8.0, -8.0),
+    (0.0, 12.0),
+    (12.0, 0.0),
+)
+
+
+def _reject_non_point_callout_fields(annotation: dict[str, object], index: int) -> None:
+    unsupported = [
+        key
+        for key in ("xytext_offset", "placement_preset", "avoid_overlap")
+        if key in annotation and annotation.get(key) is not None
+    ]
+    if unsupported:
+        joined = ", ".join(unsupported)
+        raise ValueError(f"annotations[{index}] {joined} only apply to point annotations")
+
+
+def _normalized_callout_offset(annotation: dict[str, object], index: int) -> tuple[float, float] | None:
+    raw_offset = annotation.get("xytext_offset")
+    if raw_offset is not None:
+        if not isinstance(raw_offset, dict):
+            raise ValueError(f"annotations[{index}].xytext_offset must be an object")
+        try:
+            dx = float(raw_offset["dx"])
+            dy = float(raw_offset["dy"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"annotations[{index}].xytext_offset requires numeric dx and dy") from exc
+        if not math.isfinite(dx) or not math.isfinite(dy):
+            raise ValueError(f"annotations[{index}].xytext_offset dx and dy must be finite")
+        return (dx, dy)
+    preset = str(annotation.get("placement_preset") or "").strip().lower().replace("-", "_")
+    if preset:
+        if preset not in _CALLOUT_OFFSET_PRESETS:
+            allowed = ", ".join(sorted(_CALLOUT_OFFSET_PRESETS))
+            raise ValueError(f"annotations[{index}].placement_preset must be one of: {allowed}")
+        return _CALLOUT_OFFSET_PRESETS[preset]
+    raw_avoid_overlap = annotation.get("avoid_overlap", False)
+    if not isinstance(raw_avoid_overlap, bool):
+        raise ValueError(f"annotations[{index}].avoid_overlap must be a boolean")
+    if raw_avoid_overlap:
+        return _AVOID_OVERLAP_OFFSETS[index % len(_AVOID_OVERLAP_OFFSETS)]
+    return None
+
+
 def _normalized_span_annotation(
     annotation: dict[str, object],
     index: int,
@@ -1204,6 +1262,7 @@ def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...
             raise ValueError(f"annotations[{index}] must be an object")
         region = annotation.get("region")
         if region is not None:
+            _reject_non_point_callout_fields(annotation, index)
             if not isinstance(region, dict):
                 raise ValueError(f"annotations[{index}].region must be an object")
             try:
@@ -1233,11 +1292,13 @@ def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...
             )
             continue
         if annotation.get("hspan") is not None:
+            _reject_non_point_callout_fields(annotation, index)
             normalized.append(
                 _normalized_span_annotation(annotation, index, field="hspan", bounds=("ymin", "ymax"))
             )
             continue
         if annotation.get("vspan") is not None:
+            _reject_non_point_callout_fields(annotation, index)
             normalized.append(
                 _normalized_span_annotation(annotation, index, field="vspan", bounds=("xmin", "xmax"))
             )
@@ -1279,6 +1340,9 @@ def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...
             "color": str(annotation.get("color") or "black"),
             "arrowstyle": arrowstyle,
         }
+        callout_offset = _normalized_callout_offset(annotation, index)
+        if callout_offset is not None:
+            item["xytext_offset"] = callout_offset
         if connectionstyle:
             item["connectionstyle"] = connectionstyle
         normalized.append(item)
@@ -1393,27 +1457,37 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
         y = float(annotation["y"])
         text = str(annotation["text"])
         arrow_to = annotation.get("arrow_to")
-        if isinstance(arrow_to, dict):
-            arrowprops = {
-                "arrowstyle": str(annotation.get("arrowstyle") or "->"),
+        xytext_offset = annotation.get("xytext_offset")
+        use_offset = isinstance(xytext_offset, tuple)
+        if isinstance(arrow_to, dict) or use_offset:
+            arrowprops = None
+            if isinstance(arrow_to, dict):
+                arrowprops = {
+                    "arrowstyle": str(annotation.get("arrowstyle") or "->"),
+                    "color": color,
+                    "linewidth": 0.8,
+                }
+                if annotation.get("connectionstyle"):
+                    arrowprops["connectionstyle"] = str(annotation["connectionstyle"])
+                xy = (float(arrow_to["x"]), float(arrow_to["y"]))
+            else:
+                xy = (x, y)
+            annotate_kwargs = {
+                "xy": xy,
+                "xytext": xytext_offset if use_offset else (x, y),
                 "color": color,
-                "linewidth": 0.8,
+                "fontsize": font_size,
+                "ha": "left",
+                "va": "bottom",
+                "zorder": 6,
+                "annotation_clip": True,
+                "clip_on": True,
             }
-            if annotation.get("connectionstyle"):
-                arrowprops["connectionstyle"] = str(annotation["connectionstyle"])
-            ax.annotate(
-                text,
-                xy=(float(arrow_to["x"]), float(arrow_to["y"])),
-                xytext=(x, y),
-                color=color,
-                fontsize=font_size,
-                arrowprops=arrowprops,
-                ha="left",
-                va="bottom",
-                zorder=6,
-                annotation_clip=True,
-                clip_on=True,
-            )
+            if arrowprops is not None:
+                annotate_kwargs["arrowprops"] = arrowprops
+            if use_offset:
+                annotate_kwargs["textcoords"] = "offset points"
+            ax.annotate(text, **annotate_kwargs)
         else:
             ax.text(
                 x,

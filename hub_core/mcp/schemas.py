@@ -237,28 +237,60 @@ _SERIES_STYLES_SCHEMA = {
     "description": "Per-series style overrides keyed by exact series label.",
 }
 
+_CALLOUT_OFFSET_SCHEMA = _open_object_schema(
+    {"dx": _NUMBER_OR_STRING_SCHEMA, "dy": _NUMBER_OR_STRING_SCHEMA},
+    required=["dx", "dy"],
+)
+_CALLOUT_PLACEMENT_PRESET_SCHEMA = {
+    "type": "string",
+    "enum": [
+        "above",
+        "below",
+        "left",
+        "right",
+        "upper_left",
+        "upper_right",
+        "lower_left",
+        "lower_right",
+    ],
+}
+_POINT_ANNOTATION_PROPERTIES = {
+    "x": _NUMBER_OR_STRING_SCHEMA,
+    "y": _NUMBER_OR_STRING_SCHEMA,
+    "text": {"type": "string"},
+    "arrow_to": _ARROW_TARGET_SCHEMA,
+    "arrowstyle": {"type": "string", "default": "->"},
+    "connectionstyle": {"type": "string"},
+    "xytext_offset": _CALLOUT_OFFSET_SCHEMA,
+    "placement_preset": _CALLOUT_PLACEMENT_PRESET_SCHEMA,
+    "avoid_overlap": {"type": "boolean", "default": False},
+    "color": {"type": "string", "default": "black"},
+}
+_REGION_ANNOTATION_PROPERTIES = {
+    "region": _REGION_ANNOTATION_BOUNDS_SCHEMA,
+    "text": {"type": "string"},
+    "color": {"type": "string", "default": "black"},
+    "alpha": _NUMBER_OR_STRING_SCHEMA,
+}
+_HSPAN_ANNOTATION_PROPERTIES = {
+    "hspan": _HSPAN_ANNOTATION_BOUNDS_SCHEMA,
+    "text": {"type": "string"},
+    "color": {"type": "string", "default": "black"},
+    "alpha": _NUMBER_OR_STRING_SCHEMA,
+}
+_VSPAN_ANNOTATION_PROPERTIES = {
+    "vspan": _VSPAN_ANNOTATION_BOUNDS_SCHEMA,
+    "text": {"type": "string"},
+    "color": {"type": "string", "default": "black"},
+    "alpha": _NUMBER_OR_STRING_SCHEMA,
+}
 _ANNOTATION_SCHEMA = {
-    **_open_object_schema(
-        {
-            "x": _NUMBER_OR_STRING_SCHEMA,
-            "y": _NUMBER_OR_STRING_SCHEMA,
-            "text": {"type": "string"},
-            "arrow_to": _ARROW_TARGET_SCHEMA,
-            "arrowstyle": {"type": "string", "default": "->"},
-            "connectionstyle": {"type": "string"},
-            "region": _REGION_ANNOTATION_BOUNDS_SCHEMA,
-            "hspan": _HSPAN_ANNOTATION_BOUNDS_SCHEMA,
-            "vspan": _VSPAN_ANNOTATION_BOUNDS_SCHEMA,
-            "color": {"type": "string", "default": "black"},
-            "alpha": _NUMBER_OR_STRING_SCHEMA,
-        }
-    ),
     "anyOf": [
-        {"required": ["x", "y", "text"]},
-        {"required": ["x", "y", "arrow_to"]},
-        {"required": ["region"]},
-        {"required": ["hspan"]},
-        {"required": ["vspan"]},
+        _open_object_schema(_POINT_ANNOTATION_PROPERTIES, required=["x", "y", "text"]),
+        _open_object_schema(_POINT_ANNOTATION_PROPERTIES, required=["x", "y", "arrow_to"]),
+        _open_object_schema(_REGION_ANNOTATION_PROPERTIES, required=["region"]),
+        _open_object_schema(_HSPAN_ANNOTATION_PROPERTIES, required=["hspan"]),
+        _open_object_schema(_VSPAN_ANNOTATION_PROPERTIES, required=["vspan"]),
     ],
 }
 
