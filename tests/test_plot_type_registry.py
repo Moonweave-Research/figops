@@ -268,14 +268,32 @@ def test_render_csv_schema_accepts_axis_scale_series_and_annotations_args():
     assert series_style_props["linewidth"] == {"type": ["number", "string"]}
     assert series_style_props["zorder"] == {"type": ["number", "string"]}
     assert series_style_props["label"] == {"type": "string"}
-    assert properties["annotations"]["items"]["anyOf"] == [
-        {"required": ["x", "y", "text"]},
-        {"required": ["x", "y", "arrow_to"]},
-        {"required": ["region"]},
-        {"required": ["hspan"]},
-        {"required": ["vspan"]},
+    annotation_branches = properties["annotations"]["items"]["anyOf"]
+    assert [branch["required"] for branch in annotation_branches] == [
+        ["x", "y", "text"],
+        ["x", "y", "arrow_to"],
+        ["region"],
+        ["hspan"],
+        ["vspan"],
     ]
-    assert properties["annotations"]["items"]["properties"]["arrow_to"]["required"] == ["x", "y"]
+    point_annotation_props = annotation_branches[0]["properties"]
+    region_annotation_props = annotation_branches[2]["properties"]
+    assert point_annotation_props["arrow_to"]["required"] == ["x", "y"]
+    assert point_annotation_props["xytext_offset"]["required"] == ["dx", "dy"]
+    assert point_annotation_props["placement_preset"]["enum"] == [
+        "above",
+        "below",
+        "left",
+        "right",
+        "upper_left",
+        "upper_right",
+        "lower_left",
+        "lower_right",
+    ]
+    assert point_annotation_props["avoid_overlap"] == {"type": "boolean", "default": False}
+    assert "xytext_offset" not in region_annotation_props
+    assert "placement_preset" not in region_annotation_props
+    assert "avoid_overlap" not in region_annotation_props
     assert properties["guide_curves"]["items"]["anyOf"] == [{"required": ["points"]}, {"required": ["x", "y"]}]
     assert properties["fill_between"]["items"]["anyOf"] == [
         {"required": ["points"]},
@@ -354,7 +372,9 @@ def test_render_csv_multipanel_schema_accepts_panel_specs():
     assert panel_properties["x_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
     assert panel_properties["guide_curves"]["items"]["properties"]["points"]["items"]["required"] == ["x", "y"]
     assert panel_properties["fill_between"]["items"]["properties"]["points"]["items"]["required"] == ["x", "y1", "y2"]
-    assert panel_properties["annotations"]["items"]["properties"]["hspan"]["required"] == ["ymin", "ymax"]
+    panel_annotation_branches = panel_properties["annotations"]["items"]["anyOf"]
+    assert panel_annotation_branches[3]["properties"]["hspan"]["required"] == ["ymin", "ymax"]
+    assert "xytext_offset" not in panel_annotation_branches[3]["properties"]
     assert panel_properties["series_styles"]["additionalProperties"]["properties"]["fill"]["enum"] == [
         "full",
         "filled",

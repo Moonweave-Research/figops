@@ -2273,6 +2273,97 @@ class AnnotationStyleTest(unittest.TestCase):
         self.assertEqual(call.kwargs["arrowprops"]["connectionstyle"], "arc3,rad=0.25")
         self.assertTrue(call.kwargs["clip_on"])
 
+    def test_draw_annotations_uses_explicit_callout_offset_points(self):
+        apply_journal_theme(target_format="nature", profile_name="baseline")
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            annotations=(
+                {
+                    "x": 2.0,
+                    "y": 200.0,
+                    "text": "offset",
+                    "arrow_to": {"x": 1.0, "y": 20.0},
+                    "xytext_offset": {"dx": 12, "dy": 18},
+                    "color": "black",
+                },
+            ),
+        )
+        ax = MagicMock()
+        _draw_annotations(ax, spec)
+
+        call = ax.annotate.call_args
+        self.assertEqual(call.kwargs["xy"], (1.0, 20.0))
+        self.assertEqual(call.kwargs["xytext"], (12.0, 18.0))
+        self.assertEqual(call.kwargs["textcoords"], "offset points")
+
+    def test_draw_annotations_uses_preset_and_avoid_overlap_offsets(self):
+        apply_journal_theme(target_format="nature", profile_name="baseline")
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            annotations=(
+                {"x": 1.0, "y": 1.0, "text": "a", "placement_preset": "upper_right"},
+                {"x": 1.0, "y": 1.0, "text": "b", "avoid_overlap": True},
+                {"x": 1.0, "y": 1.0, "text": "c", "avoid_overlap": True},
+            ),
+        )
+        ax = MagicMock()
+        _draw_annotations(ax, spec)
+
+        offsets = [call.kwargs["xytext"] for call in ax.annotate.call_args_list]
+        self.assertEqual(offsets[0], (8.0, 8.0))
+        self.assertNotEqual(offsets[1], offsets[2])
+        self.assertTrue(all(call.kwargs["textcoords"] == "offset points" for call in ax.annotate.call_args_list))
+
+    def test_draw_annotations_preserves_legacy_data_coordinate_arrow_position(self):
+        apply_journal_theme(target_format="nature", profile_name="baseline")
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            annotations=(
+                {"x": 2.0, "y": 200.0, "text": "legacy", "arrow_to": {"x": 1.0, "y": 20.0}},
+            ),
+        )
+        ax = MagicMock()
+        _draw_annotations(ax, spec)
+
+        call = ax.annotate.call_args
+        self.assertEqual(call.kwargs["xytext"], (2.0, 200.0))
+        self.assertNotIn("textcoords", call.kwargs)
+
+    def test_draw_annotations_rejects_callout_offset_on_region(self):
+        apply_journal_theme(target_format="nature", profile_name="baseline")
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="scatter",
+            x_column="x",
+            y_column="y",
+            title="t",
+            annotations=(
+                {
+                    "region": {"xmin": 1, "xmax": 2, "ymin": 10, "ymax": 20},
+                    "xytext_offset": {"dx": 12, "dy": 18},
+                },
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "only apply to point annotations"):
+            _draw_annotations(MagicMock(), spec)
+
     def test_draw_annotations_renders_hspan_and_vspan(self):
         apply_journal_theme(target_format="nature", profile_name="baseline")
         spec = BridgeFigureSpec(

@@ -1130,6 +1130,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                                 "y": 200,
                                 "text": "~10x",
                                 "arrow_to": {"x": 1, "y": 20},
+                                "xytext_offset": {"dx": 12, "dy": 18},
+                                "placement_preset": "upper_right",
+                                "avoid_overlap": True,
                                 "color": "black",
                             }
                         ],
@@ -1158,9 +1161,41 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["x_scale"], "linear")
             self.assertEqual(captured["y_scale"], "log")
             self.assertEqual(captured["annotations"][0]["text"], "~10x")
+            self.assertEqual(captured["annotations"][0]["xytext_offset"], {"dx": 12, "dy": 18})
+            self.assertEqual(captured["annotations"][0]["placement_preset"], "upper_right")
+            self.assertIs(captured["annotations"][0]["avoid_overlap"], True)
             config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
             csv_check = config["data_contract"]["csv_checks"][0]
             self.assertEqual(csv_check["required_columns"], ["x", "y", "condition"])
+
+    def test_render_csv_graph_rejects_callout_offset_on_region_annotation(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "annotations.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y\n1,10\n2,100\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "scatter",
+                    "annotations": [
+                        {
+                            "region": {"xmin": 1, "xmax": 2, "ymin": 10, "ymax": 20},
+                            "xytext_offset": {"dx": 12, "dy": 18},
+                        }
+                    ],
+                    "job_id": "render-invalid-region-callout",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertIn("only apply to point annotations", result["errors"][0])
 
     def test_render_csv_graph_forwards_curved_arrow_and_spans(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
