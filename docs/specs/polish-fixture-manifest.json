@@ -1,0 +1,84 @@
+{
+  "schema_version": "0.1",
+  "selected_wave1_slice": "typed-mcp-style-schemas",
+  "fixtures": [
+    {
+      "id": "dense-point-labels",
+      "plot_type": "scatter",
+      "data_recipe": "Generate 24 nearby points with label_column populated.",
+      "current_expected_weakness": "Fixed label offset creates overlapping labels.",
+      "desired_polish_behavior": "Collision-aware labels or diagnostic warning with actionable evidence.",
+      "automation_level": "semi-automated",
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_geometry_diagnostics.py -q"
+    },
+    {
+      "id": "many-series-hierarchy",
+      "plot_type": "scatter",
+      "data_recipe": "Generate 8 series with this-work and reference groups.",
+      "current_expected_weakness": "Series styles lack color, alpha, size, z-order, and label override controls.",
+      "desired_polish_behavior": "Explicit hierarchy controls render this-work foreground and references muted.",
+      "automation_level": "automated",
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_mcp_normalization.py tests/test_mcp_rendering.py -q"
+    },
+    {
+      "id": "long-categorical-labels",
+      "plot_type": "scatter",
+      "data_recipe": "Generate categorical x labels longer than 18 characters.",
+      "current_expected_weakness": "Tick label crowding may be diagnosed but not automatically polished.",
+      "desired_polish_behavior": "Readable compressed or rotated labels with diagnostics receipt.",
+      "automation_level": "automated",
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_geometry_diagnostics.py -q"
+    },
+    {
+      "id": "cramped-multipanel",
+      "plot_type": "multipanel",
+      "data_recipe": "Generate 2x2 panels with long axis labels and panel titles.",
+      "current_expected_weakness": "Rows and columns are supported, but mosaic/span and fine layout polish are absent.",
+      "desired_polish_behavior": "Panel spacing remains readable and diagnostics catch title/axis collisions.",
+      "automation_level": "semi-automated",
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_mcp_batch_quality.py tests/test_manuscript_compose.py -q"
+    },
+    {
+      "id": "dark-fill-text-contrast",
+      "plot_type": "scatter",
+      "data_recipe": "Add dark hspan or fill_between overlay plus text annotation.",
+      "current_expected_weakness": "Annotation text contrast is not generally evaluated outside specialized heatmap logic.",
+      "desired_polish_behavior": "Contrast-safe annotation defaults or diagnostics warning.",
+      "automation_level": "semi-automated",
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_geometry_diagnostics.py -q"
+    },
+    {
+      "id": "log-axis-tick-readability",
+      "plot_type": "scatter",
+      "data_recipe": "Generate log x and log y data spanning several decades.",
+      "current_expected_weakness": "Axis scale exists, but tick formatting polish is limited.",
+      "desired_polish_behavior": "Readable tick labels and diagnostics for crowding.",
+      "automation_level": "automated",
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_bridge_renderer.py tests/test_geometry_diagnostics.py -q"
+    },
+    {
+      "id": "annotation-near-dense-data",
+      "plot_type": "scatter",
+      "data_recipe": "Place a callout arrow near a dense cluster.",
+      "current_expected_weakness": "Arrow and label placement are manual and fixed-alignment.",
+      "desired_polish_behavior": "Callout preset chooses a less crowded offset or emits warning.",
+      "automation_level": "semi-automated",
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_bridge_renderer.py -q"
+    },
+    {
+      "id": "legend-data-collision",
+      "plot_type": "line",
+      "data_recipe": "Generate several series occupying all quadrants.",
+      "current_expected_weakness": "Legend collision diagnostics exist, but semantic legend controls are limited.",
+      "desired_polish_behavior": "Legend location, order, title, and ncol can be controlled or diagnosed.",
+      "automation_level": "automated",
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_geometry_diagnostics.py tests/test_bridge_renderer.py -q"
+    }
+  ],
+  "expected_failures": [
+    "typed schema discoverability for complex polish objects",
+    "series visual hierarchy controls beyond marker and edge/fill styling",
+    "smart callout placement",
+    "aesthetic diagnostics beyond objective geometry"
+  ]
+}

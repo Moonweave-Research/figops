@@ -95,7 +95,6 @@ _LAYOUT_REPORT_SCHEMA = {
     ],
 }
 
-
 TOOL_HANDLER_NAMES = {
     "figops.health": "health",
     "figops.describe": "describe",
@@ -148,6 +147,165 @@ def _object_schema(properties: dict[str, Any] | None = None, required: list[str]
     if required:
         schema["required"] = required
     return schema
+
+def _open_object_schema(properties: dict[str, Any] | None = None, required: list[str] | None = None) -> dict[str, Any]:
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": properties or {},
+    }
+    if required:
+        schema["required"] = required
+    return schema
+
+
+_NUMBER_OR_STRING_SCHEMA = {"type": ["number", "string"]}
+
+
+_OVERLAY_POINT_SCHEMA = _open_object_schema(
+    {
+        "x": _NUMBER_OR_STRING_SCHEMA,
+        "y": _NUMBER_OR_STRING_SCHEMA,
+    },
+    required=["x", "y"],
+)
+
+_FILL_BETWEEN_POINT_SCHEMA = _open_object_schema(
+    {
+        "x": _NUMBER_OR_STRING_SCHEMA,
+        "y1": _NUMBER_OR_STRING_SCHEMA,
+        "y2": _NUMBER_OR_STRING_SCHEMA,
+    },
+    required=["x", "y1", "y2"],
+)
+
+_ARROW_TARGET_SCHEMA = _open_object_schema(
+    {
+        "x": _NUMBER_OR_STRING_SCHEMA,
+        "y": _NUMBER_OR_STRING_SCHEMA,
+    },
+    required=["x", "y"],
+)
+
+_REGION_ANNOTATION_BOUNDS_SCHEMA = _open_object_schema(
+    {
+        "xmin": _NUMBER_OR_STRING_SCHEMA,
+        "xmax": _NUMBER_OR_STRING_SCHEMA,
+        "ymin": _NUMBER_OR_STRING_SCHEMA,
+        "ymax": _NUMBER_OR_STRING_SCHEMA,
+    },
+    required=["xmin", "xmax", "ymin", "ymax"],
+)
+
+_HSPAN_ANNOTATION_BOUNDS_SCHEMA = _open_object_schema(
+    {
+        "ymin": _NUMBER_OR_STRING_SCHEMA,
+        "ymax": _NUMBER_OR_STRING_SCHEMA,
+    },
+    required=["ymin", "ymax"],
+)
+
+_VSPAN_ANNOTATION_BOUNDS_SCHEMA = _open_object_schema(
+    {
+        "xmin": _NUMBER_OR_STRING_SCHEMA,
+        "xmax": _NUMBER_OR_STRING_SCHEMA,
+    },
+    required=["xmin", "xmax"],
+)
+
+_SERIES_STYLE_SCHEMA = _object_schema(
+    {
+        "marker": {"type": "string"},
+        "fill": {"type": "string", "enum": ["full", "filled", "none", "open"]},
+        "facecolor": {"type": "string"},
+        "edgecolor": {"type": "string"},
+        "markerfacecolor": {"type": "string"},
+        "markeredgecolor": {"type": "string"},
+        "linestyle": {"type": "string"},
+        "hatch": {"type": "string"},
+    }
+)
+
+_SERIES_STYLES_SCHEMA = {
+    "type": "object",
+    "additionalProperties": _SERIES_STYLE_SCHEMA,
+    "description": "Per-series style overrides keyed by exact series label.",
+}
+
+_ANNOTATION_SCHEMA = {
+    **_open_object_schema(
+        {
+            "x": _NUMBER_OR_STRING_SCHEMA,
+            "y": _NUMBER_OR_STRING_SCHEMA,
+            "text": {"type": "string"},
+            "arrow_to": _ARROW_TARGET_SCHEMA,
+            "arrowstyle": {"type": "string", "default": "->"},
+            "connectionstyle": {"type": "string"},
+            "region": _REGION_ANNOTATION_BOUNDS_SCHEMA,
+            "hspan": _HSPAN_ANNOTATION_BOUNDS_SCHEMA,
+            "vspan": _VSPAN_ANNOTATION_BOUNDS_SCHEMA,
+            "color": {"type": "string", "default": "black"},
+            "alpha": _NUMBER_OR_STRING_SCHEMA,
+        }
+    ),
+    "anyOf": [
+        {"required": ["x", "y", "text"]},
+        {"required": ["x", "y", "arrow_to"]},
+        {"required": ["region"]},
+        {"required": ["hspan"]},
+        {"required": ["vspan"]},
+    ],
+}
+
+_ANNOTATIONS_SCHEMA = {
+    "type": "array",
+    "items": _ANNOTATION_SCHEMA,
+    "description": "Point text/callout annotations plus rectangular region, hspan, and vspan overlays.",
+}
+
+_GUIDE_CURVE_SCHEMA = {
+    **_open_object_schema(
+        {
+            "points": {"type": "array", "items": _OVERLAY_POINT_SCHEMA, "minItems": 2},
+            "x": {"type": "array", "items": _NUMBER_OR_STRING_SCHEMA, "minItems": 2},
+            "y": {"type": "array", "items": _NUMBER_OR_STRING_SCHEMA, "minItems": 2},
+            "color": {"type": "string", "default": "black"},
+            "linestyle": {"type": "string"},
+            "linewidth": _NUMBER_OR_STRING_SCHEMA,
+            "label": {"type": "string"},
+            "zorder": _NUMBER_OR_STRING_SCHEMA,
+        }
+    ),
+    "anyOf": [{"required": ["points"]}, {"required": ["x", "y"]}],
+}
+
+_GUIDE_CURVES_SCHEMA = {
+    "type": "array",
+    "items": _GUIDE_CURVE_SCHEMA,
+    "description": "Manual guide curves from point objects or parallel x/y arrays.",
+}
+
+_FILL_BETWEEN_SCHEMA = {
+    **_open_object_schema(
+        {
+            "points": {"type": "array", "items": _FILL_BETWEEN_POINT_SCHEMA, "minItems": 2},
+            "x_column": {"type": "string"},
+            "y1_column": {"type": "string"},
+            "y2_column": {"type": "string"},
+            "color": {"type": "string"},
+            "alpha": {"type": ["number", "string"], "default": 0.2},
+            "label": {"type": "string"},
+            "zorder": _NUMBER_OR_STRING_SCHEMA,
+        }
+    ),
+    "anyOf": [{"required": ["points"]}, {"required": ["x_column", "y1_column", "y2_column"]}],
+}
+
+_FILL_BETWEEN_OVERLAYS_SCHEMA = {
+    "type": "array",
+    "items": _FILL_BETWEEN_SCHEMA,
+    "description": "Manual filled bands from point triplets or CSV x/y1/y2 columns.",
+}
+
 
 
 def _standard_output_schema(extra_properties: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -473,12 +631,12 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "z_column": {"type": "string"},
                     "facet_column": {"type": "string"},
                     "series_column": {"type": "string"},
-                    "series_styles": {"type": "object", "additionalProperties": {"type": "object"}},
+                    "series_styles": _SERIES_STYLES_SCHEMA,
                     "x_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
                     "y_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
-                    "annotations": {"type": "array", "items": {"type": "object"}},
-                    "guide_curves": {"type": "array", "items": {"type": "object"}},
-                    "fill_between": {"type": "array", "items": {"type": "object"}},
+                    "annotations": _ANNOTATIONS_SCHEMA,
+                    "guide_curves": _GUIDE_CURVES_SCHEMA,
+                    "fill_between": _FILL_BETWEEN_OVERLAYS_SCHEMA,
                     "facet_scales": {"type": "string", "enum": ["fixed", "free"], "default": "fixed"},
                     "category_order": {"type": "array", "items": {"type": ["string", "number"]}},
                     "facet_order": {"type": "array", "items": {"type": "string"}},
@@ -544,12 +702,12 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                                 "z_column": {"type": "string"},
                                 "facet_column": {"type": "string"},
                                 "series_column": {"type": "string"},
-                                "series_styles": {"type": "object", "additionalProperties": {"type": "object"}},
+                                "series_styles": _SERIES_STYLES_SCHEMA,
                                 "x_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
                                 "y_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
-                                "annotations": {"type": "array", "items": {"type": "object"}},
-                                "guide_curves": {"type": "array", "items": {"type": "object"}},
-                                "fill_between": {"type": "array", "items": {"type": "object"}},
+                                "annotations": _ANNOTATIONS_SCHEMA,
+                                "guide_curves": _GUIDE_CURVES_SCHEMA,
+                                "fill_between": _FILL_BETWEEN_OVERLAYS_SCHEMA,
                                 "yerr_column": {"type": "string"},
                                 "yerr_minus_column": {"type": "string"},
                                 "yerr_cap_width": {"type": "number", "minimum": 0, "default": 3.0},
