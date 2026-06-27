@@ -4,9 +4,9 @@
 > publication-quality plotting, self-describing MCP tools, and honest
 > operational guardrails.
 >
-> Status baseline: v0.15.0 on 2026-06-21. M1 through M5 have shipped across
+> Status baseline: v0.17.9+ after polish-layer PRs #196-#198. M1 through M5 have shipped across
 > the 0.5.0+ release line. The remaining roadmap is maintenance, scoped debt
-> reduction, and optional productization only if the project direction changes.
+> reduction, and bounded polish-layer waves that preserve journal constraints.
 
 ## How to read this
 
@@ -154,6 +154,21 @@ This is strict but scoped:
 ---
 
 ## Remaining roadmap
+
+### R0 - Polish-layer roadmap and fixture refresh
+
+The first polish-layer implementation waves have shipped: typed complex MCP schemas,
+series visual hierarchy controls, and Smart Callout v1. The active polish roadmap
+now lives in:
+
+- `docs/specs/polish-layer-adversarial-roadmap.md`
+- `docs/specs/polish-layer-legend-axis-wave.md`
+- `docs/specs/polish-fixture-manifest.json`
+
+Next implementation priority: bounded legend and axis polish controls. Follow-up
+priorities are dense point-label polish, contrast diagnostics, tick readability,
+and multipanel layout polish. Do not reclassify shipped schema, series hierarchy,
+or Smart Callout v1 capabilities as open gaps unless a regression is proven.
 
 ### R1 - Data-contract decomposition
 

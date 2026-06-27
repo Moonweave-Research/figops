@@ -1,6 +1,6 @@
 # FigOps Polish Layer Finalization Workflow
 
-Status: working spec for documentation-first execution.  
+Status: current execution spec after completed polish waves 1-3.
 Scope: FigOps journal-compliant figure polish, not a replacement plotting engine.
 
 ## 1. Research and prior art
@@ -16,7 +16,7 @@ Observed prior art inside the repo:
 - Renderer capability and annotation drawing live in `plotting/bridge_renderer.py`.
 - Geometry diagnostics live in `hub_core/geometry_diagnostics.py`.
 
-Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls.
+Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#198, typed complex MCP schemas, series visual hierarchy controls, and Smart Callout v1 are shipped; the next roadmap must therefore focus on remaining layout, label, contrast, tick, and multipanel polish rather than re-solving completed slices.
 
 ## 2. Product position and non-goals
 
@@ -97,15 +97,22 @@ Exit gate:
 - Each fixture states the currently expected weakness.
 - The first implementation slice is chosen by value, risk, and file-touch size.
 
-### Wave 3: implementation
+### Wave 3: implementation status and next slices
 
-Candidate first slices, in priority order:
+Completed slices:
 
-1. Typed MCP style schemas for `series_styles`, `annotations`, `guide_curves`, and `fill_between`.
-2. Series style extension for color, alpha, marker size, linewidth, z-order, and label override.
-3. Smart callout v1 with deterministic collision-aware offsets.
-4. Legend and axis polish exposure for existing renderer controls.
-5. Multipanel mosaic or panel-span planning.
+1. Typed MCP style schemas for `series_styles`, `annotations`, `guide_curves`, and `fill_between` shipped in PR #196.
+2. Series style extension for color, alpha, marker size, linewidth, z-order, and label override shipped in PR #197.
+3. Smart Callout v1 with deterministic offsets and presets shipped in PR #198.
+
+Current priority order for remaining slices:
+
+1. Legend and axis polish v1: preserve `legend_layout` string presets, add `legend_options.title/order/ncol`, bounded axis limits, tick rotation, and tick formatting presets.
+2. Dense point-label polish v1: deterministic label fanout, priority/skip controls, and diagnostics; no dependency-based repel solver.
+3. Contrast diagnostics v1: text/overlay contrast warnings before any automatic restyling.
+4. Tick readability v1: long categorical-label compression and log tick formatting controls.
+5. Multipanel layout v1: spacing, ratios, and shared legend placement before mosaic/span DSL.
+6. Fit/trend overlay expansion: defer until a project explicitly needs model semantics.
 
 Implementation rule: pick one bounded slice, write or extend tests first where feasible, and prove the field reaches either MCP output, renderer behavior, diagnostics, or pixels.
 
@@ -172,29 +179,31 @@ The fixture manifest in Wave 2 should define each fixture with:
 - Artifact path.
 - Whether the fixture is automated, semi-automated, or human-reviewed.
 
-Minimum first fixture recommendation: many-series visual hierarchy, because it exercises schema discoverability, series style controls, legend readability, and render evidence without requiring a large layout rewrite.
+Minimum next fixture recommendation: legend-data-collision plus log-axis-tick-readability, because they exercise remaining layout polish and axis readability without introducing a new plotting DSL.
 
 ## 7. Release or implementation plan
 
 Implementation should advance one PR-sized wave at a time.
 
-Recommended first PR:
+Completed PRs:
 
-1. Typed MCP style schemas for existing polish primitives.
-2. Tests proving schema shape and normalization compatibility.
-3. Regenerated or updated docs if the project has a tool-reference generation path.
-4. No renderer behavior change unless required for schema parity.
+1. PR #196: documentation and typed MCP polish schema planning.
+2. PR #197: series visual hierarchy controls.
+3. PR #198: Smart Callout v1.
 
-Recommended second PR:
+Recommended next PR:
 
-1. Series style extension.
-2. Pixel or renderer tests for color, alpha, size, linewidth, z-order, and label override.
-3. Documentation examples for this-work/reference visual hierarchy.
+1. Legend and axis polish v1.
+2. Typed MCP schemas and normalization for `legend_layout` string presets, `legend_options`, `axis_limits`, and `tick_style`.
+3. Renderer tests proving the controls reach matplotlib kwargs or diagnostics while preserving existing `legend_layout` callers.
+4. Generated tool-reference update.
+5. Render smoke for at least one legend-data-collision fixture and one log-axis fixture.
 
-Recommended third PR:
+Recommended follow-up PRs:
 
-1. Smart callout v1.
-2. Dense-label fixture.
-3. Diagnostics or render artifact evidence.
+1. Dense point-label polish v1.
+2. Contrast diagnostics v1.
+3. Tick readability v1 if not fully covered by legend/axis v1.
+4. Multipanel layout v1.
 
 Stop condition for this workflow: final review cannot refute the selected slice's exposure, tests, docs, and journal-safety claims, and release readiness is documented.
