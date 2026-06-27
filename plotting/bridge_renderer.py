@@ -236,7 +236,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         _validate_manual_overlays(spec)
         _validate_statistical_overlays(points, spec)
         _validate_axis_scales(points, spec)
-        _normalized_axis_limits(spec)
+        _validate_axis_limits(points, spec)
         _normalized_tick_style(spec)
         _normalized_legend_options(spec)
         _normalized_annotations(spec.annotations)
@@ -540,7 +540,7 @@ def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
     """Render a single CSV-based panel into *ax* (multipanel helper)."""
     points = _load_points(Path(panel.csv_path), panel)
     _validate_axis_scales(points, panel)
-    _normalized_axis_limits(panel)
+    _validate_axis_limits(points, panel)
     _normalized_tick_style(panel)
     _normalized_legend_options(panel)
     _validate_manual_overlays(panel)
@@ -1155,6 +1155,12 @@ def _validate_axis_scales(points: list[dict], spec: BridgeFigureSpec) -> None:
             raise ValueError(f"{axis_name}_scale='log' requires finite numeric {axis_name} values > 0")
 
 
+def _validate_axis_limits(points: list[dict], spec: BridgeFigureSpec) -> None:
+    limits = _normalized_axis_limits(spec)
+    if "x" in limits and any(not isinstance(point["x"], (int, float)) for point in points):
+        raise ValueError("axis_limits.x requires numeric x values")
+
+
 def _apply_axis_scales(ax, spec: BridgeFigureSpec) -> None:
     x_scale = _normalized_axis_scale(spec.x_scale, field_name="x_scale")
     y_scale = _normalized_axis_scale(spec.y_scale, field_name="y_scale")
@@ -1174,6 +1180,162 @@ def _visible_plot_axes(fig, fallback_ax=None) -> list:
 def _apply_axis_scales_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
     for axis in _visible_plot_axes(fig, fallback_ax):
         _apply_axis_scales(axis, spec)
+
+
+def _normalized_axis_limit_pair(raw_pair: object, *, field_name: str) -> tuple[float | None, float | None]:
+    if not isinstance(raw_pair, dict):
+        raise ValueError(f"{field_name} must be an object with min and/or max")
+    if not any(key in raw_pair for key in ("min", "max")):
+        raise ValueError(f"{field_name} must contain min and/or max")
+    unsupported = sorted(set(raw_pair) - {"min", "max"})
+    if unsupported:
+        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}")
+    limits: list[float | None] = []
+    for key in ("min", "max"):
+        value = raw_pair.get(key)
+        if value is None or value == "":
+            limits.append(None)
+            continue
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name}.{key} must be numeric") from exc
+        if not math.isfinite(numeric):
+            raise ValueError(f"{field_name}.{key} must be finite")
+        limits.append(numeric)
+    lower, upper = limits
+    if lower is not None and upper is not None and lower >= upper:
+        raise ValueError(f"{field_name}.min must be less than {field_name}.max")
+    return lower, upper
+
+
+def _normalized_axis_limits(spec: BridgeFigureSpec) -> dict[str, tuple[float | None, float | None]]:
+    raw_limits = spec.axis_limits
+    if raw_limits in (None, {}, []):
+        return {}
+    if not isinstance(raw_limits, dict):
+        raise ValueError("axis_limits must be an object keyed by x and/or y")
+    unsupported = sorted(set(raw_limits) - {"x", "y"})
+    if unsupported:
+        raise ValueError(f"axis_limits has unsupported key(s): {', '.join(unsupported)}")
+    normalized: dict[str, tuple[float | None, float | None]] = {}
+    for axis_name in ("x", "y"):
+        if axis_name not in raw_limits or raw_limits[axis_name] in (None, {}):
+            continue
+        lower, upper = _normalized_axis_limit_pair(raw_limits[axis_name], field_name=f"axis_limits.{axis_name}")
+        scale = _normalized_axis_scale(getattr(spec, f"{axis_name}_scale"), field_name=f"{axis_name}_scale")
+        if scale == "log" and any(value is not None and value <= 0 for value in (lower, upper)):
+            raise ValueError(f"axis_limits.{axis_name} values must be > 0 when {axis_name}_scale='log'")
+        normalized[axis_name] = (lower, upper)
+    return normalized
+
+
+def _apply_axis_limits(ax, spec: BridgeFigureSpec) -> None:
+    limits = _normalized_axis_limits(spec)
+    if "x" in limits:
+        ax.set_xlim(*limits["x"])
+    if "y" in limits:
+        ax.set_ylim(*limits["y"])
+
+
+def _apply_axis_limits_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
+    for axis in _visible_plot_axes(fig, fallback_ax):
+        _apply_axis_limits(axis, spec)
+
+
+def _normalized_tick_style(spec: BridgeFigureSpec) -> dict[str, object]:
+    raw_style = spec.tick_style
+    if raw_style in (None, {}, []):
+        return {}
+    if not isinstance(raw_style, dict):
+        raise ValueError("tick_style must be an object")
+    allowed = {"x_rotation", "y_rotation", "label_size", "direction"}
+    unsupported = sorted(set(raw_style) - allowed)
+    if unsupported:
+        raise ValueError(f"tick_style has unsupported key(s): {', '.join(unsupported)}")
+    normalized: dict[str, object] = {}
+    for key in ("x_rotation", "y_rotation"):
+        if key not in raw_style or raw_style[key] is None:
+            continue
+        try:
+            value = float(raw_style[key])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"tick_style.{key} must be numeric") from exc
+        if not math.isfinite(value) or not -360 <= value <= 360:
+            raise ValueError(f"tick_style.{key} must be finite and between -360 and 360")
+        normalized[key] = value
+    if raw_style.get("label_size") is not None:
+        try:
+            label_size = float(raw_style["label_size"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("tick_style.label_size must be numeric") from exc
+        if not math.isfinite(label_size) or label_size <= 0:
+            raise ValueError("tick_style.label_size must be a positive finite number")
+        normalized["label_size"] = label_size
+    if raw_style.get("direction") is not None:
+        direction = str(raw_style["direction"]).strip().lower()
+        if direction not in {"in", "out", "inout"}:
+            raise ValueError("tick_style.direction must be 'in', 'out', or 'inout'")
+        normalized["direction"] = direction
+    return normalized
+
+
+def _apply_tick_style(ax, spec: BridgeFigureSpec) -> None:
+    style = _normalized_tick_style(spec)
+    if not style:
+        return
+    tick_params: dict[str, object] = {}
+    if "label_size" in style:
+        tick_params["labelsize"] = style["label_size"]
+    if "direction" in style:
+        tick_params["direction"] = style["direction"]
+    if tick_params:
+        ax.tick_params(axis="both", **tick_params)
+    if "x_rotation" in style:
+        for label in ax.get_xticklabels():
+            label.set_rotation(float(style["x_rotation"]))
+            if float(style["x_rotation"]):
+                label.set_ha("right")
+    if "y_rotation" in style:
+        for label in ax.get_yticklabels():
+            label.set_rotation(float(style["y_rotation"]))
+
+
+def _apply_tick_style_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
+    for axis in _visible_plot_axes(fig, fallback_ax):
+        _apply_tick_style(axis, spec)
+
+
+def _normalized_legend_options(spec: BridgeFigureSpec) -> dict[str, object]:
+    raw_options = spec.legend_options
+    if raw_options in (None, {}, []):
+        return {}
+    if not isinstance(raw_options, dict):
+        raise ValueError("legend_options must be an object")
+    allowed = {"title", "order", "ncol"}
+    unsupported = sorted(set(raw_options) - allowed)
+    if unsupported:
+        raise ValueError(f"legend_options has unsupported key(s): {', '.join(unsupported)}")
+    normalized: dict[str, object] = {}
+    if raw_options.get("title") is not None:
+        normalized["title"] = str(raw_options["title"])
+    if raw_options.get("order") is not None:
+        order = raw_options["order"]
+        if not isinstance(order, (list, tuple)):
+            raise ValueError("legend_options.order must be an array of labels")
+        labels = tuple(str(label) for label in order if str(label).strip())
+        if len(labels) != len(set(labels)):
+            raise ValueError("legend_options.order must not contain duplicate labels")
+        normalized["order"] = labels
+    if raw_options.get("ncol") is not None:
+        try:
+            ncol = int(raw_options["ncol"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("legend_options.ncol must be an integer") from exc
+        if ncol < 1 or ncol > 8:
+            raise ValueError("legend_options.ncol must be between 1 and 8")
+        normalized["ncol"] = ncol
+    return normalized
 
 
 _CALLOUT_OFFSET_PRESETS: dict[str, tuple[float, float]] = {
@@ -1705,7 +1867,7 @@ def _draw_grouped_broken_xy(ax_top, ax_bot, points: list[dict], spec: BridgeFigu
             _annotate_broken_axis_points(ax_top, ax_bot, series_points, spec)
 
     if has_multi_series:
-        ax_top.legend(**_legend_kwargs(ax_top, spec, n_series=len(grouped)))
+        _apply_legend(ax_top, spec, n_series=len(grouped))
 
 
 def _draw_broken_xy_series(
@@ -2429,6 +2591,29 @@ def _legend_kwargs(ax, spec: BridgeFigureSpec, *, n_series: int) -> dict:
     kwargs = dict(get_standard_legend_props())
     kwargs["ncol"] = min(max(n_series, 1), 4)
     return kwargs
+
+
+def _apply_legend(ax, spec: BridgeFigureSpec, *, n_series: int) -> None:
+    kwargs = _legend_kwargs(ax, spec, n_series=n_series)
+    options = _normalized_legend_options(spec)
+    handles, labels = ax.get_legend_handles_labels()
+    if options.get("order"):
+        label_to_items = {label: (handle, label) for handle, label in zip(handles, labels)}
+        ordered_items = [label_to_items[label] for label in options["order"] if label in label_to_items]
+        remaining_items = [
+            (handle, label)
+            for handle, label in zip(handles, labels)
+            if label not in set(options["order"])
+        ]
+        if ordered_items:
+            handles, labels = zip(*(ordered_items + remaining_items), strict=True)
+            handles = list(handles)
+            labels = list(labels)
+    if "title" in options:
+        kwargs["title"] = options["title"]
+    if "ncol" in options:
+        kwargs["ncol"] = options["ncol"]
+    ax.legend(handles, labels, **kwargs)
 
 
 def _apply_layout(fig, ax, spec: BridgeFigureSpec, *, allow_figure_layout: bool = True) -> None:

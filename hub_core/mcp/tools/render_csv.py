@@ -23,6 +23,115 @@ def _normalized_axis_scale_arg(value: Any, *, field_name: str) -> str:
     return scale
 
 
+def _normalized_axis_limits_arg(value: Any, *, field_name: str, x_scale: str, y_scale: str) -> dict[str, dict[str, float]]:
+    if value in (None, {}, []):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be an object keyed by x and/or y.")
+    unsupported = sorted(set(value) - {"x", "y"})
+    if unsupported:
+        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
+    normalized: dict[str, dict[str, float]] = {}
+    for axis_name, scale in (("x", x_scale), ("y", y_scale)):
+        raw_pair = value.get(axis_name)
+        if raw_pair in (None, {}):
+            continue
+        if not isinstance(raw_pair, dict):
+            raise ValueError(f"{field_name}.{axis_name} must be an object with min and/or max.")
+        unsupported_pair = sorted(set(raw_pair) - {"min", "max"})
+        if unsupported_pair:
+            raise ValueError(
+                f"{field_name}.{axis_name} has unsupported key(s): {', '.join(unsupported_pair)}."
+            )
+        if not any(key in raw_pair for key in ("min", "max")):
+            raise ValueError(f"{field_name}.{axis_name} must contain min and/or max.")
+        item: dict[str, float] = {}
+        for key in ("min", "max"):
+            if raw_pair.get(key) is None or raw_pair.get(key) == "":
+                continue
+            try:
+                numeric = float(raw_pair[key])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{field_name}.{axis_name}.{key} must be numeric.") from exc
+            if not numeric == numeric or numeric in (float("inf"), float("-inf")):
+                raise ValueError(f"{field_name}.{axis_name}.{key} must be finite.")
+            if scale == "log" and numeric <= 0:
+                raise ValueError(f"{field_name}.{axis_name}.{key} must be > 0 when {axis_name}_scale='log'.")
+            item[key] = numeric
+        if "min" in item and "max" in item and item["min"] >= item["max"]:
+            raise ValueError(f"{field_name}.{axis_name}.min must be less than {field_name}.{axis_name}.max.")
+        if item:
+            normalized[axis_name] = item
+    return normalized
+
+
+def _normalized_tick_style_arg(value: Any, *, field_name: str) -> dict[str, Any]:
+    if value in (None, {}, []):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be an object.")
+    allowed = {"x_rotation", "y_rotation", "label_size", "direction"}
+    unsupported = sorted(set(value) - allowed)
+    if unsupported:
+        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
+    normalized: dict[str, Any] = {}
+    for key in ("x_rotation", "y_rotation"):
+        if value.get(key) is None:
+            continue
+        try:
+            numeric = float(value[key])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name}.{key} must be numeric.") from exc
+        if not numeric == numeric or numeric in (float("inf"), float("-inf")) or not -360 <= numeric <= 360:
+            raise ValueError(f"{field_name}.{key} must be finite and between -360 and 360.")
+        normalized[key] = numeric
+    if value.get("label_size") is not None:
+        try:
+            label_size = float(value["label_size"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name}.label_size must be numeric.") from exc
+        if not label_size == label_size or label_size in (float("inf"), float("-inf")) or label_size <= 0:
+            raise ValueError(f"{field_name}.label_size must be a positive finite number.")
+        normalized["label_size"] = label_size
+    if value.get("direction") is not None:
+        direction = str(value["direction"]).strip().lower()
+        if direction not in {"in", "out", "inout"}:
+            raise ValueError(f"{field_name}.direction must be 'in', 'out', or 'inout'.")
+        normalized["direction"] = direction
+    return normalized
+
+
+def _normalized_legend_options_arg(value: Any, *, field_name: str) -> dict[str, Any]:
+    if value in (None, {}, []):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be an object.")
+    allowed = {"title", "order", "ncol"}
+    unsupported = sorted(set(value) - allowed)
+    if unsupported:
+        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
+    normalized: dict[str, Any] = {}
+    if value.get("title") is not None:
+        normalized["title"] = str(value["title"])
+    if value.get("order") is not None:
+        order = value["order"]
+        if not isinstance(order, (list, tuple)):
+            raise ValueError(f"{field_name}.order must be an array of labels.")
+        labels = [str(label) for label in order if str(label).strip()]
+        if len(labels) != len(set(labels)):
+            raise ValueError(f"{field_name}.order must not contain duplicate labels.")
+        normalized["order"] = labels
+    if value.get("ncol") is not None:
+        try:
+            ncol = int(value["ncol"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name}.ncol must be an integer.") from exc
+        if ncol < 1 or ncol > 8:
+            raise ValueError(f"{field_name}.ncol must be between 1 and 8.")
+        normalized["ncol"] = ncol
+    return normalized
+
+
 def _normalized_span_annotation_arg(
     annotation: dict[str, Any],
     index: int,
