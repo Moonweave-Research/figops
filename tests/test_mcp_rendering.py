@@ -299,6 +299,30 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         self.assertIn("snapshot_project_path", project_output)
         self.assertIn("provenance", project_output)
 
+    def test_render_csv_graph_schema_exposes_legend_axis_polish_controls(self):
+        definitions = {tool["name"]: tool for tool in list_tool_definitions()}
+        properties = definitions["figops.render_csv_graph"]["inputSchema"]["properties"]
+
+        self.assertEqual(properties["legend_layout"]["type"], "string")
+        self.assertIn("standard", properties["legend_layout"]["enum"])
+        self.assertIn("top_outside", properties["legend_layout"]["enum"])
+        self.assertIn("right_outside", properties["legend_layout"]["enum"])
+        self.assertEqual(
+            set(properties["legend_options"]["properties"]),
+            {"title", "order", "ncol"},
+        )
+        self.assertFalse(properties["legend_options"].get("additionalProperties", True))
+        self.assertEqual(properties["legend_options"]["properties"]["order"]["items"]["type"], "string")
+        self.assertGreaterEqual(properties["legend_options"]["properties"]["ncol"].get("minimum", 0), 1)
+        self.assertEqual(set(properties["axis_limits"]["properties"]), {"x", "y"})
+        for axis in ("x", "y"):
+            axis_properties = properties["axis_limits"]["properties"][axis]["properties"]
+            self.assertEqual(set(axis_properties), {"min", "max"})
+        self.assertEqual(set(properties["tick_style"]["properties"]), {"rotation", "format"})
+        self.assertIn("plain", properties["tick_style"]["properties"]["format"]["enum"])
+        self.assertIn("scientific", properties["tick_style"]["properties"]["format"]["enum"])
+        self.assertIn("compact", properties["tick_style"]["properties"]["format"]["enum"])
+
     def test_default_runtime_root_preview_does_not_create_directory(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             runtime_root = Path(tmpdir) / "runtime"
@@ -1073,7 +1097,84 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["facet_ncols"], 4)
             self.assertEqual(captured["facet_nrows"], 1)
 
+    def test_render_csv_graph_forwards_legend_axis_polish_controls(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "series.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                "x,y,condition\n0,1,Beta\n1,2,Beta\n0,3,Alpha\n1,4,Alpha\n",
+                encoding="utf-8",
+            )
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+            captured = {}
 
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "plot_type": "line",
+                        "series_column": "condition",
+                        "legend_layout": "top_outside",
+                        "legend_options": {"title": "Treatment", "order": ["Alpha", "Beta"], "ncol": 2},
+                        "axis_limits": {"x": {"min": 0, "max": 1}, "y": {"min": 0, "max": 5}},
+                        "tick_style": {"rotation": 45, "format": "plain"},
+                        "job_id": "render-legend-axis-polish",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["legend_layout"], "top_outside")
+            self.assertEqual(captured["legend_options"], {"title": "Treatment", "order": ("Alpha", "Beta"), "ncol": 2})
+            self.assertEqual(captured["axis_limits"], {"x": {"min": 0.0, "max": 1.0}, "y": {"min": 0.0, "max": 5.0}})
+            self.assertEqual(captured["tick_style"], {"rotation": 45.0, "format": "plain"})
+
+    def test_render_csv_graph_smoke_renders_with_legend_axis_polish_controls(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "series.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                "x,y,condition\n0,1,Beta\n1,2,Beta\n0,3,Alpha\n1,4,Alpha\n",
+                encoding="utf-8",
+            )
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "line",
+                    "series_column": "condition",
+                    "legend_layout": "top_outside",
+                    "legend_options": {"title": "Treatment", "order": ["Alpha", "Beta"], "ncol": 2},
+                    "axis_limits": {"x": {"min": 0, "max": 1}, "y": {"min": 0, "max": 5}},
+                    "tick_style": {"rotation": 45, "format": "plain"},
+                    "job_id": "render-legend-axis-polish-smoke",
+                },
+            )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertTrue(Path(result["output_path"]).is_file())
+            self.assertEqual(result["job_id"], "render-legend-axis-polish-smoke")
 
     def test_render_csv_graph_forwards_log_scale_series_and_annotations(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
