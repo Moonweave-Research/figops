@@ -1,6 +1,6 @@
 # FigOps Polish Layer Finalization Workflow
 
-Status: current execution spec after completed polish waves 1-3.
+Status: current execution spec after completed polish waves 1-5.
 Scope: FigOps journal-compliant figure polish, not a replacement plotting engine.
 
 ## 1. Research and prior art
@@ -16,7 +16,7 @@ Observed prior art inside the repo:
 - Renderer capability and annotation drawing live in `plotting/bridge_renderer.py`.
 - Geometry diagnostics live in `hub_core/geometry_diagnostics.py`.
 
-Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#198, typed complex MCP schemas, series visual hierarchy controls, and Smart Callout v1 are shipped; the next roadmap must therefore focus on remaining layout, label, contrast, tick, and multipanel polish rather than re-solving completed slices.
+Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#199 and the dense point-label slice on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, and Dense Point-Label Polish v1 are shipped or staged; the next roadmap must therefore focus on remaining contrast, tick, and multipanel polish rather than re-solving completed slices.
 
 ## 2. Product position and non-goals
 
@@ -104,15 +104,15 @@ Completed slices:
 1. Typed MCP style schemas for `series_styles`, `annotations`, `guide_curves`, and `fill_between` shipped in PR #196.
 2. Series style extension for color, alpha, marker size, linewidth, z-order, and label override shipped in PR #197.
 3. Smart Callout v1 with deterministic offsets and presets shipped in PR #198.
+4. Legend and axis polish v1 shipped in PR #199.
+5. Dense point-label polish v1 is staged on this branch: MCP `label_column`, `point_label_options.max_labels/priority_column/skip_column/offset/fanout`, and `point_label_skips` diagnostics.
 
 Current priority order for remaining slices:
 
-1. Legend and axis polish v1: preserve `legend_layout` string presets, add `legend_options.title/order/ncol`, bounded axis limits, tick rotation, and tick formatting presets.
-2. Dense point-label polish v1: deterministic label fanout, priority/skip controls, and diagnostics; no dependency-based repel solver.
-3. Contrast diagnostics v1: text/overlay contrast warnings before any automatic restyling.
-4. Tick readability v1: long categorical-label compression and log tick formatting controls.
-5. Multipanel layout v1: spacing, ratios, and shared legend placement before mosaic/span DSL.
-6. Fit/trend overlay expansion: defer until a project explicitly needs model semantics.
+1. Contrast diagnostics v1: text/overlay contrast warnings before any automatic restyling.
+2. Tick readability v1: long categorical-label compression and log tick formatting controls.
+3. Multipanel layout v1: spacing, ratios, and shared legend placement before mosaic/span DSL.
+4. Fit/trend overlay expansion: defer until a project explicitly needs model semantics.
 
 Implementation rule: pick one bounded slice, write or extend tests first where feasible, and prove the field reaches either MCP output, renderer behavior, diagnostics, or pixels.
 

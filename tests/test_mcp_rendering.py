@@ -1144,6 +1144,63 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["axis_limits"], {"x": {"min": 0.0, "max": 1.0}, "y": {"min": 0.0, "max": 5.0}})
             self.assertEqual(captured["tick_style"], {"rotation": 45.0, "format": "plain"})
 
+    def test_render_csv_graph_forwards_dense_point_label_controls(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "labels.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                "x,y,label,priority,hide\n0,1,A,1,0\n1,2,B,5,0\n2,3,C,3,yes\n",
+                encoding="utf-8",
+            )
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "plot_type": "scatter",
+                        "label_column": "label",
+                        "point_label_options": {
+                            "max_labels": 1,
+                            "priority_column": "priority",
+                            "skip_column": "hide",
+                            "offset": {"dx": 4, "dy": 8},
+                            "fanout": "compass",
+                        },
+                        "job_id": "render-dense-point-label-polish",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["label_column"], "label")
+            self.assertEqual(
+                captured["point_label_options"],
+                {
+                    "max_labels": 1,
+                    "priority_column": "priority",
+                    "skip_column": "hide",
+                    "offset": {"dx": 4.0, "dy": 8.0},
+                    "fanout": "compass",
+                },
+            )
+
     def test_render_csv_graph_smoke_renders_with_legend_axis_polish_controls(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             tmp_root = Path(tmpdir)
@@ -1175,6 +1232,44 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn(result["status"], {"ok", "warning"})
             self.assertTrue(Path(result["output_path"]).is_file())
             self.assertEqual(result["job_id"], "render-legend-axis-polish-smoke")
+
+    def test_render_csv_graph_smoke_reports_point_label_skips(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "labels.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text(
+                "x,y,label,priority,hide\n0,1,A,1,0\n1,2,B,5,0\n2,3,C,3,yes\n",
+                encoding="utf-8",
+            )
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "scatter",
+                    "label_column": "label",
+                    "point_label_options": {
+                        "max_labels": 1,
+                        "priority_column": "priority",
+                        "skip_column": "hide",
+                        "fanout": "compass",
+                    },
+                    "job_id": "render-dense-point-label-skips",
+                },
+            )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertTrue(Path(result["output_path"]).is_file())
+            checks = result["geometry_diagnostics"]["checks"]
+            point_label_check = next(check for check in checks if check["name"] == "point_label_skips")
+            self.assertFalse(point_label_check["passed"])
+            self.assertEqual(point_label_check["data"]["skipped_labels"], 2)
+            self.assertIn(point_label_check["detail"], result["warnings"])
 
     def test_render_csv_graph_forwards_log_scale_series_and_annotations(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -1560,7 +1655,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             panel_a = tmp_root / "input" / "a.csv"
             panel_b = tmp_root / "input" / "b.csv"
             panel_a.parent.mkdir(parents=True, exist_ok=True)
-            panel_a.write_text("era,rho,sem\nA,100,10\nB,1000,100\n", encoding="utf-8")
+            panel_a.write_text("era,rho,sem,label,priority\nA,100,10,A,1\nB,1000,100,B,2\n", encoding="utf-8")
             panel_b.write_text(
                 "rho,eps,sem,condition,lower,upper\n100,10,1,Reference,8,12\n1000,8,2,This work,6,10\n",
                 encoding="utf-8",
@@ -1593,6 +1688,12 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                                 "plot_type": "scatter",
                                 "y_scale": "log",
                                 "yerr_column": "sem",
+                                "label_column": "label",
+                                "point_label_options": {
+                                    "max_labels": 1,
+                                    "priority_column": "priority",
+                                    "fanout": "compass",
+                                },
                                 "title": "panel a",
                             },
                             {
@@ -1631,6 +1732,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["panels"][0]["plot_type"], "scatter")
             self.assertEqual(captured["panels"][0]["y_scale"], "log")
             self.assertEqual(captured["panels"][0]["yerr_column"], "sem")
+            self.assertEqual(captured["panels"][0]["label_column"], "label")
+            self.assertEqual(
+                captured["panels"][0]["point_label_options"],
+                {"max_labels": 1, "priority_column": "priority", "fanout": "compass"},
+            )
             self.assertEqual(captured["panels"][1]["x_scale"], "log")
             self.assertEqual(captured["panels"][1]["series_column"], "condition")
             self.assertEqual(captured["panels"][1]["guide_curves"][0]["label"], "guide")

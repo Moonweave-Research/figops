@@ -21,6 +21,7 @@ _GEOMETRY_WARNING_ELIGIBLE = frozenset(
         "text_axis_edge_proximity",
         "legend_marker_consistency",
         "label_offset_consistency",
+        "point_label_skips",
         "font_size_token_drift",
         "journal_compliance",
     }

@@ -1,6 +1,6 @@
 # FigOps Polish Layer Adversarial Roadmap
 
-Status: source-of-truth roadmap for the next polish-layer waves after PRs #196-#198.
+Status: source-of-truth roadmap for the next polish-layer waves after PRs #196-#199 and the dense point-label slice staged on this branch.
 Scope: roadmap and acceptance criteria only; no renderer or MCP implementation in this document.
 
 ## 1. Baseline
@@ -10,8 +10,10 @@ Completed polish-layer capabilities:
 1. Typed complex MCP schemas for `series_styles`, `annotations`, `guide_curves`, and `fill_between`.
 2. Series visual hierarchy controls: color, alpha, marker size, linewidth, z-order, and legend label override.
 3. Smart Callout v1: explicit point offsets, placement presets, deterministic fanout, and legacy annotation compatibility.
+4. Legend and Axis Polish v1: legend title/order/ncol, bounded axis limits, tick rotation, and tick formatting presets.
+5. Dense Point-Label Polish v1: MCP `label_column`, deterministic max-label/priority/skip controls, static offset/fanout, and `point_label_skips` diagnostics.
 
-Therefore, future polish work must not treat schema discoverability, basic visual hierarchy, or deterministic callout offsets as open gaps unless a regression is proven.
+Therefore, future polish work must not treat schema discoverability, basic visual hierarchy, deterministic callout offsets, bounded legend/axis controls, or deterministic dense point-label controls as open gaps unless a regression is proven.
 
 ## 2. Adversarial decision gates
 
@@ -78,17 +80,18 @@ Rejected scope:
 - Global palette changes.
 - Full layout solver.
 
-### P2. Dense Point-Label Polish v1
+### P2. Dense Point-Label Polish v1 — staged on current branch
 
 Purpose: reduce label clutter for dense scatter labels with deterministic behavior.
 
 Candidate controls:
 
-- per-label offset column or static offset
+- static offset
 - label priority column
+- skip column
 - max labels
-- deterministic fanout presets
-- diagnostic warning when label collision remains high
+- deterministic fanout preset
+- diagnostic warning when labels are skipped
 
 Acceptance criteria:
 
@@ -157,12 +160,10 @@ Reason: model choice can imply scientific interpretation. Existing `guide_curves
 
 ## 4. Recommended next PR sequence
 
-1. Docs-only roadmap refresh.
-2. Legend and Axis Polish v1.
-3. Dense Point-Label Polish v1.
-4. Contrast Diagnostics v1.
-5. Tick Readability v1, if not fully absorbed by P1.
-6. Multipanel Layout v1.
+1. Contrast Diagnostics v1.
+2. Tick Readability v1, limited to remaining categorical/log polish not covered by P1.
+3. Multipanel Layout v1.
+4. Fit / Trend Overlay Expansion only with explicit project semantics.
 7. Architecture/data-contract debt as a separate maintenance track.
 
 ## 5. Completion definition

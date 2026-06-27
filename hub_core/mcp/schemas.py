@@ -43,6 +43,7 @@ _GEOMETRY_METRIC_NAMES = (
     "text_axis_edge_proximity",
     "legend_marker_consistency",
     "label_offset_consistency",
+    "point_label_skips",
     "font_size_token_drift",
     "journal_compliance",
 )
@@ -254,6 +255,15 @@ _CALLOUT_PLACEMENT_PRESET_SCHEMA = {
         "lower_right",
     ],
 }
+_POINT_LABEL_OPTIONS_SCHEMA = _object_schema(
+    {
+        "offset": _CALLOUT_OFFSET_SCHEMA,
+        "fanout": {"type": "string", "enum": ["none", "compass"], "default": "none"},
+        "max_labels": {"type": "integer", "minimum": 1},
+        "priority_column": {"type": "string"},
+        "skip_column": {"type": "string"},
+    }
+)
 _POINT_ANNOTATION_PROPERTIES = {
     "x": _NUMBER_OR_STRING_SCHEMA,
     "y": _NUMBER_OR_STRING_SCHEMA,
@@ -704,6 +714,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "z_column": {"type": "string"},
                     "facet_column": {"type": "string"},
                     "series_column": {"type": "string"},
+                    "label_column": {"type": "string"},
+                    "point_label_options": _POINT_LABEL_OPTIONS_SCHEMA,
                     "series_styles": _SERIES_STYLES_SCHEMA,
                     "x_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
                     "y_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
@@ -779,6 +791,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                                 "z_column": {"type": "string"},
                                 "facet_column": {"type": "string"},
                                 "series_column": {"type": "string"},
+                                "label_column": {"type": "string"},
+                                "point_label_options": _POINT_LABEL_OPTIONS_SCHEMA,
                                 "series_styles": _SERIES_STYLES_SCHEMA,
                                 "x_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
                                 "y_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},

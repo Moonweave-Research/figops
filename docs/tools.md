@@ -1750,6 +1750,9 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "description": "Stable render job ID; auto-generated when omitted.",
       "type": "string"
     },
+    "label_column": {
+      "type": "string"
+    },
     "legend_layout": {
       "default": "auto",
       "enum": [
@@ -1808,6 +1811,51 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
         "xy"
       ],
       "type": "string"
+    },
+    "point_label_options": {
+      "additionalProperties": false,
+      "properties": {
+        "fanout": {
+          "default": "none",
+          "enum": [
+            "none",
+            "compass"
+          ],
+          "type": "string"
+        },
+        "max_labels": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "properties": {
+            "dx": {
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "dy": {
+              "type": [
+                "number",
+                "string"
+              ]
+            }
+          },
+          "required": [
+            "dx",
+            "dy"
+          ],
+          "type": "object"
+        },
+        "priority_column": {
+          "type": "string"
+        },
+        "skip_column": {
+          "type": "string"
+        }
+      },
+      "type": "object"
     },
     "profile": {
       "default": "baseline",
@@ -2077,6 +2125,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                   "text_axis_edge_proximity",
                   "legend_marker_consistency",
                   "label_offset_consistency",
+                  "point_label_skips",
                   "font_size_token_drift",
                   "journal_compliance"
                 ],
@@ -2880,6 +2929,9 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             },
             "type": "array"
           },
+          "label_column": {
+            "type": "string"
+          },
           "legend_layout": {
             "default": "auto",
             "enum": [
@@ -2925,6 +2977,51 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
               "xy"
             ],
             "type": "string"
+          },
+          "point_label_options": {
+            "additionalProperties": false,
+            "properties": {
+              "fanout": {
+                "default": "none",
+                "enum": [
+                  "none",
+                  "compass"
+                ],
+                "type": "string"
+              },
+              "max_labels": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "offset": {
+                "properties": {
+                  "dx": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "dy": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
+                "required": [
+                  "dx",
+                  "dy"
+                ],
+                "type": "object"
+              },
+              "priority_column": {
+                "type": "string"
+              },
+              "skip_column": {
+                "type": "string"
+              }
+            },
+            "type": "object"
           },
           "series_column": {
             "type": "string"
@@ -3197,6 +3294,7 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                   "text_axis_edge_proximity",
                   "legend_marker_consistency",
                   "label_offset_consistency",
+                  "point_label_skips",
                   "font_size_token_drift",
                   "journal_compliance"
                 ],
@@ -3573,6 +3671,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
                   "text_axis_edge_proximity",
                   "legend_marker_consistency",
                   "label_offset_consistency",
+                  "point_label_skips",
                   "font_size_token_drift",
                   "journal_compliance"
                 ],

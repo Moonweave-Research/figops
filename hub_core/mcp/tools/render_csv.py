@@ -135,6 +135,52 @@ def _normalized_legend_options_arg(value: Any, *, field_name: str) -> dict[str, 
     return normalized
 
 
+def _normalized_point_label_options_arg(value: Any, *, field_name: str) -> dict[str, Any]:
+    if value in (None, {}, []):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be an object.")
+    unsupported = sorted(set(value) - {"offset", "fanout", "max_labels", "priority_column", "skip_column"})
+    if unsupported:
+        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
+    normalized: dict[str, Any] = {}
+    if value.get("offset") is not None:
+        offset = value["offset"]
+        if not isinstance(offset, dict) or "dx" not in offset or "dy" not in offset:
+            raise ValueError(f"{field_name}.offset must contain dx and dy.")
+        try:
+            dx = float(offset["dx"])
+            dy = float(offset["dy"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name}.offset dx and dy must be numeric.") from exc
+        if not math.isfinite(dx) or not math.isfinite(dy):
+            raise ValueError(f"{field_name}.offset dx and dy must be finite.")
+        normalized["offset"] = {"dx": dx, "dy": dy}
+    if value.get("fanout") is not None:
+        fanout = str(value["fanout"]).strip().lower().replace("-", "_")
+        if fanout not in {"none", "compass"}:
+            raise ValueError(f"{field_name}.fanout must be 'none' or 'compass'.")
+        normalized["fanout"] = fanout
+    if value.get("max_labels") is not None:
+        try:
+            max_labels = int(value["max_labels"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name}.max_labels must be an integer.") from exc
+        if max_labels < 1:
+            raise ValueError(f"{field_name}.max_labels must be at least 1.")
+        normalized["max_labels"] = max_labels
+    for key in ("priority_column", "skip_column"):
+        if value.get(key) is None or value.get(key) == "":
+            continue
+        if not isinstance(value[key], str):
+            raise ValueError(f"{field_name}.{key} must be a string.")
+        column = value[key].strip()
+        if not column:
+            raise ValueError(f"{field_name}.{key} must be a non-empty string when provided.")
+        normalized[key] = column
+    return normalized
+
+
 def _normalized_span_annotation_arg(
     annotation: dict[str, Any],
     index: int,
@@ -426,6 +472,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             z_column = str(arguments.get("z_column") or "").strip()
             facet_column = str(arguments.get("facet_column") or "").strip()
             series_column = str(arguments.get("series_column") or "").strip()
+            label_column = str(arguments.get("label_column") or "").strip()
         except ValueError as exc:
             return self._csv_render_error(
                 arguments,
@@ -466,6 +513,9 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 arguments.get("axis_limits"), field_name="axis_limits", x_scale=x_scale, y_scale=y_scale
             )
             tick_style = _normalized_tick_style_arg(arguments.get("tick_style"), field_name="tick_style")
+            point_label_options = _normalized_point_label_options_arg(
+                arguments.get("point_label_options"), field_name="point_label_options"
+            )
             annotations = _normalized_annotation_args(arguments.get("annotations"))
             series_styles = _normalized_series_style_args(arguments.get("series_styles"))
             guide_curves = _normalized_guide_curve_args(arguments.get("guide_curves"))
@@ -533,6 +583,10 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             render_arg_errors.append("Use yerr_column for line/scatter/xy or bar_error_column for bar, not both.")
         if series_column and plot_type not in {"line", "scatter", "xy"}:
             render_arg_errors.append("series_column is only supported for plot_type 'line', 'scatter', or 'xy'.")
+        if label_column and plot_type not in {"line", "scatter", "xy", "bar"}:
+            render_arg_errors.append("label_column is only supported for plot_type 'line', 'scatter', 'xy', or 'bar'.")
+        if point_label_options and not label_column:
+            render_arg_errors.append("point_label_options requires label_column.")
         if (guide_curves or fill_between) and plot_type not in {"line", "scatter", "xy"}:
             render_arg_errors.append(
                 "guide_curves and fill_between are only supported for plot_type 'line', 'scatter', or 'xy'."
@@ -667,7 +721,18 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             extra_required_columns=_fill_between_required_columns(
                 fill_between,
                 existing=tuple(
-                    column for column in (x_column, y_column, z_column, facet_column, series_column) if column
+                    column
+                    for column in (
+                        x_column,
+                        y_column,
+                        z_column,
+                        facet_column,
+                        series_column,
+                        label_column,
+                        str(point_label_options.get("priority_column") or ""),
+                        str(point_label_options.get("skip_column") or ""),
+                    )
+                    if column
                 ),
             ),
         )
@@ -692,6 +757,13 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 *([z_column] if z_column else []),
                 *([facet_column] if facet_column else []),
                 *([series_column] if series_column else []),
+                *([label_column] if label_column else []),
+                *(
+                    [str(point_label_options.get("priority_column"))]
+                    if point_label_options.get("priority_column")
+                    else []
+                ),
+                *([str(point_label_options.get("skip_column"))] if point_label_options.get("skip_column") else []),
                 *([yerr_column] if yerr_column else []),
                 *([yerr_minus_column] if yerr_minus_column else []),
                 *_fill_between_required_columns(
@@ -704,8 +776,11 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                             z_column,
                             facet_column,
                             series_column,
+                            label_column,
                             yerr_column,
                             yerr_minus_column,
+                            str(point_label_options.get("priority_column") or ""),
+                            str(point_label_options.get("skip_column") or ""),
                         )
                         if column
                     ),
@@ -797,6 +872,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "z_column": z_column,
                         "facet_column": facet_column,
                         "series_column": series_column,
+                        "label_column": label_column,
+                        "point_label_options": point_label_options,
                         "series_styles": series_styles,
                         "x_scale": x_scale,
                         "y_scale": y_scale,
@@ -1085,6 +1162,10 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 fill_between = _normalized_fill_between_args(panel.get("fill_between"))
                 facet_column = str(panel.get("facet_column") or "").strip()
                 series_column = str(panel.get("series_column") or "").strip()
+                label_column = str(panel.get("label_column") or "").strip()
+                point_label_options = _normalized_point_label_options_arg(
+                    panel.get("point_label_options"), field_name=f"panels[{index}].point_label_options"
+                )
                 yerr_column = str(panel.get("yerr_column") or "").strip()
                 yerr_minus_column = str(panel.get("yerr_minus_column") or "").strip()
                 yerr_cap_width = float(panel.get("yerr_cap_width", 3.0))
@@ -1104,6 +1185,14 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 contract_errors.append(
                     f"panels[{index}].series_column is only supported for plot_type 'line', 'scatter', or 'xy'."
                 )
+                continue
+            if label_column and plot_type not in {"line", "scatter", "xy", "bar"}:
+                contract_errors.append(
+                    f"panels[{index}].label_column is only supported for plot_type 'line', 'scatter', 'xy', or 'bar'."
+                )
+                continue
+            if point_label_options and not label_column:
+                contract_errors.append(f"panels[{index}].point_label_options requires label_column.")
                 continue
             if (yerr_column or yerr_minus_column) and plot_type not in {"line", "scatter", "xy"}:
                 contract_errors.append(
@@ -1133,6 +1222,13 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 *([str(panel.get("z_column") or "").strip()] if plot_type == "heatmap" else []),
                 *([facet_column] if facet_column else []),
                 *([series_column] if series_column else []),
+                *([label_column] if label_column else []),
+                *(
+                    [str(point_label_options.get("priority_column"))]
+                    if point_label_options.get("priority_column")
+                    else []
+                ),
+                *([str(point_label_options.get("skip_column"))] if point_label_options.get("skip_column") else []),
                 *([yerr_column] if yerr_column else []),
                 *([yerr_minus_column] if yerr_minus_column else []),
                 *_fill_between_required_columns(
@@ -1145,6 +1241,9 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                             str(panel.get("z_column") or "").strip() if plot_type == "heatmap" else "",
                             facet_column,
                             series_column,
+                            label_column,
+                            str(point_label_options.get("priority_column") or ""),
+                            str(point_label_options.get("skip_column") or ""),
                             yerr_column,
                             yerr_minus_column,
                         )
@@ -1178,6 +1277,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     "z_column": str(panel.get("z_column") or "").strip(),
                     "facet_column": facet_column,
                     "series_column": series_column,
+                    "label_column": label_column,
+                    "point_label_options": point_label_options,
                     "series_styles": series_styles,
                     "x_scale": x_scale,
                     "y_scale": y_scale,
