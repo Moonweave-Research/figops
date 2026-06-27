@@ -1271,6 +1271,35 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(point_label_check["data"]["skipped_labels"], 2)
             self.assertIn(point_label_check["detail"], result["warnings"])
 
+    def test_render_csv_graph_smoke_reports_annotation_overlay_contrast(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "contrast.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y\n0,0\n1,1\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "scatter",
+                    "annotations": [
+                        {"hspan": {"ymin": 0.2, "ymax": 0.8}, "text": "dark", "color": "black", "alpha": 0.9}
+                    ],
+                    "job_id": "render-annotation-overlay-contrast",
+                },
+            )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            checks = result["geometry_diagnostics"]["checks"]
+            contrast_check = next(check for check in checks if check["name"] == "annotation_overlay_contrast")
+            self.assertFalse(contrast_check["passed"])
+            self.assertIn(contrast_check["detail"], result["warnings"])
+
     def test_render_csv_graph_forwards_log_scale_series_and_annotations(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             tmp_root = Path(tmpdir)

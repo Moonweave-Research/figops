@@ -22,6 +22,7 @@ _GEOMETRY_WARNING_ELIGIBLE = frozenset(
         "legend_marker_consistency",
         "label_offset_consistency",
         "point_label_skips",
+        "annotation_overlay_contrast",
         "font_size_token_drift",
         "journal_compliance",
     }

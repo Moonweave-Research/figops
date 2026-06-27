@@ -41,10 +41,10 @@
       "id": "dark-fill-text-contrast",
       "plot_type": "scatter",
       "data_recipe": "Add dark hspan or fill_between overlay plus text annotation.",
-      "current_expected_weakness": "Annotation text contrast is not generally evaluated outside specialized heatmap logic.",
-      "desired_polish_behavior": "Contrast-safe annotation defaults or diagnostics warning.",
-      "automation_level": "semi-automated",
-      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_geometry_diagnostics.py -q"
+      "current_expected_weakness": "Tagged annotation region/hspan/vspan and manual fill_between overlays are now checked against overlapping annotation text with contrast-ratio diagnostics; remaining weakness is automatic color restyling, which is intentionally out of scope for diagnostics v1.",
+      "desired_polish_behavior": "Diagnostics warn with affected annotation and overlay identity when overlapping text/overlay contrast is below threshold; no automatic style mutation.",
+      "automation_level": "automated",
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_geometry_diagnostics.py tests/test_bridge_renderer.py tests/test_mcp_rendering.py -q"
     },
     {
       "id": "log-axis-tick-readability",
@@ -75,7 +75,6 @@
     }
   ],
   "expected_failures": [
-    "contrast diagnostics beyond objective geometry",
     "multipanel spacing and shared legend polish"
   ],
   "completed_slices": [
@@ -83,7 +82,8 @@
     "series-visual-hierarchy-controls",
     "smart-callout-v1",
     "legend-axis-polish-v1",
-    "dense-point-label-polish-v1"
+    "dense-point-label-polish-v1",
+    "contrast-diagnostics-v1"
   ],
-  "selected_next_slice": "contrast-diagnostics-v1"
+  "selected_next_slice": "tick-readability-v1"
 }

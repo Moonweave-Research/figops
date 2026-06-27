@@ -1977,6 +1977,32 @@ class BridgeRendererUnitTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    def test_annotation_overlay_contrast_diagnostic_from_renderer_tags(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        try:
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            spec = BridgeFigureSpec(
+                csv_path="unused.csv",
+                output_path="unused.png",
+                plot_type="scatter",
+                x_column="x",
+                y_column="y",
+                title="contrast",
+                annotations=({"hspan": {"ymin": 0.2, "ymax": 0.8}, "text": "dark", "color": "black", "alpha": 0.9},),
+            )
+            _draw_annotations(ax, spec)
+
+            check = _geometry_check(
+                diagnose_figure_geometry(fig, [ax], layout_locked=False),
+                "annotation_overlay_contrast",
+            )
+
+            self.assertFalse(check["passed"])
+            self.assertEqual(check["data"]["pairs"][0]["overlay_role"], "annotation_hspan")
+        finally:
+            plt.close(fig)
+
     def test_point_label_options_limit_by_priority_and_report_skips(self):
         fig, ax = plt.subplots()
         try:
@@ -2503,6 +2529,7 @@ class AnnotationStyleTest(unittest.TestCase):
         self.assertEqual(ax.text.call_args_list[0].args[0], 0.5)
         self.assertEqual(ax.text.call_args_list[0].args[2], "band")
         self.assertIs(ax.text.call_args_list[0].kwargs["transform"], y_transform)
+        self.assertEqual(ax.text.return_value._graph_hub_annotation_text_role, "annotation_vspan")
         self.assertEqual(ax.text.call_args_list[1].args[2], "window")
         self.assertEqual(ax.text.call_args_list[1].args[1], 0.5)
         self.assertIs(ax.text.call_args_list[1].kwargs["transform"], x_transform)
@@ -2543,6 +2570,8 @@ class AnnotationStyleTest(unittest.TestCase):
             ax.fill_between.assert_called_once()
             self.assertEqual(ax.fill_between.call_args.args, ([1.0, 2.0], [8.0, 18.0], [12.0, 23.0]))
             self.assertEqual(ax.fill_between.call_args.kwargs["alpha"], 0.25)
+            self.assertEqual(ax.fill_between.return_value._graph_hub_overlay_role, "fill_between")
+            self.assertEqual(ax.fill_between.return_value._graph_hub_overlay_label, "fill_between[0]")
             ax.plot.assert_called_once()
             self.assertEqual(ax.plot.call_args.args, ([1.0, 2.0], [9.0, 21.0]))
             self.assertEqual(ax.plot.call_args.kwargs["linestyle"], "--")

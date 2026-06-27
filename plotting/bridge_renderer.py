@@ -1246,7 +1246,8 @@ def _draw_manual_overlays(ax, csv_path: Path, spec: BridgeFigureSpec) -> None:
         }
         if region.get("label"):
             kwargs["label"] = str(region["label"])
-        ax.fill_between(xs, y1s, y2s, **kwargs)
+        artist = ax.fill_between(xs, y1s, y2s, **kwargs)
+        _tag_overlay_artist(artist, role="fill_between", label=str(region.get("label") or f"fill_between[{index}]"))
 
     for index, overlay in enumerate(spec.guide_curves or ()):
         xs, ys = _overlay_xy_arrays(overlay, field_name=f"guide_curves[{index}]")
@@ -1254,6 +1255,15 @@ def _draw_manual_overlays(ax, csv_path: Path, spec: BridgeFigureSpec) -> None:
 
     if any(isinstance(overlay, dict) and overlay.get("label") for overlay in (*spec.fill_between, *spec.guide_curves)):
         _apply_legend(ax, spec, n_series=1)
+
+
+def _tag_overlay_artist(artist, *, role: str, label: str) -> None:
+    artist._graph_hub_overlay_role = role
+    artist._graph_hub_overlay_label = label
+
+
+def _tag_annotation_text(artist, *, role: str) -> None:
+    artist._graph_hub_annotation_text_role = role
 
 
 def _normalized_axis_scale(value: str, *, field_name: str) -> str:
@@ -1742,7 +1752,8 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
             xmax = float(annotation["xmax"])
             ymin = float(annotation["ymin"])
             ymax = float(annotation["ymax"])
-            ax.fill_between(
+            region_text = str(annotation["text"])
+            artist = ax.fill_between(
                 [xmin, xmax],
                 ymin,
                 ymax,
@@ -1751,9 +1762,9 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
                 linewidth=0,
                 zorder=0,
             )
-            region_text = str(annotation["text"])
+            _tag_overlay_artist(artist, role="annotation_region", label=region_text or "region")
             if region_text:
-                ax.text(
+                text_artist = ax.text(
                     _span_midpoint(xmin, xmax),
                     _span_midpoint(ymin, ymax),
                     region_text,
@@ -1764,11 +1775,12 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
                     zorder=1,
                     clip_on=True,
                 )
+                _tag_annotation_text(text_artist, role="annotation_region")
             continue
         if annotation.get("kind") == "hspan":
             ymin = float(annotation["ymin"])
             ymax = float(annotation["ymax"])
-            ax.axhspan(
+            artist = ax.axhspan(
                 ymin,
                 ymax,
                 color=color,
@@ -1777,8 +1789,9 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
                 zorder=0,
             )
             span_text = str(annotation["text"])
+            _tag_overlay_artist(artist, role="annotation_hspan", label=span_text or "hspan")
             if span_text:
-                ax.text(
+                text_artist = ax.text(
                     0.5,
                     _span_midpoint(ymin, ymax),
                     span_text,
@@ -1790,11 +1803,12 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
                     zorder=1,
                     clip_on=True,
                 )
+                _tag_annotation_text(text_artist, role="annotation_hspan")
             continue
         if annotation.get("kind") == "vspan":
             xmin = float(annotation["xmin"])
             xmax = float(annotation["xmax"])
-            ax.axvspan(
+            artist = ax.axvspan(
                 xmin,
                 xmax,
                 color=color,
@@ -1803,8 +1817,9 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
                 zorder=0,
             )
             span_text = str(annotation["text"])
+            _tag_overlay_artist(artist, role="annotation_vspan", label=span_text or "vspan")
             if span_text:
-                ax.text(
+                text_artist = ax.text(
                     _span_midpoint(xmin, xmax),
                     0.5,
                     span_text,
@@ -1816,6 +1831,7 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
                     zorder=1,
                     clip_on=True,
                 )
+                _tag_annotation_text(text_artist, role="annotation_vspan")
             continue
         x = float(annotation["x"])
         y = float(annotation["y"])
@@ -1851,9 +1867,10 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
                 annotate_kwargs["arrowprops"] = arrowprops
             if use_offset:
                 annotate_kwargs["textcoords"] = "offset points"
-            ax.annotate(text, **annotate_kwargs)
+            text_artist = ax.annotate(text, **annotate_kwargs)
+            _tag_annotation_text(text_artist, role="annotation_point")
         else:
-            ax.text(
+            text_artist = ax.text(
                 x,
                 y,
                 text,
@@ -1864,6 +1881,7 @@ def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
                 zorder=6,
                 clip_on=True,
             )
+            _tag_annotation_text(text_artist, role="annotation_point")
 
 
 def _draw_annotations_on_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
