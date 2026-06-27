@@ -1164,6 +1164,30 @@ class BridgeRendererUnitTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    def test_multipanel_draft_honors_spacing_and_ratio_controls(self):
+        spec = MultiPanelSpec(
+            panels=(),
+            output_path="unused.png",
+            rows=1,
+            cols=2,
+            target_format="nature",
+            column_width="double",
+            panel_height_mm=40.0,
+            wspace=0.8,
+            width_ratios=(2.0, 1.0),
+        )
+
+        fig = _render_multipanel_draft(spec)
+        try:
+            axes = fig.axes
+            self.assertEqual(len(axes), 2)
+            self.assertAlmostEqual(fig.subplotpars.wspace, 0.8, places=4)
+            left_width = axes[0].get_position().width
+            right_width = axes[1].get_position().width
+            self.assertAlmostEqual(left_width / right_width, 2.0, delta=0.05)
+        finally:
+            plt.close(fig)
+
     def test_nature_facet_markers_are_smaller_and_not_clipped_by_axes_edges(self):
         points = self._facet_points(9, n_points=2)
         spec = BridgeFigureSpec(
@@ -1897,6 +1921,123 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 pos = ax.get_position()
                 self.assertAlmostEqual(fig_w_mm * pos.width, 70.0, places=1)
                 self.assertAlmostEqual(fig_h_mm * pos.height, 55.0, places=1)
+
+    def test_multipanel_manuscript_mode_honors_ratio_controls(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_multi_manuscript_ratios_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            left_csv = self._write_xy_csv(tmpdir_path, "left.csv")
+            right_csv = self._write_xy_csv(tmpdir_path, "right.csv")
+            spec = MultiPanelSpec(
+                panels=(
+                    BridgeFigureSpec(
+                        csv_path=str(left_csv),
+                        output_path=str(tmpdir_path / "left.png"),
+                        plot_type="line",
+                        x_column="x",
+                        y_column="y",
+                        title="left",
+                        legend_layout="standard",
+                    ),
+                    BridgeFigureSpec(
+                        csv_path=str(right_csv),
+                        output_path=str(tmpdir_path / "right.png"),
+                        plot_type="line",
+                        x_column="x",
+                        y_column="y",
+                        title="right",
+                        legend_layout="standard",
+                    ),
+                ),
+                output_path=str(tmpdir_path / "multi.png"),
+                rows=1,
+                cols=2,
+                column_width="double",
+                panel_height_mm=65.0,
+                compose_mode="manuscript",
+                width_ratios=(3.0, 2.0),
+                gutter_h_mm=5.0,
+            )
+
+            with patch("plotting.bridge_renderer.save_journal_fig") as mock_save:
+                from plotting.bridge_renderer import render_multipanel_figure
+
+                render_multipanel_figure(spec)
+
+            fig = mock_save.call_args.args[0]
+            axes = [ax for ax in fig.axes if ax.get_visible()]
+            self.assertEqual(len(axes), 2)
+            fig_w_mm = fig.get_size_inches()[0] * 25.4
+            left_ax = axes[0].get_position()
+            right_ax = axes[1].get_position()
+            self.assertAlmostEqual(left_ax.width * fig_w_mm, 70.0, places=1)
+            self.assertAlmostEqual(right_ax.width * fig_w_mm, 70.0, places=1)
+            self.assertAlmostEqual(right_ax.x0 * fig_w_mm, 110.0, delta=1.0)
+
+    def test_multipanel_manuscript_mode_honors_height_ratio_controls(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_multi_manuscript_height_ratios_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            top_csv = self._write_xy_csv(tmpdir_path, "top.csv")
+            bottom_csv = self._write_xy_csv(tmpdir_path, "bottom.csv")
+            spec = MultiPanelSpec(
+                panels=(
+                    BridgeFigureSpec(
+                        csv_path=str(top_csv),
+                        output_path=str(tmpdir_path / "top.png"),
+                        plot_type="line",
+                        x_column="x",
+                        y_column="y",
+                        title="top",
+                        legend_layout="standard",
+                    ),
+                    BridgeFigureSpec(
+                        csv_path=str(bottom_csv),
+                        output_path=str(tmpdir_path / "bottom.png"),
+                        plot_type="line",
+                        x_column="x",
+                        y_column="y",
+                        title="bottom",
+                        legend_layout="standard",
+                    ),
+                ),
+                output_path=str(tmpdir_path / "multi.png"),
+                rows=2,
+                cols=1,
+                column_width="double",
+                panel_height_mm=65.0,
+                compose_mode="manuscript",
+                height_ratios=(7.0, 6.0),
+                gutter_v_mm=5.0,
+            )
+
+            with patch("plotting.bridge_renderer.save_journal_fig") as mock_save:
+                from plotting.bridge_renderer import render_multipanel_figure
+
+                render_multipanel_figure(spec)
+
+            fig = mock_save.call_args.args[0]
+            axes = [ax for ax in fig.axes if ax.get_visible()]
+            self.assertEqual(len(axes), 2)
+            fig_h_mm = fig.get_size_inches()[1] * 25.4
+            top_ax = axes[0].get_position()
+            bottom_ax = axes[1].get_position()
+            self.assertAlmostEqual(top_ax.height * fig_h_mm, 55.0, places=1)
+            self.assertAlmostEqual(bottom_ax.height * fig_h_mm, 55.0, places=1)
+            self.assertAlmostEqual(top_ax.y0 * fig_h_mm, 74.0, delta=1.0)
+            self.assertAlmostEqual(bottom_ax.y0 * fig_h_mm, 3.0, delta=1.0)
+
+    def test_multipanel_rejects_bad_ratio_length(self):
+        spec = MultiPanelSpec(
+            panels=(),
+            output_path="unused.png",
+            rows=1,
+            cols=2,
+            width_ratios=(1.0,),
+        )
+
+        from plotting.bridge_renderer import render_multipanel_figure
+
+        with self.assertRaisesRegex(ValueError, "width_ratios must contain exactly 2 value"):
+            render_multipanel_figure(spec)
 
     def test_multipanel_manuscript_mode_rejects_oversized_slot(self):
         with tempfile.TemporaryDirectory(prefix="bridge_multi_small_slot_") as tmpdir:

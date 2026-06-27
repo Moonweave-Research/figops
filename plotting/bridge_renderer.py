@@ -331,6 +331,10 @@ class MultiPanelSpec:
         Absolute gutters used by manuscript compose mode.
     wspace, hspace:
         Fractional subplot spacing used by draft compose mode.
+    width_ratios, height_ratios:
+        Optional relative column/row weights. Draft mode forwards them to
+        matplotlib GridSpec; manuscript mode uses them to divide the fixed
+        journal-width canvas before preserving each panel box.
     """
 
     panels: tuple[BridgeFigureSpec | PanelImageSpec, ...]
@@ -348,6 +352,8 @@ class MultiPanelSpec:
     gutter_v_mm: float = 5.0
     wspace: float = 0.35
     hspace: float = 0.45
+    width_ratios: tuple[float, ...] = ()
+    height_ratios: tuple[float, ...] = ()
 
 
 def render_multipanel_figure(spec: MultiPanelSpec) -> str:
@@ -392,7 +398,17 @@ def _render_multipanel_draft(spec: MultiPanelSpec):
     fig_w_in = mm_to_inch(col_mm)
     fig_h_in = mm_to_inch(spec.panel_height_mm * spec.rows)
 
-    fig, axes = plt.subplots(spec.rows, spec.cols, figsize=(fig_w_in, fig_h_in))
+    gridspec_kw: dict[str, tuple[float, ...]] = {}
+    if spec.width_ratios:
+        gridspec_kw["width_ratios"] = spec.width_ratios
+    if spec.height_ratios:
+        gridspec_kw["height_ratios"] = spec.height_ratios
+    fig, axes = plt.subplots(
+        spec.rows,
+        spec.cols,
+        figsize=(fig_w_in, fig_h_in),
+        gridspec_kw=gridspec_kw or None,
+    )
     axes_flat = np.asarray(axes).ravel().tolist()
     fig.subplots_adjust(wspace=spec.wspace, hspace=spec.hspace)
 
@@ -419,10 +435,18 @@ def _validated_compose_mode(spec: MultiPanelSpec) -> str:
         raise ValueError(f"unsupported compose_mode {spec.compose_mode!r}; expected 'draft' or 'manuscript'")
     if spec.rows <= 0 or spec.cols <= 0:
         raise ValueError("rows and cols must be positive integers")
-    if spec.panel_height_mm <= 0:
+    if spec.panel_height_mm <= 0 or not math.isfinite(float(spec.panel_height_mm)):
         raise ValueError("panel_height_mm must be positive")
+    if not math.isfinite(float(spec.wspace)) or not math.isfinite(float(spec.hspace)):
+        raise ValueError("wspace and hspace must be finite")
+    if spec.wspace < 0 or spec.hspace < 0:
+        raise ValueError("wspace and hspace must be non-negative")
+    if not math.isfinite(float(spec.gutter_h_mm)) or not math.isfinite(float(spec.gutter_v_mm)):
+        raise ValueError("gutter_h_mm and gutter_v_mm must be finite")
     if spec.gutter_h_mm < 0 or spec.gutter_v_mm < 0:
         raise ValueError("gutter_h_mm and gutter_v_mm must be non-negative")
+    _validated_layout_ratios(spec.width_ratios, expected_len=spec.cols, field_name="width_ratios")
+    _validated_layout_ratios(spec.height_ratios, expected_len=spec.rows, field_name="height_ratios")
     if compose_mode == "manuscript" and str(spec.target_format or "").lower() == "ppt":
         raise ValueError("manuscript compose is not supported for target_format='ppt'")
     return compose_mode
@@ -442,24 +466,34 @@ def _render_multipanel_manuscript(spec: MultiPanelSpec):
         },
     )
 
-    cell_w_mm = (fig_w_mm - (spec.gutter_h_mm * max(spec.cols - 1, 0))) / spec.cols
-    cell_h_mm = spec.panel_height_mm
+    col_widths_mm = _distributed_lengths_mm(
+        fig_w_mm - (spec.gutter_h_mm * max(spec.cols - 1, 0)),
+        spec.cols,
+        spec.width_ratios,
+    )
+    row_heights_mm = _distributed_lengths_mm(
+        spec.panel_height_mm * spec.rows,
+        spec.rows,
+        spec.height_ratios,
+    )
 
     for idx, panel in enumerate(spec.panels):
         if idx >= spec.rows * spec.cols:
             break
         row_idx = idx // spec.cols
         col_idx = idx % spec.cols
+        cell_w_mm = col_widths_mm[col_idx]
+        cell_h_mm = row_heights_mm[row_idx]
+        cell_left_mm = sum(col_widths_mm[:col_idx]) + (spec.gutter_h_mm * col_idx)
+        cell_bottom_mm = fig_h_mm - sum(row_heights_mm[: row_idx + 1]) - (spec.gutter_v_mm * row_idx)
         axis_rect = _manuscript_axis_rect(
             panel,
-            row_idx=row_idx,
-            col_idx=col_idx,
             fig_w_mm=fig_w_mm,
             fig_h_mm=fig_h_mm,
+            cell_left_mm=cell_left_mm,
+            cell_bottom_mm=cell_bottom_mm,
             cell_w_mm=cell_w_mm,
             cell_h_mm=cell_h_mm,
-            gutter_h_mm=spec.gutter_h_mm,
-            gutter_v_mm=spec.gutter_v_mm,
         )
         ax = fig.add_axes(axis_rect)
         if isinstance(panel, PanelImageSpec):
@@ -472,17 +506,31 @@ def _render_multipanel_manuscript(spec: MultiPanelSpec):
     return fig
 
 
+def _validated_layout_ratios(values: tuple[float, ...], *, expected_len: int, field_name: str) -> None:
+    if not values:
+        return
+    if len(values) != expected_len:
+        raise ValueError(f"{field_name} must contain exactly {expected_len} value(s)")
+    for value in values:
+        if not math.isfinite(float(value)) or value <= 0:
+            raise ValueError(f"{field_name} values must be positive finite numbers")
+
+
+def _distributed_lengths_mm(total_mm: float, count: int, ratios: tuple[float, ...]) -> tuple[float, ...]:
+    effective_ratios = ratios or tuple(1.0 for _ in range(count))
+    ratio_sum = sum(effective_ratios)
+    return tuple(total_mm * (ratio / ratio_sum) for ratio in effective_ratios)
+
+
 def _manuscript_axis_rect(
     panel: BridgeFigureSpec | PanelImageSpec,
     *,
-    row_idx: int,
-    col_idx: int,
     fig_w_mm: float,
     fig_h_mm: float,
+    cell_left_mm: float,
+    cell_bottom_mm: float,
     cell_w_mm: float,
     cell_h_mm: float,
-    gutter_h_mm: float,
-    gutter_v_mm: float,
 ) -> list[float]:
     box_width_mm, box_height_mm, margins_mm = _panel_geometry_mm(panel)
     if box_width_mm > cell_w_mm or box_height_mm > cell_h_mm:
@@ -496,9 +544,6 @@ def _manuscript_axis_rect(
     extra_h_mm = cell_h_mm - box_height_mm
     left_extra_mm, _ = _split_bias(extra_w_mm, margins_mm["left"], margins_mm["right"])
     bottom_extra_mm, _ = _split_bias(extra_h_mm, margins_mm["bottom"], margins_mm["top"])
-
-    cell_left_mm = col_idx * (cell_w_mm + gutter_h_mm)
-    cell_bottom_mm = fig_h_mm - ((row_idx + 1) * cell_h_mm) - (row_idx * gutter_v_mm)
 
     ax_left_mm = cell_left_mm + left_extra_mm
     ax_bottom_mm = cell_bottom_mm + bottom_extra_mm

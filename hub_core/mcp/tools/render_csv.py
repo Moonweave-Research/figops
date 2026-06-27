@@ -112,6 +112,49 @@ def _normalized_tick_style_arg(value: Any, *, field_name: str) -> dict[str, Any]
     return normalized
 
 
+def _normalized_multipanel_layout_options_arg(
+    value: Any, *, rows: int, cols: int, field_name: str
+) -> dict[str, Any]:
+    if value in (None, {}, []):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be an object.")
+    allowed = {"wspace", "hspace", "gutter_h_mm", "gutter_v_mm", "width_ratios", "height_ratios"}
+    unsupported = sorted(set(value) - allowed)
+    if unsupported:
+        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
+    normalized: dict[str, Any] = {}
+    for key in ("wspace", "hspace", "gutter_h_mm", "gutter_v_mm"):
+        if value.get(key) is None:
+            continue
+        try:
+            numeric = float(value[key])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name}.{key} must be numeric.") from exc
+        if not math.isfinite(numeric) or numeric < 0:
+            raise ValueError(f"{field_name}.{key} must be a non-negative finite number.")
+        normalized[key] = numeric
+    for key, expected_len in (("width_ratios", cols), ("height_ratios", rows)):
+        if value.get(key) is None:
+            continue
+        raw_values = value[key]
+        if not isinstance(raw_values, list) or not raw_values:
+            raise ValueError(f"{field_name}.{key} must be a non-empty array.")
+        if len(raw_values) != expected_len:
+            raise ValueError(f"{field_name}.{key} must contain exactly {expected_len} value(s).")
+        ratios: list[float] = []
+        for raw_value in raw_values:
+            try:
+                numeric = float(raw_value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{field_name}.{key} values must be numeric.") from exc
+            if not math.isfinite(numeric) or numeric <= 0:
+                raise ValueError(f"{field_name}.{key} values must be positive finite numbers.")
+            ratios.append(numeric)
+        normalized[key] = tuple(ratios)
+    return normalized
+
+
 def _normalized_legend_options_arg(value: Any, *, field_name: str) -> dict[str, Any]:
     if value in (None, {}, []):
         return {}
@@ -1071,11 +1114,14 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             cols = int(arguments.get("cols") or (len(panels_arg) if isinstance(panels_arg, list) else 1))
             panel_height_mm = float(arguments.get("panel_height_mm") or 65.0)
             font_scale = float(arguments.get("font_scale") or 1.0)
-        except (TypeError, ValueError):
+            layout_options = _normalized_multipanel_layout_options_arg(
+                arguments.get("layout_options"), rows=rows, cols=cols, field_name="layout_options"
+            )
+        except (TypeError, ValueError) as exc:
             return self._csv_render_error(
                 arguments,
                 summary="Multipanel render request has invalid layout settings.",
-                errors=["rows, cols, panel_height_mm, and font_scale must be numeric."],
+                errors=[str(exc) or "rows, cols, panel_height_mm, font_scale, and layout_options must be valid."],
                 is_dry_run=dry_run,
                 failure_stage="CONFIG",
                 resolution_hint="Provide numeric multipanel layout settings.",
@@ -1372,6 +1418,20 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 copied_data_paths.append(str(copied_path))
                 created_paths.append(str(copied_path))
                 render_panels.append({"csv_path": str(copied_path), "output_path": "", **panel})
+            render_payload = {
+                "panels": render_panels,
+                "output_path": str(output_path),
+                "rows": rows,
+                "cols": cols,
+                "target_format": target_format,
+                "column_width": str(arguments.get("column_width") or "double"),
+                "panel_height_mm": panel_height_mm,
+                "panel_labels": bool(arguments.get("panel_labels", True)),
+                "font_scale": font_scale,
+                "profile_name": profile,
+                "compose_mode": str(arguments.get("compose_mode") or "draft"),
+                **layout_options,
+            }
             config_path.write_text(
                 yaml.safe_dump(
                     {
@@ -1379,6 +1439,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "target_format": target_format,
                         "profile": profile,
                         "output_format": output_format,
+                        "layout_options": layout_options,
+                        "render_payload": render_payload,
                         "panels": render_panels,
                     },
                     sort_keys=False,
@@ -1387,21 +1449,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             )
             created_paths.append(str(config_path))
             with self._geometry_diagnostics_env(job_root):
-                self._run_render_multipanel_figure(
-                    {
-                        "panels": render_panels,
-                        "output_path": str(output_path),
-                        "rows": rows,
-                        "cols": cols,
-                        "target_format": target_format,
-                        "column_width": str(arguments.get("column_width") or "double"),
-                        "panel_height_mm": panel_height_mm,
-                        "panel_labels": bool(arguments.get("panel_labels", True)),
-                        "font_scale": font_scale,
-                        "profile_name": profile,
-                        "compose_mode": str(arguments.get("compose_mode") or "draft"),
-                    }
-                )
+                self._run_render_multipanel_figure(render_payload)
             geometry_diagnostics = render_helpers._read_geometry_sidecar(job_root)
             geometry_warnings = render_helpers._geometry_warnings(geometry_diagnostics)
             layout_report = render_helpers._layout_report_from_geometry(geometry_diagnostics)

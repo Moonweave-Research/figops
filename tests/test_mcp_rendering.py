@@ -1779,6 +1779,98 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["panels"][1]["fill_between"][0]["alpha"], 0.2)
             self.assertEqual(result["provenance"]["renderer_surface"], "figops.render_csv_multipanel")
 
+    def test_render_csv_multipanel_forwards_layout_options(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_multipanel_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_multipanel",
+                    {
+                        "panels": [
+                            {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
+                            {"data_path": str(data_path), "x_column": "x", "y_column": "y"},
+                        ],
+                        "rows": 1,
+                        "cols": 2,
+                        "layout_options": {
+                            "wspace": 0.8,
+                            "hspace": 0.2,
+                            "gutter_h_mm": 8.0,
+                            "gutter_v_mm": 4.0,
+                            "width_ratios": [2.0, 1.0],
+                            "height_ratios": [1.0],
+                        },
+                        "job_id": "render-csv-multipanel-layout",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["wspace"], 0.8)
+            self.assertEqual(captured["hspace"], 0.2)
+            self.assertEqual(captured["gutter_h_mm"], 8.0)
+            self.assertEqual(captured["gutter_v_mm"], 4.0)
+            self.assertEqual(captured["width_ratios"], (2.0, 1.0))
+            self.assertEqual(captured["height_ratios"], (1.0,))
+            config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(config["layout_options"]["width_ratios"], [2.0, 1.0])
+            self.assertEqual(config["render_payload"]["wspace"], 0.8)
+            self.assertEqual(config["render_payload"]["width_ratios"], [2.0, 1.0])
+            self.assertEqual(config["render_payload"]["height_ratios"], [1.0])
+            self.assertEqual(config["render_payload"]["panels"][0]["csv_path"], captured["panels"][0]["csv_path"])
+
+    def test_render_csv_multipanel_rejects_bad_layout_ratio_length(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_multipanel",
+                {
+                    "panels": [{"data_path": str(data_path), "x_column": "x", "y_column": "y"}],
+                    "rows": 1,
+                    "cols": 2,
+                    "layout_options": {"width_ratios": [1.0]},
+                    "job_id": "bad-multipanel-layout",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertTrue(any("layout_options.width_ratios" in error for error in result["errors"]))
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_multipanel_schema_exposes_layout_options(self):
+        tool = next(
+            definition for definition in list_tool_definitions() if definition["name"] == "figops.render_csv_multipanel"
+        )
+        properties = tool["inputSchema"]["properties"]
+        layout_properties = properties["layout_options"]["properties"]
+
+        self.assertIn("wspace", layout_properties)
+        self.assertIn("hspace", layout_properties)
+        self.assertIn("gutter_h_mm", layout_properties)
+        self.assertIn("gutter_v_mm", layout_properties)
+        self.assertIn("width_ratios", layout_properties)
+        self.assertIn("height_ratios", layout_properties)
+
     def test_render_csv_multipanel_rejects_missing_panel_column(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")

@@ -2361,6 +2361,44 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
       "description": "Stable render job ID; auto-generated when omitted.",
       "type": "string"
     },
+    "layout_options": {
+      "additionalProperties": false,
+      "properties": {
+        "gutter_h_mm": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "gutter_v_mm": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "height_ratios": {
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "hspace": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "width_ratios": {
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "wspace": {
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
     "output_format": {
       "default": "png",
       "enum": [

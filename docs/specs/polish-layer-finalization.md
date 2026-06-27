@@ -16,7 +16,7 @@ Observed prior art inside the repo:
 - Renderer capability and annotation drawing live in `plotting/bridge_renderer.py`.
 - Geometry diagnostics live in `hub_core/geometry_diagnostics.py`.
 
-Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#201 and the tick readability slice staged on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, Dense Point-Label Polish v1, Contrast Diagnostics v1, and Tick Readability v1 are shipped or staged; the next roadmap must therefore focus on remaining multipanel polish rather than re-solving completed slices.
+Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#201 and the tick readability slice staged on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, Dense Point-Label Polish v1, Contrast Diagnostics v1, Tick Readability v1, and Multipanel Layout v1 are shipped or staged; the next roadmap must therefore focus on explicit project semantics for fit/trend overlays rather than re-solving completed slices.
 
 ## 2. Product position and non-goals
 
@@ -193,17 +193,18 @@ Completed PRs:
 4. PR #199: Legend and Axis Polish v1.
 5. PR #200: Dense Point-Label Polish v1.
 6. PR #201: Contrast Diagnostics v1.
+7. PR #202: Tick Readability v1.
 
 Recommended next PR:
 
-1. Tick Readability v1.
-2. Opt-in `tick_style.max_label_chars` for long visible x tick labels.
-3. Renderer and MCP tests proving schema -> normalization -> rendered tick labels.
+1. Fit/trend overlay expansion only with explicit project semantics.
+2. A fixture that separates semantic hand-guide curves from fitted/model-derived overlays.
+3. Renderer and MCP tests proving schema -> normalization -> rendered overlay behavior.
 4. Generated tool-reference update.
 
 Recommended follow-up PRs:
 
-1. Multipanel layout v1.
-2. Fit/trend overlay expansion only with explicit project semantics.
+1. Fit/trend overlay expansion only with explicit project semantics.
+2. Architecture/data-contract debt as a separate maintenance track.
 
 Stop condition for this workflow: final review cannot refute the selected slice's exposure, tests, docs, and journal-safety claims, and release readiness is documented.

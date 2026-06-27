@@ -920,5 +920,6 @@
       "id": "multipanel-layout-v1",
       "priority": 5
     }
-  ]
+  ],
+  "selected_next_slice": "fit-trend-overlay-expansion"
 }

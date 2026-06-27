@@ -75,7 +75,8 @@
     }
   ],
   "expected_failures": [
-    "multipanel spacing and shared legend polish"
+    "shared legend polish",
+    "fit/trend overlay semantics"
   ],
   "completed_slices": [
     "typed-mcp-style-schemas",
@@ -84,7 +85,8 @@
     "legend-axis-polish-v1",
     "dense-point-label-polish-v1",
     "contrast-diagnostics-v1",
-    "tick-readability-v1"
+    "tick-readability-v1",
+    "multipanel-layout-v1"
   ],
-  "selected_next_slice": "multipanel-layout-v1"
+  "selected_next_slice": "fit-trend-overlay-expansion"
 }

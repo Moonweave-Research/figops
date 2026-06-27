@@ -135,16 +135,15 @@ Acceptance criteria:
 - Log formatting does not change data scale semantics.
 - Diagnostics explain whether rotation/compression was applied or recommended.
 
-### P5. Multipanel Layout v1
+### P5. Multipanel Layout v1 — staged on current branch
 
 Purpose: improve cramped multipanel figures without jumping directly to a mosaic DSL.
 
-Candidate controls:
+Implemented controls:
 
-- panel spacing presets
-- width and height ratios
-- shared legend placement
-- panel-specific legend visibility
+- `layout_options.wspace` / `layout_options.hspace` for draft subplot spacing
+- `layout_options.gutter_h_mm` / `layout_options.gutter_v_mm` for manuscript gutters
+- `layout_options.width_ratios` / `layout_options.height_ratios` for draft GridSpec and manuscript fixed-canvas slot allocation
 
 Deferred:
 
@@ -162,9 +161,8 @@ Reason: model choice can imply scientific interpretation. Existing `guide_curves
 
 ## 4. Recommended next PR sequence
 
-1. Multipanel Layout v1.
-2. Fit / Trend Overlay Expansion only with explicit project semantics.
-3. Architecture/data-contract debt as a separate maintenance track.
+1. Fit / Trend Overlay Expansion only with explicit project semantics.
+2. Architecture/data-contract debt as a separate maintenance track.
 
 ## 5. Completion definition
 
