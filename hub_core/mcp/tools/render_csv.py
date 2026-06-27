@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import shutil
 import sys
 from contextlib import redirect_stdout
@@ -15,6 +16,16 @@ from hub_core.mcp.tools.render_validation import _optional_positive_int_arg
 from hub_core.rendering import PLOT_TYPES
 from themes.style_profiles import DEFAULT_PROFILE
 
+LEGEND_LAYOUT_PRESETS = {"auto", "smart", "standard", "best", "top_outside", "right_outside"}
+
+
+def _normalized_legend_layout_arg(value: Any, *, field_name: str) -> str:
+    layout = str(value or "auto").strip().lower()
+    if layout not in LEGEND_LAYOUT_PRESETS:
+        allowed = ", ".join(sorted(LEGEND_LAYOUT_PRESETS))
+        raise ValueError(f"{field_name} must be one of: {allowed}.")
+    return layout
+
 
 def _normalized_axis_scale_arg(value: Any, *, field_name: str) -> str:
     scale = str(value or "linear").strip().lower()
@@ -23,7 +34,9 @@ def _normalized_axis_scale_arg(value: Any, *, field_name: str) -> str:
     return scale
 
 
-def _normalized_axis_limits_arg(value: Any, *, field_name: str, x_scale: str, y_scale: str) -> dict[str, dict[str, float]]:
+def _normalized_axis_limits_arg(
+    value: Any, *, field_name: str, x_scale: str, y_scale: str
+) -> dict[str, dict[str, float]]:
     if value in (None, {}, []):
         return {}
     if not isinstance(value, dict):
@@ -53,7 +66,7 @@ def _normalized_axis_limits_arg(value: Any, *, field_name: str, x_scale: str, y_
                 numeric = float(raw_pair[key])
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"{field_name}.{axis_name}.{key} must be numeric.") from exc
-            if not numeric == numeric or numeric in (float("inf"), float("-inf")):
+            if not math.isfinite(numeric):
                 raise ValueError(f"{field_name}.{axis_name}.{key} must be finite.")
             if scale == "log" and numeric <= 0:
                 raise ValueError(f"{field_name}.{axis_name}.{key} must be > 0 when {axis_name}_scale='log'.")
@@ -70,34 +83,24 @@ def _normalized_tick_style_arg(value: Any, *, field_name: str) -> dict[str, Any]
         return {}
     if not isinstance(value, dict):
         raise ValueError(f"{field_name} must be an object.")
-    allowed = {"x_rotation", "y_rotation", "label_size", "direction"}
+    allowed = {"rotation", "format"}
     unsupported = sorted(set(value) - allowed)
     if unsupported:
         raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
     normalized: dict[str, Any] = {}
-    for key in ("x_rotation", "y_rotation"):
-        if value.get(key) is None:
-            continue
+    if value.get("rotation") is not None:
         try:
-            numeric = float(value[key])
+            rotation = float(value["rotation"])
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field_name}.{key} must be numeric.") from exc
-        if not numeric == numeric or numeric in (float("inf"), float("-inf")) or not -360 <= numeric <= 360:
-            raise ValueError(f"{field_name}.{key} must be finite and between -360 and 360.")
-        normalized[key] = numeric
-    if value.get("label_size") is not None:
-        try:
-            label_size = float(value["label_size"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field_name}.label_size must be numeric.") from exc
-        if not label_size == label_size or label_size in (float("inf"), float("-inf")) or label_size <= 0:
-            raise ValueError(f"{field_name}.label_size must be a positive finite number.")
-        normalized["label_size"] = label_size
-    if value.get("direction") is not None:
-        direction = str(value["direction"]).strip().lower()
-        if direction not in {"in", "out", "inout"}:
-            raise ValueError(f"{field_name}.direction must be 'in', 'out', or 'inout'.")
-        normalized["direction"] = direction
+            raise ValueError(f"{field_name}.rotation must be numeric.") from exc
+        if not math.isfinite(rotation) or not -360 <= rotation <= 360:
+            raise ValueError(f"{field_name}.rotation must be finite and between -360 and 360.")
+        normalized["rotation"] = rotation
+    if value.get("format") is not None:
+        tick_format = str(value["format"]).strip().lower()
+        if tick_format not in {"default", "plain", "scientific", "compact"}:
+            raise ValueError(f"{field_name}.format must be default, plain, scientific, or compact.")
+        normalized["format"] = tick_format
     return normalized
 
 
@@ -117,7 +120,7 @@ def _normalized_legend_options_arg(value: Any, *, field_name: str) -> dict[str, 
         order = value["order"]
         if not isinstance(order, (list, tuple)):
             raise ValueError(f"{field_name}.order must be an array of labels.")
-        labels = [str(label) for label in order if str(label).strip()]
+        labels = tuple(str(label) for label in order if str(label).strip())
         if len(labels) != len(set(labels)):
             raise ValueError(f"{field_name}.order must not contain duplicate labels.")
         normalized["order"] = labels
@@ -455,6 +458,14 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             facet_nrows = _optional_positive_int_arg(raw_facet_nrows, "facet_nrows")
             x_scale = _normalized_axis_scale_arg(arguments.get("x_scale"), field_name="x_scale")
             y_scale = _normalized_axis_scale_arg(arguments.get("y_scale"), field_name="y_scale")
+            legend_layout = _normalized_legend_layout_arg(arguments.get("legend_layout"), field_name="legend_layout")
+            legend_options = _normalized_legend_options_arg(
+                arguments.get("legend_options"), field_name="legend_options"
+            )
+            axis_limits = _normalized_axis_limits_arg(
+                arguments.get("axis_limits"), field_name="axis_limits", x_scale=x_scale, y_scale=y_scale
+            )
+            tick_style = _normalized_tick_style_arg(arguments.get("tick_style"), field_name="tick_style")
             annotations = _normalized_annotation_args(arguments.get("annotations"))
             series_styles = _normalized_series_style_args(arguments.get("series_styles"))
             guide_curves = _normalized_guide_curve_args(arguments.get("guide_curves"))
@@ -789,6 +800,10 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "series_styles": series_styles,
                         "x_scale": x_scale,
                         "y_scale": y_scale,
+                        "legend_layout": legend_layout,
+                        "legend_options": legend_options,
+                        "axis_limits": axis_limits,
+                        "tick_style": tick_style,
                         "annotations": annotations,
                         "guide_curves": guide_curves,
                         "fill_between": fill_between,
@@ -1049,6 +1064,21 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 plot_type = str(panel.get("plot_type") or "scatter").strip().lower()
                 x_scale = _normalized_axis_scale_arg(panel.get("x_scale"), field_name=f"panels[{index}].x_scale")
                 y_scale = _normalized_axis_scale_arg(panel.get("y_scale"), field_name=f"panels[{index}].y_scale")
+                legend_layout = _normalized_legend_layout_arg(
+                    panel.get("legend_layout"), field_name=f"panels[{index}].legend_layout"
+                )
+                legend_options = _normalized_legend_options_arg(
+                    panel.get("legend_options"), field_name=f"panels[{index}].legend_options"
+                )
+                axis_limits = _normalized_axis_limits_arg(
+                    panel.get("axis_limits"),
+                    field_name=f"panels[{index}].axis_limits",
+                    x_scale=x_scale,
+                    y_scale=y_scale,
+                )
+                tick_style = _normalized_tick_style_arg(
+                    panel.get("tick_style"), field_name=f"panels[{index}].tick_style"
+                )
                 annotations = _normalized_annotation_args(panel.get("annotations"))
                 series_styles = _normalized_series_style_args(panel.get("series_styles"))
                 guide_curves = _normalized_guide_curve_args(panel.get("guide_curves"))
@@ -1151,6 +1181,10 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     "series_styles": series_styles,
                     "x_scale": x_scale,
                     "y_scale": y_scale,
+                    "legend_layout": legend_layout,
+                    "legend_options": legend_options,
+                    "axis_limits": axis_limits,
+                    "tick_style": tick_style,
                     "annotations": annotations,
                     "guide_curves": guide_curves,
                     "fill_between": fill_between,

@@ -1527,6 +1527,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             series_column="series",
             legend_layout="top_outside",
             legend_options={"title": "Treatment", "order": ("Alpha", "Beta"), "ncol": 2},
+            series_styles={"Alpha": {"label": "display A"}, "Beta": {"label": "display B"}},
             axis_limits={"x": {"min": 0.0, "max": 1.0}, "y": {"min": 0.0, "max": 5.0}},
             tick_style={"rotation": 45.0, "format": "plain"},
         )
@@ -1544,7 +1545,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             legend = ax.get_legend()
             self.assertIsNotNone(legend)
             self.assertEqual(legend.get_title().get_text(), "Treatment")
-            self.assertEqual([text.get_text() for text in legend.get_texts()], ["Alpha", "Beta"])
+            self.assertEqual([text.get_text() for text in legend.get_texts()], ["display A", "display B"])
             self.assertEqual(legend._ncols, 2)
             self.assertEqual(ax.get_xlim(), (0.0, 1.0))
             self.assertEqual(ax.get_ylim(), (0.0, 5.0))

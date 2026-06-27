@@ -299,6 +299,41 @@ _ANNOTATIONS_SCHEMA = {
     "items": _ANNOTATION_SCHEMA,
     "description": "Point text/callout annotations plus rectangular region, hspan, and vspan overlays.",
 }
+_LEGEND_LAYOUT_SCHEMA = {
+    "type": "string",
+    "enum": ["auto", "smart", "standard", "best", "top_outside", "right_outside"],
+    "default": "auto",
+}
+
+_LEGEND_OPTIONS_SCHEMA = _object_schema(
+    {
+        "title": {"type": "string"},
+        "order": {"type": "array", "items": {"type": "string"}},
+        "ncol": {"type": "integer", "minimum": 1, "maximum": 8},
+    }
+)
+
+_AXIS_LIMIT_PAIR_SCHEMA = _object_schema(
+    {
+        "min": {"type": "number"},
+        "max": {"type": "number"},
+    }
+)
+
+_AXIS_LIMITS_SCHEMA = _object_schema(
+    {
+        "x": _AXIS_LIMIT_PAIR_SCHEMA,
+        "y": _AXIS_LIMIT_PAIR_SCHEMA,
+    }
+)
+
+_TICK_STYLE_SCHEMA = _object_schema(
+    {
+        "rotation": {"type": "number"},
+        "format": {"type": "string", "enum": ["default", "plain", "scientific", "compact"]},
+    }
+)
+
 
 _GUIDE_CURVE_SCHEMA = {
     **_open_object_schema(
@@ -672,6 +707,10 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "series_styles": _SERIES_STYLES_SCHEMA,
                     "x_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
                     "y_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
+                    "legend_layout": _LEGEND_LAYOUT_SCHEMA,
+                    "legend_options": _LEGEND_OPTIONS_SCHEMA,
+                    "axis_limits": _AXIS_LIMITS_SCHEMA,
+                    "tick_style": _TICK_STYLE_SCHEMA,
                     "annotations": _ANNOTATIONS_SCHEMA,
                     "guide_curves": _GUIDE_CURVES_SCHEMA,
                     "fill_between": _FILL_BETWEEN_OVERLAYS_SCHEMA,
@@ -743,6 +782,10 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                                 "series_styles": _SERIES_STYLES_SCHEMA,
                                 "x_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
                                 "y_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
+                                "legend_layout": _LEGEND_LAYOUT_SCHEMA,
+                                "legend_options": _LEGEND_OPTIONS_SCHEMA,
+                                "axis_limits": _AXIS_LIMITS_SCHEMA,
+                                "tick_style": _TICK_STYLE_SCHEMA,
                                 "annotations": _ANNOTATIONS_SCHEMA,
                                 "guide_curves": _GUIDE_CURVES_SCHEMA,
                                 "fill_between": _FILL_BETWEEN_OVERLAYS_SCHEMA,

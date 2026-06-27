@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 from matplotlib.font_manager import FontProperties
 
@@ -851,6 +852,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
     has_multi_series = any(key != "__single__" for key in grouped)
     marker_size, marker_edge_width, _marker_margin = _marker_tokens(spec, small_panel=small_panel)
     scatter_size = _scatter_marker_area(marker_size)
+    legend_entries: list[tuple[str, str]] = []
 
     for idx, (series_name, series_points) in enumerate(grouped.items()):
         xs = [point["x"] for point in series_points]
@@ -863,6 +865,8 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
             legend_label = _display_label(series_name, compress_labels=spec.compress_labels)
         else:
             legend_label = None
+        if legend_label is not None:
+            legend_entries.append((str(series_name), str(legend_label)))
         series_marker_size = float(sty.get("size", marker_size))
         series_scatter_size = float(sty.get("size", scatter_size))
         series_linewidth = float(sty.get("linewidth", 1.2))
@@ -933,8 +937,11 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
             )
 
     if has_multi_series:
+        ax._graph_hub_legend_entries = legend_entries
         _apply_legend(ax, spec, n_series=len(grouped))
     _apply_marker_axis_margin(ax, spec, small_panel=small_panel)
+    _apply_axis_limits(ax, spec)
+    _apply_tick_style(ax, spec)
 
 
 def _has_statistical_overlays(spec: BridgeFigureSpec) -> bool:
@@ -1157,8 +1164,9 @@ def _validate_axis_scales(points: list[dict], spec: BridgeFigureSpec) -> None:
 
 def _validate_axis_limits(points: list[dict], spec: BridgeFigureSpec) -> None:
     limits = _normalized_axis_limits(spec)
-    if "x" in limits and any(not isinstance(point["x"], (int, float)) for point in points):
-        raise ValueError("axis_limits.x requires numeric x values")
+    for axis_name in ("x", "y"):
+        if axis_name in limits and any(not isinstance(point[axis_name], (int, float)) for point in points):
+            raise ValueError(f"axis_limits.{axis_name} requires numeric {axis_name} values")
 
 
 def _apply_axis_scales(ax, spec: BridgeFigureSpec) -> None:
@@ -1249,56 +1257,61 @@ def _normalized_tick_style(spec: BridgeFigureSpec) -> dict[str, object]:
         return {}
     if not isinstance(raw_style, dict):
         raise ValueError("tick_style must be an object")
-    allowed = {"x_rotation", "y_rotation", "label_size", "direction"}
+    allowed = {"rotation", "format"}
     unsupported = sorted(set(raw_style) - allowed)
     if unsupported:
         raise ValueError(f"tick_style has unsupported key(s): {', '.join(unsupported)}")
     normalized: dict[str, object] = {}
-    for key in ("x_rotation", "y_rotation"):
-        if key not in raw_style or raw_style[key] is None:
-            continue
+    if raw_style.get("rotation") is not None:
         try:
-            value = float(raw_style[key])
+            rotation = float(raw_style["rotation"])
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"tick_style.{key} must be numeric") from exc
-        if not math.isfinite(value) or not -360 <= value <= 360:
-            raise ValueError(f"tick_style.{key} must be finite and between -360 and 360")
-        normalized[key] = value
-    if raw_style.get("label_size") is not None:
-        try:
-            label_size = float(raw_style["label_size"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError("tick_style.label_size must be numeric") from exc
-        if not math.isfinite(label_size) or label_size <= 0:
-            raise ValueError("tick_style.label_size must be a positive finite number")
-        normalized["label_size"] = label_size
-    if raw_style.get("direction") is not None:
-        direction = str(raw_style["direction"]).strip().lower()
-        if direction not in {"in", "out", "inout"}:
-            raise ValueError("tick_style.direction must be 'in', 'out', or 'inout'")
-        normalized["direction"] = direction
+            raise ValueError("tick_style.rotation must be numeric") from exc
+        if not math.isfinite(rotation) or not -360 <= rotation <= 360:
+            raise ValueError("tick_style.rotation must be finite and between -360 and 360")
+        normalized["rotation"] = rotation
+    if raw_style.get("format") is not None:
+        tick_format = str(raw_style["format"]).strip().lower()
+        if tick_format not in {"default", "plain", "scientific", "compact"}:
+            raise ValueError("tick_style.format must be default, plain, scientific, or compact")
+        normalized["format"] = tick_format
     return normalized
+
+
+def _axis_is_numeric(ax, axis_name: str) -> bool:
+    values = ax.get_lines()
+    for line in values:
+        data = line.get_xdata() if axis_name == "x" else line.get_ydata()
+        if len(data):
+            return all(isinstance(value, (int, float, np.number)) for value in data)
+    return True
 
 
 def _apply_tick_style(ax, spec: BridgeFigureSpec) -> None:
     style = _normalized_tick_style(spec)
     if not style:
         return
-    tick_params: dict[str, object] = {}
-    if "label_size" in style:
-        tick_params["labelsize"] = style["label_size"]
-    if "direction" in style:
-        tick_params["direction"] = style["direction"]
-    if tick_params:
-        ax.tick_params(axis="both", **tick_params)
-    if "x_rotation" in style:
+    if "rotation" in style:
+        rotation = float(style["rotation"])
         for label in ax.get_xticklabels():
-            label.set_rotation(float(style["x_rotation"]))
-            if float(style["x_rotation"]):
+            label.set_rotation(rotation)
+            if rotation:
                 label.set_ha("right")
-    if "y_rotation" in style:
-        for label in ax.get_yticklabels():
-            label.set_rotation(float(style["y_rotation"]))
+    tick_format = style.get("format")
+    if not tick_format or tick_format == "default":
+        return
+    for axis in (ax.xaxis, ax.yaxis):
+        if tick_format == "plain":
+            formatter = mticker.ScalarFormatter(useOffset=False)
+            formatter.set_scientific(False)
+            axis.set_major_formatter(formatter)
+        elif tick_format == "scientific":
+            formatter = mticker.ScalarFormatter(useMathText=True)
+            formatter.set_scientific(True)
+            formatter.set_powerlimits((0, 0))
+            axis.set_major_formatter(formatter)
+        elif tick_format == "compact":
+            axis.set_major_formatter(mticker.EngFormatter())
 
 
 def _apply_tick_style_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
@@ -2246,12 +2259,15 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         series_names = list(grouped.keys())
         width = 0.8 / max(len(series_names), 1)
         offset_start = -0.4 + width / 2
+        legend_entries: list[tuple[str, str]] = []
         for series_index, series_name in enumerate(series_names):
             series_points = grouped[series_name]
             xs = [category_to_position[point["x"]] + offset_start + series_index * width for point in series_points]
             ys = [point["y"] for point in series_points]
             yerr = _yerr_values(series_points, spec)
             sty = _series_style(spec, series_index, series_name)
+            legend_label = _display_label(series_name, compress_labels=spec.compress_labels)
+            legend_entries.append((str(series_name), str(legend_label)))
             bars = ax.bar(
                 xs,
                 ys,
@@ -2261,7 +2277,7 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
                 hatch=sty["hatch"],
                 edgecolor="black",
                 linewidth=0.5,
-                label=_display_label(series_name, compress_labels=spec.compress_labels),
+                label=legend_label,
             )
             if spec.label_column:
                 y_offset = max(abs(v) for v in ys) * 0.03 if ys else 0
@@ -2272,6 +2288,7 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
                     [str(point["label"]) for point in series_points],
                     compress_labels=spec.compress_labels,
                 )
+        ax._graph_hub_legend_entries = legend_entries
         _apply_legend(ax, spec, n_series=len(series_names))
     else:
         if len(points) > len(categories):
@@ -2596,23 +2613,35 @@ def _legend_kwargs(ax, spec: BridgeFigureSpec, *, n_series: int) -> dict:
 def _apply_legend(ax, spec: BridgeFigureSpec, *, n_series: int) -> None:
     kwargs = _legend_kwargs(ax, spec, n_series=n_series)
     options = _normalized_legend_options(spec)
-    handles, labels = ax.get_legend_handles_labels()
+    if "title" in options:
+        kwargs["title"] = options["title"]
+    if "ncol" in options:
+        kwargs["ncol"] = options["ncol"]
+    try:
+        handles, labels = ax.get_legend_handles_labels()
+    except ValueError:
+        ax.legend(**kwargs)
+        return
     if options.get("order"):
+        legend_entries = list(getattr(ax, "_graph_hub_legend_entries", ()))
+        raw_to_label = {raw: label for raw, label in legend_entries}
         label_to_items = {label: (handle, label) for handle, label in zip(handles, labels)}
-        ordered_items = [label_to_items[label] for label in options["order"] if label in label_to_items]
+        ordered_keys = tuple(options["order"])
+        missing = [raw for raw in ordered_keys if raw not in raw_to_label]
+        if missing:
+            raise ValueError(f"legend_options.order contains unknown series key(s): {', '.join(missing)}")
+        ordered_labels = [raw_to_label[raw] for raw in ordered_keys]
+        ordered_items = [label_to_items[label] for label in ordered_labels if label in label_to_items]
+        ordered_label_set = set(ordered_labels)
         remaining_items = [
             (handle, label)
             for handle, label in zip(handles, labels)
-            if label not in set(options["order"])
+            if label not in ordered_label_set
         ]
         if ordered_items:
             handles, labels = zip(*(ordered_items + remaining_items), strict=True)
             handles = list(handles)
             labels = list(labels)
-    if "title" in options:
-        kwargs["title"] = options["title"]
-    if "ncol" in options:
-        kwargs["ncol"] = options["ncol"]
     ax.legend(handles, labels, **kwargs)
 
 
