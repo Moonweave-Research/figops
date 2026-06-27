@@ -318,7 +318,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         for axis in ("x", "y"):
             axis_properties = properties["axis_limits"]["properties"][axis]["properties"]
             self.assertEqual(set(axis_properties), {"min", "max"})
-        self.assertEqual(set(properties["tick_style"]["properties"]), {"rotation", "format"})
+        self.assertEqual(set(properties["tick_style"]["properties"]), {"rotation", "format", "max_label_chars"})
+        self.assertGreaterEqual(properties["tick_style"]["properties"]["max_label_chars"].get("minimum", 0), 4)
         self.assertIn("plain", properties["tick_style"]["properties"]["format"]["enum"])
         self.assertIn("scientific", properties["tick_style"]["properties"]["format"]["enum"])
         self.assertIn("compact", properties["tick_style"]["properties"]["format"]["enum"])
@@ -1133,7 +1134,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                         "legend_layout": "top_outside",
                         "legend_options": {"title": "Treatment", "order": ["Alpha", "Beta"], "ncol": 2},
                         "axis_limits": {"x": {"min": 0, "max": 1}, "y": {"min": 0, "max": 5}},
-                        "tick_style": {"rotation": 45, "format": "plain"},
+                        "tick_style": {"rotation": 45, "format": "plain", "max_label_chars": 10},
                         "job_id": "render-legend-axis-polish",
                     },
                 )
@@ -1142,7 +1143,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["legend_layout"], "top_outside")
             self.assertEqual(captured["legend_options"], {"title": "Treatment", "order": ("Alpha", "Beta"), "ncol": 2})
             self.assertEqual(captured["axis_limits"], {"x": {"min": 0.0, "max": 1.0}, "y": {"min": 0.0, "max": 5.0}})
-            self.assertEqual(captured["tick_style"], {"rotation": 45.0, "format": "plain"})
+            self.assertEqual(captured["tick_style"], {"rotation": 45.0, "format": "plain", "max_label_chars": 10})
 
     def test_render_csv_graph_forwards_dense_point_label_controls(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:

@@ -21,6 +21,7 @@ from plotting.bridge_renderer import (
     _annotation_font_size,
     _apply_axes_metadata,
     _apply_layout,
+    _apply_tick_style,
     _avoid_smart_legend_data_collision,
     _display_label,
     _draw_annotations,
@@ -258,6 +259,93 @@ class BridgeRendererUnitTest(unittest.TestCase):
         raw = "Coated Sample_Noa_None_Aligned"
         preserved = _display_label(raw, compress_labels=False)
         self.assertEqual(preserved, raw)
+
+    def test_tick_style_max_label_chars_compresses_visible_tick_labels_only(self):
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="bar",
+            x_column="condition",
+            y_column="value",
+            title="bar",
+            tick_style={"max_label_chars": 8},
+            compress_labels=False,
+        )
+        points = [
+            {"x": "VeryLongCategoricalConditionAlpha", "y": 1.0, "label": "", "series": "", "yerr": None},
+            {"x": "Short", "y": 2.0, "label": "", "series": "", "yerr": None},
+        ]
+
+        fig, ax = plt.subplots()
+        try:
+            _render_bar_plot(ax, points, spec)
+            _apply_tick_style(ax, spec)
+            fig.canvas.draw()
+
+            labels = ax.get_xticklabels()
+            self.assertEqual(labels[0].get_text(), "VeryL...")
+            formatter = ax.xaxis.get_major_formatter()
+            self.assertEqual(formatter._graph_hub_original_tick_labels[0], "VeryLongCategoricalConditionAlpha")
+            self.assertEqual(labels[1].get_text(), "Short")
+        finally:
+            plt.close(fig)
+
+    def test_tick_style_max_label_chars_preserves_raw_category_metadata_after_default_compression(self):
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="bar",
+            x_column="condition",
+            y_column="value",
+            title="bar",
+            tick_style={"max_label_chars": 8},
+        )
+        raw = "Coated Sample_Noa_None_Aligned"
+        points = [
+            {"x": raw, "y": 1.0, "label": "", "series": "", "yerr": None},
+            {"x": "Short", "y": 2.0, "label": "", "series": "", "yerr": None},
+        ]
+
+        fig, ax = plt.subplots()
+        try:
+            _render_bar_plot(ax, points, spec)
+            _apply_tick_style(ax, spec)
+            fig.canvas.draw()
+
+            formatter = ax.xaxis.get_major_formatter()
+            self.assertEqual(formatter._graph_hub_original_tick_labels[0], raw)
+            self.assertEqual(ax.get_xticklabels()[0].get_text(), "Coate...")
+        finally:
+            plt.close(fig)
+
+    def test_tick_style_max_label_chars_wraps_formatted_auto_ticks_without_warning(self):
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="line",
+            x_column="x",
+            y_column="y",
+            title="line",
+            tick_style={"format": "scientific", "max_label_chars": 5},
+        )
+        points = [
+            {"x": 1000.0, "y": 1.0, "label": "", "series": "", "yerr": None},
+            {"x": 2000.0, "y": 2.0, "label": "", "series": "", "yerr": None},
+        ]
+
+        fig, ax = plt.subplots()
+        try:
+            _render_xy_plot(ax, points, spec, line=True)
+            with warnings.catch_warnings(record=True) as captured:
+                warnings.simplefilter("always")
+                _apply_tick_style(ax, spec)
+                fig.canvas.draw()
+
+            self.assertFalse(any("FixedFormatter" in str(item.message) for item in captured))
+            self.assertTrue(all(len(label.get_text()) <= 5 for label in ax.get_xticklabels()))
+            self.assertTrue(ax.xaxis.get_major_formatter()._graph_hub_original_tick_labels)
+        finally:
+            plt.close(fig)
 
     def test_bar_plot_applies_compressed_tick_labels(self):
         spec = BridgeFigureSpec(

@@ -1,6 +1,6 @@
 # FigOps Polish Layer Adversarial Roadmap
 
-Status: source-of-truth roadmap for the next polish-layer waves after PRs #196-#200 and the contrast diagnostics slice staged on this branch.
+Status: source-of-truth roadmap for the next polish-layer waves after PRs #196-#201 and the tick readability slice staged on this branch.
 Scope: roadmap and acceptance criteria only; no renderer or MCP implementation in this document.
 
 ## 1. Baseline
@@ -13,8 +13,9 @@ Completed polish-layer capabilities:
 4. Legend and Axis Polish v1: legend title/order/ncol, bounded axis limits, tick rotation, and tick formatting presets.
 5. Dense Point-Label Polish v1: MCP `label_column`, deterministic max-label/priority/skip controls, static offset/fanout, and `point_label_skips` diagnostics.
 6. Contrast Diagnostics v1: tagged annotation region/hspan/vspan and manual fill_between overlays report low-contrast overlapping annotation text through geometry diagnostics.
+7. Tick Readability v1: opt-in `tick_style.max_label_chars` truncates long visible x tick labels while preserving source/original labels on formatter metadata.
 
-Therefore, future polish work must not treat schema discoverability, basic visual hierarchy, deterministic callout offsets, bounded legend/axis controls, deterministic dense point-label controls, or overlay/text contrast diagnostics as open gaps unless a regression is proven.
+Therefore, future polish work must not treat schema discoverability, basic visual hierarchy, deterministic callout offsets, bounded legend/axis controls, deterministic dense point-label controls, overlay/text contrast diagnostics, or opt-in long tick label truncation as open gaps unless a regression is proven.
 
 ## 2. Adversarial decision gates
 
@@ -63,7 +64,7 @@ Candidate controls:
 - `axis_limits.x` / `axis_limits.y` with log-axis and categorical-axis validation
 - `tick_style.rotation`
 - `tick_style.format` for `plain`, `scientific`, or `compact`
-- defer `tick_style.max_label_chars` to avoid conflicting with existing label compression behavior
+- `tick_style.max_label_chars` for opt-in visual truncation of long x tick labels
 
 Acceptance criteria:
 
@@ -101,7 +102,7 @@ Acceptance criteria:
 - Diagnostics report skipped or high-risk labels.
 - Existing `label_column` behavior remains unchanged unless new controls are passed.
 
-### P3. Contrast Diagnostics v1 — staged on current branch
+### P3. Contrast Diagnostics v1 — completed
 
 Purpose: detect unreadable text on dark overlays before adding automatic restyling.
 
@@ -117,7 +118,7 @@ Acceptance criteria:
 - False positives are bounded by only checking overlapping annotation/overlay extents when available.
 - Existing geometry diagnostics schema remains backward-compatible.
 
-### P4. Tick Readability v1
+### P4. Tick Readability v1 — staged on current branch
 
 Purpose: improve long categorical labels and log-axis readability.
 
@@ -161,10 +162,9 @@ Reason: model choice can imply scientific interpretation. Existing `guide_curves
 
 ## 4. Recommended next PR sequence
 
-1. Tick Readability v1, limited to remaining categorical/log polish not covered by P1.
-2. Multipanel Layout v1.
-3. Fit / Trend Overlay Expansion only with explicit project semantics.
-4. Architecture/data-contract debt as a separate maintenance track.
+1. Multipanel Layout v1.
+2. Fit / Trend Overlay Expansion only with explicit project semantics.
+3. Architecture/data-contract debt as a separate maintenance track.
 
 ## 5. Completion definition
 
