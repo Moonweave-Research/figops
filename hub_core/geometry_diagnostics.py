@@ -35,6 +35,7 @@ MARKER_MARKER_OVERLAP_WARN = 0.55
 ARTIST_OVERLAP_WARN = 0.05
 POINT_MARKER_OVERLAP_WARN = 0.10
 TEXT_AXIS_EDGE_WARN_PX = 3.0
+TEXT_OVERLAY_CONTRAST_WARN = 3.0
 
 _CROWDING_NEAR_LOW = 0.85
 _CROWDING_NEAR_HIGH = 0.95
@@ -58,6 +59,7 @@ _WARNING_ELIGIBLE = frozenset(
         "legend_marker_consistency",
         "label_offset_consistency",
         "point_label_skips",
+        "annotation_overlay_contrast",
         "font_size_token_drift",
         "journal_compliance",
     }
@@ -102,6 +104,7 @@ def diagnose_figure_geometry(
         checks.append(_text_axis_edge_proximity(ax, renderer, axis_index))
         checks.append(_legend_marker_consistency(ax, axis_index))
         checks.append(_point_label_skips(ax, axis_index))
+        checks.append(_annotation_overlay_contrast(ax, renderer, axis_index))
     checks.append(_figure_title_panel_title_overlap(fig, data_axes, renderer))
     checks.append(_label_offset_consistency(fig, data_axes, renderer))
     checks.append(_font_size_token_drift(data_axes, font_token_sizes))
@@ -1558,6 +1561,124 @@ def _point_label_skips(ax: Axes, axis_index: int) -> dict[str, Any]:
             "examples": examples if isinstance(examples, list) else [],
         },
     }
+
+
+def _annotation_overlay_contrast(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
+    name = "annotation_overlay_contrast"
+    texts = [
+        text
+        for text in ax.texts
+        if text.get_text() and _is_paintable(text) and getattr(text, "_graph_hub_annotation_text_role", "")
+    ]
+    overlays = _overlay_contrast_items(ax, renderer)
+    if not texts or not overlays:
+        return {
+            "name": name,
+            "passed": True,
+            "detail": f"0 low-contrast annotation/overlay pairs (axis {axis_index})",
+            "data": {"axis_index": int(axis_index), "pairs": []},
+        }
+    offenders: list[dict[str, Any]] = []
+    for text_index, text in enumerate(texts):
+        text_bb = _extent(text, renderer)
+        if text_bb is None:
+            continue
+        text_rgb = _artist_rgb(text.get_color(), fallback=(0.0, 0.0, 0.0))
+        for overlay_index, overlay in enumerate(overlays):
+            if not _boxes_overlap(text_bb, overlay["bbox"]):
+                continue
+            contrast = _contrast_ratio(text_rgb, overlay["rgb"])
+            if contrast < TEXT_OVERLAY_CONTRAST_WARN:
+                offenders.append(
+                    {
+                        "text_index": int(text_index),
+                        "text": text.get_text(),
+                        "overlay_index": int(overlay_index),
+                        "overlay_role": overlay["role"],
+                        "overlay_label": overlay["label"],
+                        "contrast_ratio": round(float(contrast), 3),
+                        "threshold": TEXT_OVERLAY_CONTRAST_WARN,
+                    }
+                )
+    if len(offenders) > _MAX_REPORTED_PAIRS:
+        offenders = offenders[:_MAX_REPORTED_PAIRS]
+        truncated = True
+    else:
+        truncated = False
+    return {
+        "name": name,
+        "passed": len(offenders) == 0,
+        "detail": f"{len(offenders)} low-contrast annotation/overlay pairs (axis {axis_index})",
+        "data": {"axis_index": int(axis_index), "pairs": offenders, "pairs_truncated": bool(truncated)},
+    }
+
+
+def _overlay_contrast_items(ax: Axes, renderer: Any) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for artist in [*ax.collections, *ax.patches]:
+        if not getattr(artist, "_graph_hub_overlay_role", "") or not _is_paintable(artist):
+            continue
+        bb = _extent(artist, renderer)
+        if bb is None:
+            continue
+        items.append(
+            {
+                "bbox": bb,
+                "rgb": _overlay_artist_rgb(artist),
+                "role": str(getattr(artist, "_graph_hub_overlay_role", "overlay")),
+                "label": str(getattr(artist, "_graph_hub_overlay_label", "")),
+            }
+        )
+    return items
+
+
+def _overlay_artist_rgb(artist: Any) -> tuple[float, float, float]:
+    facecolors = getattr(artist, "get_facecolors", lambda: [])()
+    if len(facecolors):
+        rgba = facecolors[0]
+        alpha = float(rgba[3]) if len(rgba) > 3 else 1.0
+        return _composite_rgb(tuple(float(v) for v in rgba[:3]), alpha)
+    facecolor = getattr(artist, "get_facecolor", lambda: None)()
+    if isinstance(facecolor, (list, tuple)) and len(facecolor) and isinstance(facecolor[0], (list, tuple)):
+        facecolor = facecolor[0]
+    return _artist_rgb(facecolor, fallback=(1.0, 1.0, 1.0), composite=True)
+
+
+def _artist_rgb(
+    color: Any, *, fallback: tuple[float, float, float], composite: bool = False
+) -> tuple[float, float, float]:
+    try:
+        from matplotlib.colors import to_rgba
+
+        rgba = to_rgba(color)
+    except (TypeError, ValueError):
+        return fallback
+    rgb = tuple(float(v) for v in rgba[:3])
+    if composite:
+        return _composite_rgb(rgb, float(rgba[3]))
+    return rgb
+
+
+def _composite_rgb(rgb: tuple[float, float, float], alpha: float) -> tuple[float, float, float]:
+    alpha = max(0.0, min(1.0, float(alpha)))
+    return tuple(float(channel * alpha + (1.0 - alpha)) for channel in rgb)
+
+
+def _relative_luminance(rgb: tuple[float, float, float]) -> float:
+    def channel(value: float) -> float:
+        value = max(0.0, min(1.0, float(value)))
+        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+
+    red, green, blue = (channel(value) for value in rgb)
+    return float(0.2126 * red + 0.7152 * green + 0.0722 * blue)
+
+
+def _contrast_ratio(first: tuple[float, float, float], second: tuple[float, float, float]) -> float:
+    first_lum = _relative_luminance(first)
+    second_lum = _relative_luminance(second)
+    lighter = max(first_lum, second_lum)
+    darker = min(first_lum, second_lum)
+    return float((lighter + 0.05) / (darker + 0.05))
 
 
 def _default_font_token_sizes(data_axes: list[Axes]) -> list[float]:

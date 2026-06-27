@@ -1,6 +1,6 @@
 # FigOps Polish Layer Adversarial Roadmap
 
-Status: source-of-truth roadmap for the next polish-layer waves after PRs #196-#199 and the dense point-label slice staged on this branch.
+Status: source-of-truth roadmap for the next polish-layer waves after PRs #196-#200 and the contrast diagnostics slice staged on this branch.
 Scope: roadmap and acceptance criteria only; no renderer or MCP implementation in this document.
 
 ## 1. Baseline
@@ -12,8 +12,9 @@ Completed polish-layer capabilities:
 3. Smart Callout v1: explicit point offsets, placement presets, deterministic fanout, and legacy annotation compatibility.
 4. Legend and Axis Polish v1: legend title/order/ncol, bounded axis limits, tick rotation, and tick formatting presets.
 5. Dense Point-Label Polish v1: MCP `label_column`, deterministic max-label/priority/skip controls, static offset/fanout, and `point_label_skips` diagnostics.
+6. Contrast Diagnostics v1: tagged annotation region/hspan/vspan and manual fill_between overlays report low-contrast overlapping annotation text through geometry diagnostics.
 
-Therefore, future polish work must not treat schema discoverability, basic visual hierarchy, deterministic callout offsets, bounded legend/axis controls, or deterministic dense point-label controls as open gaps unless a regression is proven.
+Therefore, future polish work must not treat schema discoverability, basic visual hierarchy, deterministic callout offsets, bounded legend/axis controls, deterministic dense point-label controls, or overlay/text contrast diagnostics as open gaps unless a regression is proven.
 
 ## 2. Adversarial decision gates
 
@@ -80,7 +81,7 @@ Rejected scope:
 - Global palette changes.
 - Full layout solver.
 
-### P2. Dense Point-Label Polish v1 — staged on current branch
+### P2. Dense Point-Label Polish v1 — completed
 
 Purpose: reduce label clutter for dense scatter labels with deterministic behavior.
 
@@ -100,7 +101,7 @@ Acceptance criteria:
 - Diagnostics report skipped or high-risk labels.
 - Existing `label_column` behavior remains unchanged unless new controls are passed.
 
-### P3. Contrast Diagnostics v1
+### P3. Contrast Diagnostics v1 — staged on current branch
 
 Purpose: detect unreadable text on dark overlays before adding automatic restyling.
 
@@ -160,11 +161,10 @@ Reason: model choice can imply scientific interpretation. Existing `guide_curves
 
 ## 4. Recommended next PR sequence
 
-1. Contrast Diagnostics v1.
-2. Tick Readability v1, limited to remaining categorical/log polish not covered by P1.
-3. Multipanel Layout v1.
-4. Fit / Trend Overlay Expansion only with explicit project semantics.
-7. Architecture/data-contract debt as a separate maintenance track.
+1. Tick Readability v1, limited to remaining categorical/log polish not covered by P1.
+2. Multipanel Layout v1.
+3. Fit / Trend Overlay Expansion only with explicit project semantics.
+4. Architecture/data-contract debt as a separate maintenance track.
 
 ## 5. Completion definition
 

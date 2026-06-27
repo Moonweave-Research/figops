@@ -1,6 +1,6 @@
 # FigOps Polish Layer Finalization Workflow
 
-Status: current execution spec after completed polish waves 1-5.
+Status: current execution spec after completed polish waves 1-6.
 Scope: FigOps journal-compliant figure polish, not a replacement plotting engine.
 
 ## 1. Research and prior art
@@ -16,7 +16,7 @@ Observed prior art inside the repo:
 - Renderer capability and annotation drawing live in `plotting/bridge_renderer.py`.
 - Geometry diagnostics live in `hub_core/geometry_diagnostics.py`.
 
-Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#199 and the dense point-label slice on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, and Dense Point-Label Polish v1 are shipped or staged; the next roadmap must therefore focus on remaining contrast, tick, and multipanel polish rather than re-solving completed slices.
+Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#199, the merged dense point-label slice, and the contrast diagnostics slice staged on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, Dense Point-Label Polish v1, and Contrast Diagnostics v1 are shipped or staged; the next roadmap must therefore focus on remaining tick and multipanel polish rather than re-solving completed slices.
 
 ## 2. Product position and non-goals
 
@@ -105,14 +105,14 @@ Completed slices:
 2. Series style extension for color, alpha, marker size, linewidth, z-order, and label override shipped in PR #197.
 3. Smart Callout v1 with deterministic offsets and presets shipped in PR #198.
 4. Legend and axis polish v1 shipped in PR #199.
-5. Dense point-label polish v1 is staged on this branch: MCP `label_column`, `point_label_options.max_labels/priority_column/skip_column/offset/fanout`, and `point_label_skips` diagnostics.
+5. Dense point-label polish v1 shipped in PR #200: MCP `label_column`, `point_label_options.max_labels/priority_column/skip_column/offset/fanout`, and `point_label_skips` diagnostics.
+6. Contrast Diagnostics v1 is staged on this branch: tagged annotation region/hspan/vspan and manual fill_between overlays are checked against overlapping annotation text with contrast-ratio diagnostics.
 
 Current priority order for remaining slices:
 
-1. Contrast diagnostics v1: text/overlay contrast warnings before any automatic restyling.
-2. Tick readability v1: long categorical-label compression and log tick formatting controls.
-3. Multipanel layout v1: spacing, ratios, and shared legend placement before mosaic/span DSL.
-4. Fit/trend overlay expansion: defer until a project explicitly needs model semantics.
+1. Tick readability v1: long categorical-label compression and log tick formatting controls.
+2. Multipanel layout v1: spacing, ratios, and shared legend placement before mosaic/span DSL.
+3. Fit/trend overlay expansion: defer until a project explicitly needs model semantics.
 
 Implementation rule: pick one bounded slice, write or extend tests first where feasible, and prove the field reaches either MCP output, renderer behavior, diagnostics, or pixels.
 
@@ -179,7 +179,7 @@ The fixture manifest in Wave 2 should define each fixture with:
 - Artifact path.
 - Whether the fixture is automated, semi-automated, or human-reviewed.
 
-Minimum next fixture recommendation: legend-data-collision plus log-axis-tick-readability, because they exercise remaining layout polish and axis readability without introducing a new plotting DSL.
+Minimum next fixture recommendation: log-axis-tick-readability plus long-categorical-labels, because they exercise remaining axis readability without introducing a new plotting DSL.
 
 ## 7. Release or implementation plan
 
@@ -190,20 +190,20 @@ Completed PRs:
 1. PR #196: documentation and typed MCP polish schema planning.
 2. PR #197: series visual hierarchy controls.
 3. PR #198: Smart Callout v1.
+4. PR #199: Legend and Axis Polish v1.
+5. PR #200: Dense Point-Label Polish v1.
 
 Recommended next PR:
 
-1. Legend and axis polish v1.
-2. Typed MCP schemas and normalization for `legend_layout` string presets, `legend_options`, `axis_limits`, and `tick_style`.
-3. Renderer tests proving the controls reach matplotlib kwargs or diagnostics while preserving existing `legend_layout` callers.
+1. Contrast Diagnostics v1.
+2. Diagnostics-only text/overlay contrast checks for tagged annotation regions, hspan/vspan, and manual fill_between overlays.
+3. Geometry, renderer, and MCP smoke tests proving diagnostics reach output warnings.
 4. Generated tool-reference update.
-5. Render smoke for at least one legend-data-collision fixture and one log-axis fixture.
 
 Recommended follow-up PRs:
 
-1. Dense point-label polish v1.
-2. Contrast diagnostics v1.
-3. Tick readability v1 if not fully covered by legend/axis v1.
-4. Multipanel layout v1.
+1. Tick readability v1 for remaining categorical/log polish.
+2. Multipanel layout v1.
+3. Fit/trend overlay expansion only with explicit project semantics.
 
 Stop condition for this workflow: final review cannot refute the selected slice's exposure, tests, docs, and journal-safety claims, and release readiness is documented.

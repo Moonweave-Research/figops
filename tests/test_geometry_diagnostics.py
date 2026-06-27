@@ -82,6 +82,8 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
             "text_axis_edge_proximity",
             "legend_marker_consistency",
             "label_offset_consistency",
+            "point_label_skips",
+            "annotation_overlay_contrast",
             "font_size_token_drift",
             "journal_compliance",
         }
@@ -673,6 +675,53 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertIsNone(check["passed"])
         self.assertTrue(check["detail"].startswith("skipped: annotation count"))
         self.assertIsInstance(result["passed"], bool)
+
+    def test_annotation_overlay_contrast_flags_dark_overlay_text(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        overlay = ax.axhspan(0.2, 0.8, color="black", alpha=0.9)
+        overlay._graph_hub_overlay_role = "annotation_hspan"
+        overlay._graph_hub_overlay_label = "dark band"
+        text = ax.text(0.5, 0.5, "low contrast", color="black", ha="center", va="center")
+        text._graph_hub_annotation_text_role = "annotation_hspan"
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "annotation_overlay_contrast")
+
+        self.assertFalse(check["passed"])
+        self.assertEqual(check["data"]["pairs"][0]["overlay_label"], "dark band")
+        self.assertLess(check["data"]["pairs"][0]["contrast_ratio"], 3.0)
+        plt.close(fig)
+
+    def test_annotation_overlay_contrast_passes_light_text_on_dark_overlay(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        overlay = ax.axhspan(0.2, 0.8, color="black", alpha=0.9)
+        overlay._graph_hub_overlay_role = "annotation_hspan"
+        overlay._graph_hub_overlay_label = "dark band"
+        text = ax.text(0.5, 0.5, "readable", color="white", ha="center", va="center")
+        text._graph_hub_annotation_text_role = "annotation_hspan"
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "annotation_overlay_contrast")
+
+        self.assertTrue(check["passed"])
+        plt.close(fig)
+
+    def test_annotation_overlay_contrast_ignores_untagged_point_label_text(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        overlay = ax.axhspan(0.2, 0.8, color="black", alpha=0.9)
+        overlay._graph_hub_overlay_role = "annotation_hspan"
+        overlay._graph_hub_overlay_label = "dark band"
+        ax.text(0.5, 0.5, "point label", color="black", ha="center", va="center")
+
+        check = _check(diagnose_figure_geometry(_drawn(fig), [ax], layout_locked=False), "annotation_overlay_contrast")
+
+        self.assertTrue(check["passed"])
+        self.assertEqual(check["data"]["pairs"], [])
+        plt.close(fig)
 
     def test_mode_sensitivity_outside_figure(self):
         fig, ax = plt.subplots(figsize=(2, 2))

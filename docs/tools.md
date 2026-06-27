@@ -2126,6 +2126,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                   "legend_marker_consistency",
                   "label_offset_consistency",
                   "point_label_skips",
+                  "annotation_overlay_contrast",
                   "font_size_token_drift",
                   "journal_compliance"
                 ],
@@ -3295,6 +3296,7 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                   "legend_marker_consistency",
                   "label_offset_consistency",
                   "point_label_skips",
+                  "annotation_overlay_contrast",
                   "font_size_token_drift",
                   "journal_compliance"
                 ],
@@ -3672,6 +3674,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
                   "legend_marker_consistency",
                   "label_offset_consistency",
                   "point_label_skips",
+                  "annotation_overlay_contrast",
                   "font_size_token_drift",
                   "journal_compliance"
                 ],
