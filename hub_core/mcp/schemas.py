@@ -380,6 +380,19 @@ _GUIDE_CURVES_SCHEMA = {
     "description": "Manual guide curves from point objects or parallel x/y arrays.",
 }
 
+_FIT_OPTIONS_SCHEMA = _object_schema(
+    {
+        "model": {"type": "string", "enum": ["linear"], "default": "linear"},
+        "label": {"type": "string"},
+        "color": {"type": "string"},
+        "linestyle": {"type": "string"},
+        "linewidth": {"type": "number", "exclusiveMinimum": 0},
+        "zorder": {"type": "number"},
+        "ci_alpha": {"type": "number", "minimum": 0, "maximum": 1},
+        "ci_label": {"type": "string"},
+    }
+)
+
 _FILL_BETWEEN_SCHEMA = {
     **_open_object_schema(
         {
@@ -466,6 +479,7 @@ def _plot_type_example(name: str, arg_schema: dict[str, Any]) -> dict[str, Any]:
     if "fit_line" in arg_schema.get("properties", {}):
         arguments["fit_line"] = True
         arguments["ci_band"] = True
+        arguments["fit_options"] = {"model": "linear", "label": "Linear fit"}
         arguments["significance_markers"] = [{"x1": 0, "x2": 1, "y": 2, "label": "p<0.05"}]
     return {"tool": "figops.render_csv_graph", "arguments": arguments}
 
@@ -752,6 +766,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "annotate_values": {"type": "boolean", "default": False},
                     "fit_line": {"type": "boolean"},
                     "ci_band": {"type": "boolean"},
+                    "fit_options": _FIT_OPTIONS_SCHEMA,
                     "significance_markers": {"type": "array", "items": {"type": "object"}},
                     "plot_type": {"type": "string", "enum": supported_render_plot_types, "default": "scatter"},
                     "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
@@ -819,6 +834,10 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                                 "yerr_column": {"type": "string"},
                                 "yerr_minus_column": {"type": "string"},
                                 "yerr_cap_width": {"type": "number", "minimum": 0, "default": 3.0},
+                                "fit_line": {"type": "boolean"},
+                                "ci_band": {"type": "boolean"},
+                                "fit_options": _FIT_OPTIONS_SCHEMA,
+                                "significance_markers": {"type": "array", "items": {"type": "object"}},
                                 "plot_type": {
                                     "type": "string",
                                     "enum": supported_render_plot_types,

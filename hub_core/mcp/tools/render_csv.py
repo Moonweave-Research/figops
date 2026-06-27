@@ -298,6 +298,43 @@ def _normalized_series_style_args(value: Any) -> dict[str, dict[str, str]]:
     return normalized
 
 
+def _normalized_fit_options_arg(value: Any) -> dict[str, Any]:
+    if value in (None, {}, []):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("fit_options must be an object.")
+    allowed_keys = {"model", "label", "color", "linestyle", "linewidth", "zorder", "ci_alpha", "ci_label"}
+    unsupported = sorted(set(value) - allowed_keys)
+    if unsupported:
+        raise ValueError(f"fit_options has unsupported key(s): {', '.join(unsupported)}.")
+    normalized: dict[str, Any] = {"model": "linear"}
+    if value.get("model") is not None:
+        model = str(value["model"]).strip().lower()
+        if model != "linear":
+            raise ValueError("fit_options.model must be 'linear'.")
+    for key in ("label", "color", "linestyle", "ci_label"):
+        if value.get(key) is None:
+            continue
+        text = str(value[key]).strip()
+        if text:
+            normalized[key] = text
+    for key in ("linewidth", "zorder", "ci_alpha"):
+        if value.get(key) is None:
+            continue
+        try:
+            numeric = float(value[key])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"fit_options.{key} must be numeric.") from exc
+        if not math.isfinite(numeric):
+            raise ValueError(f"fit_options.{key} must be finite.")
+        if key == "linewidth" and numeric <= 0:
+            raise ValueError("fit_options.linewidth must be positive.")
+        if key == "ci_alpha" and not 0 <= numeric <= 1:
+            raise ValueError("fit_options.ci_alpha must be between 0 and 1.")
+        normalized[key] = numeric
+    return normalized
+
+
 def _normalized_guide_curve_args(value: Any) -> tuple[dict[str, Any], ...]:
     if value in (None, (), []):
         return ()
@@ -569,6 +606,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             )
             annotations = _normalized_annotation_args(arguments.get("annotations"))
             series_styles = _normalized_series_style_args(arguments.get("series_styles"))
+            fit_options = _normalized_fit_options_arg(arguments.get("fit_options"))
             guide_curves = _normalized_guide_curve_args(arguments.get("guide_curves"))
             fill_between = _normalized_fill_between_args(arguments.get("fill_between"))
         except ValueError as exc:
@@ -676,6 +714,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             plot_type=plot_type,
             fit_line=fit_line,
             ci_band=ci_band,
+            fit_options=fit_options,
             significance_markers=significance_markers,
         )
         if overlay_errors:
@@ -947,6 +986,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "yerr_cap_width": yerr_cap_width,
                         "fit_line": fit_line,
                         "ci_band": ci_band,
+                        "fit_options": fit_options,
                         "significance_markers": significance_markers,
                         "title": str(arguments.get("title") or "FigOps MCP render"),
                         "x_axis_label": str(arguments.get("x_axis_label") or x_column),
@@ -1212,6 +1252,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 )
                 annotations = _normalized_annotation_args(panel.get("annotations"))
                 series_styles = _normalized_series_style_args(panel.get("series_styles"))
+                fit_options = _normalized_fit_options_arg(panel.get("fit_options"))
                 guide_curves = _normalized_guide_curve_args(panel.get("guide_curves"))
                 fill_between = _normalized_fill_between_args(panel.get("fill_between"))
                 facet_column = str(panel.get("facet_column") or "").strip()
@@ -1223,6 +1264,9 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 yerr_column = str(panel.get("yerr_column") or "").strip()
                 yerr_minus_column = str(panel.get("yerr_minus_column") or "").strip()
                 yerr_cap_width = float(panel.get("yerr_cap_width", 3.0))
+                fit_line = panel.get("fit_line", False)
+                ci_band = panel.get("ci_band", False)
+                significance_markers = panel.get("significance_markers", ())
             except (TypeError, ValueError) as exc:
                 contract_errors.append(f"panels[{index}]: {exc}")
                 continue
@@ -1258,6 +1302,16 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     f"panels[{index}] guide_curves and fill_between are only supported for plot_type "
                     "'line', 'scatter', or 'xy'."
                 )
+                continue
+            overlay_errors = self._statistical_overlay_arg_errors(
+                plot_type=plot_type,
+                fit_line=fit_line,
+                ci_band=ci_band,
+                fit_options=fit_options,
+                significance_markers=significance_markers,
+            )
+            if overlay_errors:
+                contract_errors.extend(f"panels[{index}]: {error}" for error in overlay_errors)
                 continue
             if yerr_cap_width < 0:
                 contract_errors.append(f"panels[{index}].yerr_cap_width must be non-negative.")
@@ -1346,6 +1400,10 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     "yerr_column": yerr_column,
                     "yerr_minus_column": yerr_minus_column,
                     "yerr_cap_width": yerr_cap_width,
+                    "fit_line": fit_line,
+                    "ci_band": ci_band,
+                    "fit_options": fit_options,
+                    "significance_markers": significance_markers,
                     "title": str(panel.get("title") or ""),
                     "x_axis_label": str(panel.get("x_axis_label") or x_column),
                     "y_axis_label": str(panel.get("y_axis_label") or y_column),

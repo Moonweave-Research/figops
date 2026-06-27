@@ -1476,6 +1476,91 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["annotations"][1]["hspan"], {"ymin": 10, "ymax": 20})
             self.assertEqual(captured["annotations"][2]["vspan"], {"xmin": 1, "xmax": 2})
 
+    def test_render_csv_graph_forwards_fit_options(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "plot_type": "scatter",
+                        "fit_line": True,
+                        "ci_band": True,
+                        "fit_options": {
+                            "model": "linear",
+                            "label": "least-squares fit",
+                            "color": "tab:red",
+                            "linestyle": "--",
+                            "linewidth": 2.5,
+                            "ci_alpha": 0.2,
+                            "ci_label": "fit confidence",
+                        },
+                        "job_id": "render-csv-fit-options",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["fit_options"]["model"], "linear")
+            self.assertEqual(captured["fit_options"]["label"], "least-squares fit")
+            self.assertEqual(captured["fit_options"]["color"], "tab:red")
+            self.assertEqual(captured["fit_options"]["linestyle"], "--")
+            self.assertEqual(captured["fit_options"]["linewidth"], 2.5)
+            self.assertEqual(captured["fit_options"]["ci_alpha"], 0.2)
+            self.assertEqual(captured["fit_options"]["ci_label"], "fit confidence")
+
+    def test_render_csv_graph_rejects_fit_options_without_fit_overlay(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "scatter",
+                    "fit_options": {"model": "linear"},
+                    "job_id": "bad-fit-options",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertTrue(any("fit_options requires fit_line or ci_band" in error for error in result["errors"]))
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_graph_schema_exposes_fit_options(self):
+        tool = next(
+            definition for definition in list_tool_definitions() if definition["name"] == "figops.render_csv_graph"
+        )
+        fit_options = tool["inputSchema"]["properties"]["fit_options"]["properties"]
+
+        self.assertEqual(fit_options["model"]["enum"], ["linear"])
+        self.assertIn("ci_alpha", fit_options)
+        self.assertIn("ci_label", fit_options)
+
     def test_render_csv_graph_forwards_guide_curve_and_fill_between_region(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             tmp_root = Path(tmpdir)
@@ -1687,7 +1772,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             panel_a.parent.mkdir(parents=True, exist_ok=True)
             panel_a.write_text("era,rho,sem,label,priority\nA,100,10,A,1\nB,1000,100,B,2\n", encoding="utf-8")
             panel_b.write_text(
-                "rho,eps,sem,condition,lower,upper\n100,10,1,Reference,8,12\n1000,8,2,This work,6,10\n",
+                "rho,eps,sem,condition,lower,upper\n"
+                "100,10,1,Reference,8,12\n"
+                "1000,8,2,This work,6,10\n"
+                "10000,6,1,This work,5,8\n",
                 encoding="utf-8",
             )
             runtime_root = tmp_root / "runtime"
@@ -1747,6 +1835,15 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                                         "label": "band",
                                     }
                                 ],
+                                "fit_line": True,
+                                "ci_band": True,
+                                "fit_options": {
+                                    "model": "linear",
+                                    "label": "panel fit",
+                                    "color": "tab:blue",
+                                    "ci_alpha": 0.15,
+                                },
+                                "significance_markers": [{"x1": 100, "x2": 1000, "y": 11, "label": "p<0.05"}],
                                 "title": "panel b",
                             },
                         ],
@@ -1777,6 +1874,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             )
             self.assertEqual(captured["panels"][1]["guide_curves"][0]["color"], "black")
             self.assertEqual(captured["panels"][1]["fill_between"][0]["alpha"], 0.2)
+            self.assertTrue(captured["panels"][1]["fit_line"])
+            self.assertTrue(captured["panels"][1]["ci_band"])
+            self.assertEqual(captured["panels"][1]["fit_options"]["label"], "panel fit")
+            self.assertEqual(captured["panels"][1]["fit_options"]["ci_alpha"], 0.15)
+            self.assertEqual(captured["panels"][1]["significance_markers"][0]["label"], "p<0.05")
             self.assertEqual(result["provenance"]["renderer_surface"], "figops.render_csv_multipanel")
 
     def test_render_csv_multipanel_forwards_layout_options(self):
@@ -1833,6 +1935,33 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(config["render_payload"]["width_ratios"], [2.0, 1.0])
             self.assertEqual(config["render_payload"]["height_ratios"], [1.0])
             self.assertEqual(config["render_payload"]["panels"][0]["csv_path"], captured["panels"][0]["csv_path"])
+
+    def test_render_csv_multipanel_rejects_fit_options_without_fit_overlay(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_multipanel",
+                {
+                    "panels": [
+                        {
+                            "data_path": str(data_path),
+                            "x_column": "x",
+                            "y_column": "y",
+                            "plot_type": "scatter",
+                            "fit_options": {"model": "linear"},
+                        }
+                    ],
+                    "job_id": "multipanel-fit-options-invalid",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertTrue(any("fit_options requires fit_line or ci_band" in error for error in result["errors"]))
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
 
     def test_render_csv_multipanel_rejects_bad_layout_ratio_length(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:

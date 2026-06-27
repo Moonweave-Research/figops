@@ -26,6 +26,7 @@ class McpRenderValidationMixin:
         fit_line: Any,
         ci_band: Any,
         significance_markers: Any,
+        fit_options: Any = None,
     ) -> list[str]:
         errors: list[str] = []
         if not isinstance(fit_line, bool):
@@ -54,7 +55,14 @@ class McpRenderValidationMixin:
                         float(marker[key])
                     except (TypeError, ValueError):
                         errors.append(f"significance_markers[{idx}].{key} must be numeric.")
-        has_overlays = bool(fit_line or ci_band or significance_markers)
+        if fit_options in (None, {}, []):
+            fit_options = {}
+        elif not isinstance(fit_options, dict):
+            errors.append("fit_options must be an object.")
+            fit_options = {}
+        if fit_options and not (fit_line or ci_band):
+            errors.append("fit_options requires fit_line or ci_band.")
+        has_overlays = bool(fit_line or ci_band or fit_options or significance_markers)
         if has_overlays and plot_type not in _STATISTICAL_OVERLAY_PLOT_TYPES:
             errors.append("statistical overlays are only supported for plot_type 'line', 'scatter', or 'xy'.")
         return errors

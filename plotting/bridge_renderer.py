@@ -214,6 +214,7 @@ class BridgeFigureSpec:
     annotate_values: bool = False
     fit_line: bool = False
     ci_band: bool = False
+    fit_options: dict | None = None
     significance_markers: tuple[dict, ...] = ()
     series_styles: dict[str, dict] | None = None
     guide_curves: tuple[dict, ...] = ()
@@ -1113,7 +1114,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
 
 
 def _has_statistical_overlays(spec: BridgeFigureSpec) -> bool:
-    return bool(spec.fit_line or spec.ci_band or spec.significance_markers)
+    return bool(spec.fit_line or spec.ci_band or spec.fit_options or spec.significance_markers)
 
 
 def _has_manual_overlays(spec: BridgeFigureSpec) -> bool:
@@ -1135,6 +1136,9 @@ def _validate_manual_overlays(spec: BridgeFigureSpec) -> None:
 def _validate_statistical_overlays(points: list[dict], spec: BridgeFigureSpec) -> None:
     if not _has_statistical_overlays(spec):
         return
+    _normalized_fit_options(spec.fit_options)
+    if spec.fit_options and not (spec.fit_line or spec.ci_band):
+        raise ValueError("fit_options requires fit_line or ci_band")
     plot_type = str(spec.plot_type or "").strip().lower()
     if plot_type not in {"line", "scatter", "xy"}:
         raise ValueError(
@@ -1177,6 +1181,40 @@ def _finite_float(value: object, *, context: str) -> float:
     if not math.isfinite(number):
         raise ValueError(f"{context} must be finite")
     return number
+
+
+def _normalized_fit_options(value: object) -> dict[str, object]:
+    if value in (None, {}, ()):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("fit_options must be an object")
+    allowed_keys = {"model", "label", "color", "linestyle", "linewidth", "zorder", "ci_alpha", "ci_label"}
+    unsupported = sorted(str(key) for key in value if key not in allowed_keys)
+    if unsupported:
+        raise ValueError(f"fit_options has unsupported key(s): {', '.join(unsupported)}")
+    model = str(value.get("model") or "linear").strip().lower()
+    if model != "linear":
+        raise ValueError("fit_options.model must be 'linear'")
+    normalized: dict[str, object] = {"model": "linear"}
+    for key in ("label", "color", "linestyle", "ci_label"):
+        if key not in value or value.get(key) is None:
+            continue
+        text = str(value[key]).strip()
+        if text:
+            normalized[key] = text
+    if "linewidth" in value and value.get("linewidth") is not None:
+        linewidth = _finite_float(value["linewidth"], context="fit_options.linewidth")
+        if linewidth <= 0:
+            raise ValueError("fit_options.linewidth must be positive")
+        normalized["linewidth"] = linewidth
+    if "zorder" in value and value.get("zorder") is not None:
+        normalized["zorder"] = _finite_float(value["zorder"], context="fit_options.zorder")
+    if "ci_alpha" in value and value.get("ci_alpha") is not None:
+        ci_alpha = _finite_float(value["ci_alpha"], context="fit_options.ci_alpha")
+        if ci_alpha < 0 or ci_alpha > 1:
+            raise ValueError("fit_options.ci_alpha must be between 0 and 1")
+        normalized["ci_alpha"] = ci_alpha
+    return normalized
 
 
 def _overlay_xy_arrays(overlay: dict, *, field_name: str) -> tuple[list[float], list[float]]:
@@ -2020,11 +2058,21 @@ def _draw_statistical_overlays(ax, points: list[dict], spec: BridgeFigureSpec) -
 
 
 def _draw_linear_fit_overlay(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
+    options = _normalized_fit_options(spec.fit_options)
     xs, ys = _numeric_xy_arrays(points, min_points=3 if spec.ci_band else 2, context="fit_line/ci_band")
     slope, intercept = np.polyfit(xs, ys, 1)
     x_grid = np.linspace(float(xs.min()), float(xs.max()), 200)
     y_grid = slope * x_grid + intercept
-    ax.plot(x_grid, y_grid, color="black", linewidth=1.0, linestyle="-", label="Linear fit", zorder=4)
+    fit_color = str(options.get("color") or "black")
+    ax.plot(
+        x_grid,
+        y_grid,
+        color=fit_color,
+        linewidth=float(options.get("linewidth") or 1.0),
+        linestyle=str(options.get("linestyle") or "-"),
+        label=str(options.get("label") or "Linear fit"),
+        zorder=float(options.get("zorder") if "zorder" in options else 4),
+    )
 
     if not spec.ci_band:
         return
@@ -2043,10 +2091,10 @@ def _draw_linear_fit_overlay(ax, points: list[dict], spec: BridgeFigureSpec) -> 
         x_grid,
         y_grid - t_crit * se_mean,
         y_grid + t_crit * se_mean,
-        color="black",
-        alpha=0.12,
+        color=fit_color,
+        alpha=float(options.get("ci_alpha") if "ci_alpha" in options else 0.12),
         linewidth=0,
-        label="95% CI",
+        label=str(options.get("ci_label") or "95% CI"),
         zorder=1,
     )
 
