@@ -57,6 +57,7 @@ _WARNING_ELIGIBLE = frozenset(
         "text_axis_edge_proximity",
         "legend_marker_consistency",
         "label_offset_consistency",
+        "point_label_skips",
         "font_size_token_drift",
         "journal_compliance",
     }
@@ -100,6 +101,7 @@ def diagnose_figure_geometry(
         checks.append(_marker_marker_overlaps(ax, renderer, axis_index))
         checks.append(_text_axis_edge_proximity(ax, renderer, axis_index))
         checks.append(_legend_marker_consistency(ax, axis_index))
+        checks.append(_point_label_skips(ax, axis_index))
     checks.append(_figure_title_panel_title_overlap(fig, data_axes, renderer))
     checks.append(_label_offset_consistency(fig, data_axes, renderer))
     checks.append(_font_size_token_drift(data_axes, font_token_sizes))
@@ -1526,6 +1528,34 @@ def _label_offset_consistency(fig: Figure, data_axes: list[Axes], renderer: Any)
         "data": {
             "inconsistencies": inconsistencies,
             "inconsistencies_truncated": bool(truncated),
+        },
+    }
+
+
+def _point_label_skips(ax: Axes, axis_index: int) -> dict[str, Any]:
+    name = "point_label_skips"
+    raw = getattr(ax, "_graph_hub_point_label_skips", None)
+    if not isinstance(raw, dict):
+        return {
+            "name": name,
+            "passed": True,
+            "detail": f"0 skipped point labels (axis {axis_index})",
+            "data": {"axis_index": int(axis_index), "skipped_labels": 0},
+        }
+    skipped = int(raw.get("skipped_labels", 0) or 0)
+    reasons = raw.get("reasons")
+    examples = raw.get("examples")
+    return {
+        "name": name,
+        "passed": skipped == 0,
+        "detail": f"{skipped} skipped point labels (axis {axis_index})",
+        "data": {
+            "axis_index": int(axis_index),
+            "total_labels": int(raw.get("total_labels", 0) or 0),
+            "shown_labels": int(raw.get("shown_labels", 0) or 0),
+            "skipped_labels": skipped,
+            "reasons": reasons if isinstance(reasons, dict) else {},
+            "examples": examples if isinstance(examples, list) else [],
         },
     }
 

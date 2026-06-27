@@ -197,6 +197,7 @@ class BridgeFigureSpec:
     legend_options: dict | None = None
     axis_limits: dict | None = None
     tick_style: dict | None = None
+    point_label_options: dict | None = None
     target_format: str = "nature"
     font_scale: float = 1.0
     profile_name: str = "baseline"
@@ -239,6 +240,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         _validate_axis_scales(points, spec)
         _validate_axis_limits(points, spec)
         _normalized_tick_style(spec)
+        _normalized_point_label_options(spec)
         _normalized_legend_options(spec)
         _normalized_annotations(spec.annotations)
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
@@ -586,6 +588,11 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
             col = getattr(spec, col_attr)
             if col:
                 required.append(col)
+        point_label_options = _normalized_point_label_options(spec)
+        for option_key in ("priority_column", "skip_column"):
+            col = point_label_options.get(option_key)
+            if col:
+                required.append(str(col))
         for region in spec.fill_between:
             for key in ("x_column", "y1_column", "y2_column"):
                 col = region.get(key)
@@ -746,18 +753,129 @@ def _annotate_points(
     labels: list[str],
     *,
     compress_labels: bool,
+    point_label_options: dict | None = None,
+    points: list[dict] | None = None,
 ) -> None:
-    for x, y, label in zip(xs, ys, labels):
+    options = _normalized_point_label_options_dict(point_label_options)
+    candidates, skipped = _point_label_candidates(xs, ys, labels, options=options, points=points)
+    for display_index, item in enumerate(candidates):
+        _draw_point_label(ax, item, options=options, display_index=display_index, compress_labels=compress_labels)
+    if skipped:
+        _record_point_label_skips(ax, skipped=skipped, total=len(labels), shown=len(candidates))
+
+
+def _point_label_candidates(
+    xs: list[float],
+    ys: list[float],
+    labels: list[str],
+    *,
+    options: dict[str, object],
+    points: list[dict] | None,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    candidates: list[dict[str, object]] = []
+    skipped: list[dict[str, object]] = []
+    priority_column = str(options.get("priority_column") or "")
+    skip_column = str(options.get("skip_column") or "")
+    max_labels = options.get("max_labels")
+    for index, (x, y, label) in enumerate(zip(xs, ys, labels)):
         if label:
-            ax.annotate(
-                _display_label(label, compress_labels=compress_labels),
-                (x, y),
-                textcoords="offset points",
-                xytext=(0, 4),
-                ha="center",
-                va="bottom",
-                zorder=5,
+            raw_row = {}
+            if points is not None and index < len(points) and isinstance(points[index].get("raw"), dict):
+                raw_row = points[index]["raw"]
+            if skip_column and _truthy_label_skip(raw_row.get(skip_column)):
+                skipped.append({"index": index, "label": str(label), "reason": "skip_column"})
+                continue
+            priority = 0.0
+            if priority_column:
+                raw_priority = raw_row.get(priority_column, 0)
+                try:
+                    priority = float(raw_priority)
+                except (TypeError, ValueError) as exc:
+                    message = f"point_label_options.priority_column {priority_column!r} must be numeric"
+                    raise ValueError(message) from exc
+                if not math.isfinite(priority):
+                    raise ValueError(f"point_label_options.priority_column {priority_column!r} must be finite")
+            candidates.append({"index": index, "x": x, "y": y, "label": label, "priority": priority})
+    if max_labels is not None:
+        ranked = sorted(candidates, key=lambda item: (-float(item["priority"]), int(item["index"])))
+        keep_indices = {int(item["index"]) for item in ranked[: int(max_labels)]}
+        skipped.extend(
+            {"index": int(item["index"]), "label": str(item["label"]), "reason": "max_labels"}
+            for item in candidates
+            if int(item["index"]) not in keep_indices
+        )
+        candidates = [item for item in candidates if int(item["index"]) in keep_indices]
+    return candidates, skipped
+
+
+def _draw_point_label(
+    ax,
+    item: dict[str, object],
+    *,
+    options: dict[str, object],
+    display_index: int,
+    compress_labels: bool,
+) -> None:
+    label = str(item["label"])
+    if not label:
+        return
+    xytext = _point_label_xytext(options, display_index)
+    ax.annotate(
+        _display_label(label, compress_labels=compress_labels),
+        (item["x"], item["y"]),
+        textcoords="offset points",
+        xytext=xytext,
+        ha="center",
+        va="bottom",
+        zorder=5,
+    )
+
+
+def _truthy_label_skip(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    return text in {"1", "true", "yes", "y", "skip", "hide"}
+
+
+def _point_label_xytext(options: dict[str, object], index: int) -> tuple[float, float]:
+    offset = options.get("offset")
+    if isinstance(offset, tuple):
+        return offset
+    if options.get("fanout") == "compass":
+        return _AVOID_OVERLAP_OFFSETS[index % len(_AVOID_OVERLAP_OFFSETS)]
+    return (0.0, 4.0)
+
+
+def _record_point_label_skips(
+    ax,
+    *,
+    skipped: list[dict[str, object]],
+    total: int,
+    shown: int,
+) -> None:
+    prior = getattr(ax, "_graph_hub_point_label_skips", None)
+    if not isinstance(prior, dict):
+        prior = {"total_labels": 0, "shown_labels": 0, "skipped_labels": 0, "reasons": {}, "examples": []}
+    prior["total_labels"] = int(prior.get("total_labels", 0)) + int(total)
+    prior["shown_labels"] = int(prior.get("shown_labels", 0)) + int(shown)
+    prior["skipped_labels"] = int(prior.get("skipped_labels", 0)) + len(skipped)
+    reasons = prior.get("reasons")
+    if not isinstance(reasons, dict):
+        reasons = {}
+    examples = prior.get("examples")
+    if not isinstance(examples, list):
+        examples = []
+    for item in skipped:
+        reason = str(item.get("reason") or "unknown")
+        reasons[reason] = int(reasons.get(reason, 0)) + 1
+        if len(examples) < 20:
+            examples.append(
+                {"index": int(item.get("index", -1)), "label": str(item.get("label") or ""), "reason": reason}
             )
+    prior["reasons"] = reasons
+    prior["examples"] = examples
+    ax._graph_hub_point_label_skips = prior
 
 
 def _series_style_override(spec: BridgeFigureSpec, series_name: object) -> dict[str, object]:
@@ -853,6 +971,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
     marker_size, marker_edge_width, _marker_margin = _marker_tokens(spec, small_panel=small_panel)
     scatter_size = _scatter_marker_area(marker_size)
     legend_entries: list[tuple[str, str]] = []
+    label_points: list[dict] = []
 
     for idx, (series_name, series_points) in enumerate(grouped.items()):
         xs = [point["x"] for point in series_points]
@@ -928,14 +1047,18 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
                 )
 
         if spec.label_column:
-            _annotate_points(
-                ax,
-                xs,
-                ys,
-                [str(point["label"]) for point in series_points],
-                compress_labels=spec.compress_labels,
-            )
+            label_points.extend(series_points)
 
+    if spec.label_column and label_points:
+        _annotate_points(
+            ax,
+            [point["x"] for point in label_points],
+            [point["y"] for point in label_points],
+            [str(point["label"]) for point in label_points],
+            compress_labels=spec.compress_labels,
+            point_label_options=spec.point_label_options,
+            points=label_points,
+        )
     if has_multi_series:
         ax._graph_hub_legend_entries = legend_entries
         _apply_legend(ax, spec, n_series=len(grouped))
@@ -1348,6 +1471,57 @@ def _normalized_legend_options(spec: BridgeFigureSpec) -> dict[str, object]:
         if ncol < 1 or ncol > 8:
             raise ValueError("legend_options.ncol must be between 1 and 8")
         normalized["ncol"] = ncol
+    return normalized
+
+
+def _normalized_point_label_options(spec: BridgeFigureSpec) -> dict[str, object]:
+    return _normalized_point_label_options_dict(spec.point_label_options)
+
+
+def _normalized_point_label_options_dict(raw_options: dict | None) -> dict[str, object]:
+    if raw_options in (None, {}, []):
+        return {}
+    if not isinstance(raw_options, dict):
+        raise ValueError("point_label_options must be an object")
+    allowed = {"offset", "fanout", "max_labels", "priority_column", "skip_column"}
+    unsupported = sorted(set(raw_options) - allowed)
+    if unsupported:
+        raise ValueError(f"point_label_options has unsupported key(s): {', '.join(unsupported)}")
+    normalized: dict[str, object] = {}
+    if raw_options.get("offset") is not None:
+        offset = raw_options["offset"]
+        if not isinstance(offset, dict):
+            raise ValueError("point_label_options.offset must be an object")
+        try:
+            dx = float(offset["dx"])
+            dy = float(offset["dy"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("point_label_options.offset requires numeric dx and dy") from exc
+        if not math.isfinite(dx) or not math.isfinite(dy):
+            raise ValueError("point_label_options.offset dx and dy must be finite")
+        normalized["offset"] = (dx, dy)
+    if raw_options.get("fanout") is not None:
+        fanout = str(raw_options["fanout"]).strip().lower().replace("-", "_")
+        if fanout not in {"none", "compass"}:
+            raise ValueError("point_label_options.fanout must be 'none' or 'compass'")
+        normalized["fanout"] = fanout
+    if raw_options.get("max_labels") is not None:
+        try:
+            max_labels = int(raw_options["max_labels"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("point_label_options.max_labels must be an integer") from exc
+        if max_labels < 1:
+            raise ValueError("point_label_options.max_labels must be at least 1")
+        normalized["max_labels"] = max_labels
+    for key in ("priority_column", "skip_column"):
+        if raw_options.get(key) is None or raw_options.get(key) == "":
+            continue
+        if not isinstance(raw_options[key], str):
+            raise ValueError(f"point_label_options.{key} must be a string")
+        column = raw_options[key].strip()
+        if not column:
+            raise ValueError(f"point_label_options.{key} must be a non-empty string when provided")
+        normalized[key] = column
     return normalized
 
 
@@ -1876,9 +2050,8 @@ def _draw_grouped_broken_xy(ax_top, ax_bot, points: list[dict], spec: BridgeFigu
             line=line,
         )
 
-        if spec.label_column:
-            _annotate_broken_axis_points(ax_top, ax_bot, series_points, spec)
-
+    if spec.label_column:
+        _annotate_broken_axis_points(ax_top, ax_bot, points, spec)
     if has_multi_series:
         _apply_legend(ax_top, spec, n_series=len(grouped))
 
@@ -1956,35 +2129,30 @@ def _draw_broken_xy_series(
 
 def _annotate_broken_axis_points(ax_top, ax_bot, series_points: list[dict], spec: BridgeFigureSpec) -> None:
     break_start, break_end = spec.y_break_range or (float("-inf"), float("inf"))
-    top_points = [point for point in series_points if float(point["y"]) >= break_end]
-    bot_points = [point for point in series_points if float(point["y"]) <= break_start]
-    middle_points = [point for point in series_points if break_start < float(point["y"]) < break_end]
-
-    if top_points:
-        _annotate_points(
-            ax_top,
-            [point["x"] for point in top_points],
-            [point["y"] for point in top_points],
-            [str(point["label"]) for point in top_points],
-            compress_labels=spec.compress_labels,
-        )
-    if bot_points:
-        _annotate_points(
-            ax_bot,
-            [point["x"] for point in bot_points],
-            [point["y"] for point in bot_points],
-            [str(point["label"]) for point in bot_points],
-            compress_labels=spec.compress_labels,
-        )
-    for point in middle_points:
-        target = ax_top if abs(float(point["y"]) - break_end) < abs(float(point["y"]) - break_start) else ax_bot
-        _annotate_points(
+    options = _normalized_point_label_options(spec)
+    candidates, skipped = _point_label_candidates(
+        [point["x"] for point in series_points],
+        [point["y"] for point in series_points],
+        [str(point["label"]) for point in series_points],
+        options=options,
+        points=series_points,
+    )
+    for display_index, item in enumerate(candidates):
+        y = float(item["y"])
+        target = ax_top
+        if y <= break_start:
+            target = ax_bot
+        elif break_start < y < break_end:
+            target = ax_top if abs(y - break_end) < abs(y - break_start) else ax_bot
+        _draw_point_label(
             target,
-            [point["x"]],
-            [point["y"]],
-            [str(point["label"])],
+            item,
+            options=options,
+            display_index=display_index,
             compress_labels=spec.compress_labels,
         )
+    if skipped:
+        _record_point_label_skips(ax_top, skipped=skipped, total=len(series_points), shown=len(candidates))
 
 
 def _render_heatmap_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
@@ -2260,6 +2428,7 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         width = 0.8 / max(len(series_names), 1)
         offset_start = -0.4 + width / 2
         legend_entries: list[tuple[str, str]] = []
+        label_positions: list[tuple[float, float, dict]] = []
         for series_index, series_name in enumerate(series_names):
             series_points = grouped[series_name]
             xs = [category_to_position[point["x"]] + offset_start + series_index * width for point in series_points]
@@ -2281,13 +2450,20 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
             )
             if spec.label_column:
                 y_offset = max(abs(v) for v in ys) * 0.03 if ys else 0
-                _annotate_points(
-                    ax,
-                    [bar.get_x() + bar.get_width() / 2 for bar in bars],
-                    [y + y_offset for y in ys],
-                    [str(point["label"]) for point in series_points],
-                    compress_labels=spec.compress_labels,
+                label_positions.extend(
+                    (bar.get_x() + bar.get_width() / 2, y + y_offset, point)
+                    for bar, y, point in zip(bars, ys, series_points)
                 )
+        if spec.label_column and label_positions:
+            _annotate_points(
+                ax,
+                [item[0] for item in label_positions],
+                [item[1] for item in label_positions],
+                [str(item[2]["label"]) for item in label_positions],
+                compress_labels=spec.compress_labels,
+                point_label_options=spec.point_label_options,
+                points=[item[2] for item in label_positions],
+            )
         ax._graph_hub_legend_entries = legend_entries
         _apply_legend(ax, spec, n_series=len(series_names))
     else:
@@ -2317,6 +2493,8 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
                 ys,
                 [str(point["label"]) for point in points],
                 compress_labels=spec.compress_labels,
+                point_label_options=spec.point_label_options,
+                points=points,
             )
 
     ax.set_xticks(base_positions)

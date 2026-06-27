@@ -259,6 +259,14 @@ def test_render_csv_schema_accepts_axis_scale_series_and_annotations_args():
     assert properties["x_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
     assert properties["y_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
     assert properties["series_column"] == {"type": "string"}
+    assert properties["label_column"] == {"type": "string"}
+    assert properties["point_label_options"]["additionalProperties"] is False
+    point_label_props = properties["point_label_options"]["properties"]
+    assert point_label_props["offset"]["required"] == ["dx", "dy"]
+    assert point_label_props["fanout"] == {"type": "string", "enum": ["none", "compass"], "default": "none"}
+    assert point_label_props["max_labels"] == {"type": "integer", "minimum": 1}
+    assert point_label_props["priority_column"] == {"type": "string"}
+    assert point_label_props["skip_column"] == {"type": "string"}
     assert properties["series_styles"]["additionalProperties"]["additionalProperties"] is False
     series_style_props = properties["series_styles"]["additionalProperties"]["properties"]
     assert "markeredgecolor" in series_style_props

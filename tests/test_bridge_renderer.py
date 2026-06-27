@@ -1977,6 +1977,79 @@ class BridgeRendererUnitTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    def test_point_label_options_limit_by_priority_and_report_skips(self):
+        fig, ax = plt.subplots()
+        try:
+            points = [
+                {"raw": {"priority": "1", "hide": "0"}},
+                {"raw": {"priority": "5", "hide": "0"}},
+                {"raw": {"priority": "3", "hide": "yes"}},
+            ]
+            _annotate_points(
+                ax,
+                xs=[0.0, 1.0, 2.0],
+                ys=[1.0, 2.0, 3.0],
+                labels=["low", "high", "hidden"],
+                compress_labels=False,
+                point_label_options={
+                    "max_labels": 1,
+                    "priority_column": "priority",
+                    "skip_column": "hide",
+                    "fanout": "compass",
+                },
+                points=points,
+            )
+            self.assertEqual([text.get_text() for text in ax.texts], ["high"])
+            self.assertEqual(ax.texts[0].xyann, (8.0, 8.0))
+            result = diagnose_figure_geometry(fig, [ax], layout_locked=False)
+            check = _geometry_check(result, "point_label_skips")
+            self.assertFalse(check["passed"])
+            self.assertEqual(check["data"]["skipped_labels"], 2)
+            self.assertEqual(check["data"]["reasons"], {"skip_column": 1, "max_labels": 1})
+        finally:
+            plt.close(fig)
+
+    def test_point_label_options_static_offset(self):
+        fig, ax = plt.subplots()
+        try:
+            _annotate_points(
+                ax,
+                xs=[0.0],
+                ys=[1.0],
+                labels=["S1"],
+                compress_labels=False,
+                point_label_options={"offset": {"dx": 3, "dy": 7}},
+                points=[{"raw": {}}],
+            )
+            self.assertEqual(ax.texts[0].xyann, (3.0, 7.0))
+        finally:
+            plt.close(fig)
+
+    def test_point_label_max_labels_applies_across_series(self):
+        fig, ax = plt.subplots()
+        try:
+            spec = BridgeFigureSpec(
+                csv_path="unused.csv",
+                output_path="unused.png",
+                plot_type="scatter",
+                x_column="x",
+                y_column="y",
+                title="labels",
+                label_column="label",
+                series_column="series",
+                point_label_options={"max_labels": 1, "priority_column": "priority"},
+            )
+            points = [
+                {"x": 0.0, "y": 1.0, "label": "low-a", "series": "A", "raw": {"priority": "1"}},
+                {"x": 1.0, "y": 2.0, "label": "high-b", "series": "B", "raw": {"priority": "5"}},
+            ]
+            _render_xy_plot(ax, points, spec, line=False)
+            self.assertEqual([text.get_text() for text in ax.texts], ["high-b"])
+            check = _geometry_check(diagnose_figure_geometry(fig, [ax], layout_locked=False), "point_label_skips")
+            self.assertEqual(check["data"]["skipped_labels"], 1)
+        finally:
+            plt.close(fig)
+
     def test_errorbar_cap_width_applied(self):
         spec = BridgeFigureSpec(
             csv_path="unused.csv",
