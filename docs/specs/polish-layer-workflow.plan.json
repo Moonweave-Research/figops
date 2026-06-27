@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.5",
+  "schema_version": "0.6",
   "plan_id": "figops-polish-layer-finalization-v1",
   "created_by": "keelplane",
   "source_prompt": "$keelplane 전체 구현부터 일단은 문서화부터 구현 리뷰 검증 다시 리뷰 이런 진짜 최종 완성하기 위한 워크플로우를 한번 진행해보자",
@@ -64,8 +64,8 @@
       "verification": "Every implementation slice must run targeted journal/theme tests and preserve compliance diagnostics."
     },
     {
-      "claim": "The highest leverage first implementation is typed MCP affordances plus small renderer-exposed polish controls, not a new plotting engine.",
-      "verification": "Map each planned change to existing renderer or MCP gaps before editing and reject changes that create a parallel API."
+      "claim": "The highest leverage next implementation is bounded legend/axis polish, not a new plotting engine or a repeat of completed schema/series/callout work.",
+      "verification": "Map each planned change to existing renderer or MCP gaps before editing and reject changes that create a parallel API or duplicate shipped PRs #196-#198."
     },
     {
       "claim": "Visual quality must be tested through artifacts, not only argument normalization.",
@@ -146,16 +146,18 @@
       ]
     },
     {
-      "id": "p3-implement-wave1",
-      "name": "Small implementation wave",
+      "id": "p3-implement-next-wave",
+      "name": "Small implementation wave: legend-axis polish v1 first",
       "entry_criteria": [
-        "p2 audit selects one bounded slice",
-        "Tests to fail or extend are named"
+        "p2 audit and refreshed roadmap select legend-axis-polish-v1",
+        "Tests to fail or extend are named",
+        "No completed PR #196-#198 slice is being reimplemented"
       ],
       "exit_criteria": [
         "Implementation patch is minimal",
         "Targeted tests pass",
-        "Docs updated for changed surface"
+        "Docs updated for changed surface",
+        "Render or diagnostics smoke proves the controls are not schema-only"
       ],
       "depends_on": [
         "p2-gap-fixtures"
@@ -166,7 +168,8 @@
       "outputs": [
         "implementation.patch",
         "targeted-test-log.txt",
-        "docs-update.md"
+        "docs/tools.md update if schema changes",
+        "render-or-diagnostics-smoke receipt"
       ]
     },
     {
@@ -180,7 +183,7 @@
         "No unresolved high severity regression remains"
       ],
       "depends_on": [
-        "p3-implement-wave1"
+        "p3-implement-next-wave"
       ],
       "worker_ids": [
         "reviewer"
@@ -575,20 +578,21 @@
     },
     {
       "from_phase": "p2-gap-fixtures",
-      "to_phase": "p3-implement-wave1",
+      "to_phase": "p3-implement-next-wave",
       "artifact": "fixture-manifest.json",
       "artifact_schema": {
         "format": "json",
         "required_fields": [
           "fixtures",
           "expected_failures",
-          "selected_wave1_slice"
+          "completed_slices",
+          "selected_next_slice"
         ],
-        "validation_command": "python -m json.tool fixture-manifest.json >/dev/null"
+        "validation_command": "python -m json.tool docs/specs/polish-fixture-manifest.json >/dev/null"
       }
     },
     {
-      "from_phase": "p3-implement-wave1",
+      "from_phase": "p3-implement-next-wave",
       "to_phase": "p4-first-review",
       "artifact": "implementation.patch",
       "artifact_schema": {
@@ -759,7 +763,7 @@
     "restart_points": [
       "p1-document-spec",
       "p2-gap-fixtures",
-      "p3-implement-wave1",
+      "p3-implement-next-wave",
       "p5-verification",
       "p7-release-ready"
     ]
@@ -864,6 +868,57 @@
         "entry_gate": "Prior receipt is verified and verification exit gate passed.",
         "exit_gate": "Final review fails to refute completion claims and release checklist is ready."
       }
-    ]
-  }
+    ],
+    "next_slice": {
+      "instruction": "Implement legend-axis-polish-v1 only after the refreshed docs/spec gate passes.",
+      "inputs": [
+        "docs/specs/polish-layer-adversarial-roadmap.md",
+        "docs/specs/polish-layer-legend-axis-wave.md",
+        "docs/specs/polish-fixture-manifest.json"
+      ],
+      "expected_output": "bounded legend/axis MCP schema, legend_options normalization, renderer support, docs/tools update, tests, and render smoke evidence",
+      "completion_check": "targeted schema/normalization/renderer tests pass and render or diagnostics smoke proves the controls are not schema-only"
+    }
+  },
+  "current_status": "polish waves 1-3 completed; roadmap refreshed for remaining legend/axis, label, contrast, tick, and multipanel polish waves",
+  "completed_slices": [
+    {
+      "id": "typed-mcp-style-schemas",
+      "pr": 196,
+      "status": "completed"
+    },
+    {
+      "id": "series-visual-hierarchy-controls",
+      "pr": 197,
+      "status": "completed"
+    },
+    {
+      "id": "smart-callout-v1",
+      "pr": 198,
+      "status": "completed"
+    }
+  ],
+  "next_slices": [
+    {
+      "id": "legend-axis-polish-v1",
+      "priority": 1,
+      "spec": "docs/specs/polish-layer-legend-axis-wave.md"
+    },
+    {
+      "id": "dense-point-label-polish-v1",
+      "priority": 2
+    },
+    {
+      "id": "contrast-diagnostics-v1",
+      "priority": 3
+    },
+    {
+      "id": "tick-readability-v1",
+      "priority": 4
+    },
+    {
+      "id": "multipanel-layout-v1",
+      "priority": 5
+    }
+  ]
 }

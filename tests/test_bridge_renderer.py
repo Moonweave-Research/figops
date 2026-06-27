@@ -1516,6 +1516,45 @@ class BridgeRendererUnitTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
+    def test_legend_axis_polish_controls_reach_matplotlib_state(self):
+        spec = BridgeFigureSpec(
+            csv_path="unused.csv",
+            output_path="unused.png",
+            plot_type="line",
+            x_column="x",
+            y_column="y",
+            title="line",
+            series_column="series",
+            legend_layout="top_outside",
+            legend_options={"title": "Treatment", "order": ("Alpha", "Beta"), "ncol": 2},
+            series_styles={"Alpha": {"label": "display A"}, "Beta": {"label": "display B"}},
+            axis_limits={"x": {"min": 0.0, "max": 1.0}, "y": {"min": 0.0, "max": 5.0}},
+            tick_style={"rotation": 45.0, "format": "plain"},
+        )
+        points = [
+            {"x": 0.0, "y": 3.0, "label": "", "series": "Beta", "yerr": None},
+            {"x": 1.0, "y": 4.0, "label": "", "series": "Beta", "yerr": None},
+            {"x": 0.0, "y": 1.0, "label": "", "series": "Alpha", "yerr": None},
+            {"x": 1.0, "y": 2.0, "label": "", "series": "Alpha", "yerr": None},
+        ]
+
+        fig, ax = plt.subplots()
+        try:
+            _render_xy_plot(ax, points, spec, line=True)
+            _apply_layout(fig, ax, spec)
+            legend = ax.get_legend()
+            self.assertIsNotNone(legend)
+            self.assertEqual(legend.get_title().get_text(), "Treatment")
+            self.assertEqual([text.get_text() for text in legend.get_texts()], ["display A", "display B"])
+            self.assertEqual(legend._ncols, 2)
+            self.assertEqual(ax.get_xlim(), (0.0, 1.0))
+            self.assertEqual(ax.get_ylim(), (0.0, 5.0))
+            self.assertTrue(all(label.get_rotation() == 45.0 for label in ax.get_xticklabels()))
+            self.assertFalse(ax.xaxis.get_major_formatter().get_useOffset())
+            self.assertFalse(ax.yaxis.get_major_formatter().get_useOffset())
+        finally:
+            plt.close(fig)
+
     def test_standard_layout_without_legend_still_uses_fixed_box(self):
         spec = BridgeFigureSpec(
             csv_path="unused.csv",

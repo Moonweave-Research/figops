@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 from matplotlib.font_manager import FontProperties
 
@@ -193,6 +194,9 @@ class BridgeFigureSpec:
     yerr_minus_column: str = ""
     compress_labels: bool = True
     legend_layout: str = "auto"
+    legend_options: dict | None = None
+    axis_limits: dict | None = None
+    tick_style: dict | None = None
     target_format: str = "nature"
     font_scale: float = 1.0
     profile_name: str = "baseline"
@@ -233,6 +237,9 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         _validate_manual_overlays(spec)
         _validate_statistical_overlays(points, spec)
         _validate_axis_scales(points, spec)
+        _validate_axis_limits(points, spec)
+        _normalized_tick_style(spec)
+        _normalized_legend_options(spec)
         _normalized_annotations(spec.annotations)
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
         try:
@@ -240,6 +247,8 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
                 ax.set_visible(False)
                 _render_broken_axis_plot(fig, points, spec)
                 _apply_axis_scales_to_visible_axes(fig, ax, spec)
+                _apply_axis_limits_to_visible_axes(fig, ax, spec)
+                _apply_tick_style_to_visible_axes(fig, ax, spec)
                 _draw_annotations_on_visible_axes(fig, ax, spec)
             else:
                 _render_plot(ax, points, spec)
@@ -249,6 +258,8 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
                 _apply_axes_metadata(ax, spec)
                 ax.set_title(spec.title)
                 _apply_axis_scales_to_visible_axes(fig, ax, spec)
+                _apply_axis_limits_to_visible_axes(fig, ax, spec)
+                _apply_tick_style_to_visible_axes(fig, ax, spec)
                 _draw_annotations_on_visible_axes(fig, ax, spec)
                 _apply_layout(fig, ax, spec)
                 _separate_top_legend_title(ax, spec)
@@ -530,6 +541,9 @@ def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
     """Render a single CSV-based panel into *ax* (multipanel helper)."""
     points = _load_points(Path(panel.csv_path), panel)
     _validate_axis_scales(points, panel)
+    _validate_axis_limits(points, panel)
+    _normalized_tick_style(panel)
+    _normalized_legend_options(panel)
     _validate_manual_overlays(panel)
     _normalized_annotations(panel.annotations)
     _render_plot(ax, points, panel)
@@ -539,6 +553,8 @@ def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
     if panel.title:
         ax.set_title(panel.title)
     _apply_axis_scales(ax, panel)
+    _apply_axis_limits(ax, panel)
+    _apply_tick_style(ax, panel)
     _draw_annotations(ax, panel)
     _apply_layout(fig, ax, panel, allow_figure_layout=False)
 
@@ -836,6 +852,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
     has_multi_series = any(key != "__single__" for key in grouped)
     marker_size, marker_edge_width, _marker_margin = _marker_tokens(spec, small_panel=small_panel)
     scatter_size = _scatter_marker_area(marker_size)
+    legend_entries: list[tuple[str, str]] = []
 
     for idx, (series_name, series_points) in enumerate(grouped.items()):
         xs = [point["x"] for point in series_points]
@@ -848,6 +865,8 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
             legend_label = _display_label(series_name, compress_labels=spec.compress_labels)
         else:
             legend_label = None
+        if legend_label is not None:
+            legend_entries.append((str(series_name), str(legend_label)))
         series_marker_size = float(sty.get("size", marker_size))
         series_scatter_size = float(sty.get("size", scatter_size))
         series_linewidth = float(sty.get("linewidth", 1.2))
@@ -918,8 +937,11 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
             )
 
     if has_multi_series:
-        ax.legend(**_legend_kwargs(ax, spec, n_series=len(grouped)))
+        ax._graph_hub_legend_entries = legend_entries
+        _apply_legend(ax, spec, n_series=len(grouped))
     _apply_marker_axis_margin(ax, spec, small_panel=small_panel)
+    _apply_axis_limits(ax, spec)
+    _apply_tick_style(ax, spec)
 
 
 def _has_statistical_overlays(spec: BridgeFigureSpec) -> bool:
@@ -1108,7 +1130,7 @@ def _draw_manual_overlays(ax, csv_path: Path, spec: BridgeFigureSpec) -> None:
         ax.plot(xs, ys, **_overlay_line_kwargs(overlay))
 
     if any(isinstance(overlay, dict) and overlay.get("label") for overlay in (*spec.fill_between, *spec.guide_curves)):
-        ax.legend(**_legend_kwargs(ax, spec, n_series=1))
+        _apply_legend(ax, spec, n_series=1)
 
 
 def _normalized_axis_scale(value: str, *, field_name: str) -> str:
@@ -1140,6 +1162,13 @@ def _validate_axis_scales(points: list[dict], spec: BridgeFigureSpec) -> None:
             raise ValueError(f"{axis_name}_scale='log' requires finite numeric {axis_name} values > 0")
 
 
+def _validate_axis_limits(points: list[dict], spec: BridgeFigureSpec) -> None:
+    limits = _normalized_axis_limits(spec)
+    for axis_name in ("x", "y"):
+        if axis_name in limits and any(not isinstance(point[axis_name], (int, float)) for point in points):
+            raise ValueError(f"axis_limits.{axis_name} requires numeric {axis_name} values")
+
+
 def _apply_axis_scales(ax, spec: BridgeFigureSpec) -> None:
     x_scale = _normalized_axis_scale(spec.x_scale, field_name="x_scale")
     y_scale = _normalized_axis_scale(spec.y_scale, field_name="y_scale")
@@ -1159,6 +1188,167 @@ def _visible_plot_axes(fig, fallback_ax=None) -> list:
 def _apply_axis_scales_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
     for axis in _visible_plot_axes(fig, fallback_ax):
         _apply_axis_scales(axis, spec)
+
+
+def _normalized_axis_limit_pair(raw_pair: object, *, field_name: str) -> tuple[float | None, float | None]:
+    if not isinstance(raw_pair, dict):
+        raise ValueError(f"{field_name} must be an object with min and/or max")
+    if not any(key in raw_pair for key in ("min", "max")):
+        raise ValueError(f"{field_name} must contain min and/or max")
+    unsupported = sorted(set(raw_pair) - {"min", "max"})
+    if unsupported:
+        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}")
+    limits: list[float | None] = []
+    for key in ("min", "max"):
+        value = raw_pair.get(key)
+        if value is None or value == "":
+            limits.append(None)
+            continue
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name}.{key} must be numeric") from exc
+        if not math.isfinite(numeric):
+            raise ValueError(f"{field_name}.{key} must be finite")
+        limits.append(numeric)
+    lower, upper = limits
+    if lower is not None and upper is not None and lower >= upper:
+        raise ValueError(f"{field_name}.min must be less than {field_name}.max")
+    return lower, upper
+
+
+def _normalized_axis_limits(spec: BridgeFigureSpec) -> dict[str, tuple[float | None, float | None]]:
+    raw_limits = spec.axis_limits
+    if raw_limits in (None, {}, []):
+        return {}
+    if not isinstance(raw_limits, dict):
+        raise ValueError("axis_limits must be an object keyed by x and/or y")
+    unsupported = sorted(set(raw_limits) - {"x", "y"})
+    if unsupported:
+        raise ValueError(f"axis_limits has unsupported key(s): {', '.join(unsupported)}")
+    normalized: dict[str, tuple[float | None, float | None]] = {}
+    for axis_name in ("x", "y"):
+        if axis_name not in raw_limits or raw_limits[axis_name] in (None, {}):
+            continue
+        lower, upper = _normalized_axis_limit_pair(raw_limits[axis_name], field_name=f"axis_limits.{axis_name}")
+        scale = _normalized_axis_scale(getattr(spec, f"{axis_name}_scale"), field_name=f"{axis_name}_scale")
+        if scale == "log" and any(value is not None and value <= 0 for value in (lower, upper)):
+            raise ValueError(f"axis_limits.{axis_name} values must be > 0 when {axis_name}_scale='log'")
+        normalized[axis_name] = (lower, upper)
+    return normalized
+
+
+def _apply_axis_limits(ax, spec: BridgeFigureSpec) -> None:
+    limits = _normalized_axis_limits(spec)
+    if "x" in limits:
+        ax.set_xlim(*limits["x"])
+    if "y" in limits:
+        ax.set_ylim(*limits["y"])
+
+
+def _apply_axis_limits_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
+    for axis in _visible_plot_axes(fig, fallback_ax):
+        _apply_axis_limits(axis, spec)
+
+
+def _normalized_tick_style(spec: BridgeFigureSpec) -> dict[str, object]:
+    raw_style = spec.tick_style
+    if raw_style in (None, {}, []):
+        return {}
+    if not isinstance(raw_style, dict):
+        raise ValueError("tick_style must be an object")
+    allowed = {"rotation", "format"}
+    unsupported = sorted(set(raw_style) - allowed)
+    if unsupported:
+        raise ValueError(f"tick_style has unsupported key(s): {', '.join(unsupported)}")
+    normalized: dict[str, object] = {}
+    if raw_style.get("rotation") is not None:
+        try:
+            rotation = float(raw_style["rotation"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("tick_style.rotation must be numeric") from exc
+        if not math.isfinite(rotation) or not -360 <= rotation <= 360:
+            raise ValueError("tick_style.rotation must be finite and between -360 and 360")
+        normalized["rotation"] = rotation
+    if raw_style.get("format") is not None:
+        tick_format = str(raw_style["format"]).strip().lower()
+        if tick_format not in {"default", "plain", "scientific", "compact"}:
+            raise ValueError("tick_style.format must be default, plain, scientific, or compact")
+        normalized["format"] = tick_format
+    return normalized
+
+
+def _axis_is_numeric(ax, axis_name: str) -> bool:
+    values = ax.get_lines()
+    for line in values:
+        data = line.get_xdata() if axis_name == "x" else line.get_ydata()
+        if len(data):
+            return all(isinstance(value, (int, float, np.number)) for value in data)
+    return True
+
+
+def _apply_tick_style(ax, spec: BridgeFigureSpec) -> None:
+    style = _normalized_tick_style(spec)
+    if not style:
+        return
+    if "rotation" in style:
+        rotation = float(style["rotation"])
+        for label in ax.get_xticklabels():
+            label.set_rotation(rotation)
+            if rotation:
+                label.set_ha("right")
+    tick_format = style.get("format")
+    if not tick_format or tick_format == "default":
+        return
+    for axis in (ax.xaxis, ax.yaxis):
+        if tick_format == "plain":
+            formatter = mticker.ScalarFormatter(useOffset=False)
+            formatter.set_scientific(False)
+            axis.set_major_formatter(formatter)
+        elif tick_format == "scientific":
+            formatter = mticker.ScalarFormatter(useMathText=True)
+            formatter.set_scientific(True)
+            formatter.set_powerlimits((0, 0))
+            axis.set_major_formatter(formatter)
+        elif tick_format == "compact":
+            axis.set_major_formatter(mticker.EngFormatter())
+
+
+def _apply_tick_style_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
+    for axis in _visible_plot_axes(fig, fallback_ax):
+        _apply_tick_style(axis, spec)
+
+
+def _normalized_legend_options(spec: BridgeFigureSpec) -> dict[str, object]:
+    raw_options = spec.legend_options
+    if raw_options in (None, {}, []):
+        return {}
+    if not isinstance(raw_options, dict):
+        raise ValueError("legend_options must be an object")
+    allowed = {"title", "order", "ncol"}
+    unsupported = sorted(set(raw_options) - allowed)
+    if unsupported:
+        raise ValueError(f"legend_options has unsupported key(s): {', '.join(unsupported)}")
+    normalized: dict[str, object] = {}
+    if raw_options.get("title") is not None:
+        normalized["title"] = str(raw_options["title"])
+    if raw_options.get("order") is not None:
+        order = raw_options["order"]
+        if not isinstance(order, (list, tuple)):
+            raise ValueError("legend_options.order must be an array of labels")
+        labels = tuple(str(label) for label in order if str(label).strip())
+        if len(labels) != len(set(labels)):
+            raise ValueError("legend_options.order must not contain duplicate labels")
+        normalized["order"] = labels
+    if raw_options.get("ncol") is not None:
+        try:
+            ncol = int(raw_options["ncol"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("legend_options.ncol must be an integer") from exc
+        if ncol < 1 or ncol > 8:
+            raise ValueError("legend_options.ncol must be between 1 and 8")
+        normalized["ncol"] = ncol
+    return normalized
 
 
 _CALLOUT_OFFSET_PRESETS: dict[str, tuple[float, float]] = {
@@ -1690,7 +1880,7 @@ def _draw_grouped_broken_xy(ax_top, ax_bot, points: list[dict], spec: BridgeFigu
             _annotate_broken_axis_points(ax_top, ax_bot, series_points, spec)
 
     if has_multi_series:
-        ax_top.legend(**_legend_kwargs(ax_top, spec, n_series=len(grouped)))
+        _apply_legend(ax_top, spec, n_series=len(grouped))
 
 
 def _draw_broken_xy_series(
@@ -2069,12 +2259,15 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
         series_names = list(grouped.keys())
         width = 0.8 / max(len(series_names), 1)
         offset_start = -0.4 + width / 2
+        legend_entries: list[tuple[str, str]] = []
         for series_index, series_name in enumerate(series_names):
             series_points = grouped[series_name]
             xs = [category_to_position[point["x"]] + offset_start + series_index * width for point in series_points]
             ys = [point["y"] for point in series_points]
             yerr = _yerr_values(series_points, spec)
             sty = _series_style(spec, series_index, series_name)
+            legend_label = _display_label(series_name, compress_labels=spec.compress_labels)
+            legend_entries.append((str(series_name), str(legend_label)))
             bars = ax.bar(
                 xs,
                 ys,
@@ -2084,7 +2277,7 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
                 hatch=sty["hatch"],
                 edgecolor="black",
                 linewidth=0.5,
-                label=_display_label(series_name, compress_labels=spec.compress_labels),
+                label=legend_label,
             )
             if spec.label_column:
                 y_offset = max(abs(v) for v in ys) * 0.03 if ys else 0
@@ -2095,7 +2288,8 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
                     [str(point["label"]) for point in series_points],
                     compress_labels=spec.compress_labels,
                 )
-        ax.legend(**_legend_kwargs(ax, spec, n_series=len(series_names)))
+        ax._graph_hub_legend_entries = legend_entries
+        _apply_legend(ax, spec, n_series=len(series_names))
     else:
         if len(points) > len(categories):
             # Duplicate categories overplot bars at the same x (last visually wins).
@@ -2414,6 +2608,41 @@ def _legend_kwargs(ax, spec: BridgeFigureSpec, *, n_series: int) -> dict:
     kwargs = dict(get_standard_legend_props())
     kwargs["ncol"] = min(max(n_series, 1), 4)
     return kwargs
+
+
+def _apply_legend(ax, spec: BridgeFigureSpec, *, n_series: int) -> None:
+    kwargs = _legend_kwargs(ax, spec, n_series=n_series)
+    options = _normalized_legend_options(spec)
+    if "title" in options:
+        kwargs["title"] = options["title"]
+    if "ncol" in options:
+        kwargs["ncol"] = options["ncol"]
+    try:
+        handles, labels = ax.get_legend_handles_labels()
+    except ValueError:
+        ax.legend(**kwargs)
+        return
+    if options.get("order"):
+        legend_entries = list(getattr(ax, "_graph_hub_legend_entries", ()))
+        raw_to_label = {raw: label for raw, label in legend_entries}
+        label_to_items = {label: (handle, label) for handle, label in zip(handles, labels)}
+        ordered_keys = tuple(options["order"])
+        missing = [raw for raw in ordered_keys if raw not in raw_to_label]
+        if missing:
+            raise ValueError(f"legend_options.order contains unknown series key(s): {', '.join(missing)}")
+        ordered_labels = [raw_to_label[raw] for raw in ordered_keys]
+        ordered_items = [label_to_items[label] for label in ordered_labels if label in label_to_items]
+        ordered_label_set = set(ordered_labels)
+        remaining_items = [
+            (handle, label)
+            for handle, label in zip(handles, labels)
+            if label not in ordered_label_set
+        ]
+        if ordered_items:
+            handles, labels = zip(*(ordered_items + remaining_items), strict=True)
+            handles = list(handles)
+            labels = list(labels)
+    ax.legend(handles, labels, **kwargs)
 
 
 def _apply_layout(fig, ax, spec: BridgeFigureSpec, *, allow_figure_layout: bool = True) -> None:

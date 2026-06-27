@@ -1489,6 +1489,36 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       },
       "type": "array"
     },
+    "axis_limits": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "y": {
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
     "bar_error_column": {
       "type": "string"
     },
@@ -1720,6 +1750,38 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "description": "Stable render job ID; auto-generated when omitted.",
       "type": "string"
     },
+    "legend_layout": {
+      "default": "auto",
+      "enum": [
+        "auto",
+        "smart",
+        "standard",
+        "best",
+        "top_outside",
+        "right_outside"
+      ],
+      "type": "string"
+    },
+    "legend_options": {
+      "additionalProperties": false,
+      "properties": {
+        "ncol": {
+          "maximum": 8,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "order": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "output_format": {
       "default": "png",
       "enum": [
@@ -1861,6 +1923,24 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
         "wiley"
       ],
       "type": "string"
+    },
+    "tick_style": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "default",
+            "plain",
+            "scientific",
+            "compact"
+          ],
+          "type": "string"
+        },
+        "rotation": {
+          "type": "number"
+        }
+      },
+      "type": "object"
     },
     "title": {
       "type": "string"
@@ -2591,6 +2671,36 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             },
             "type": "array"
           },
+          "axis_limits": {
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "additionalProperties": false,
+                "properties": {
+                  "max": {
+                    "type": "number"
+                  },
+                  "min": {
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              },
+              "y": {
+                "additionalProperties": false,
+                "properties": {
+                  "max": {
+                    "type": "number"
+                  },
+                  "min": {
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
           "data_path": {
             "description": "CSV input path under an allowed data root.",
             "type": "string"
@@ -2770,6 +2880,38 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             },
             "type": "array"
           },
+          "legend_layout": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "smart",
+              "standard",
+              "best",
+              "top_outside",
+              "right_outside"
+            ],
+            "type": "string"
+          },
+          "legend_options": {
+            "additionalProperties": false,
+            "properties": {
+              "ncol": {
+                "maximum": 8,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "order": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "plot_type": {
             "default": "scatter",
             "enum": [
@@ -2855,6 +2997,24 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
               "type": "object"
             },
             "description": "Per-series style overrides keyed by exact series label.",
+            "type": "object"
+          },
+          "tick_style": {
+            "additionalProperties": false,
+            "properties": {
+              "format": {
+                "enum": [
+                  "default",
+                  "plain",
+                  "scientific",
+                  "compact"
+                ],
+                "type": "string"
+              },
+              "rotation": {
+                "type": "number"
+              }
+            },
             "type": "object"
           },
           "title": {
