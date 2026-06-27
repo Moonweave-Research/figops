@@ -346,6 +346,17 @@ _TICK_STYLE_SCHEMA = _object_schema(
     }
 )
 
+_MULTIPANEL_LAYOUT_OPTIONS_SCHEMA = _object_schema(
+    {
+        "wspace": {"type": "number", "minimum": 0},
+        "hspace": {"type": "number", "minimum": 0},
+        "gutter_h_mm": {"type": "number", "minimum": 0},
+        "gutter_v_mm": {"type": "number", "minimum": 0},
+        "width_ratios": {"type": "array", "items": {"type": "number", "exclusiveMinimum": 0}, "minItems": 1},
+        "height_ratios": {"type": "array", "items": {"type": "number", "exclusiveMinimum": 0}, "minItems": 1},
+    }
+)
+
 
 _GUIDE_CURVE_SCHEMA = {
     **_open_object_schema(
@@ -829,6 +840,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "panel_labels": {"type": "boolean", "default": True},
                     "font_scale": {"type": "number", "default": 1.0},
                     "compose_mode": {"type": "string", "enum": ["draft", "manuscript"], "default": "draft"},
+                    "layout_options": _MULTIPANEL_LAYOUT_OPTIONS_SCHEMA,
                     "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
                     "profile": {
                         "type": "string",
