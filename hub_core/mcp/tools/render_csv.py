@@ -83,7 +83,7 @@ def _normalized_tick_style_arg(value: Any, *, field_name: str) -> dict[str, Any]
         return {}
     if not isinstance(value, dict):
         raise ValueError(f"{field_name} must be an object.")
-    allowed = {"rotation", "format"}
+    allowed = {"rotation", "format", "max_label_chars"}
     unsupported = sorted(set(value) - allowed)
     if unsupported:
         raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
@@ -101,6 +101,14 @@ def _normalized_tick_style_arg(value: Any, *, field_name: str) -> dict[str, Any]
         if tick_format not in {"default", "plain", "scientific", "compact"}:
             raise ValueError(f"{field_name}.format must be default, plain, scientific, or compact.")
         normalized["format"] = tick_format
+    if value.get("max_label_chars") is not None:
+        try:
+            max_label_chars = int(value["max_label_chars"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name}.max_label_chars must be an integer.") from exc
+        if max_label_chars < 4:
+            raise ValueError(f"{field_name}.max_label_chars must be at least 4.")
+        normalized["max_label_chars"] = max_label_chars
     return normalized
 
 

@@ -23,10 +23,10 @@
       "id": "long-categorical-labels",
       "plot_type": "scatter",
       "data_recipe": "Generate categorical x labels longer than 18 characters.",
-      "current_expected_weakness": "Tick label crowding may be diagnosed but not automatically polished.",
-      "desired_polish_behavior": "Readable compressed or rotated labels with diagnostics receipt.",
+      "current_expected_weakness": "Long categorical tick labels can now be opt-in truncated with tick_style.max_label_chars while preserving original tick text on formatter metadata; remaining weakness is automatic recommendation/rotation selection.",
+      "desired_polish_behavior": "Readable visual tick labels without changing source data/config semantics.",
       "automation_level": "automated",
-      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_geometry_diagnostics.py -q"
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_bridge_renderer.py tests/test_mcp_rendering.py -q"
     },
     {
       "id": "cramped-multipanel",
@@ -50,7 +50,7 @@
       "id": "log-axis-tick-readability",
       "plot_type": "scatter",
       "data_recipe": "Generate log x and log y data spanning several decades.",
-      "current_expected_weakness": "Axis scale exists, but bounded tick formatting and rotation polish are limited.",
+      "current_expected_weakness": "Axis scale and tick format presets exist; remaining weakness is automatic diagnosis-driven format recommendation for crowded log ticks.",
       "desired_polish_behavior": "Readable tick labels and diagnostics for crowding.",
       "automation_level": "automated",
       "acceptance_command": "python hub_uv.py run python -m pytest tests/test_bridge_renderer.py tests/test_geometry_diagnostics.py -q"
@@ -83,7 +83,8 @@
     "smart-callout-v1",
     "legend-axis-polish-v1",
     "dense-point-label-polish-v1",
-    "contrast-diagnostics-v1"
+    "contrast-diagnostics-v1",
+    "tick-readability-v1"
   ],
-  "selected_next_slice": "tick-readability-v1"
+  "selected_next_slice": "multipanel-layout-v1"
 }

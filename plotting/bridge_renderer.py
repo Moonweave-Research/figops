@@ -1390,7 +1390,7 @@ def _normalized_tick_style(spec: BridgeFigureSpec) -> dict[str, object]:
         return {}
     if not isinstance(raw_style, dict):
         raise ValueError("tick_style must be an object")
-    allowed = {"rotation", "format"}
+    allowed = {"rotation", "format", "max_label_chars"}
     unsupported = sorted(set(raw_style) - allowed)
     if unsupported:
         raise ValueError(f"tick_style has unsupported key(s): {', '.join(unsupported)}")
@@ -1408,6 +1408,14 @@ def _normalized_tick_style(spec: BridgeFigureSpec) -> dict[str, object]:
         if tick_format not in {"default", "plain", "scientific", "compact"}:
             raise ValueError("tick_style.format must be default, plain, scientific, or compact")
         normalized["format"] = tick_format
+    if raw_style.get("max_label_chars") is not None:
+        try:
+            max_label_chars = int(raw_style["max_label_chars"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("tick_style.max_label_chars must be an integer") from exc
+        if max_label_chars < 4:
+            raise ValueError("tick_style.max_label_chars must be at least 4")
+        normalized["max_label_chars"] = max_label_chars
     return normalized
 
 
@@ -1431,20 +1439,47 @@ def _apply_tick_style(ax, spec: BridgeFigureSpec) -> None:
             if rotation:
                 label.set_ha("right")
     tick_format = style.get("format")
-    if not tick_format or tick_format == "default":
-        return
-    for axis in (ax.xaxis, ax.yaxis):
-        if tick_format == "plain":
-            formatter = mticker.ScalarFormatter(useOffset=False)
-            formatter.set_scientific(False)
-            axis.set_major_formatter(formatter)
-        elif tick_format == "scientific":
-            formatter = mticker.ScalarFormatter(useMathText=True)
-            formatter.set_scientific(True)
-            formatter.set_powerlimits((0, 0))
-            axis.set_major_formatter(formatter)
-        elif tick_format == "compact":
-            axis.set_major_formatter(mticker.EngFormatter())
+    if tick_format and tick_format != "default":
+        for axis in (ax.xaxis, ax.yaxis):
+            if tick_format == "plain":
+                formatter = mticker.ScalarFormatter(useOffset=False)
+                formatter.set_scientific(False)
+                axis.set_major_formatter(formatter)
+            elif tick_format == "scientific":
+                formatter = mticker.ScalarFormatter(useMathText=True)
+                formatter.set_scientific(True)
+                formatter.set_powerlimits((0, 0))
+                axis.set_major_formatter(formatter)
+            elif tick_format == "compact":
+                axis.set_major_formatter(mticker.EngFormatter())
+    if "max_label_chars" in style:
+        _apply_tick_label_char_limit(ax, int(style["max_label_chars"]))
+
+
+def _apply_tick_label_char_limit(ax, max_label_chars: int) -> None:
+    base_formatter = ax.xaxis.get_major_formatter()
+    original_labels: dict[int, str] = {}
+
+    raw_label_map = getattr(ax, "_graph_hub_original_xtick_labels", {})
+
+    def limited_formatter(value: float, position: int | None = None) -> str:
+        formatted = str(base_formatter(value, position))
+        original = str(raw_label_map.get(int(position), formatted)) if position is not None else formatted
+        if position is not None:
+            original_labels[int(position)] = original
+        return _truncate_tick_label(formatted, max_label_chars)
+
+    formatter = mticker.FuncFormatter(limited_formatter)
+    formatter._graph_hub_original_formatter = base_formatter
+    formatter._graph_hub_original_tick_labels = original_labels
+    formatter._graph_hub_max_label_chars = int(max_label_chars)
+    ax.xaxis.set_major_formatter(formatter)
+
+
+def _truncate_tick_label(text: str, max_label_chars: int) -> str:
+    if len(text) <= max_label_chars:
+        return text
+    return f"{text[: max_label_chars - 3]}..."
 
 
 def _apply_tick_style_to_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
@@ -2516,6 +2551,7 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
             )
 
     ax.set_xticks(base_positions)
+    ax._graph_hub_original_xtick_labels = {index: str(category) for index, category in enumerate(categories)}
     tick_labels = [_display_label(category, compress_labels=spec.compress_labels) for category in categories]
     ax.set_xticklabels(tick_labels)
     if any(len(label) > 14 for label in tick_labels):

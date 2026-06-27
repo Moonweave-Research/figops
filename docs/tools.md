@@ -1984,6 +1984,10 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
           ],
           "type": "string"
         },
+        "max_label_chars": {
+          "minimum": 4,
+          "type": "integer"
+        },
         "rotation": {
           "type": "number"
         }
@@ -3108,6 +3112,10 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                   "compact"
                 ],
                 "type": "string"
+              },
+              "max_label_chars": {
+                "minimum": 4,
+                "type": "integer"
               },
               "rotation": {
                 "type": "number"

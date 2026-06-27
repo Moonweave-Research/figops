@@ -342,6 +342,7 @@ _TICK_STYLE_SCHEMA = _object_schema(
     {
         "rotation": {"type": "number"},
         "format": {"type": "string", "enum": ["default", "plain", "scientific", "compact"]},
+        "max_label_chars": {"type": "integer", "minimum": 4},
     }
 )
 
