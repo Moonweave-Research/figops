@@ -1657,6 +1657,43 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "fit_line": {
       "type": "boolean"
     },
+    "fit_options": {
+      "additionalProperties": false,
+      "properties": {
+        "ci_alpha": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "ci_label": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "linestyle": {
+          "type": "string"
+        },
+        "linewidth": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "model": {
+          "default": "linear",
+          "enum": [
+            "linear"
+          ],
+          "type": "string"
+        },
+        "zorder": {
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
     "guide_curves": {
       "description": "Manual guide curves from point objects or parallel x/y arrays.",
       "items": {
@@ -2793,6 +2830,9 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             },
             "type": "object"
           },
+          "ci_band": {
+            "type": "boolean"
+          },
           "data_path": {
             "description": "CSV input path under an allowed data root.",
             "type": "string"
@@ -2882,6 +2922,46 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
               "type": "object"
             },
             "type": "array"
+          },
+          "fit_line": {
+            "type": "boolean"
+          },
+          "fit_options": {
+            "additionalProperties": false,
+            "properties": {
+              "ci_alpha": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "ci_label": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "linestyle": {
+                "type": "string"
+              },
+              "linewidth": {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "model": {
+                "default": "linear",
+                "enum": [
+                  "linear"
+                ],
+                "type": "string"
+              },
+              "zorder": {
+                "type": "number"
+              }
+            },
+            "type": "object"
           },
           "guide_curves": {
             "description": "Manual guide curves from point objects or parallel x/y arrays.",
@@ -3138,6 +3218,12 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             },
             "description": "Per-series style overrides keyed by exact series label.",
             "type": "object"
+          },
+          "significance_markers": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
           },
           "tick_style": {
             "additionalProperties": false,
@@ -4993,6 +5079,7 @@ Run a bounded project discovery and validation batch check with optional runtime
   "supports_ci_band": true,
   "supports_fill_between": true,
   "supports_fit_line": true,
+  "supports_fit_options": true,
   "supports_guide_curves": true,
   "supports_series": true,
   "supports_significance_markers": true,
@@ -5015,6 +5102,43 @@ Run a bounded project discovery and validation batch check with optional runtime
     "fit_line": {
       "type": "boolean"
     },
+    "fit_options": {
+      "additionalProperties": false,
+      "properties": {
+        "ci_alpha": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "ci_label": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "linestyle": {
+          "type": "string"
+        },
+        "linewidth": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "model": {
+          "default": "linear",
+          "enum": [
+            "linear"
+          ],
+          "type": "string"
+        },
+        "zorder": {
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
     "guide_curves": {
       "type": "array"
     },
@@ -5034,6 +5158,10 @@ Run a bounded project discovery and validation batch check with optional runtime
     "ci_band": true,
     "data_path": "/path/to/data.csv",
     "fit_line": true,
+    "fit_options": {
+      "label": "Linear fit",
+      "model": "linear"
+    },
     "job_id": "example-line",
     "output_format": "png",
     "plot_type": "line",
@@ -5064,6 +5192,7 @@ Run a bounded project discovery and validation batch check with optional runtime
   "supports_ci_band": true,
   "supports_fill_between": true,
   "supports_fit_line": true,
+  "supports_fit_options": true,
   "supports_guide_curves": true,
   "supports_series": true,
   "supports_significance_markers": true,
@@ -5086,6 +5215,43 @@ Run a bounded project discovery and validation batch check with optional runtime
     "fit_line": {
       "type": "boolean"
     },
+    "fit_options": {
+      "additionalProperties": false,
+      "properties": {
+        "ci_alpha": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "ci_label": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "linestyle": {
+          "type": "string"
+        },
+        "linewidth": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "model": {
+          "default": "linear",
+          "enum": [
+            "linear"
+          ],
+          "type": "string"
+        },
+        "zorder": {
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
     "guide_curves": {
       "type": "array"
     },
@@ -5105,6 +5271,10 @@ Run a bounded project discovery and validation batch check with optional runtime
     "ci_band": true,
     "data_path": "/path/to/data.csv",
     "fit_line": true,
+    "fit_options": {
+      "label": "Linear fit",
+      "model": "linear"
+    },
     "job_id": "example-scatter",
     "output_format": "png",
     "plot_type": "scatter",
@@ -5204,6 +5374,7 @@ Run a bounded project discovery and validation batch check with optional runtime
   "supports_ci_band": true,
   "supports_fill_between": true,
   "supports_fit_line": true,
+  "supports_fit_options": true,
   "supports_guide_curves": true,
   "supports_series": true,
   "supports_significance_markers": true,
@@ -5226,6 +5397,43 @@ Run a bounded project discovery and validation batch check with optional runtime
     "fit_line": {
       "type": "boolean"
     },
+    "fit_options": {
+      "additionalProperties": false,
+      "properties": {
+        "ci_alpha": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "ci_label": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "linestyle": {
+          "type": "string"
+        },
+        "linewidth": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "model": {
+          "default": "linear",
+          "enum": [
+            "linear"
+          ],
+          "type": "string"
+        },
+        "zorder": {
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
     "guide_curves": {
       "type": "array"
     },
@@ -5245,6 +5453,10 @@ Run a bounded project discovery and validation batch check with optional runtime
     "ci_band": true,
     "data_path": "/path/to/data.csv",
     "fit_line": true,
+    "fit_options": {
+      "label": "Linear fit",
+      "model": "linear"
+    },
     "job_id": "example-xy",
     "output_format": "png",
     "plot_type": "xy",

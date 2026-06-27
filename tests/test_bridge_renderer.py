@@ -1362,6 +1362,69 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertTrue(any("PolyCollection" in name for name in observed["collections"]))
             self.assertIn("p<0.01", observed["texts"])
 
+    def test_fit_options_style_linear_fit_and_ci_band(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_fit_options_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_overlay_csv(tmpdir_path, "overlay.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "overlay.png"),
+                plot_type="scatter",
+                x_column="strain",
+                y_column="stress",
+                title="Fit options",
+                fit_line=True,
+                ci_band=True,
+                fit_options={
+                    "model": "linear",
+                    "label": "least-squares fit",
+                    "color": "tab:red",
+                    "linestyle": "--",
+                    "linewidth": 2.5,
+                    "ci_alpha": 0.2,
+                    "ci_label": "fit confidence",
+                },
+            )
+            observed = {}
+
+            def capture_figure(fig, output_path):
+                ax = fig.axes[0]
+                fit_line = next(line for line in ax.lines if line.get_label() == "least-squares fit")
+                ci_band = next(
+                    collection for collection in ax.collections if collection.get_label() == "fit confidence"
+                )
+                observed["line_color"] = fit_line.get_color()
+                observed["line_style"] = fit_line.get_linestyle()
+                observed["line_width"] = fit_line.get_linewidth()
+                observed["ci_alpha"] = ci_band.get_alpha()
+                Path(output_path).write_bytes(b"png")
+
+            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+                render_bridge_figure(spec)
+
+            self.assertEqual(observed["line_color"], "tab:red")
+            self.assertEqual(observed["line_style"], "--")
+            self.assertAlmostEqual(observed["line_width"], 2.5)
+            self.assertAlmostEqual(observed["ci_alpha"], 0.2)
+
+    def test_fit_options_rejects_unsupported_model(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_fit_options_bad_model_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_overlay_csv(tmpdir_path, "overlay.csv")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(tmpdir_path / "overlay.png"),
+                plot_type="scatter",
+                x_column="strain",
+                y_column="stress",
+                title="Fit options",
+                fit_line=True,
+                fit_options={"model": "exponential"},
+            )
+
+            with self.assertRaisesRegex(ValueError, "fit_options.model must be 'linear'"):
+                render_bridge_figure(spec)
+
     def test_statistical_overlay_rejects_invalid_significance_marker(self):
         with tempfile.TemporaryDirectory(prefix="bridge_stat_overlay_invalid_") as tmpdir:
             tmpdir_path = Path(tmpdir)

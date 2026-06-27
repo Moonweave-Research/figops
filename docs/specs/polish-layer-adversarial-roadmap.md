@@ -1,6 +1,6 @@
 # FigOps Polish Layer Adversarial Roadmap
 
-Status: source-of-truth roadmap for the next polish-layer waves after PRs #196-#201 and the tick readability slice staged on this branch.
+Status: source-of-truth roadmap for the next polish-layer waves after PRs #196-#203 and the fit/trend overlay slice staged on this branch.
 Scope: roadmap and acceptance criteria only; no renderer or MCP implementation in this document.
 
 ## 1. Baseline
@@ -14,8 +14,10 @@ Completed polish-layer capabilities:
 5. Dense Point-Label Polish v1: MCP `label_column`, deterministic max-label/priority/skip controls, static offset/fanout, and `point_label_skips` diagnostics.
 6. Contrast Diagnostics v1: tagged annotation region/hspan/vspan and manual fill_between overlays report low-contrast overlapping annotation text through geometry diagnostics.
 7. Tick Readability v1: opt-in `tick_style.max_label_chars` truncates long visible x tick labels while preserving source/original labels on formatter metadata.
+8. Multipanel Layout v1: explicit subplot spacing, manuscript gutters, and width/height ratios for bounded panel layout polish.
+9. Fit / Trend Overlay Expansion v1: `fit_options` styles the existing linear fit and confidence band with explicit model semantics.
 
-Therefore, future polish work must not treat schema discoverability, basic visual hierarchy, deterministic callout offsets, bounded legend/axis controls, deterministic dense point-label controls, overlay/text contrast diagnostics, or opt-in long tick label truncation as open gaps unless a regression is proven.
+Therefore, future polish work must not treat schema discoverability, basic visual hierarchy, deterministic callout offsets, bounded legend/axis controls, deterministic dense point-label controls, overlay/text contrast diagnostics, opt-in long tick label truncation, bounded multipanel spacing, or explicit linear-fit styling as open gaps unless a regression is proven.
 
 ## 2. Adversarial decision gates
 
@@ -118,7 +120,7 @@ Acceptance criteria:
 - False positives are bounded by only checking overlapping annotation/overlay extents when available.
 - Existing geometry diagnostics schema remains backward-compatible.
 
-### P4. Tick Readability v1 — staged on current branch
+### P4. Tick Readability v1 — completed
 
 Purpose: improve long categorical labels and log-axis readability.
 
@@ -135,7 +137,7 @@ Acceptance criteria:
 - Log formatting does not change data scale semantics.
 - Diagnostics explain whether rotation/compression was applied or recommended.
 
-### P5. Multipanel Layout v1 — staged on current branch
+### P5. Multipanel Layout v1 — completed
 
 Purpose: improve cramped multipanel figures without jumping directly to a mosaic DSL.
 
@@ -151,17 +153,26 @@ Deferred:
 - nested mosaic grammars
 - publication-template auto-layout solver
 
-### P6. Fit / Trend Overlay Expansion
+### P6. Fit / Trend Overlay Expansion — staged on current branch
 
-Purpose: style or model fit overlays only when a concrete project requires it.
+Purpose: style model-derived fit overlays only when explicit model semantics are selected.
 
-Default decision: defer.
+Implemented controls:
 
-Reason: model choice can imply scientific interpretation. Existing `guide_curves` should cover semantic hand-guide curves unless explicit model semantics are requested.
+- `fit_options.model` is explicit and currently limited to `linear`
+- `fit_options.label`, `color`, `linestyle`, `linewidth`, and `zorder` style the linear-fit line
+- `fit_options.ci_alpha` and `fit_options.ci_label` style the existing confidence band
+- `fit_options` is rejected unless `fit_line` or `ci_band` is enabled
+
+Still deferred:
+
+- nonlinear/statistical models beyond the existing least-squares linear fit
+- hand-drawn semantic trend curves, which remain the responsibility of `guide_curves`
+- automatic model selection or science-claim inference
 
 ## 4. Recommended next PR sequence
 
-1. Fit / Trend Overlay Expansion only with explicit project semantics.
+1. Shared legend polish for multipanel figures.
 2. Architecture/data-contract debt as a separate maintenance track.
 
 ## 5. Completion definition

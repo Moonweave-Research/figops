@@ -1,6 +1,6 @@
 # FigOps Polish Layer Finalization Workflow
 
-Status: current execution spec after completed polish waves 1-7.
+Status: current execution spec after completed polish waves 1-8.
 Scope: FigOps journal-compliant figure polish, not a replacement plotting engine.
 
 ## 1. Research and prior art
@@ -16,7 +16,7 @@ Observed prior art inside the repo:
 - Renderer capability and annotation drawing live in `plotting/bridge_renderer.py`.
 - Geometry diagnostics live in `hub_core/geometry_diagnostics.py`.
 
-Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#201 and the tick readability slice staged on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, Dense Point-Label Polish v1, Contrast Diagnostics v1, Tick Readability v1, and Multipanel Layout v1 are shipped or staged; the next roadmap must therefore focus on explicit project semantics for fit/trend overlays rather than re-solving completed slices.
+Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#203 and the fit/trend overlay slice staged on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, Dense Point-Label Polish v1, Contrast Diagnostics v1, Tick Readability v1, Multipanel Layout v1, and linear fit/trend overlay styling are shipped or staged; the next roadmap must therefore focus on shared legend polish and architecture/data-contract debt rather than re-solving completed slices.
 
 ## 2. Product position and non-goals
 
@@ -179,7 +179,7 @@ The fixture manifest in Wave 2 should define each fixture with:
 - Artifact path.
 - Whether the fixture is automated, semi-automated, or human-reviewed.
 
-Minimum next fixture recommendation: log-axis-tick-readability plus long-categorical-labels, because they exercise remaining axis readability without introducing a new plotting DSL.
+Minimum next fixture recommendation: shared-legend multipanel plus architecture/data-contract fixtures, because axis readability and fit overlay styling now have bounded controls without introducing a new plotting DSL.
 
 ## 7. Release or implementation plan
 
@@ -194,17 +194,19 @@ Completed PRs:
 5. PR #200: Dense Point-Label Polish v1.
 6. PR #201: Contrast Diagnostics v1.
 7. PR #202: Tick Readability v1.
+8. PR #203: Multipanel Layout v1.
+9. Current branch: Fit/Trend Overlay Expansion v1.
 
 Recommended next PR:
 
-1. Fit/trend overlay expansion only with explicit project semantics.
-2. A fixture that separates semantic hand-guide curves from fitted/model-derived overlays.
-3. Renderer and MCP tests proving schema -> normalization -> rendered overlay behavior.
+1. Shared legend polish for multipanel figures.
+2. A fixture that proves shared/multipanel legend controls or diagnostics are not schema-only.
+3. Renderer and MCP tests proving schema -> normalization -> rendered legend behavior.
 4. Generated tool-reference update.
 
 Recommended follow-up PRs:
 
-1. Fit/trend overlay expansion only with explicit project semantics.
-2. Architecture/data-contract debt as a separate maintenance track.
+1. Architecture/data-contract debt as a separate maintenance track.
+2. Any further fit/trend expansion only when explicit nonlinear model semantics are requested.
 
 Stop condition for this workflow: final review cannot refute the selected slice's exposure, tests, docs, and journal-safety claims, and release readiness is documented.

@@ -380,6 +380,10 @@ def test_render_csv_multipanel_schema_accepts_panel_specs():
     assert panel_properties["x_scale"] == {"type": "string", "enum": ["linear", "log"], "default": "linear"}
     assert panel_properties["guide_curves"]["items"]["properties"]["points"]["items"]["required"] == ["x", "y"]
     assert panel_properties["fill_between"]["items"]["properties"]["points"]["items"]["required"] == ["x", "y1", "y2"]
+    assert panel_properties["fit_line"] == {"type": "boolean"}
+    assert panel_properties["ci_band"] == {"type": "boolean"}
+    assert panel_properties["fit_options"]["properties"]["model"]["enum"] == ["linear"]
+    assert panel_properties["significance_markers"] == {"type": "array", "items": {"type": "object"}}
     panel_annotation_branches = panel_properties["annotations"]["items"]["anyOf"]
     assert panel_annotation_branches[3]["properties"]["hspan"]["required"] == ["ymin", "ymax"]
     assert "xytext_offset" not in panel_annotation_branches[3]["properties"]
@@ -407,6 +411,8 @@ def test_render_csv_multipanel_schema_accepts_panel_specs():
                         "plot_type": "scatter",
                         "x_scale": "log",
                         "yerr_column": "sem",
+                        "fit_line": True,
+                        "fit_options": {"model": "linear", "label": "Panel fit"},
                         "guide_curves": [{"x": [1, 2], "y": [12, 80]}],
                         "fill_between": [{"points": [{"x": 1, "y1": 9, "y2": 11}, {"x": 2, "y1": 95, "y2": 105}]}],
                     }
@@ -424,6 +430,20 @@ def test_xy_plot_types_publish_statistical_overlay_contracts():
     overlay_properties = {
         "fit_line": {"type": "boolean"},
         "ci_band": {"type": "boolean"},
+        "fit_options": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "enum": ["linear"], "default": "linear"},
+                "label": {"type": "string"},
+                "color": {"type": "string"},
+                "linestyle": {"type": "string"},
+                "linewidth": {"type": "number", "exclusiveMinimum": 0},
+                "zorder": {"type": "number"},
+                "ci_alpha": {"type": "number", "minimum": 0, "maximum": 1},
+                "ci_label": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
         "significance_markers": {"type": "array"},
     }
     for name in ("line", "scatter", "xy"):
@@ -431,6 +451,7 @@ def test_xy_plot_types_publish_statistical_overlay_contracts():
         assert plot_type.capabilities["supports_statistical_overlays"] is True
         assert plot_type.capabilities["supports_fit_line"] is True
         assert plot_type.capabilities["supports_ci_band"] is True
+        assert plot_type.capabilities["supports_fit_options"] is True
         assert plot_type.capabilities["supports_significance_markers"] is True
         for key, schema in overlay_properties.items():
             assert plot_type.arg_schema["properties"][key] == schema
@@ -444,10 +465,12 @@ def test_describe_surfaces_statistical_overlay_args_for_xy_plot_types():
         props = described[name]["arg_schema"]["properties"]
         assert props["fit_line"] == {"type": "boolean"}
         assert props["ci_band"] == {"type": "boolean"}
+        assert props["fit_options"]["properties"]["model"]["enum"] == ["linear"]
         assert props["significance_markers"] == {"type": "array"}
         example_args = described[name]["worked_example"]["arguments"]
         assert example_args["fit_line"] is True
         assert example_args["ci_band"] is True
+        assert example_args["fit_options"] == {"model": "linear", "label": "Linear fit"}
         assert example_args["significance_markers"][0]["label"] == "p<0.05"
 
 
@@ -457,6 +480,12 @@ def test_render_csv_schema_accepts_statistical_overlay_args():
     properties = render_tool["inputSchema"]["properties"]
     assert properties["fit_line"] == {"type": "boolean"}
     assert properties["ci_band"] == {"type": "boolean"}
+    assert properties["fit_options"]["properties"]["model"]["enum"] == ["linear"]
+    assert properties["fit_options"]["additionalProperties"] is False
+    panel_properties = next(tool for tool in definitions if tool["name"] == "figops.render_csv_multipanel")[
+        "inputSchema"
+    ]["properties"]["panels"]["items"]["properties"]
+    assert panel_properties["fit_options"] == properties["fit_options"]
     assert properties["significance_markers"] == {"type": "array", "items": {"type": "object"}}
 
     with tempfile.TemporaryDirectory(prefix="graphhub_stat_overlay_schema_") as tmpdir:
@@ -471,6 +500,7 @@ def test_render_csv_schema_accepts_statistical_overlay_args():
                 "plot_type": "scatter",
                 "fit_line": True,
                 "ci_band": True,
+                "fit_options": {"model": "linear", "label": "Linear fit"},
                 "significance_markers": [{"x1": 0, "x2": 2, "y": 3, "label": "p<0.05"}],
             },
             definitions,

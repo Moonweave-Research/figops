@@ -880,7 +880,7 @@
       "completion_check": "targeted schema/normalization/renderer tests pass and render or diagnostics smoke proves the controls are not schema-only"
     }
   },
-  "current_status": "polish waves 1-3 completed; roadmap refreshed for remaining legend/axis, label, contrast, tick, and multipanel polish waves",
+  "current_status": "polish waves 1-8 completed through fit/trend overlay styling; roadmap refreshed for remaining shared legend polish and architecture/data-contract debt",
   "completed_slices": [
     {
       "id": "typed-mcp-style-schemas",
@@ -896,30 +896,46 @@
       "id": "smart-callout-v1",
       "pr": 198,
       "status": "completed"
+    },
+    {
+      "id": "legend-axis-polish-v1",
+      "status": "completed",
+      "pr": 199
+    },
+    {
+      "id": "dense-point-label-polish-v1",
+      "status": "completed",
+      "pr": 200
+    },
+    {
+      "id": "contrast-diagnostics-v1",
+      "status": "completed",
+      "pr": 201
+    },
+    {
+      "id": "tick-readability-v1",
+      "status": "completed",
+      "pr": 202
+    },
+    {
+      "id": "multipanel-layout-v1",
+      "status": "completed",
+      "pr": 203
+    },
+    {
+      "id": "fit-trend-overlay-expansion",
+      "status": "completed"
     }
   ],
   "next_slices": [
     {
-      "id": "legend-axis-polish-v1",
-      "priority": 1,
-      "spec": "docs/specs/polish-layer-legend-axis-wave.md"
+      "id": "shared-legend-polish",
+      "priority": 1
     },
     {
-      "id": "dense-point-label-polish-v1",
+      "id": "architecture-data-contract-debt",
       "priority": 2
-    },
-    {
-      "id": "contrast-diagnostics-v1",
-      "priority": 3
-    },
-    {
-      "id": "tick-readability-v1",
-      "priority": 4
-    },
-    {
-      "id": "multipanel-layout-v1",
-      "priority": 5
     }
   ],
-  "selected_next_slice": "fit-trend-overlay-expansion"
+  "selected_next_slice": "shared-legend-polish"
 }
