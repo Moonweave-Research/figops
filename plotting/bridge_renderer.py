@@ -193,6 +193,9 @@ class BridgeFigureSpec:
     yerr_minus_column: str = ""
     compress_labels: bool = True
     legend_layout: str = "auto"
+    legend_options: dict | None = None
+    axis_limits: dict | None = None
+    tick_style: dict | None = None
     target_format: str = "nature"
     font_scale: float = 1.0
     profile_name: str = "baseline"
@@ -233,6 +236,9 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         _validate_manual_overlays(spec)
         _validate_statistical_overlays(points, spec)
         _validate_axis_scales(points, spec)
+        _normalized_axis_limits(spec)
+        _normalized_tick_style(spec)
+        _normalized_legend_options(spec)
         _normalized_annotations(spec.annotations)
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
         try:
@@ -240,6 +246,8 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
                 ax.set_visible(False)
                 _render_broken_axis_plot(fig, points, spec)
                 _apply_axis_scales_to_visible_axes(fig, ax, spec)
+                _apply_axis_limits_to_visible_axes(fig, ax, spec)
+                _apply_tick_style_to_visible_axes(fig, ax, spec)
                 _draw_annotations_on_visible_axes(fig, ax, spec)
             else:
                 _render_plot(ax, points, spec)
@@ -249,6 +257,8 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
                 _apply_axes_metadata(ax, spec)
                 ax.set_title(spec.title)
                 _apply_axis_scales_to_visible_axes(fig, ax, spec)
+                _apply_axis_limits_to_visible_axes(fig, ax, spec)
+                _apply_tick_style_to_visible_axes(fig, ax, spec)
                 _draw_annotations_on_visible_axes(fig, ax, spec)
                 _apply_layout(fig, ax, spec)
                 _separate_top_legend_title(ax, spec)
@@ -530,6 +540,9 @@ def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
     """Render a single CSV-based panel into *ax* (multipanel helper)."""
     points = _load_points(Path(panel.csv_path), panel)
     _validate_axis_scales(points, panel)
+    _normalized_axis_limits(panel)
+    _normalized_tick_style(panel)
+    _normalized_legend_options(panel)
     _validate_manual_overlays(panel)
     _normalized_annotations(panel.annotations)
     _render_plot(ax, points, panel)
@@ -539,6 +552,8 @@ def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
     if panel.title:
         ax.set_title(panel.title)
     _apply_axis_scales(ax, panel)
+    _apply_axis_limits(ax, panel)
+    _apply_tick_style(ax, panel)
     _draw_annotations(ax, panel)
     _apply_layout(fig, ax, panel, allow_figure_layout=False)
 
@@ -918,7 +933,7 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
             )
 
     if has_multi_series:
-        ax.legend(**_legend_kwargs(ax, spec, n_series=len(grouped)))
+        _apply_legend(ax, spec, n_series=len(grouped))
     _apply_marker_axis_margin(ax, spec, small_panel=small_panel)
 
 
@@ -1108,7 +1123,7 @@ def _draw_manual_overlays(ax, csv_path: Path, spec: BridgeFigureSpec) -> None:
         ax.plot(xs, ys, **_overlay_line_kwargs(overlay))
 
     if any(isinstance(overlay, dict) and overlay.get("label") for overlay in (*spec.fill_between, *spec.guide_curves)):
-        ax.legend(**_legend_kwargs(ax, spec, n_series=1))
+        _apply_legend(ax, spec, n_series=1)
 
 
 def _normalized_axis_scale(value: str, *, field_name: str) -> str:
@@ -2095,7 +2110,7 @@ def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
                     [str(point["label"]) for point in series_points],
                     compress_labels=spec.compress_labels,
                 )
-        ax.legend(**_legend_kwargs(ax, spec, n_series=len(series_names)))
+        _apply_legend(ax, spec, n_series=len(series_names))
     else:
         if len(points) > len(categories):
             # Duplicate categories overplot bars at the same x (last visually wins).
