@@ -93,7 +93,7 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
     release_result = run_release_check(root)
     families = sorted({blocker_family(blocker) for blocker in release_result.blockers})
     policy = inventory.get("distribution_policy", {})
-    pypi_upload_allowed = (
+    package_distribution_allowed = (
         not inventory_errors
         and isinstance(policy, dict)
         and policy.get("public_pypi_allowed") is True
@@ -111,7 +111,9 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
             "blocker_count": len(release_result.blockers),
             "blocker_families": families,
         },
-        "pypi_upload_allowed": pypi_upload_allowed,
+        "package_distribution_allowed": package_distribution_allowed,
+        "repository_public_release_allowed": release_result.ok,
+        "pypi_upload_allowed": package_distribution_allowed,
     }
     if include_blockers:
         payload["release_gate"]["blockers_by_family"] = release_blocker_summary(root)

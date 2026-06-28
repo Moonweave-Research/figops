@@ -29,6 +29,8 @@ def test_public_core_status_reports_current_gate_as_blocked():
 
     assert status["inventory_valid"] is True
     assert status["release_gate"]["ok"] is False
+    assert status["package_distribution_allowed"] is True
+    assert status["repository_public_release_allowed"] is False
     assert status["pypi_upload_allowed"] is True
     assert "private_marker" in status["release_gate"]["blocker_families"]
     assert "style_pack" in status["release_gate"]["blocker_families"]
@@ -64,6 +66,9 @@ def test_public_core_status_requires_approved_current_status_for_pypi_allowed(tm
     status = build_public_core_status(tmp_path)
 
     assert status["inventory_valid"] is True
+    assert status["package_distribution_allowed"] is False
+    assert status["repository_public_release_allowed"] is False
+    assert status["release_gate"]["blocker_count"] > 0
     assert status["pypi_upload_allowed"] is False
 
 
