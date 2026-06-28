@@ -16,6 +16,11 @@ This workflow is intentionally iterative:
 No scope is complete until its acceptance criteria, edge cases, and verification
 evidence are all accounted for.
 
+Current status: the original F1-F5 maintenance findings are closed in the
+current tree. Use this workflow for future regressions, follow-up extraction
+work, or any reopened finding. The authoritative closure evidence is recorded in
+`docs/specs/2026-06-28-maintenance-agent-spec.md`.
+
 ## Workflow State Model
 
 Track each finding with one of these statuses:

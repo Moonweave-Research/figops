@@ -15,10 +15,10 @@ Measured on 2026-06-28 with the line-count inventory documented in
 | File | Lines | Primary reason to split |
 | --- | ---: | --- |
 | `plotting/bridge_renderer.py` | 2538 | Multiple plot renderers, schema normalization, labels, legends, diagnostics, and export behavior share one file. |
-| `hub_core/data_contract_semantics.py` | 2113 | Many independent semantic checks and unit/statistical helpers share one module. |
-| `hub_core/config_parser.py` | 1760 | Config loading, migration, validation, role/status policy, presets, and listing helpers are coupled. |
-| `hub_core/geometry_diagnostics.py` | 1685 | Detection primitives, overlap checks, scoring, and report shaping are co-located. |
-| `hub_core/mcp/tools/render_csv.py` | 1623 | CSV render argument parsing, normalization, execution, envelope shaping, and multipanel behavior share one tool mixin. |
+| `hub_core/data_contract_semantics.py` | 2282 | Many independent semantic checks and unit/statistical helpers share one module. |
+| `hub_core/config_parser.py` | 2025 | Config loading, migration, validation, role/status policy, presets, and listing helpers are coupled. |
+| `hub_core/geometry_diagnostics.py` | 1890 | Detection primitives, overlap checks, scoring, and report shaping are co-located. |
+| `hub_core/mcp/tools/render_csv.py` | 1670 | CSV render argument parsing, normalization, execution, envelope shaping, and multipanel behavior share one tool mixin. |
 
 ## Extraction Rules
 

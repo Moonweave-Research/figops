@@ -109,7 +109,29 @@ After editing:
 | Large module looks tempting to split | Create a focused decomposition plan first unless the extraction is tiny and behavior-covered. |
 | MCP write tools/root env behavior is nearby | Do not widen access as part of this maintenance work. |
 
-## Current Findings To Address
+## Current Finding Status
+
+As of 2026-06-28, F1-F5 have implementation evidence in the current tree. Keep
+the detailed finding text below as historical context for future regressions;
+do not reopen a finding unless the cited tests or live code contradict the
+status.
+
+| Finding | Current status | Evidence |
+| --- | --- | --- |
+| F1 missing `uv` bootstrap | closed | `hub_core/uv_runtime.py` checks PATH before invoking uv; `tests/test_uv_runtime.py` covers missing executable and non-zero subprocess exit. |
+| F2 ISPD trap-density placeholder | closed | `calculate_trap_density()` raises `NotImplementedError`; `tests/test_ispd_physics.py` covers scalar and array inputs plus fit return shapes. |
+| F3 top-level import hygiene | closed | `__init__.py` no longer catches `ImportError`; `tests/test_public_api_import_hygiene.py` guards against reintroducing that handler. |
+| F4 scaffold target prompt | closed | `scaffold_wizard()` uses `ALLOWED_TARGET_FORMATS` and `normalize_scaffold_target_format()` rejects invalid input; `tests/test_process_runner_new.py` covers case/whitespace and `internal`. |
+| F5 roadmap/architecture docs | closed | `docs/architecture.md` and `docs/ROADMAP.md` describe the v0.17.9 line; `scripts/architecture_inventory.py` and `tests/test_architecture_inventory.py` guard the large-module table. |
+
+Latest focused verification used for this status:
+
+```bash
+python hub_uv.py run python -m pytest tests/test_uv_runtime.py tests/test_ispd_physics.py tests/test_public_api_import_hygiene.py tests/test_process_runner_new.py -q
+python hub_uv.py run python scripts/architecture_inventory.py --format markdown
+```
+
+## Historical Findings
 
 ### F1 - Local runtime bootstrap is not friendly enough
 

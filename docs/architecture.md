@@ -57,24 +57,26 @@ Future changes should still treat about 800 lines per core module as a split
 signal, but the current tree has known over-budget files.
 
 Current files over the approximate 800-line budget, measured on 2026-06-28 with
-this Python line-count inventory:
+the architecture inventory helper:
 
 ```bash
-python -c "from pathlib import Path; roots=['hub_core','plotting','themes']; rows=[]; [rows.append((len(p.read_text(encoding='utf-8',errors='ignore').splitlines()), str(p))) for root in roots for p in Path(root).rglob('*.py')]; [print(f'{n:5d}  {p}') for n,p in sorted(rows, reverse=True) if n > 800]"
+python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 ```
 
+<!-- architecture-inventory:start -->
 | File | Lines |
 |---|---:|
 | `plotting/bridge_renderer.py` | 2538 |
-| `hub_core/data_contract_semantics.py` | 2113 |
-| `hub_core/config_parser.py` | 1760 |
-| `hub_core/geometry_diagnostics.py` | 1685 |
-| `hub_core/mcp/tools/render_csv.py` | 1623 |
-| `themes/journal_theme.py` | 1398 |
+| `hub_core/data_contract_semantics.py` | 2282 |
+| `hub_core/config_parser.py` | 2025 |
+| `hub_core/geometry_diagnostics.py` | 1890 |
+| `hub_core/mcp/tools/render_csv.py` | 1670 |
+| `themes/journal_theme.py` | 1390 |
 | `hub_core/mcp/schemas.py` | 1151 |
-| `hub_core/process_runner.py` | 1131 |
-| `hub_core/mcp/render_orchestration.py` | 925 |
+| `hub_core/process_runner.py` | 1137 |
+| `hub_core/mcp/render_orchestration.py` | 938 |
 | `hub_core/visual_regression.py` | 902 |
+<!-- architecture-inventory:end -->
 
 `plotting/bridge_renderer.py`, `hub_core/data_contract_semantics.py`, and
 `hub_core/config_parser.py` are now the clearest candidates for future
