@@ -50,7 +50,7 @@ Result fields:
 
 Acceptance criteria:
 
-- includes `nature_surfur`,
+- includes `internal_style_format`,
 - matches FigOps core style contract,
 - does not hard-code a narrower Athena-only enum.
 

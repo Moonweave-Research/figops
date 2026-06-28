@@ -235,6 +235,12 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
         and policy.get("license_decision_required") is False
         and policy.get("current_status") in {"public_package_approved", "public_pypi_approved"}
     )
+    repository_public_release_allowed = (
+        not inventory_errors
+        and release_result.ok
+        and isinstance(policy, dict)
+        and policy.get("current_status") in {"public_package_approved", "public_pypi_approved"}
+    )
     next_actions = release_next_actions(release_result.blockers)
     payload = {
         "schema_version": inventory.get("schema_version"),
@@ -250,7 +256,7 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
             "next_actions": next_actions,
         },
         "package_distribution_allowed": package_distribution_allowed,
-        "repository_public_release_allowed": release_result.ok,
+        "repository_public_release_allowed": repository_public_release_allowed,
         "pypi_upload_allowed": package_distribution_allowed,
     }
     if include_blockers:

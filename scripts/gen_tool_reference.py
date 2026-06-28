@@ -11,9 +11,35 @@ TOOLS_DOC = ROOT / "docs" / "tools.md"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.check_public_release import PRIVATE_MARKERS  # noqa: E402
+
+PUBLIC_REFERENCE_REDACTIONS = (
+    "private_project_root",
+    "private_control_project",
+    "private_measurement_folder",
+    "internal_style_format",
+    "internal_style_profile",
+)
+
 
 def _json_block(payload: Any) -> str:
-    return "```json\n" + json.dumps(payload, indent=2, sort_keys=True) + "\n```"
+    return "```json\n" + json.dumps(_redact_public_reference_payload(payload), indent=2, sort_keys=True) + "\n```"
+
+
+def _redact_public_reference_payload(payload: Any) -> Any:
+    if isinstance(payload, dict):
+        return {key: _redact_public_reference_payload(value) for key, value in payload.items()}
+    if isinstance(payload, list):
+        return [_redact_public_reference_payload(value) for value in payload]
+    if isinstance(payload, str):
+        redacted = payload
+        for index, marker in enumerate(PRIVATE_MARKERS):
+            replacement = (
+                PUBLIC_REFERENCE_REDACTIONS[index] if index < len(PUBLIC_REFERENCE_REDACTIONS) else "private_marker"
+            )
+            redacted = redacted.replace(marker, replacement)
+        return redacted
+    return payload
 
 
 def render_tool_reference() -> str:

@@ -234,7 +234,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(result["profiles"], list_profiles())
         self.assertEqual(result["profile_aliases"], dict(sorted(PROFILE_ALIASES.items())))
         self.assertIn("style_packs", result)
-        self.assertTrue(any(pack["name"] == "surfur_internal" for pack in result["style_packs"]))
+        self.assertTrue(all(pack["visibility"] == "public_core" for pack in result["style_packs"]))
         self.assertIn(INTERNAL_STYLE_TARGET_FORMAT, result["target_formats"])
 
     def test_describe_exposes_registry_backed_capabilities(self):

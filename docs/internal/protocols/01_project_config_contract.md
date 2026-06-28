@@ -34,7 +34,7 @@ Projects select styles; they do not redefine central FigOps styles.
 
 ```yaml
 visual_style:
-  target_format: nature_surfur
+  target_format: internal_style_format
   font_scale: 1.0
   profile: baseline
 ```

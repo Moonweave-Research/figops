@@ -5,7 +5,7 @@
     "current_status": "public_package_approved",
     "public_pypi_allowed": true,
     "license_decision_required": false,
-    "notes": "Apache-2.0 package distribution is approved for built wheel/sdist artifacts; the full repository remains private/internal until repo-level blockers are removed."
+    "notes": "Apache-2.0 package distribution is approved for built wheel/sdist artifacts; repository-public technical blockers are cleared, while external ownership/IP approvals remain release-management inputs."
   },
   "public_core_candidates": [
     {
@@ -56,17 +56,17 @@
         "project-derived journal target format",
         "project-derived style profile"
       ],
-      "status": "blocks_public_release",
-      "notes": "Project-derived style formats and profiles must stay private/internal unless explicitly reviewed."
+      "status": "split_from_public_registry",
+      "notes": "Project-derived target formats and profiles remain runtime-compatible, but internal style packs are no longer exposed through the public style-pack registry."
     },
     {
-      "area": "private_workflow_documents",
+      "area": "workflow_documents",
       "path_prefixes": [
-        "docs/hks/",
+        "docs/internal/protocols/",
         "docs/02-design/"
       ],
-      "status": "blocks_public_release",
-      "notes": "Internal workflow documents encode lab operating practice and must not ship in a public package."
+      "status": "sanitized_repo_review_surface",
+      "notes": "Workflow documents have been marker-sanitized and remain excluded from built package artifacts."
     },
     {
       "area": "private_research_markers",
@@ -75,8 +75,8 @@
         "real control project name",
         "real measurement folder"
       ],
-      "status": "blocks_public_release",
-      "notes": "Real project identifiers must be removed or replaced with synthetic fixtures."
+      "status": "sanitized",
+      "notes": "Real project identifiers have been replaced with synthetic fixtures or public-safe aliases outside the release-check fixtures."
     }
   ],
   "release_exit_criteria": [

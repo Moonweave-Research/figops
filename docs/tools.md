@@ -1905,7 +1905,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
         "premium",
         "publication",
         "resistance",
-        "resistance_premium",
+        "internal_style_profile",
         "wiley"
       ],
       "type": "string"
@@ -2001,7 +2001,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
         "default",
         "elsevier",
         "nature",
-        "nature_surfur",
+        "internal_style_format",
         "ppt",
         "rsc",
         "science",
@@ -3314,7 +3314,7 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
         "premium",
         "publication",
         "resistance",
-        "resistance_premium",
+        "internal_style_profile",
         "wiley"
       ],
       "type": "string"
@@ -3364,7 +3364,7 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
         "default",
         "elsevier",
         "nature",
-        "nature_surfur",
+        "internal_style_format",
         "ppt",
         "rsc",
         "science",
@@ -3721,7 +3721,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
         "premium",
         "publication",
         "resistance",
-        "resistance_premium",
+        "internal_style_profile",
         "wiley"
       ],
       "type": "string"
@@ -3745,7 +3745,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
         "default",
         "elsevier",
         "nature",
-        "nature_surfur",
+        "internal_style_format",
         "ppt",
         "rsc",
         "science",
@@ -4308,7 +4308,7 @@ Plan or create a standard FigOps project scaffold.
         "default",
         "elsevier",
         "nature",
-        "nature_surfur",
+        "internal_style_format",
         "ppt",
         "rsc",
         "science",

@@ -36,7 +36,7 @@ Coordinate end-to-end planning, implementation, and verification across the modu
 Orchestrator injects the following vars:
 - `RESEARCH_HUB_PATH`: Absolute path to the hub.
 - `PROJECT_ROOT`: Absolute path to the active research project.
-- `THEME_FORMAT`: `nature | nature_surfur | science | ppt | default | acs | rsc | elsevier | wiley | cell`. The live source of truth is `ALLOWED_TARGET_FORMATS` in `hub_core/config_parser.py`; agents can also call `figops.list_styles` or consult generated `docs/tools.md`.
+- `THEME_FORMAT`: `nature | internal_style_format | science | ppt | default | acs | rsc | elsevier | wiley | cell`. The live source of truth is `ALLOWED_TARGET_FORMATS` in `hub_core/config_parser.py`; agents can also call `figops.list_styles` or consult generated `docs/tools.md`.
 - `THEME_SCALE`: Font scaling factor.
 - `THEME_PROFILE`: Active style profile name.
 

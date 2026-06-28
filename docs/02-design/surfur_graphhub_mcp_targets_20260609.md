@@ -1,6 +1,6 @@
 # FigOps Figure Target Inventory
 
-Root: `/Users/choemun-yeong/Library/CloudStorage/GoogleDrive-choimoonyoung3631@gmail.com/My Drive/Research/02_Surfur_Polymer`
+Root: `/Users/choemun-yeong/Library/CloudStorage/GoogleDrive-choimoonyoung3631@gmail.com/My Drive/Research/synthetic_polymer_project`
 
 ## Summary
 
@@ -32,18 +32,18 @@ Root: `/Users/choemun-yeong/Library/CloudStorage/GoogleDrive-choimoonyoung3631@g
 | `엑추에이션 정리/60wt~85wt 통합(제작후 5일 이내 사용)_260202` | `Fig_260323_B` | yes | yes | - | - | - | - | `scripts/plot_260323_timing.py` | `results/figures/260323_RH_actuation/Fig_260323_B_timing_recovery.png` |
 | `엑추에이션 정리/60wt~85wt 통합(제작후 5일 이내 사용)_260202` | `Fig_RH20` | yes | yes | - | - | - | - | `scripts/plot_humidity20_wt_comparison.py` | `results/figures/humidity20_wt_comparison/Fig_RH20_wt_comparison.png` |
 | `유전율 측정` | `(config error)` | no | no | - | - | - | data_contract.csv_checks[1].path is required.; data_contract.csv_checks[2].path is required.; data_contract.csv_checks[3].path is required. | `` | `` |
-| `저항 측정/260130` | `Fig1_Python_Ultimate` | yes | yes | - | - | - | - | `hub_scripts/fig1_resistivity/plot_ultimate.py` | `results/figures/fig1_resistivity/Fig1_Python_Ultimate.png` |
-| `저항 측정/260130` | `Fig2_Python_CvS_Fits` | yes | yes | - | - | - | - | `hub_scripts/fig2_cvs_fits/plot_fits.py` | `results/figures/fig2_cvs_fits/Fig2_Python_CvS_Fits.png` |
-| `저항 측정/260130` | `Fig3_Python_n_Exponent` | yes | yes | - | - | - | - | `hub_scripts/fig3_n_exponent/plot_n_exponent.py` | `results/figures/fig3_n_exponent/Fig3_Python_n_Exponent.png` |
-| `저항 측정/260130` | `Fig4_Python_Sample_Spread` | yes | yes | - | - | - | - | `hub_scripts/fig4_sample_spread/plot_spread.py` | `results/figures/fig4_sample_spread/Fig4_Python_Sample_Spread.png` |
-| `저항 측정/260130` | `Fig5_Python_Golden_Correlation` | yes | yes | - | - | - | - | `hub_scripts/fig5_golden_correlation/plot_correlation.py` | `results/figures/fig5_golden_correlation/Fig5_Python_Golden_Correlation.png` |
-| `저항 측정/260130` | `Fig5_Python_Golden_Correlation_PDF` | yes | yes | - | - | - | - | `hub_scripts/fig5_golden_correlation/plot_correlation.py` | `results/figures/fig5_golden_correlation/Fig5_Python_Golden_Correlation.pdf` |
-| `저항 측정/260504_sulfur_rh25` | `FigSulfurRH25_CvS_Fits` | yes | yes | - | - | - | - | `hub_scripts/fig_cvs_fits/plot_fits.py` | `results/figures/fig_cvs_fits/FigSulfurRH25_CvS_Fits.png` |
-| `저항 측정/PDMS_control` | `FigS7b_PDMS_Resistance` | yes | yes | - | - | - | - | `hub_scripts/fig_resistance/plot_resistance.py` | `results/figures/fig_resistance/FigS7b_PDMS_Resistance.png` |
-| `저항 측정/PDMS_control` | `FigS7c_PDMS_CvS_Fits` | yes | yes | - | - | - | - | `hub_scripts/fig_cvs_fits/plot_fits.py` | `results/figures/fig_cvs_fits/FigS7c_PDMS_CvS_Fits.png` |
-| `저항 측정/PET_control` | `FigPET_Resistance` | no | no | - | - | - | - | `hub_scripts/fig_resistance/plot_resistance.py` | `results/figures/fig_resistance/FigPET_Resistance.png` |
-| `저항 측정/PET_control` | `FigPET_CvS_Fits` | yes | yes | - | - | - | - | `hub_scripts/fig_cvs_fits/plot_fits.py` | `results/figures/fig_cvs_fits/FigPET_CvS_Fits.png` |
-| `저항 측정/PI_control` | `FigPI_CvS_Fits` | yes | yes | - | - | - | - | `hub_scripts/fig_cvs_fits/plot_fits.py` | `results/figures/fig_cvs_fits/FigPI_CvS_Fits.png` |
+| `measurement_data/260130` | `Fig1_Python_Ultimate` | yes | yes | - | - | - | - | `hub_scripts/fig1_resistivity/plot_ultimate.py` | `results/figures/fig1_resistivity/Fig1_Python_Ultimate.png` |
+| `measurement_data/260130` | `Fig2_Python_CvS_Fits` | yes | yes | - | - | - | - | `hub_scripts/fig2_cvs_fits/plot_fits.py` | `results/figures/fig2_cvs_fits/Fig2_Python_CvS_Fits.png` |
+| `measurement_data/260130` | `Fig3_Python_n_Exponent` | yes | yes | - | - | - | - | `hub_scripts/fig3_n_exponent/plot_n_exponent.py` | `results/figures/fig3_n_exponent/Fig3_Python_n_Exponent.png` |
+| `measurement_data/260130` | `Fig4_Python_Sample_Spread` | yes | yes | - | - | - | - | `hub_scripts/fig4_sample_spread/plot_spread.py` | `results/figures/fig4_sample_spread/Fig4_Python_Sample_Spread.png` |
+| `measurement_data/260130` | `Fig5_Python_Golden_Correlation` | yes | yes | - | - | - | - | `hub_scripts/fig5_golden_correlation/plot_correlation.py` | `results/figures/fig5_golden_correlation/Fig5_Python_Golden_Correlation.png` |
+| `measurement_data/260130` | `Fig5_Python_Golden_Correlation_PDF` | yes | yes | - | - | - | - | `hub_scripts/fig5_golden_correlation/plot_correlation.py` | `results/figures/fig5_golden_correlation/Fig5_Python_Golden_Correlation.pdf` |
+| `measurement_data/260504_sulfur_rh25` | `FigSulfurRH25_CvS_Fits` | yes | yes | - | - | - | - | `hub_scripts/fig_cvs_fits/plot_fits.py` | `results/figures/fig_cvs_fits/FigSulfurRH25_CvS_Fits.png` |
+| `measurement_data/PDMS_control` | `FigS7b_PDMS_Resistance` | yes | yes | - | - | - | - | `hub_scripts/fig_resistance/plot_resistance.py` | `results/figures/fig_resistance/FigS7b_PDMS_Resistance.png` |
+| `measurement_data/PDMS_control` | `FigS7c_PDMS_CvS_Fits` | yes | yes | - | - | - | - | `hub_scripts/fig_cvs_fits/plot_fits.py` | `results/figures/fig_cvs_fits/FigS7c_PDMS_CvS_Fits.png` |
+| `measurement_data/PET_control` | `FigPET_Resistance` | no | no | - | - | - | - | `hub_scripts/fig_resistance/plot_resistance.py` | `results/figures/fig_resistance/FigPET_Resistance.png` |
+| `measurement_data/PET_control` | `FigPET_CvS_Fits` | yes | yes | - | - | - | - | `hub_scripts/fig_cvs_fits/plot_fits.py` | `results/figures/fig_cvs_fits/FigPET_CvS_Fits.png` |
+| `measurement_data/control_sample` | `FigPI_CvS_Fits` | yes | yes | - | - | - | - | `hub_scripts/fig_cvs_fits/plot_fits.py` | `results/figures/fig_cvs_fits/FigPI_CvS_Fits.png` |
 | `전기적특성 측정데이터` | `Pub_Fig1c_PE_Loops_500` | yes | yes | - | - | - | - | `hub_scripts/publication/plot_fig1c.py` | `results/figures/publication/fig1c_pe_loops_500.png` |
 | `전기적특성 측정데이터` | `Pub_Fig1c_PE_Loops_2000` | yes | yes | - | - | - | - | `hub_scripts/publication/plot_fig1c.py` | `results/figures/publication/fig1c_pe_loops_2000.png` |
 | `전기적특성 측정데이터` | `Pub_Fig1d_Pmax_Voltage` | yes | yes | - | - | - | - | `hub_scripts/publication/plot_fig1d.py` | `results/figures/publication/fig1d_pmax_voltage.png` |

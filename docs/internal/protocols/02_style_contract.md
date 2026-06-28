@@ -12,14 +12,14 @@ cell
 default
 elsevier
 nature
-nature_surfur
+internal_style_format
 ppt
 rsc
 science
 wiley
 ```
 
-`nature_surfur` is first-class and must not be treated as an alias or temporary experiment.
+`internal_style_format` is first-class and must not be treated as an alias or temporary experiment.
 
 ## Profiles
 
@@ -27,7 +27,7 @@ Current profiles:
 
 ```text
 baseline
-resistance_premium
+internal_style_profile
 ```
 
 Profile aliases are defined in `themes/style_profiles.py`.

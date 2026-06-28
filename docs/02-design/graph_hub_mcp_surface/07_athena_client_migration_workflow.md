@@ -54,7 +54,7 @@ Required:
 
 - Athena accepts every FigOps official target format.
 - A parity test compares Athena's bridge target format set with FigOps's `ALLOWED_TARGET_FORMATS`.
-- `nature_surfur` is explicitly tested.
+- `internal_style_format` is explicitly tested.
 - Unsupported values such as `baseline` and `ieee` remain rejected.
 
 ### Step 1 - Read-Only FigOps MCP
@@ -123,7 +123,7 @@ Do not mix this with the first MCP render rollout.
 ## Acceptance Criteria
 
 - Existing Athena bridge smoke still succeeds.
-- `nature_surfur` can flow through Athena into FigOps.
+- `internal_style_format` can flow through Athena into FigOps.
 - FigOps read-only MCP calls do not change git status.
 - Athena can list FigOps styles/projects through MCP or a compatibility client.
 - Render replacement is not considered done until output files, manifests, and failure diagnostics match the current bridge path.

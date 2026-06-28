@@ -52,7 +52,7 @@ Run:
 
 ```bash
 python hub_uv.py run python scripts/project_figure_inventory.py \
-  /Users/choemun-yeong/workspace/ResearchOS/02_Surfur_Polymer \
+  /Users/choemun-yeong/workspace/ResearchOS/synthetic_polymer_project \
   --markdown-out docs/02-design/surfur_figops_mcp_targets_20260609.md \
   --json-out docs/02-design/surfur_figops_mcp_targets_20260609.json
 ```
@@ -64,7 +64,7 @@ Expected: inventory documents Surfur subproject figure targets.
 **Files:**
 - Read-only runtime verification.
 
-- [x] **Step 1: Render PI_control gold target**
+- [x] **Step 1: Render control_sample gold target**
 
 Run:
 
@@ -73,7 +73,7 @@ python hub_uv.py run python - <<'PY'
 from pathlib import Path
 from hub_core.mcp_surface import GraphHubMCPServer
 research_root = Path("/Users/choemun-yeong/workspace/ResearchOS")
-project_path = research_root / "02_Surfur_Polymer" / "저항 측정" / "PI_control"
+project_path = research_root / "synthetic_polymer_project" / "measurement_data" / "control_sample"
 server = GraphHubMCPServer(
     research_root=research_root,
     runtime_root=Path("/Users/choemun-yeong/ws/research-runtime/graphhub-real-smoke"),

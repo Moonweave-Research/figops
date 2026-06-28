@@ -40,7 +40,7 @@ TEXT_SUFFIXES = {
 BLOCKED_PATH_PATTERNS = (
     "*/tests/*",
     "*/tests",
-    "*/docs/hks/*",
+    "*/docs/internal/protocols/*",
     "*/docs/02-design/*",
     "*/docs/superpowers/*",
     "*/AGENTS.md",

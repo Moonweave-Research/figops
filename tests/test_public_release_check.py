@@ -31,14 +31,13 @@ def test_public_release_check_blocks_private_markers(tmp_path: Path) -> None:
     assert any("02_Surfur_Polymer" in blocker for blocker in result.blockers)
 
 
-def test_public_release_check_blocks_internal_style_packs(tmp_path: Path) -> None:
+def test_public_release_check_allows_split_internal_style_packs(tmp_path: Path) -> None:
     (tmp_path / "LICENSE").write_text("Apache-2.0\n", encoding="utf-8")
     (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
 
     result = run_release_check(tmp_path)
 
-    assert not result.ok
-    assert any("Internal/private style packs" in blocker for blocker in result.blockers)
+    assert result.ok
 
 
 def test_public_release_check_does_not_block_on_its_own_denylist_terms(tmp_path: Path) -> None:

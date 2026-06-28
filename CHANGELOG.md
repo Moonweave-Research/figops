@@ -15,6 +15,20 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.10] - 2026-06-28
+
+### Changed
+
+- Continue modular decomposition of large FigOps modules by extracting config,
+  semantic-contract, bridge-renderer, and geometry-diagnostic helpers while
+  preserving compatibility exports for existing callers.
+- Refresh architecture and roadmap inventories for the current large-module
+  hotspot order.
+
+### Fixed
+
+- Clear stale post-tag release metadata for the current development line.
+
 ## [0.17.9] - 2026-06-25
 
 ### Added

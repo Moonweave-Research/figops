@@ -11,7 +11,7 @@
 **Problem:** bespoke integrations are baked into the core, so a clean checkout in another
 environment can't run: GDrive prefetch (`ensure_local_files`), the Athena bridge
 (`hub_core/athena_bridge.py`, `orchestrator.py` health/draft hooks), and Surfur/ResearchOS naming
-conventions (e.g. `nature_surfur` style, `.worktrees`/`ResearchOS` discovery assumptions).
+conventions (e.g. `internal_style_format` style, `.worktrees`/`ResearchOS` discovery assumptions).
 
 **Design:** introduce `hub_core/adapters/` with small interfaces and **generic defaults**:
 
@@ -26,7 +26,7 @@ class GDrivePrefetcher:      # opt-in (current ensure_local_files behavior)
 
 # hub_core/adapters/athena.py    -> AthenaBridge protocol; NullAthena default (no health/draft hooks)
 # hub_core/adapters/conventions.py -> naming/discovery policy; GenericConventions default,
-#                                      SurfurConventions opt-in (worktrees/ResearchOS/nature_surfur)
+#                                      SurfurConventions opt-in (worktrees/ResearchOS/internal_style_format)
 ```
 
 - Selection via config (`environment.adapters: {prefetch: gdrive|none, athena: on|off,
@@ -36,7 +36,7 @@ class GDrivePrefetcher:      # opt-in (current ensure_local_files behavior)
 
 **Acceptance:** with all adapters at their defaults and **zero bespoke env vars**, a clean checkout
 can `scaffold → render` a figure (verified by a CI smoke test). GDrive/Athena/Surfur are opt-in and
-covered by their own tests. No `nature_surfur`/`ResearchOS`/`ensure_local_files` reference remains
+covered by their own tests. No `internal_style_format`/`ResearchOS`/`ensure_local_files` reference remains
 outside `adapters/` + the style packs.
 
 ## M3.2 — Plot-type registry & render-backend interface — M

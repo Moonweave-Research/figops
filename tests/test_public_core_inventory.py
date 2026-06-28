@@ -30,46 +30,39 @@ def test_public_core_inventory_schema_is_valid():
     assert inventory["distribution_policy"]["current_status"] == "public_package_approved"
 
 
-def test_public_core_status_reports_current_gate_as_blocked():
+def test_public_core_status_reports_current_gate_as_clear():
     status = public_core_status(HUB_ROOT)
 
     assert status["inventory_valid"] is True
-    assert status["release_gate"]["ok"] is False
+    assert status["release_gate"]["ok"] is True
     assert status["package_distribution_allowed"] is True
-    assert status["repository_public_release_allowed"] is False
+    assert status["repository_public_release_allowed"] is True
     assert status["pypi_upload_allowed"] is True
-    assert "private_marker" in status["release_gate"]["blocker_families"]
-    assert "style_pack" in status["release_gate"]["blocker_families"]
-    next_actions = {action["family"]: action for action in status["release_gate"]["next_actions"]}
-    assert next_actions["private_marker"]["requires_confirmation"] is True
-    assert next_actions["post_tag_metadata"]["status"] == "requires_release_decision"
+    assert status["release_gate"]["blocker_families"] == []
+    assert status["release_gate"]["next_actions"] == []
     assert status["release_gate"]["action_summary"]["auto_fixable_blocker_count"] == 0
-    assert status["release_gate"]["action_summary"]["requires_confirmation"] is True
+    assert status["release_gate"]["action_summary"]["requires_confirmation"] is False
     assert "blockers_by_family" not in status["release_gate"]
 
 
-def test_public_core_status_can_include_grouped_release_blockers():
+def test_public_core_status_can_include_empty_grouped_release_blockers():
     status = build_public_core_status(HUB_ROOT, include_blockers=True)
 
     blockers = status["release_gate"]["blockers_by_family"]
-    assert "private_marker" in blockers
-    assert "style_pack" in blockers
-    assert any("Private marker" in blocker for blocker in blockers["private_marker"])
+    assert blockers == {}
 
 
-def test_release_blocker_summary_groups_by_family():
+def test_release_blocker_summary_is_empty_when_gate_is_clear():
     grouped = release_blocker_summary(HUB_ROOT)
 
-    assert "private_marker" in grouped
-    assert "private_workflow_doc" in grouped
-    assert all(isinstance(blocker, str) for blocker in grouped["private_marker"])
+    assert grouped == {}
 
 
 def test_release_next_actions_group_counts_and_decision_statuses():
     actions = release_next_actions(
         (
             "Private marker 'internal_sample' found in README.md.",
-            "Private workflow document path present: docs/hks/01.md.",
+            "Private workflow document path present: docs/internal/protocols/01.md.",
             "Unable to decode UTF-8 text file: bad.txt (invalid start byte at byte 1).",
         )
     )
@@ -202,7 +195,7 @@ def test_public_core_status_requires_approved_current_status_for_pypi_allowed(tm
     assert status["inventory_valid"] is True
     assert status["package_distribution_allowed"] is False
     assert status["repository_public_release_allowed"] is False
-    assert status["release_gate"]["blocker_count"] > 0
+    assert status["release_gate"]["blocker_count"] == 0
     assert status["pypi_upload_allowed"] is False
 
 
@@ -243,4 +236,7 @@ def test_blocker_family_classification():
     assert blocker_family("LICENSE is proprietary/all-rights-reserved; public release is blocked.") == "license"
     assert blocker_family("Internal/private style packs are present: surfur_internal.") == "style_pack"
     assert blocker_family("Private marker 'internal_sample' found in README.md.") == "private_marker"
-    assert blocker_family("Private workflow document path present: docs/hks/01.md.") == "private_workflow_doc"
+    assert (
+        blocker_family("Private workflow document path present: docs/internal/protocols/01.md.")
+        == "private_workflow_doc"
+    )

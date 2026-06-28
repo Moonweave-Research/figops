@@ -102,6 +102,6 @@ def test_public_package_surface_allows_packaged_scaffold_template(tmp_path: Path
 
 def test_blocked_path_reason_matches_private_publication_surfaces():
     assert blocked_path_reason("figops-0.16.6/tests/test_private.py") == "*/tests/*"
-    assert blocked_path_reason("figops-0.16.6/docs/hks/01.md") == "*/docs/hks/*"
+    assert blocked_path_reason("figops-0.16.6/docs/internal/protocols/01.md") == "*/docs/internal/protocols/*"
     assert blocked_path_reason("figops-0.16.6/project_config_template.yaml") == "figops-*/project_config_template.yaml"
     assert blocked_path_reason("figops-0.16.6/hub_core/templates/project_config_template.yaml") is None

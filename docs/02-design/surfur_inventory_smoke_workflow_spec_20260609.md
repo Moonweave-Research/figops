@@ -16,7 +16,7 @@ Athena as a graph router.
   snapshots reject symlinks during export.
 - Resolve legacy `scripts/project_config.yaml` from the project root.
 - Keep the Surfur root as a master workspace, not a direct render target.
-- Keep `저항 측정/PI_control` `FigPI_CvS_Fits` as the current real-project
+- Keep `measurement_data/control_sample` `FigPI_CvS_Fits` as the current real-project
   gold smoke.
 
 ## Workflow Loop
@@ -45,5 +45,5 @@ Athena as a graph router.
   `scripts/project_config.yaml`.
 - Invalid or unreadable configs are surfaced as non-candidate inventory rows
   instead of being silently omitted.
-- Current PI_control gold target renders through FigOps MCP.
+- Current control_sample gold target renders through FigOps MCP.
 - Generated inventory documents the exact MCP call sequence.

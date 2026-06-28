@@ -104,7 +104,7 @@ def test_resources_read_styles_matches_list_styles(self):
 
     self.assertEqual(resource["result"]["contents"][0]["mimeType"], "application/json")
     self.assertEqual(payload["target_formats"], styles["target_formats"])
-    self.assertIn("nature_surfur", payload["target_formats"])
+    self.assertIn("internal_style_format", payload["target_formats"])
 ```
 
 - [ ] **Step 2: Run RED**

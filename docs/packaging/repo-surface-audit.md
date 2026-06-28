@@ -3,9 +3,9 @@
 Last checked: 2026-06-28
 
 This note records the current public/private boundary for the FigOps repository.
-It is separate from the PyPI package gate: the package artifacts are public, but
-the full repository is still treated as private/internal until the blockers below
-are intentionally removed or sanitized.
+It is separate from the PyPI package gate: the package artifacts are public, and
+the full repository technical release gate now passes after marker sanitization,
+workflow-doc relocation, and public style-pack registry splitting.
 
 ## Result summary
 
@@ -15,7 +15,7 @@ are intentionally removed or sanitized.
 | Suspicious tracked filenames | Pass: no tracked env/key/token/credential-style filenames found. |
 | Tracked ignored files | Pass: `git ls-files -ci --exclude-standard` is empty. |
 | Public wheel/sdist surface | Pass: `scripts/public_package_surface.py` reports no blockers. |
-| Full repository public gate | Blocked: internal docs, private markers, and internal style packs remain in the private repo. |
+| Full repository public gate | Pass: `scripts/check_public_release.py` reports no blockers. |
 | GitHub repository metadata | Updated for FigOps with PyPI homepage and focused topics. |
 | Social preview asset | Added at `docs/assets/figops-social-preview.png`. |
 
@@ -26,18 +26,21 @@ are intentionally removed or sanitized.
   from the public artifacts.
 - GitHub Release assets are safe to share as package artifacts.
 
-## Do not make the full repository public yet
+## Repository public gate
 
-`python scripts/check_public_release.py` currently blocks full-repo public release
-because repo-only files still contain internal markers or private workflow docs.
-That is expected under the current policy.
+`python scripts/check_public_release.py` currently passes for the repository.
+The remaining public-release decision is not a technical blocker: it is the
+normal owner/advisor/university/IP approval recorded in
+[public-release-decision-record.md](./public-release-decision-record.md).
 
-Main blocker families:
+Completed blocker families:
 
-- internal/private style pack: `surfur_internal`;
-- internal project/style markers in docs and tests;
-- private workflow docs under `docs/hks/`;
-- post-tag metadata drift after the latest release tag.
+- internal/private style packs split out of the public style-pack registry;
+- internal project/style markers replaced with public-safe aliases outside the
+  release-check fixtures;
+- workflow protocol docs moved from the legacy private path to
+  `docs/internal/protocols/`;
+- post-tag metadata bumped to `0.17.10`.
 
 Current structured status:
 
@@ -47,16 +50,16 @@ python scripts/public_core_inventory.py --status --format markdown --output docs
 ```
 
 Expected current shape: public package distribution is allowed, repository
-public release is blocked, and remaining repository blockers require explicit
-confirmation before content is sanitized, moved, split, or version-bumped.
+public release is allowed by the technical gate, and remaining publication
+approval is external release management rather than a script blocker.
 
 Record those confirmations in
 [public-release-decision-record.md](./public-release-decision-record.md) before
 changing repository visibility.
 
-Before changing repository visibility to public, either remove/sanitize those
-files or split a smaller public source repository from the private development
-repository.
+Before changing repository visibility to public, confirm the non-technical
+ownership/IP approvals and keep the public-release gate green on the final
+release candidate.
 
 ## Tracked files to reconsider before a public repo release
 
@@ -69,10 +72,11 @@ by normal package users:
 - `SUB_AGENTS.md`
 - `Research_Central_Architecture.md`
 - `task.md`
-- historical/private design docs under `docs/02-design/`, `docs/hks/`, and
+- historical design docs under `docs/02-design/`, `docs/internal/protocols/`, and
   `docs/superpowers/`
 
-Keep them private unless there is an explicit public-source release pass.
+Keep reviewing them when public-facing docs are edited; the current release gate
+no longer finds private markers in them.
 
 ## Local ignored clutter observed
 

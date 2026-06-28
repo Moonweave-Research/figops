@@ -48,7 +48,7 @@
 Available Projects:
  [1] Ionoelastomer Displacement Analysis (12. ionoelastomer)
  [2] Sulfur-rich Polymer Actuation (8. Surfur.../10mm_20min)
- [3] Resistance Analysis (8. Surfur.../저항 측정/260130)
+ [3] Resistance Analysis (8. Surfur.../measurement_data/260130)
 
 Enter project number (or 'q' to quit): _
 ```

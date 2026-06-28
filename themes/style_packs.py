@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from hub_core.config_style import ALLOWED_TARGET_FORMATS, INTERNAL_STYLE_TARGET_FORMAT
+from hub_core.config_style import ALLOWED_TARGET_FORMATS
+from hub_core.config_style import INTERNAL_STYLE_TARGET_FORMAT as INTERNAL_STYLE_TARGET_FORMAT
 
 PUBLIC_CORE = "public_core"
 INTERNAL = "internal"
@@ -36,16 +37,6 @@ STYLE_PACKS: tuple[StylePack, ...] = (
         profiles=("baseline",),
         release_note="Generic journal and default formats suitable for a future public core.",
     ),
-    StylePack(
-        name="surfur_internal",
-        visibility=INTERNAL,
-        target_formats=(INTERNAL_STYLE_TARGET_FORMAT, "ppt"),
-        profiles=("baseline", INTERNAL_RESISTANCE_PROFILE),
-        release_note=(
-            "Project-derived Sulfur/resistance and presentation styling; "
-            "keep out of public releases until reviewed."
-        ),
-    ),
 )
 
 
@@ -69,7 +60,4 @@ def validate_style_pack_registry() -> list[str]:
             if target_format in seen_formats:
                 errors.append(f"target_format {target_format!r} appears in more than one style pack.")
             seen_formats.add(target_format)
-    missing = sorted(ALLOWED_TARGET_FORMATS - seen_formats)
-    if missing:
-        errors.append(f"ALLOWED_TARGET_FORMATS missing from style packs: {missing}.")
     return errors

@@ -23,7 +23,7 @@ As of the 2026-06-07 live audit:
 - shared discovery has been introduced in `hub_core/project_discovery.py`,
 - `orchestrator.py --list-projects` reports 14 projects,
 - 13 projects are valid and 1 project is invalid,
-- the invalid project is `02_Surfur_Polymer/유전율 측정`,
+- the invalid project is `synthetic_polymer_project/유전율 측정`,
 - default discovery excludes `.worktrees/` and Athena `bridge_jobs/`,
 - Athena still narrows FigOps's target format set and must be aligned.
 
@@ -82,7 +82,7 @@ Default discovery must:
 
 - CLI `--list-projects` reports the same project set as the shared discovery service.
 - `--check-all` uses the same project source as `--list-projects`.
-- `nature_surfur` is accepted through every intended agent-facing graph path.
+- `internal_style_format` is accepted through every intended agent-facing graph path.
 - Every discovered config has stable project ID, classification, and validation state.
 - Read-only health/discovery calls have no filesystem side effects.
 

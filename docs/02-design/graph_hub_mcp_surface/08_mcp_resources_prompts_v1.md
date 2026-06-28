@@ -121,7 +121,7 @@ Required fields:
 
 Acceptance:
 
-- Includes `nature_surfur`.
+- Includes `internal_style_format`.
 - Matches `figops.list_styles` output for the same fields.
 - Does not create runtime folders or modify source files.
 

@@ -67,7 +67,7 @@ Live audit on 2026-06-07 found:
 - FigOps has been physically externalized as its own Git repository at `/Users/choemun-yeong/workspace/figops`.
 - ResearchOS still owns workspace governance and Athena. Athena must resolve FigOps as an external tool path, not as a nested `[Graph_making_hub]` source tree.
 - FigOps discovery now reports 14 projects: 13 valid and 1 invalid.
-- The invalid project is `02_Surfur_Polymer/유전율 측정`, with three `data_contract.csv_checks.path is required` errors.
+- The invalid project is `synthetic_polymer_project/유전율 측정`, with three `data_contract.csv_checks.path is required` errors.
 - Athena `hub_bridge` is enabled and resolves `hub_path` to the local independent FigOps path, with compatibility handling for legacy configured paths.
 - Athena can execute a FigOps bridge smoke job, but its `TargetFormat` contract is narrower than FigOps's official style set.
 - `workspace_state.md` and `workspace_state.json` can become dirty from health/report generation, so read-only MCP health must not reuse side-effectful report writers.
@@ -83,7 +83,7 @@ That discovery gap has been repaired in the current workspace by introducing a s
 FigOps supports target formats including:
 
 ```text
-nature, nature_surfur, science, ppt, default, acs, rsc, elsevier, wiley, cell
+nature, internal_style_format, science, ppt, default, acs, rsc, elsevier, wiley, cell
 ```
 
 Athena's bridge model currently narrows that surface to:
@@ -130,7 +130,7 @@ The MCP direction is accepted only when all of the following remain true:
 5. Project discovery is symlink-aware and excludes worktrees/ephemeral bridge jobs by default.
 6. Invalid project configs are visible to agents.
 7. Target style formats are shared across FigOps, Athena bridge, and MCP.
-8. `nature_surfur` remains a first-class supported target format.
+8. `internal_style_format` remains a first-class supported target format.
 9. Temporary jobs use an external runtime root.
 10. Artifact results distinguish `created`, `validated`, `preflight_passed`, and `manual_review_needed`.
 11. Every MCP tool has an input schema, and structured tools have an output schema.

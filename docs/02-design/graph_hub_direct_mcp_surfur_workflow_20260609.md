@@ -9,7 +9,7 @@ The Surfur research folder is a master workspace, not one runnable FigOps
 project:
 
 ```text
-/Users/choemun-yeong/workspace/ResearchOS/02_Surfur_Polymer
+/Users/choemun-yeong/workspace/ResearchOS/synthetic_polymer_project
 ```
 
 Render through standardized subprojects that contain `project_config.yaml`,
@@ -20,7 +20,7 @@ Render through standardized subprojects that contain `project_config.yaml`,
 Primary MCP smoke target:
 
 ```text
-ResearchOS/02_Surfur_Polymer/저항 측정/PI_control
+ResearchOS/synthetic_polymer_project/measurement_data/control_sample
 ```
 
 Figure:
@@ -59,10 +59,10 @@ docs, references, simulation folders, and figure plans.
 
 Valid Surfur render targets are subprojects such as:
 
-- `저항 측정/PI_control`
-- `저항 측정/260130`
-- `저항 측정/PET_control`
-- `저항 측정/PDMS_control`
+- `measurement_data/control_sample`
+- `measurement_data/260130`
+- `measurement_data/PET_control`
+- `measurement_data/PDMS_control`
 - `유전율 측정`
 - `기계적특성 측정`
 - `Charge trapping 측정`
@@ -77,7 +77,7 @@ from pathlib import Path
 from hub_core.mcp_surface import GraphHubMCPServer
 
 research_root = Path("/Users/choemun-yeong/workspace/ResearchOS")
-project_path = research_root / "02_Surfur_Polymer" / "저항 측정" / "PI_control"
+project_path = research_root / "synthetic_polymer_project" / "measurement_data" / "control_sample"
 server = GraphHubMCPServer(
     research_root=research_root,
     runtime_root=Path("/Users/choemun-yeong/ws/research-runtime/graphhub-real-smoke"),
@@ -105,5 +105,5 @@ ok False <runtime output path>
 
 - Synthetic single-panel fixture remains public-safe.
 - Synthetic multipanel fixture renders through MCP without modifying source.
-- Surfur PI_control renders through MCP from ResearchOS using runtime output.
+- Surfur control_sample renders through MCP from ResearchOS using runtime output.
 - Direct MCP playbook tells agents not to call Athena for graph-only work.

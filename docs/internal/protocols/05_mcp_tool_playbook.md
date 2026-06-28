@@ -96,14 +96,14 @@ on per-machine font metrics; a `near_boundary` flag softens locale-driven width 
 The Surfur root is a master workspace, not a direct render target:
 
 ```text
-ResearchOS/02_Surfur_Polymer
+ResearchOS/synthetic_polymer_project
 ```
 
 For graph-only requests, call FigOps MCP directly against a concrete
 subproject. The current gold target is:
 
 ```text
-ResearchOS/02_Surfur_Polymer/저항 측정/PI_control
+ResearchOS/synthetic_polymer_project/measurement_data/control_sample
 figure_id = FigPI_CvS_Fits
 ```
 

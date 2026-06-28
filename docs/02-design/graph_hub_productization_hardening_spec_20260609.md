@@ -26,7 +26,7 @@ These must stay private unless explicitly reviewed:
 
 - real project configs and paths;
 - lab-specific HKS workflow notes;
-- `nature_surfur` and other project-derived style presets;
+- `internal_style_format` and other project-derived style presets;
 - tuned QA thresholds derived from unpublished work;
 - private agent workflow documents;
 - hosted runtime deployment details.
@@ -46,9 +46,9 @@ Each style pack has:
 Rules:
 
 - `figops.list_styles` must expose style pack metadata so agents know which styles are generic and which are private.
-- `nature_surfur` is internal because it is project-derived.
+- `internal_style_format` is internal because it is project-derived.
 - `baseline` profile is public-core.
-- `resistance_premium` is internal because it originated from resistance publication styling.
+- `internal_style_profile` is internal because it originated from resistance publication styling.
 
 ## Release Safety Check
 
@@ -63,7 +63,7 @@ The script must fail a public release if it sees:
 - all-rights-reserved `LICENSE`;
 - `NOTICE` saying no open source license is granted;
 - private or internal style packs;
-- known private path markers such as `02_Surfur_Polymer`, `PI_control`, or `저항 측정`;
+- known private path markers such as `synthetic_polymer_project`, `control_sample`, or `measurement_data`;
 - internal HKS documents;
 - real project identifiers in public docs.
 
@@ -74,7 +74,7 @@ This check is intentionally conservative. It is a release gate, not a normal dev
 Current gold smoke:
 
 - CSV graph render;
-- `02_Surfur_Polymer/저항 측정/PI_control` `FigPI_CvS_Fits` project figure render.
+- `synthetic_polymer_project/measurement_data/control_sample` `FigPI_CvS_Fits` project figure render.
 
 Gold targets:
 
@@ -98,7 +98,7 @@ Every user-facing MCP failure should include:
 
 - Create `themes/style_packs.py`.
 - Classify current target formats and profiles by release visibility.
-- Add tests that `nature_surfur` and `resistance_premium` are not public-core.
+- Add tests that `internal_style_format` and `internal_style_profile` are not public-core.
 - Expose `style_packs` from `figops.list_styles`.
 
 ### Task 2: Public Release Check
@@ -109,7 +109,7 @@ Every user-facing MCP failure should include:
 
 ### Task 3: Gold Smoke Expansion
 
-- Keep the real PI_control smoke as internal proof.
+- Keep the real control_sample smoke as internal proof.
 - Keep synthetic fixture smoke before any public release.
 - Keep multi-panel fixture smoke before any public release.
 

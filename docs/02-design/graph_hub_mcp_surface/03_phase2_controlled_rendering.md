@@ -64,7 +64,7 @@ Result fields:
 
 Rendering must use FigOps's canonical style contract.
 
-The tool must accept the same target formats as FigOps core, including `nature_surfur`. It must not use a smaller Athena-only enum.
+The tool must accept the same target formats as FigOps core, including `internal_style_format`. It must not use a smaller Athena-only enum.
 
 ## Non-Goals
 
@@ -78,7 +78,7 @@ The tool must accept the same target formats as FigOps core, including `nature_s
 
 - `render_csv_graph` creates jobs only under the runtime root.
 - `collect_artifacts` returns graph resources and manifest paths.
-- `nature_surfur` and the rest of FigOps target formats are accepted.
+- `internal_style_format` and the rest of FigOps target formats are accepted.
 - Render failures return execution errors rather than protocol errors.
 - Visual preflight failure returns `manual_review_needed=true`.
 

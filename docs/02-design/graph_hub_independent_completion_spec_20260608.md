@@ -126,7 +126,7 @@ FigOps owns the style library.
 
 Required style contract:
 
-- `target_format`: `nature`, `nature_surfur`, `science`, `ppt`, `default`, `acs`, `rsc`, `elsevier`, `wiley`, `cell`
+- `target_format`: `nature`, `internal_style_format`, `science`, `ppt`, `default`, `acs`, `rsc`, `elsevier`, `wiley`, `cell`
 - `profile`: `baseline` plus validated profile aliases from `themes/style_profiles.py`
 - `font_scale`
 - `output_format`: `png`, `pdf`, `svg`
@@ -145,7 +145,7 @@ Done means:
 - styles are defined centrally,
 - projects only select or override styles through config,
 - MCP style tools expose the same style set as FigOps core,
-- `nature_surfur` is first-class,
+- `internal_style_format` is first-class,
 - style drift between CLI, MCP, and agent docs is tested.
 
 ### 4. Render And Quality Gates
@@ -285,7 +285,7 @@ FigOps is not complete until real workflows pass.
 Required acceptance fixtures:
 
 - a tiny CSV fixture for deterministic MCP render,
-- one real research project using `nature_surfur`,
+- one real research project using `internal_style_format`,
 - one invalid project config that stays visible,
 - one project normalization dry-run,
 - one MCP direct-call workflow from server environment,
@@ -333,7 +333,7 @@ HKS/common must not contain:
 Recommended file layout:
 
 ```text
-docs/hks/
+docs/internal/protocols/
   00_agent_graph_workflow.md
   01_project_config_contract.md
   02_style_contract.md
@@ -355,7 +355,7 @@ Done means:
 
 - freeze this spec as the FigOps completion direction,
 - update the MCP surface index to point to this spec,
-- create `docs/hks/` common protocol files,
+- create `docs/internal/protocols/` common protocol files,
 - add tests that fail when style lists drift.
 
 ### Phase B: Calculation Check Expansion
@@ -401,13 +401,13 @@ Remaining acceptance risk:
 
 Local acceptance evidence, 2026-06-08:
 
-- valid `nature_surfur` project render passed for `PI_control` / `FigPI_CvS_Fits`;
+- valid `internal_style_format` project render passed for `control_sample` / `FigPI_CvS_Fits`;
 - render wrote under `~/Library/Caches/Graph_making_hub/mcp_project_jobs/real-pi-control-acceptance-20260608`;
 - source project file snapshot was unchanged before/after render;
 - snapshot contained no copied `raw/` files;
 - `collect_artifacts` returned `renderer_surface=figops.render_project_figure`;
 - stdio JSON-RPC direct-call to `figops_mcp_server.py` returned `status=ok` in dry-run mode;
-- invalid `nature_surfur` project stopped at `failure_stage=CONFIG` without creating a job root;
+- invalid `internal_style_format` project stopped at `failure_stage=CONFIG` without creating a job root;
 - after artifact-based font preflight, the valid render returned `status=ok` and `manual_review_needed=false`.
 
 Server acceptance evidence, 2026-06-08:

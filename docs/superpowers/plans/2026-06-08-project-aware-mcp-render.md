@@ -35,9 +35,9 @@ This is the final promotion blocker for using FigOps MCP as the default graph su
   - Add runtime-isolation, failure-taxonomy, provenance, and collect-artifacts tests for project-aware render.
 - Modify: `tests/test_mcp_read_only.py`
   - Assert `tools/list` includes `figops.render_project_figure` and schemas expose required fields.
-- Modify: `docs/hks/00_agent_graph_workflow.md`
+- Modify: `docs/internal/protocols/00_agent_graph_workflow.md`
   - Add direct project-render workflow step.
-- Modify: `docs/hks/05_mcp_tool_playbook.md`
+- Modify: `docs/internal/protocols/05_mcp_tool_playbook.md`
   - Add tool sequence for project-aware figure rendering.
 - Modify: `docs/02-design/graph_hub_independent_completion_spec_20260608.md`
   - Mark the project-aware render blocker resolved after implementation.
@@ -87,8 +87,8 @@ Output fields must include the standard MCP envelope plus:
 ```json
 {
   "job_id": "project-render-demo",
-  "project_id": "02_Surfur_Polymer__...",
-  "source_project_path": "research://02_Surfur_Polymer/...",
+  "project_id": "synthetic_polymer_project__...",
+  "source_project_path": "research://synthetic_polymer_project/...",
   "job_root": "runtime://mcp_project_jobs/project-render-demo",
   "snapshot_project_path": "runtime://mcp_project_jobs/project-render-demo/project",
   "selected_figure": {
@@ -290,7 +290,7 @@ PROJECT_RENDER_CONFIG = """
 project:
   name: "Project Render Demo"
 visual_style:
-  target_format: nature_surfur
+  target_format: internal_style_format
   profile: baseline
 figures:
   - id: FigA
@@ -1044,8 +1044,8 @@ for jobs_dir_name in ("mcp_jobs", "mcp_project_jobs"):
 ## Task 7: Docs And Prompts
 
 **Files:**
-- Modify: `docs/hks/00_agent_graph_workflow.md`
-- Modify: `docs/hks/05_mcp_tool_playbook.md`
+- Modify: `docs/internal/protocols/00_agent_graph_workflow.md`
+- Modify: `docs/internal/protocols/05_mcp_tool_playbook.md`
 - Modify: `docs/02-design/graph_hub_independent_completion_spec_20260608.md`
 - Modify: `hub_core/mcp_surface.py`
 - Modify: `tests/test_mcp_read_only.py`
@@ -1120,7 +1120,7 @@ if name == "render_project_figure":
 
 - [ ] **Step 3: Update HKS docs**
 
-In `docs/hks/00_agent_graph_workflow.md`, replace the render step block with:
+In `docs/internal/protocols/00_agent_graph_workflow.md`, replace the render step block with:
 
 ```markdown
 6. Call `figops.render_project_figure` for configured project figures.
@@ -1129,7 +1129,7 @@ In `docs/hks/00_agent_graph_workflow.md`, replace the render step block with:
 9. Inspect `manifest_path`, `status_path`, `failure_stage`, `resolution_hint`, `manual_review_needed`, `visual_preflight_status`, and `provenance`.
 ```
 
-In `docs/hks/05_mcp_tool_playbook.md`, add:
+In `docs/internal/protocols/05_mcp_tool_playbook.md`, add:
 
 ```markdown
 ## Project Figure Render
