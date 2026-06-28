@@ -67,9 +67,9 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | File | Lines |
 |---|---:|
 | `plotting/bridge_renderer.py` | 2144 |
-| `hub_core/data_contract_semantics.py` | 2099 |
 | `hub_core/config_parser.py` | 2025 |
 | `hub_core/geometry_diagnostics.py` | 1890 |
+| `hub_core/data_contract_semantics.py` | 1861 |
 | `hub_core/mcp/tools/render_csv.py` | 1670 |
 | `themes/journal_theme.py` | 1390 |
 | `hub_core/mcp/schemas.py` | 1151 |

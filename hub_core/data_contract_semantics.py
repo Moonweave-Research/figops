@@ -5,13 +5,19 @@ from pathlib import Path
 
 from .data_contract_semantic_registry import _MONOTONIC_MODES, SEMANTIC_CHECK_DEFINITIONS  # noqa: F401
 from .data_contract_semantic_units import (
+    check_axis_unit_constraint as _semantic_axis_unit_constraint,
+)
+from .data_contract_semantic_units import (
+    check_unit_coherence_constraint as _semantic_unit_coherence_constraint,
+)
+from .data_contract_semantic_units import (
     check_unit_compatibility as _semantic_unit_compatibility,
 )
 from .data_contract_semantic_units import (
-    format_unit_signature as _format_unit_signature,
+    format_unit_signature as _format_unit_signature,  # noqa: F401
 )
 from .data_contract_semantic_units import (
-    parse_unit_signature as _parse_unit_signature,
+    parse_unit_signature as _parse_unit_signature,  # noqa: F401
 )
 from .logging import get_logger
 
@@ -1655,172 +1661,16 @@ def _check_unit_coherence_constraint(
     csv_rel_path: str,
     source_config_path: str,
 ):
-    if not isinstance(raw_check, dict):
-        message = f"Column '{col}': unit_coherence must be a mapping"
-        _append_failed_calculation_check(
-            calculation_checks,
-            csv_rel_path=csv_rel_path,
-            name="unit_coherence",
-            target=col,
-            source_config_path=source_config_path,
-            message=message,
-        )
-        return [message], []
-
-    expected_unit = raw_check.get("expected_unit")
-    terms = raw_check.get("terms")
-    if not isinstance(expected_unit, str) or not expected_unit.strip():
-        message = f"Column '{col}': unit_coherence.expected_unit must be a non-empty string"
-        _append_failed_calculation_check(
-            calculation_checks,
-            csv_rel_path=csv_rel_path,
-            name="unit_coherence",
-            target=col,
-            source_config_path=source_config_path,
-            message=message,
-        )
-        return [message], []
-    if not isinstance(terms, list) or not terms:
-        message = f"Column '{col}': unit_coherence.terms must be a non-empty list"
-        _append_failed_calculation_check(
-            calculation_checks,
-            csv_rel_path=csv_rel_path,
-            name="unit_coherence",
-            target=col,
-            source_config_path=source_config_path,
-            message=message,
-        )
-        return [message], []
-
-    combined: dict[str, int] = {}
-    term_payloads = []
-    for idx, term in enumerate(terms, 1):
-        if not isinstance(term, dict):
-            message = f"Column '{col}': unit_coherence.terms[{idx}] must be a mapping"
-            _append_failed_calculation_check(
-                calculation_checks,
-                csv_rel_path=csv_rel_path,
-                name="unit_coherence",
-                target=col,
-                source_config_path=source_config_path,
-                message=message,
-            )
-            return [message], []
-        term_column = term.get("column")
-        term_unit = term.get("unit")
-        exponent = term.get("exponent", 1)
-        if not isinstance(term_column, str) or not term_column.strip() or term_column.strip() not in stripped_to_actual:
-            message = f"Column '{col}': unit_coherence term column not found: {term_column!r}"
-            _append_failed_calculation_check(
-                calculation_checks,
-                csv_rel_path=csv_rel_path,
-                name="unit_coherence",
-                target=col,
-                source_config_path=source_config_path,
-                message=message,
-            )
-            return [message], []
-        if not isinstance(term_unit, str) or not term_unit.strip():
-            message = f"Column '{col}': unit_coherence term unit must be a non-empty string"
-            _append_failed_calculation_check(
-                calculation_checks,
-                csv_rel_path=csv_rel_path,
-                name="unit_coherence",
-                target=col,
-                source_config_path=source_config_path,
-                message=message,
-            )
-            return [message], []
-        if isinstance(exponent, bool) or not isinstance(exponent, int) or exponent == 0:
-            message = f"Column '{col}': unit_coherence term exponent must be a non-zero integer"
-            _append_failed_calculation_check(
-                calculation_checks,
-                csv_rel_path=csv_rel_path,
-                name="unit_coherence",
-                target=col,
-                source_config_path=source_config_path,
-                message=message,
-            )
-            return [message], []
-        try:
-            term_signature = _parse_unit_signature(term_unit)
-        except ValueError as exc:
-            message = f"Column '{col}': unit_coherence term unit parse failed: {exc}"
-            _append_failed_calculation_check(
-                calculation_checks,
-                csv_rel_path=csv_rel_path,
-                name="unit_coherence",
-                target=col,
-                source_config_path=source_config_path,
-                message=message,
-            )
-            return [message], []
-        for unit, power in term_signature.items():
-            combined[unit] = combined.get(unit, 0) + power * exponent
-            if combined[unit] == 0:
-                del combined[unit]
-        term_payloads.append({"column": term_column.strip(), "unit": term_unit.strip(), "exponent": exponent})
-
-    try:
-        expected_signature = _parse_unit_signature(expected_unit)
-    except ValueError as exc:
-        message = f"Column '{col}': unit_coherence expected_unit parse failed: {exc}"
-        _append_failed_calculation_check(
-            calculation_checks,
-            csv_rel_path=csv_rel_path,
-            name="unit_coherence",
-            target=col,
-            source_config_path=source_config_path,
-            message=message,
-        )
-        return [message], []
-
-    observed = _format_unit_signature(combined)
-    expected = _format_unit_signature(expected_signature)
-    if combined == expected_signature:
-        _append_calculation_check(
-            calculation_checks,
-            csv_rel_path=csv_rel_path,
-            name="unit_coherence",
-            target=col,
-            group_by=[],
-            source_config_path=source_config_path,
-            status="passed",
-            manual_review_needed=False,
-            message=f"Related units combine to expected unit '{expected}'",
-            violations=[],
-        )
-        return [], []
-
-    message = f"Column '{col}': unit_coherence expected '{expected}', got '{observed}'"
-    violation = {
-        "column": col,
-        "value": observed,
-        "expected": expected,
-        "terms": term_payloads,
-        "violation_type": "unit_coherence",
-    }
-    _append_calculation_check(
-        calculation_checks,
+    return _semantic_unit_coherence_constraint(
+        col,
+        raw_check,
+        stripped_to_actual,
+        calculation_checks=calculation_checks,
         csv_rel_path=csv_rel_path,
-        name="unit_coherence",
-        target=col,
-        group_by=[],
         source_config_path=source_config_path,
-        status="failed",
-        manual_review_needed=False,
-        message=message,
-        violations=[violation],
+        append_calculation_check=_append_calculation_check,
+        append_failed_calculation_check=_append_failed_calculation_check,
     )
-    return [message], [
-        {
-            "row": "*",
-            "column": col,
-            "value": observed,
-            "expected": expected,
-            "violation_type": "unit_coherence",
-        }
-    ]
 
 
 def _check_axis_unit_constraint(
@@ -1832,106 +1682,18 @@ def _check_axis_unit_constraint(
     source_config_path: str,
     unit_checker=None,
 ):
-    if not isinstance(raw_check, dict):
-        message = f"Column '{col}': axis_unit must be a mapping"
-        _append_failed_calculation_check(
-            calculation_checks,
-            csv_rel_path=csv_rel_path,
-            name="axis_unit",
-            target=col,
-            source_config_path=source_config_path,
-            message=message,
-        )
-        return [message], []
-
-    data_unit = raw_check.get("data_unit")
-    display_unit = raw_check.get("display_unit")
-    if (
-        not isinstance(data_unit, str)
-        or not data_unit.strip()
-        or not isinstance(display_unit, str)
-        or not display_unit.strip()
-    ):
-        message = f"Column '{col}': axis_unit data_unit and display_unit must be non-empty strings"
-        _append_failed_calculation_check(
-            calculation_checks,
-            csv_rel_path=csv_rel_path,
-            name="axis_unit",
-            target=col,
-            source_config_path=source_config_path,
-            message=message,
-        )
-        return [message], []
-
     checker = unit_checker or _check_unit_compatibility
-    result = checker(col, data_unit.strip(), display_unit.strip())
-    if result == "incompatible":
-        message = f"Column '{col}': axis_unit '{data_unit}' is incompatible with display unit '{display_unit}'"
-        _append_calculation_check(
-            calculation_checks,
-            csv_rel_path=csv_rel_path,
-            name="axis_unit",
-            target=col,
-            group_by=[],
-            source_config_path=source_config_path,
-            status="failed",
-            manual_review_needed=False,
-            message=message,
-            violations=[
-                {
-                    "column": col,
-                    "value": data_unit,
-                    "expected": display_unit,
-                    "violation_type": "axis_unit_incompatible",
-                }
-            ],
-        )
-        return [message], [
-            {
-                "row": "*",
-                "column": col,
-                "value": data_unit,
-                "expected": display_unit,
-                "violation_type": "axis_unit_incompatible",
-            }
-        ]
-
-    if result == "skip":
-        message = f"Column '{col}': axis_unit check skipped; manual review required"
-        _append_calculation_check(
-            calculation_checks,
-            csv_rel_path=csv_rel_path,
-            name="axis_unit",
-            target=col,
-            group_by=[],
-            source_config_path=source_config_path,
-            status="skipped",
-            manual_review_needed=True,
-            message=message,
-            violations=[],
-        )
-        return [], []
-
-    if isinstance(result, tuple):
-        factor, from_unit, to_unit = result
-        message = f"Axis unit '{from_unit}' is compatible with '{to_unit}' (x{factor})"
-        violations = [{"conversion_factor": _json_safe_value(factor), "from_unit": from_unit, "to_unit": to_unit}]
-    else:
-        message = f"Axis unit '{data_unit}' matches display unit '{display_unit}'"
-        violations = []
-    _append_calculation_check(
-        calculation_checks,
+    return _semantic_axis_unit_constraint(
+        col,
+        raw_check,
+        calculation_checks=calculation_checks,
         csv_rel_path=csv_rel_path,
-        name="axis_unit",
-        target=col,
-        group_by=[],
         source_config_path=source_config_path,
-        status="passed",
-        manual_review_needed=False,
-        message=message,
-        violations=violations,
+        unit_checker=checker,
+        append_calculation_check=_append_calculation_check,
+        append_failed_calculation_check=_append_failed_calculation_check,
+        json_safe_value=_json_safe_value,
     )
-    return [], []
 
 
 def _check_monotonic_constraint(series, col, mode: str, max_row_detail: int):
