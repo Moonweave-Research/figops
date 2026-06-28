@@ -43,6 +43,7 @@ Current structured status:
 
 ```bash
 python scripts/public_core_inventory.py --status --format markdown
+python scripts/public_core_inventory.py --status --format markdown --output docs/packaging/public-release-status.md
 ```
 
 Expected current shape: public package distribution is allowed, repository
@@ -94,6 +95,7 @@ for repository safety.
 git ls-files -ci --exclude-standard
 gitleaks detect --source . --redact --report-format json
 python scripts/public_core_inventory.py --status --format markdown
+python scripts/public_core_inventory.py --status --format markdown --output docs/packaging/public-release-status.md
 python scripts/public_core_inventory.py --status --include-blockers
 python scripts/check_public_release.py
 python scripts/public_package_surface.py

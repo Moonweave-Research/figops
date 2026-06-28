@@ -202,6 +202,12 @@ def format_public_core_status_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def format_public_core_payload(payload: dict[str, Any], output_format: str) -> str:
+    if output_format == "markdown":
+        return format_public_core_status_markdown(payload)
+    return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
 def public_core_status(root: Path = REPO_ROOT) -> dict[str, Any]:
     return build_public_core_status(root)
 
@@ -265,6 +271,7 @@ def main(argv: list[str] | None = None) -> int:
         default="json",
         help="Output format. Markdown is available for --status decision reports.",
     )
+    parser.add_argument("--output", type=Path, help="Optional path to write the rendered report")
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
@@ -275,10 +282,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.status
         else load_public_core_inventory(root)
     )
-    if args.format == "markdown":
-        print(format_public_core_status_markdown(payload), end="")
+    rendered = format_public_core_payload(payload, args.format)
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(rendered, encoding="utf-8")
     else:
-        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        print(rendered, end="")
     if args.status:
         return 0 if payload["inventory_valid"] else 1
     errors = validate_public_core_inventory(payload)

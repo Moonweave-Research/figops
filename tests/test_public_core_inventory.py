@@ -5,6 +5,7 @@ from scripts.check_public_release import PRIVATE_MARKERS
 from scripts.public_core_inventory import (
     blocker_family,
     build_public_core_status,
+    format_public_core_payload,
     format_public_core_status_markdown,
     load_public_core_inventory,
     main,
@@ -140,6 +141,13 @@ def test_format_public_core_status_markdown_summarizes_decision_state():
     assert "| private_marker | 3 | requires_decision | yes | Sanitize or relocate. |" in markdown
 
 
+def test_format_public_core_payload_keeps_json_as_default():
+    rendered = format_public_core_payload({"ok": True}, "json")
+
+    assert rendered.endswith("\n")
+    assert json.loads(rendered) == {"ok": True}
+
+
 def test_public_core_inventory_markdown_cli_requires_status(capsys):
     exit_code = main(["--status", "--format", "markdown"])
 
@@ -147,6 +155,29 @@ def test_public_core_inventory_markdown_cli_requires_status(capsys):
     assert exit_code == 0
     assert "# FigOps Public Release Status" in captured.out
     assert "```" not in captured.out
+
+
+def test_public_core_inventory_output_writes_markdown_report(tmp_path: Path, capsys):
+    report_path = tmp_path / "reports" / "public-release-status.md"
+
+    exit_code = main(["--status", "--format", "markdown", "--output", str(report_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out == ""
+    assert "# FigOps Public Release Status" in report_path.read_text(encoding="utf-8")
+
+
+def test_public_core_inventory_output_writes_json_report(tmp_path: Path, capsys):
+    report_path = tmp_path / "reports" / "public-release-status.json"
+
+    exit_code = main(["--status", "--output", str(report_path)])
+
+    captured = capsys.readouterr()
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert captured.out == ""
+    assert payload["schema_version"] == "public_core_inventory/1"
 
 
 def test_public_core_status_requires_approved_current_status_for_pypi_allowed(tmp_path: Path):

@@ -70,6 +70,7 @@ Use the clearance checklist and structured blocker report before making the full
 
 ```bash
 python scripts/public_core_inventory.py --status --format markdown
+python scripts/public_core_inventory.py --status --format markdown --output docs/packaging/public-release-status.md
 python scripts/public_core_inventory.py --status --include-blockers
 ```
 

@@ -43,6 +43,7 @@ Run these before upload approval:
 
 ```bash
 python scripts/public_core_inventory.py --status --format markdown
+python scripts/public_core_inventory.py --status --format markdown --output docs/packaging/public-release-status.md
 python scripts/public_core_inventory.py --status --include-blockers
 python scripts/check_public_release.py
 uv build
