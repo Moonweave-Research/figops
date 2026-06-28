@@ -16,7 +16,7 @@ Observed prior art inside the repo:
 - Renderer capability and annotation drawing live in `plotting/bridge_renderer.py`.
 - Geometry diagnostics live in `hub_core/geometry_diagnostics.py`.
 
-Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#205 and the architecture/data-contract I/O extraction staged on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, Dense Point-Label Polish v1, Contrast Diagnostics v1, Tick Readability v1, Multipanel Layout v1, linear fit/trend overlay styling, shared multipanel legend placement, and the first data-contract decomposition slice are shipped or staged; the next roadmap must continue architecture/data-contract decomposition rather than re-solving completed polish slices.
+Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#206 and the semantic-helper extraction staged on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, Dense Point-Label Polish v1, Contrast Diagnostics v1, Tick Readability v1, Multipanel Layout v1, linear fit/trend overlay styling, shared multipanel legend placement, and the first two data-contract decomposition slices are shipped or staged; the next roadmap must continue architecture/data-contract orchestration decomposition rather than re-solving completed polish slices.
 
 ## 2. Product position and non-goals
 
@@ -200,7 +200,7 @@ Completed PRs:
 
 Recommended next PR:
 
-1. Architecture/data-contract debt as a separate maintenance track.
+1. Data-contract orchestration decomposition v1 as the next maintenance track.
 2. Refactor only where tests preserve completed MCP schema -> normalization -> renderer behavior.
 3. Keep visual-polish controls stable unless a regression is proven.
 
