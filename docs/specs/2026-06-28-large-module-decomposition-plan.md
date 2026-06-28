@@ -73,9 +73,13 @@ Progress:
 - 2026-06-28: axis scale/limit validation, axis/tick application, and tick
   label truncation helpers moved to `plotting/renderers/axes.py`;
   `plotting.bridge_renderer` keeps private compatibility aliases.
-- After this extraction, `hub_core/data_contract_semantics.py` is the largest
-  file in the architecture inventory. Continue bridge extraction only with
-  tightly scoped visual witness tests; otherwise move to D2.
+- 2026-06-28: single-axes legend normalization, placement, collision
+  avoidance, and application helpers moved to `plotting/renderers/legend.py`;
+  `plotting.bridge_renderer` keeps private compatibility aliases.
+- After this extraction, `hub_core/config_parser.py` is the largest file in
+  the architecture inventory. Continue bridge extraction only with tightly
+  scoped visual witness tests; otherwise move to D2/D3 based on current
+  inventory.
 
 Compatibility:
 
