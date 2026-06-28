@@ -14,8 +14,8 @@ Measured on 2026-06-28 with the line-count inventory documented in
 
 | File | Lines | Primary reason to split |
 | --- | ---: | --- |
-| `plotting/bridge_renderer.py` | 2350 | Multipanel layout, overlay/statistical annotation, legend placement, diagnostics, and export behavior still share one file. |
 | `hub_core/data_contract_semantics.py` | 2282 | Many independent semantic checks and unit/statistical helpers share one module. |
+| `plotting/bridge_renderer.py` | 2144 | Multipanel layout, overlay/statistical annotation, legend placement, diagnostics, and export behavior still share one file. |
 | `hub_core/config_parser.py` | 2025 | Config loading, migration, validation, role/status policy, presets, and listing helpers are coupled. |
 | `hub_core/geometry_diagnostics.py` | 1890 | Detection primitives, overlap checks, scoring, and report shaping are co-located. |
 | `hub_core/mcp/tools/render_csv.py` | 1670 | CSV render argument parsing, normalization, execution, envelope shaping, and multipanel behavior share one tool mixin. |
@@ -70,6 +70,12 @@ Progress:
 - 2026-06-28: point-label normalization, candidate selection, drawing, and
   skip-report helpers moved to `plotting/renderers/labels.py`;
   `plotting.bridge_renderer` keeps private compatibility aliases.
+- 2026-06-28: axis scale/limit validation, axis/tick application, and tick
+  label truncation helpers moved to `plotting/renderers/axes.py`;
+  `plotting.bridge_renderer` keeps private compatibility aliases.
+- After this extraction, `hub_core/data_contract_semantics.py` is the largest
+  file in the architecture inventory. Continue bridge extraction only with
+  tightly scoped visual witness tests; otherwise move to D2.
 
 Compatibility:
 
