@@ -174,10 +174,12 @@ a regression is proven.
 
 ### R1 - Data-contract decomposition
 
-`hub_core/data_contract.py` is the largest remaining module at 2600 lines
-(`wc -l`, 2026-06-21). A future decomposition should split loading, schema
-validation, semantic validation, calculation checks, and reporting only when a
-small behavior-preserving sequence can keep the full suite green.
+`hub_core/data_contract.py` has started a behavior-preserving decomposition: data
+loading, supported-format checks, optional I/O dependency detection, contract path
+collection, and prefetcher resolution now live in `hub_core/data_contract_io.py`
+while `hub_core.data_contract` keeps compatibility re-exports. The next safe
+step is semantic constraint decomposition, keeping public imports and the full
+data-contract test suite green.
 
 ### R2 - Architecture guardrails
 

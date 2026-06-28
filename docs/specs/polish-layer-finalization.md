@@ -16,7 +16,7 @@ Observed prior art inside the repo:
 - Renderer capability and annotation drawing live in `plotting/bridge_renderer.py`.
 - Geometry diagnostics live in `hub_core/geometry_diagnostics.py`.
 
-Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#204 and the shared legend polish slice staged on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, Dense Point-Label Polish v1, Contrast Diagnostics v1, Tick Readability v1, Multipanel Layout v1, linear fit/trend overlay styling, and shared multipanel legend placement are shipped or staged; the next roadmap must therefore focus on architecture/data-contract debt rather than re-solving completed slices.
+Working interpretation: FigOps should preserve deterministic journal-safe rendering while exposing more explicit, typed, and testable polish controls. As of PRs #196-#205 and the architecture/data-contract I/O extraction staged on this branch, typed complex MCP schemas, series visual hierarchy controls, Smart Callout v1, Legend/Axis Polish v1, Dense Point-Label Polish v1, Contrast Diagnostics v1, Tick Readability v1, Multipanel Layout v1, linear fit/trend overlay styling, shared multipanel legend placement, and the first data-contract decomposition slice are shipped or staged; the next roadmap must continue architecture/data-contract decomposition rather than re-solving completed polish slices.
 
 ## 2. Product position and non-goals
 
