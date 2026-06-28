@@ -174,12 +174,15 @@ a regression is proven.
 
 ### R1 - Data-contract decomposition
 
-`hub_core/data_contract.py` has started a behavior-preserving decomposition: data
+`hub_core/data_contract.py` has started a behavior-preserving decomposition. Data
 loading, supported-format checks, optional I/O dependency detection, contract path
-collection, and prefetcher resolution now live in `hub_core/data_contract_io.py`
-while `hub_core.data_contract` keeps compatibility re-exports. The next safe
-step is semantic constraint decomposition, keeping public imports and the full
-data-contract test suite green.
+collection, and prefetcher resolution live in `hub_core/data_contract_io.py`.
+Semantic-check definitions, semantic validators, calculation sidecar helpers,
+statistical quality checks, and unit helpers live in
+`hub_core/data_contract_semantics.py`. `hub_core.data_contract` keeps
+compatibility shims for existing private imports and monkeypatch surfaces. The
+next safe step is validation orchestration decomposition, keeping public imports
+and the full data-contract test suite green.
 
 ### R2 - Architecture guardrails
 

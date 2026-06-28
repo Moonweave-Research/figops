@@ -880,7 +880,7 @@
       "completion_check": "targeted schema/normalization/renderer tests pass and render or diagnostics smoke proves the controls are not schema-only"
     }
   },
-  "current_status": "polish waves 1-9 plus architecture/data-contract I/O extraction completed; next data-contract slice is semantic constraint decomposition",
+  "current_status": "polish waves 1-9 plus data-contract I/O and semantic-helper decomposition completed; next data-contract slice is validation orchestration decomposition",
   "completed_slices": [
     {
       "id": "typed-mcp-style-schemas",
@@ -933,13 +933,17 @@
     {
       "id": "architecture-data-contract-debt-v1",
       "status": "completed"
+    },
+    {
+      "id": "semantic-constraint-decomposition-v1",
+      "status": "completed"
     }
   ],
   "next_slices": [
     {
-      "id": "semantic-constraint-decomposition-v1",
+      "id": "data-contract-orchestration-decomposition-v1",
       "priority": 1
     }
   ],
-  "selected_next_slice": "semantic-constraint-decomposition-v1"
+  "selected_next_slice": "data-contract-orchestration-decomposition-v1"
 }
