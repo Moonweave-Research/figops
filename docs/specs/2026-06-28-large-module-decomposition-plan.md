@@ -14,9 +14,9 @@ Measured on 2026-06-28 with the line-count inventory documented in
 
 | File | Lines | Primary reason to split |
 | --- | ---: | --- |
-| `hub_core/config_parser.py` | 1858 | Config loading, migration, validation, role/status policy, style contracts, and listing helpers are coupled. |
 | `plotting/bridge_renderer.py` | 1833 | Multipanel layout, overlay/statistical annotation, diagnostics, and export behavior still share one file. |
 | `hub_core/geometry_diagnostics.py` | 1828 | Detection primitives, overlap checks, scoring, and report shaping are co-located. |
+| `hub_core/config_parser.py` | 1775 | Config validation, language/data policies, research-ops checks, and listing helpers are coupled. |
 | `hub_core/data_contract_semantics.py` | 1758 | Several independent semantic check families and grouped/statistical helpers still share one module. |
 | `hub_core/mcp/tools/render_csv.py` | 1670 | CSV render argument parsing, normalization, execution, envelope shaping, and multipanel behavior share one tool mixin. |
 
@@ -152,6 +152,9 @@ Progress:
 - 2026-06-28: style target-format, preset-key, font-strategy, and profile
   registry compatibility exports moved to `hub_core/config_style.py`;
   `hub_core.config_parser` keeps existing compatibility exports.
+- 2026-06-28: schema-version migration and duplicate-key-safe YAML loading
+  moved to `hub_core/config_schema.py`; `hub_core.config_parser` keeps existing
+  compatibility exports.
 
 Compatibility:
 

@@ -2,10 +2,10 @@ import hashlib
 import math
 import os
 import unicodedata
-from copy import deepcopy
 
 import yaml
 
+from . import config_schema as _config_schema
 from .config_style import ALLOWED_FONT_STRATEGIES as ALLOWED_FONT_STRATEGIES
 from .config_style import ALLOWED_PRESET_KEYS as ALLOWED_PRESET_KEYS
 from .config_style import ALLOWED_TARGET_FORMATS as ALLOWED_TARGET_FORMATS
@@ -31,8 +31,20 @@ from .project_roles import project_modules as project_modules
 from .project_roles import project_role as project_role
 from .project_roles import project_status as project_status
 
-CURRENT_CONFIG_SCHEMA_VERSION = "1.0"
-SUPPORTED_CONFIG_SCHEMA_VERSIONS = ("0.9", CURRENT_CONFIG_SCHEMA_VERSION)
+CURRENT_CONFIG_SCHEMA_VERSION = _config_schema.CURRENT_CONFIG_SCHEMA_VERSION
+SUPPORTED_CONFIG_SCHEMA_VERSIONS = _config_schema.SUPPORTED_CONFIG_SCHEMA_VERSIONS
+ConfigMigrationError = _config_schema.ConfigMigrationError
+ConfigVersionTooNewError = _config_schema.ConfigVersionTooNewError
+_UniqueKeySafeLoader = _config_schema.UniqueKeySafeLoader
+_construct_mapping_no_duplicates = _config_schema.construct_mapping_no_duplicates
+_load_yaml_with_unique_keys = _config_schema.load_yaml_with_unique_keys
+load_yaml_with_unique_keys = _config_schema.load_yaml_with_unique_keys
+_schema_version_key = _config_schema.schema_version_key
+_schema_version = _config_schema.schema_version
+_migrate_0_9_to_1_0 = _config_schema.migrate_0_9_to_1_0
+_CONFIG_MIGRATIONS = _config_schema.CONFIG_MIGRATIONS
+migrate_config = _config_schema.migrate_config
+
 ALLOWED_ANALYSIS_POLICY_LANGS = {"r"}
 ALLOWED_PLOT_POLICY_LANGS = {"python"}
 ALLOWED_OUTPUT_FORMATS = {"png", "pdf", "svg"}
@@ -48,14 +60,6 @@ CONFIG_FILE_CANDIDATES = (
 logger = get_logger(__name__)
 
 
-class ConfigMigrationError(ValueError):
-    """Raised when a config schema cannot be migrated by this runtime."""
-
-
-class ConfigVersionTooNewError(ConfigMigrationError):
-    """Raised when a config declares a schema newer than this runtime."""
-
-
 def normalize_lang(lang):
     if lang is None:
         return ""
@@ -63,93 +67,6 @@ def normalize_lang(lang):
     if key == "py":
         return "python"
     return key
-
-
-class _UniqueKeySafeLoader(yaml.SafeLoader):
-    pass
-
-
-def _construct_mapping_no_duplicates(loader, node, deep=False):
-    loader.flatten_mapping(node)
-    mapping = {}
-    for key_node, value_node in node.value:
-        key = loader.construct_object(key_node, deep=deep)
-        if key in mapping:
-            raise yaml.YAMLError(f"Duplicate key '{key}' at line {key_node.start_mark.line + 1}")
-        mapping[key] = loader.construct_object(value_node, deep=deep)
-    return mapping
-
-
-_UniqueKeySafeLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-    _construct_mapping_no_duplicates,
-)
-
-
-def _load_yaml_with_unique_keys(raw_text: str):
-    return yaml.load(raw_text, Loader=_UniqueKeySafeLoader)
-
-
-def load_yaml_with_unique_keys(raw_text: str):
-    return _load_yaml_with_unique_keys(raw_text)
-
-
-def _schema_version_key(version: str) -> tuple[int, ...]:
-    try:
-        return tuple(int(part) for part in str(version).split("."))
-    except ValueError as exc:
-        raise ConfigMigrationError(f"schema_version '{version}' must use numeric dot-separated segments.") from exc
-
-
-def _schema_version(config: dict) -> str:
-    raw_version = config.get("schema_version", CURRENT_CONFIG_SCHEMA_VERSION)
-    if raw_version is None:
-        return CURRENT_CONFIG_SCHEMA_VERSION
-    return str(raw_version)
-
-
-def _migrate_0_9_to_1_0(config: dict) -> dict:
-    migrated = deepcopy(config)
-    migrated["schema_version"] = CURRENT_CONFIG_SCHEMA_VERSION
-    return migrated
-
-
-_CONFIG_MIGRATIONS = {
-    "0.9": _migrate_0_9_to_1_0,
-}
-
-
-def migrate_config(config):
-    """Return a config migrated to the current schema version."""
-    if not isinstance(config, dict):
-        return config
-
-    migrated = deepcopy(config)
-    version = _schema_version(migrated)
-    current_key = _schema_version_key(CURRENT_CONFIG_SCHEMA_VERSION)
-
-    if _schema_version_key(version) > current_key:
-        raise ConfigVersionTooNewError(
-            f"project_config.yaml schema_version '{version}' is newer than this FigOps runtime supports "
-            f"('{CURRENT_CONFIG_SCHEMA_VERSION}'). Upgrade FigOps before loading this config."
-        )
-
-    while version != CURRENT_CONFIG_SCHEMA_VERSION:
-        migration = _CONFIG_MIGRATIONS.get(version)
-        if migration is None:
-            supported = ", ".join(SUPPORTED_CONFIG_SCHEMA_VERSIONS)
-            raise ConfigMigrationError(
-                f"project_config.yaml schema_version '{version}' is not supported by this FigOps runtime. "
-                f"Supported versions: {supported}."
-            )
-        migrated = migration(migrated)
-        next_version = _schema_version(migrated)
-        if next_version == version:
-            raise ConfigMigrationError(f"Config migration for schema_version '{version}' did not advance.")
-        version = next_version
-
-    migrated["schema_version"] = CURRENT_CONFIG_SCHEMA_VERSION
-    return migrated
 
 
 KNOWN_TOP_LEVEL_CONFIG_KEYS = {

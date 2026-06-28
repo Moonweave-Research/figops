@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from hub_core import config_parser, config_schema
 from hub_core.config_parser import (
     CURRENT_CONFIG_SCHEMA_VERSION,
     SUPPORTED_CONFIG_SCHEMA_VERSIONS,
@@ -15,6 +16,18 @@ from hub_core.config_parser import (
     parse_sweep_config,
     validate_config,
 )
+
+
+def test_config_parser_keeps_schema_compatibility_exports():
+    assert config_parser.CURRENT_CONFIG_SCHEMA_VERSION is config_schema.CURRENT_CONFIG_SCHEMA_VERSION
+    assert config_parser.SUPPORTED_CONFIG_SCHEMA_VERSIONS is config_schema.SUPPORTED_CONFIG_SCHEMA_VERSIONS
+    assert config_parser.ConfigMigrationError is config_schema.ConfigMigrationError
+    assert config_parser.ConfigVersionTooNewError is config_schema.ConfigVersionTooNewError
+    assert config_parser._UniqueKeySafeLoader is config_schema.UniqueKeySafeLoader
+    assert config_parser._construct_mapping_no_duplicates is config_schema.construct_mapping_no_duplicates
+    assert config_parser._load_yaml_with_unique_keys is config_schema.load_yaml_with_unique_keys
+    assert config_parser.load_yaml_with_unique_keys is config_schema.load_yaml_with_unique_keys
+    assert config_parser.migrate_config is config_schema.migrate_config
 
 
 class TestUniqueKeyConfigLoader(unittest.TestCase):

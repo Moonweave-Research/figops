@@ -180,16 +180,16 @@ a regression is proven.
 extracted. Data loading, supported-format checks, optional I/O dependency
 detection, contract path collection, and prefetcher resolution live in
 `hub_core/data_contract_io.py`. Semantic-check definitions, semantic validators,
-calculation sidecar helpers, statistical quality checks, and unit helpers live
-in `hub_core/data_contract_semantics.py`. `hub_core.data_contract` keeps
-compatibility shims for existing private imports and monkeypatch surfaces.
+calculation sidecar helpers, statistical quality checks, unit helpers, and
+ordering helpers live in focused semantic modules. `hub_core.data_contract`
+keeps compatibility shims for existing private imports and monkeypatch surfaces.
 
 The next safe decomposition track should target the current hotspots:
 
 - `plotting/bridge_renderer.py` (first wave complete: box/violin distribution renderers moved to `plotting/renderers/distribution.py`, heatmap moved to `plotting/renderers/heatmap.py`, bar renderer and aggregate helpers moved to `plotting/renderers/bar.py`, shared renderer helpers moved to `plotting/renderers/common.py`, XY renderer moved to `plotting/renderers/xy.py`, broken-axis renderer moved to `plotting/renderers/broken_axis.py`, facet renderer moved to `plotting/renderers/facet.py`)
-- `hub_core/data_contract_semantics.py`
-- `hub_core/config_parser.py`
 - `hub_core/geometry_diagnostics.py`
+- `hub_core/config_parser.py`
+- `hub_core/data_contract_semantics.py`
 - `hub_core/mcp/tools/render_csv.py`
 
 Each extraction should be behavior-preserving, keep public imports compatible,
