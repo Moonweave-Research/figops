@@ -11,6 +11,8 @@ from hub_core.config_parser import validate_config
 from hub_core.mcp import GraphHubMCPServer
 from hub_core.mcp.schemas import list_tool_definitions
 from tests._symlink import symlink_or_skip
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
+from themes.style_profiles import INTERNAL_RESISTANCE_PROFILE
 
 
 def _snapshot_files(root: Path) -> dict[str, tuple[int, int]]:
@@ -24,6 +26,24 @@ def _snapshot_files(root: Path) -> dict[str, tuple[int, int]]:
             stat = path.stat()
             snapshot[path.relative_to(root).as_posix()] = (stat.st_size, stat.st_mtime_ns)
     return snapshot
+
+
+def _legacy_style_config() -> str:
+    return f"""
+project: {{name: LegacyGraph}}
+visual_style:
+  target_format: {INTERNAL_STYLE_TARGET_FORMAT}
+  font_scale: 1.2
+  profile: {INTERNAL_RESISTANCE_PROFILE}
+presets:
+  custom_svg:
+    target_format: science
+    output_format: svg
+figures:
+  - id: FigLegacy
+    output: figure.png
+    preset: custom_svg
+"""
 
 
 class ProjectNormalizationMCPTest(unittest.TestCase):
@@ -64,7 +84,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                     {
                         "project_name": "New Project",
                         "project_root": str(project_root),
-                        "target_format": "nature_surfur",
+                        "target_format": INTERNAL_STYLE_TARGET_FORMAT,
                         "dry_run": True,
                     },
                 )
@@ -90,7 +110,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 "archive",
             ):
                 self.assertIn(required_dir, result["planned_paths"])
-            self.assertEqual(result["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(result["style_summary"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
             self.assertEqual(result["manifest"]["operation"], "scaffold_project")
 
     def test_scaffold_project_surfur_conventions_preserve_researchos_reasons(self):
@@ -376,24 +396,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             (project / "summary.csv").write_text("x,y\n1,2\n", encoding="utf-8")
             (project / "figure.png").write_bytes(b"fake")
             (project / "notes.md").write_text("# Notes\n", encoding="utf-8")
-            (project / "project_config.yaml").write_text(
-                """
-project: {name: LegacyGraph}
-visual_style:
-  target_format: nature_surfur
-  font_scale: 1.2
-  profile: resistance_premium
-presets:
-  custom_svg:
-    target_format: science
-    output_format: svg
-figures:
-  - id: FigLegacy
-    output: figure.png
-    preset: custom_svg
-""",
-                encoding="utf-8",
-            )
+            (project / "project_config.yaml").write_text(_legacy_style_config(), encoding="utf-8")
             before = _snapshot_files(project)
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
@@ -412,7 +415,7 @@ figures:
             self.assertIn("raw/summary.csv", destinations)
             self.assertIn("results/figures/figure.png", destinations)
             self.assertIn("docs/notes.md", destinations)
-            self.assertEqual(result["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(result["style_summary"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
             self.assertIn("custom_svg", result["style_summary"]["presets"])
             self.assertFalse(result["style_summary"]["style_update_applied"])
 
@@ -467,24 +470,7 @@ figures:
             project = Path(tmpdir) / "LegacyGraph"
             scripts = project / "scripts"
             scripts.mkdir(parents=True)
-            (scripts / "project_config.yaml").write_text(
-                """
-project: {name: LegacyGraph}
-visual_style:
-  target_format: nature_surfur
-  font_scale: 1.2
-  profile: resistance_premium
-presets:
-  custom_svg:
-    target_format: science
-    output_format: svg
-figures:
-  - id: FigLegacy
-    output: figure.png
-    preset: custom_svg
-""",
-                encoding="utf-8",
-            )
+            (scripts / "project_config.yaml").write_text(_legacy_style_config(), encoding="utf-8")
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             planned = self._call(
@@ -498,12 +484,12 @@ figures:
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
-            self.assertEqual(planned["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(planned["style_summary"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
             self.assertIn("custom_svg", planned["style_summary"]["presets"])
             self.assertEqual(applied["status"], "warning")
             config = yaml.safe_load((project / "project_config.yaml").read_text(encoding="utf-8"))
-            self.assertEqual(config["visual_style"]["target_format"], "nature_surfur")
-            self.assertEqual(config["visual_style"]["profile"], "resistance_premium")
+            self.assertEqual(config["visual_style"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
+            self.assertEqual(config["visual_style"]["profile"], INTERNAL_RESISTANCE_PROFILE)
             self.assertIn("custom_svg", config["presets"])
             self.assertEqual(config["figures"][0]["preset"], "custom_svg")
 

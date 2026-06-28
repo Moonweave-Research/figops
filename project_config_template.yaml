@@ -18,9 +18,9 @@ project:
 
 # 2. 통합 시각화 스타일 설정 (Theme Vending Machine)
 visual_style:
-  target_format: "nature"      # nature | nature_surfur | science | ppt | default
+  target_format: "nature"      # nature | science | ppt | default | acs | rsc | elsevier | wiley | cell
   font_scale: 1.0              # 폰트 크기 배율
-  profile: "baseline"          # baseline | resistance_premium 등
+  profile: "baseline"          # baseline profile
 
 # ── Presets (optional) ──────────────────────────────────────────────
 # Define named style bundles to avoid repeating visual settings per figure.

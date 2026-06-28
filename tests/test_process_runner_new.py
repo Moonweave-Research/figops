@@ -11,6 +11,7 @@ from unittest.mock import patch
 import hub_core.process_runner as pr
 from hub_core.process_runner import _build_r_cmd, run_analysis, run_comparison, run_plots, run_sweep
 from hub_core.scaffold import DEFAULT_ANALYZE_R, normalize_scaffold_target_format, scaffold_project
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
 
@@ -191,7 +192,7 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
 
             config_text = (project_dir / "project_config.yaml").read_text(encoding="utf-8")
             self.assertIn('name: "Packaged Template Smoke"', config_text)
-            self.assertNotIn("nature_surfur", config_text)
+            self.assertNotIn(INTERNAL_STYLE_TARGET_FORMAT, config_text)
             self.assertTrue((project_dir / "hub_scripts" / "plot.py").is_file())
 
     def test_scaffold_project_fails_fast_for_unrelated_hub_without_templates(self):
@@ -211,7 +212,7 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
 
     def test_scaffold_target_format_rejects_internal_placeholder(self):
         with self.assertRaisesRegex(ValueError, "Allowed values"):
-            normalize_scaffold_target_format("internal", {"nature", "nature_surfur", "science", "ppt"})
+            normalize_scaffold_target_format("internal", {"nature", INTERNAL_STYLE_TARGET_FORMAT, "science", "ppt"})
 
 
 class TestRunSweepMonkeyPatch(unittest.TestCase):

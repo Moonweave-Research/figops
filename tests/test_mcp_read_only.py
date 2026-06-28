@@ -22,6 +22,7 @@ from hub_core.mcp.transport import (
 )
 from hub_core.project_discovery import ProjectDiscoveryService
 from tests._symlink import symlink_or_skip
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 from themes.style_profiles import PROFILE_ALIASES, list_profiles
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
@@ -31,7 +32,7 @@ VALID_CONFIG = """
 project:
   name: "{name}"
 visual_style:
-  target_format: nature_surfur
+  target_format: {target_format}
   font_scale: 1.0
   profile: baseline
 data_contract:
@@ -105,7 +106,10 @@ class ReadOnlyMCPTest(unittest.TestCase):
     def _write_project(self, root: Path, name: str, config_text: str = VALID_CONFIG) -> Path:
         project = root / name
         project.mkdir(parents=True, exist_ok=True)
-        (project / "project_config.yaml").write_text(config_text.format(name=name), encoding="utf-8")
+        (project / "project_config.yaml").write_text(
+            config_text.format(name=name, target_format=INTERNAL_STYLE_TARGET_FORMAT),
+            encoding="utf-8",
+        )
         return project
 
     def _write_legacy_project_context(self, project: Path) -> None:
@@ -127,7 +131,10 @@ class ReadOnlyMCPTest(unittest.TestCase):
         project = root / name
         config_dir = project / "scripts"
         config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / "project_config.yaml").write_text(VALID_CONFIG.format(name=name), encoding="utf-8")
+        (config_dir / "project_config.yaml").write_text(
+            VALID_CONFIG.format(name=name, target_format=INTERNAL_STYLE_TARGET_FORMAT),
+            encoding="utf-8",
+        )
         return project
 
     def _call(self, server: GraphHubMCPServer, tool_name: str, arguments: dict | None = None) -> dict:
@@ -228,7 +235,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertEqual(result["profile_aliases"], dict(sorted(PROFILE_ALIASES.items())))
         self.assertIn("style_packs", result)
         self.assertTrue(any(pack["name"] == "surfur_internal" for pack in result["style_packs"]))
-        self.assertIn("nature_surfur", result["target_formats"])
+        self.assertIn(INTERNAL_STYLE_TARGET_FORMAT, result["target_formats"])
 
     def test_describe_exposes_registry_backed_capabilities(self):
         server = GraphHubMCPServer()
@@ -593,7 +600,7 @@ project:
                     },
                 )
             self.assertEqual(inspected["status"], "ok")
-            self.assertEqual(inspected["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(inspected["style_summary"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
 
     def test_inspect_and_validate_project_do_not_execute_or_write(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
@@ -608,7 +615,7 @@ project:
             self.assertEqual(_snapshot_files(root), before)
             self.assertEqual(inspected["status"], "ok")
             self.assertEqual(inspected["project_metadata"]["name"], "01_Valid")
-            self.assertEqual(inspected["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(inspected["style_summary"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
             self.assertEqual(inspected["pipeline_steps"]["analysis"], 1)
             self.assertEqual(inspected["figure_outputs"], ["results/figures/Fig1.png"])
             self.assertEqual(inspected["diagram_outputs"], ["results/figures/Diagram1.svg"])
@@ -645,7 +652,7 @@ project:
     def test_validate_project_naming_lint_warns_without_failing(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
-            project = self._write_project(root, "저항 측정/26013_bad_date")
+            project = self._write_project(root, "measurement_series/26013_bad_date")
 
             server = GraphHubMCPServer(research_root=Path(tmpdir))
             validated = self._call(
@@ -668,7 +675,7 @@ project:
     def test_validate_project_naming_lint_accepts_conforming_names(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
-            project = self._write_project(root, "저항 측정/260130/PET_control")
+            project = self._write_project(root, "measurement_series/260130/PET_control")
 
             server = GraphHubMCPServer(research_root=Path(tmpdir))
             validated = self._call(
@@ -739,7 +746,7 @@ project:
 
         self.assertEqual(content["mimeType"], "application/json")
         self.assertEqual(payload["target_formats"], styles["target_formats"])
-        self.assertIn("nature_surfur", payload["target_formats"])
+        self.assertIn(INTERNAL_STYLE_TARGET_FORMAT, payload["target_formats"])
 
     def test_resources_read_projects_and_legacy_config_are_read_only(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_resource_") as tmpdir:

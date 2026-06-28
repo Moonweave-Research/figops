@@ -16,6 +16,7 @@ from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.schemas import list_tool_definitions
 from hub_core.mcp.transport import _handle_json_rpc
 from tests._symlink import symlink_or_skip
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 
 
 class _CompletedRenderProcess:
@@ -437,7 +438,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                     "x_column": "x",
                     "y_column": "y",
                     "plot_type": "scatter",
-                    "target_format": "nature_surfur",
+                    "target_format": INTERNAL_STYLE_TARGET_FORMAT,
                     "profile": "baseline",
                     "output_format": "png",
                     "semantic_checks": {"y": {"range": [0, 3], "allow_null": False}},
@@ -473,7 +474,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(status["job_id"], "render-demo")
             self.assertEqual(status["status"], result["status"])
             self.assertEqual(status["failure_stage"], "")
-            self.assertEqual(manifest["style_summary"]["target_format"], "nature_surfur")
+            self.assertEqual(manifest["style_summary"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
             self.assertEqual(manifest["visual_preflight_status"]["passed"], True)
             provenance = manifest["provenance"]
             self.assertEqual(provenance["job_id"], "render-demo")
@@ -3081,7 +3082,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             research_root = Path(tmpdir)
             project = _write_project_render_fixture(
-                research_root / "ResearchOS" / "02_Surfur_Polymer", name="260504_sulfur_rh25"
+                research_root / "ResearchOS" / "02_Synthetic_Project", name="260504_synthetic"
             )
             server = GraphHubMCPServer(research_root=research_root)
 

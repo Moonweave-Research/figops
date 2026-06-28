@@ -53,8 +53,8 @@
     {
       "area": "internal_style_packs",
       "markers": [
-        "nature_surfur",
-        "resistance_premium"
+        "project-derived journal target format",
+        "project-derived style profile"
       ],
       "status": "blocks_public_release",
       "notes": "Project-derived style formats and profiles must stay private/internal unless explicitly reviewed."
@@ -71,9 +71,9 @@
     {
       "area": "private_research_markers",
       "markers": [
-        "02_Surfur_Polymer",
-        "PI_control",
-        "저항 측정"
+        "real research project folder",
+        "real control project name",
+        "real measurement folder"
       ],
       "status": "blocks_public_release",
       "notes": "Real project identifiers must be removed or replaced with synthetic fixtures."

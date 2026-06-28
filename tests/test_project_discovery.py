@@ -5,12 +5,13 @@ from pathlib import Path
 from hub_core.adapters import SurfurConventions
 from hub_core.project_discovery import ProjectDiscoveryService, get_discoverable_projects
 from tests._symlink import symlink_or_skip
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 
 VALID_CONFIG = """
 project:
   name: "{name}"
 visual_style:
-  target_format: nature_surfur
+  target_format: {target_format}
 data_contract:
   csv_checks:
     - path: "results/data/summary.csv"
@@ -27,14 +28,20 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
     def _write_config(self, project_dir: Path, name: str = "Demo") -> Path:
         project_dir.mkdir(parents=True, exist_ok=True)
         config_path = project_dir / "project_config.yaml"
-        config_path.write_text(VALID_CONFIG.format(name=name), encoding="utf-8")
+        config_path.write_text(
+            VALID_CONFIG.format(name=name, target_format=INTERNAL_STYLE_TARGET_FORMAT),
+            encoding="utf-8",
+        )
         return config_path
 
     def _write_legacy_config(self, project_dir: Path, name: str = "Legacy") -> Path:
         config_dir = project_dir / "scripts"
         config_dir.mkdir(parents=True, exist_ok=True)
         config_path = config_dir / "project_config.yaml"
-        config_path.write_text(VALID_CONFIG.format(name=name), encoding="utf-8")
+        config_path.write_text(
+            VALID_CONFIG.format(name=name, target_format=INTERNAL_STYLE_TARGET_FORMAT),
+            encoding="utf-8",
+        )
         return config_path
 
     def test_generic_conventions_treat_surfur_paths_as_regular_projects(self):
@@ -70,7 +77,7 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
             self.assertTrue(project.valid)
             self.assertEqual(project.classification, "official")
             self.assertTrue(project.project_id)
-            self.assertEqual(project.target_format, "nature_surfur")
+            self.assertEqual(project.target_format, INTERNAL_STYLE_TARGET_FORMAT)
 
     def test_invalid_configs_are_visible_with_errors(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:

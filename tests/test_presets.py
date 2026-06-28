@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hub_core.config_parser import resolve_presets, resolve_step_style, validate_config
 from themes.journal_theme import STYLE_PRESETS, apply_journal_theme
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 
 
 # ---------------------------------------------------------------------------
@@ -161,19 +162,19 @@ def test_validate_config_presets_backward_compat():
     assert preset_errors == []
 
 
-def test_validate_config_accepts_nature_surfur_as_official_target_format():
+def test_validate_config_accepts_internal_project_target_format():
     config = _base_config(
-        visual_style={"target_format": "nature_surfur", "font_scale": 1.0, "profile": "baseline"},
+        visual_style={"target_format": INTERNAL_STYLE_TARGET_FORMAT, "font_scale": 1.0, "profile": "baseline"},
     )
     errors = validate_config(config)
     assert errors == []
 
 
-def test_nature_surfur_theme_loads_as_distinct_project_preset():
-    apply_journal_theme("nature_surfur")
-    assert "nature_surfur" in STYLE_PRESETS
-    assert STYLE_PRESETS["nature_surfur"]["legend.fontsize"] == 6.0
-    assert STYLE_PRESETS["nature_surfur"]["xtick.minor.visible"] is False
+def test_internal_project_theme_loads_as_distinct_project_preset():
+    apply_journal_theme(INTERNAL_STYLE_TARGET_FORMAT)
+    assert INTERNAL_STYLE_TARGET_FORMAT in STYLE_PRESETS
+    assert STYLE_PRESETS[INTERNAL_STYLE_TARGET_FORMAT]["legend.fontsize"] == 6.0
+    assert STYLE_PRESETS[INTERNAL_STYLE_TARGET_FORMAT]["xtick.minor.visible"] is False
 
 
 # ---------------------------------------------------------------------------

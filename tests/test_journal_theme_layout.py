@@ -23,7 +23,8 @@ from themes.journal_theme import (
     panel_label,
     save_journal_fig,
 )
-from themes.style_profiles import get_render_style_tokens
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
+from themes.style_profiles import INTERNAL_RESISTANCE_PROFILE, get_render_style_tokens
 
 
 def _axes_box_mm(fig, ax):
@@ -100,7 +101,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
         self.assertIn("THEME_PROFILE", DEFAULT_PROJECT_CONTEXT_PY)
 
     def test_font_tokens_expose_named_role_sizes(self):
-        tokens = font_tokens("nature_surfur")
+        tokens = font_tokens(INTERNAL_STYLE_TARGET_FORMAT)
 
         self.assertEqual(tokens.tag, 6.0)
         self.assertEqual(tokens.label, 5.0)
@@ -518,7 +519,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
             plt.rcParams.update(saved_rc)
 
     def test_font_tokens_apply_profile_font_overrides(self):
-        tokens = font_tokens("nature_surfur", profile_name="resistance_premium")
+        tokens = font_tokens(INTERNAL_STYLE_TARGET_FORMAT, profile_name=INTERNAL_RESISTANCE_PROFILE)
 
         self.assertEqual(tokens.tag, 8.5)
         self.assertEqual(tokens.label, 7.5)
@@ -533,9 +534,9 @@ class JournalThemeLayoutTest(unittest.TestCase):
         self.assertNotIn(10.0, _active_font_token_sizes())
 
     def test_apply_journal_theme_passes_active_tokens_to_diagnostics(self):
-        apply_journal_theme("nature_surfur")
+        apply_journal_theme(INTERNAL_STYLE_TARGET_FORMAT)
         fig, ax = plt.subplots()
-        ax.text(0.2, 0.2, "token", fontsize=font_tokens("nature_surfur").label)
+        ax.text(0.2, 0.2, "token", fontsize=font_tokens(INTERNAL_STYLE_TARGET_FORMAT).label)
         ax.text(0.4, 0.4, "drift", fontsize=5.5)
         try:
             with tempfile.TemporaryDirectory(prefix="journal_tokens_") as tmpdir:
@@ -588,7 +589,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
     def test_non_baseline_profile_clamps_and_reports_journal_compliance(self):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            apply_journal_theme("science", font_scale=0.1, profile_name="resistance_premium")
+            apply_journal_theme("science", font_scale=0.1, profile_name=INTERNAL_RESISTANCE_PROFILE)
 
         self.assertGreaterEqual(plt.rcParams["font.size"], 5.0)
         self.assertGreaterEqual(plt.rcParams["lines.linewidth"], 0.5)
@@ -641,7 +642,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
             plt.close(fig)
 
     def test_profile_font_overrides_are_allowed_tokens(self):
-        apply_journal_theme("nature_surfur", profile_name="resistance_premium")
+        apply_journal_theme(INTERNAL_STYLE_TARGET_FORMAT, profile_name=INTERNAL_RESISTANCE_PROFILE)
         fig, ax = plt.subplots()
         ax.plot([0, 1], [0, 1], label="series")
         ax.set_xlabel("x")
@@ -653,7 +654,10 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 [ax],
                 layout_locked=False,
                 font_token_sizes=list(
-                    font_tokens("nature_surfur", profile_name="resistance_premium").as_dict().values()
+                    font_tokens(
+                        INTERNAL_STYLE_TARGET_FORMAT,
+                        profile_name=INTERNAL_RESISTANCE_PROFILE,
+                    ).as_dict().values()
                 ),
             )
             drift = next(check for check in result["checks"] if check["name"] == "font_size_token_drift")
@@ -929,17 +933,17 @@ class JournalThemeLayoutTest(unittest.TestCase):
         finally:
             plt.close(fig)
 
-    def test_tiff_companion_generated_for_nature_surfur(self):
-        self.assertIn("nature_surfur", TIFF_AUTO_PRESETS)
+    def test_tiff_companion_generated_for_internal_style(self):
+        self.assertIn(INTERNAL_STYLE_TARGET_FORMAT, TIFF_AUTO_PRESETS)
         fig, ax = plt.subplots()
         ax.plot([0, 1], [0, 1])
         try:
             with tempfile.TemporaryDirectory(prefix="journal_tiff_surfur_") as tmpdir:
                 png_path = Path(tmpdir) / "figure.png"
-                save_journal_fig(fig, png_path, preset="nature_surfur", dpi=150)
+                save_journal_fig(fig, png_path, preset=INTERNAL_STYLE_TARGET_FORMAT, dpi=150)
 
                 tiff_path = png_path.with_suffix(".tiff")
-                self.assertTrue(tiff_path.exists(), "TIFF companion not created for nature_surfur preset")
+                self.assertTrue(tiff_path.exists(), "TIFF companion not created for internal preset")
                 self.assertGreater(tiff_path.stat().st_size, 1024, "TIFF file too small")
         finally:
             plt.close(fig)

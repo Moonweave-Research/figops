@@ -4,6 +4,7 @@ import unittest
 
 from themes.style_profiles import (
     HATCH_CYCLE,
+    INTERNAL_RESISTANCE_PROFILE,
     LINESTYLE_CYCLE,
     MARKER_CYCLE,
     get_profile_tokens,
@@ -53,10 +54,10 @@ class TestProfileResolution(unittest.TestCase):
         self.assertEqual(resolve_profile_name(None), "baseline")
 
     def test_alias_premium(self):
-        self.assertEqual(resolve_profile_name("premium"), "resistance_premium")
+        self.assertEqual(resolve_profile_name("premium"), INTERNAL_RESISTANCE_PROFILE)
 
     def test_alias_resistance(self):
-        self.assertEqual(resolve_profile_name("resistance"), "resistance_premium")
+        self.assertEqual(resolve_profile_name("resistance"), INTERNAL_RESISTANCE_PROFILE)
 
     def test_unknown_falls_back_to_baseline(self):
         self.assertEqual(resolve_profile_name("nonexistent_profile"), "baseline")
@@ -186,10 +187,10 @@ class TestProfileResolution(unittest.TestCase):
 
     def test_journal_compliance_tokens_resolve_for_non_baseline_profile(self):
         baseline_tokens, _baseline_meta = get_render_style_tokens("science", "baseline")
-        profile_tokens, profile_meta = get_render_style_tokens("science", "resistance_premium")
+        profile_tokens, profile_meta = get_render_style_tokens("science", INTERNAL_RESISTANCE_PROFILE)
 
         self.assertEqual(profile_meta["target_format"], "science")
-        self.assertEqual(profile_meta["profile"], "resistance_premium")
+        self.assertEqual(profile_meta["profile"], INTERNAL_RESISTANCE_PROFILE)
         for key in ("min_font_size_pt", "min_line_width_pt", "max_figure_height_mm"):
             self.assertEqual(profile_tokens[key], baseline_tokens[key])
 

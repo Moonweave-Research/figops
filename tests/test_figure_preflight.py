@@ -10,6 +10,7 @@ from PIL import Image  # noqa: E402
 
 from hub_core.figure_preflight import validate_figure_preflight  # noqa: E402
 from hub_core.journal_specs import ERROR
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -176,10 +177,10 @@ def test_oversized_vector_file_size_fails(tmp_path: Path):
     assert any("exceeds 50MB limit" in warning for warning in result["warnings"])
 
 
-def test_internal_nature_surfur_preflight_is_marked_internal(tmp_path: Path):
+def test_internal_style_preflight_is_marked_internal(tmp_path: Path):
     png = _save_dummy_figure(tmp_path / "fig.png", dpi=600)
 
-    result = validate_figure_preflight(png, "nature_surfur")
+    result = validate_figure_preflight(png, INTERNAL_STYLE_TARGET_FORMAT)
 
     assert result["passed"] is True
     fmt_check = next(c for c in result["checks"] if c["name"] == "format")
@@ -214,5 +215,5 @@ def test_jpeg_passes_only_when_target_registry_allows_it(tmp_path: Path):
 def test_unknown_preflight_target_reports_supported_targets(tmp_path: Path):
     png = _save_dummy_figure(tmp_path / "fig.png", dpi=600)
 
-    with pytest.raises(ValueError, match="nature_surfur"):
+    with pytest.raises(ValueError, match="Supported"):
         validate_figure_preflight(png, "default")

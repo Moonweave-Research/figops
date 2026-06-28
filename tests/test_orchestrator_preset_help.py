@@ -1,8 +1,10 @@
 import subprocess
 import sys
 
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 
-def test_preset_help_lists_nature_surfur_target_format():
+
+def test_preset_help_lists_internal_project_target_format():
     result = subprocess.run(
         [sys.executable, "orchestrator.py", "--help"],
         check=True,
@@ -10,4 +12,4 @@ def test_preset_help_lists_nature_surfur_target_format():
         text=True,
     )
 
-    assert "nature_surfur" in result.stdout
+    assert INTERNAL_STYLE_TARGET_FORMAT in result.stdout

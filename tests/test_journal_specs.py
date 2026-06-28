@@ -8,11 +8,12 @@ from hub_core.journal_specs import (
     list_supported_preflight_targets,
 )
 from hub_core.style_report import build_style_report, format_style_report
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 from themes.style_profiles import get_render_style_tokens
 
 
 def test_public_journal_preflight_specs_are_registered():
-    expected = {"nature", "science", "acs", "rsc", "elsevier", "wiley", "cell", "nature_surfur"}
+    expected = {"nature", "science", "acs", "rsc", "elsevier", "wiley", "cell", INTERNAL_STYLE_TARGET_FORMAT}
 
     assert expected.issubset(set(list_supported_preflight_targets()))
     assert set(list_supported_preflight_targets()).issubset(ALLOWED_TARGET_FORMATS)
@@ -67,7 +68,7 @@ def test_style_compliance_tokens_stay_aligned_with_registry_intent():
 
 
 def test_internal_and_policy_tokens_are_not_mislabeled_as_official():
-    assert JOURNAL_PREFLIGHT_SPECS["nature_surfur"].max_width_mm.provenance == "internal_project_style"
+    assert JOURNAL_PREFLIGHT_SPECS[INTERNAL_STYLE_TARGET_FORMAT].max_width_mm.provenance == "internal_project_style"
     assert PREFLIGHT_POLICY_TOKENS["raster_file_size"].provenance == "graphhub_assumption"
     assert PREFLIGHT_POLICY_TOKENS["vector_file_size"].provenance == "internal_policy"
 

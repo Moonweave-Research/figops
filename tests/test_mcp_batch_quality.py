@@ -11,6 +11,7 @@ from unittest.mock import patch
 from hub_core.mcp import GraphHubMCPServer
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.schemas import list_tool_definitions
+from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 
 
 def _sleeping_batch_discovery_worker(_root, _max_depth, _result_path):
@@ -48,7 +49,7 @@ VALID_CONFIG = """
 project:
   name: "{name}"
 visual_style:
-  target_format: nature_surfur
+  target_format: {target_format}
   font_scale: 1.0
   profile: baseline
 data_contract:
@@ -100,14 +101,20 @@ class BatchQualityMCPTest(unittest.TestCase):
     def _write_project(self, root: Path, rel_path: str, *, config_text: str = VALID_CONFIG) -> Path:
         project = root / rel_path
         project.mkdir(parents=True, exist_ok=True)
-        (project / "project_config.yaml").write_text(config_text.format(name=Path(rel_path).name), encoding="utf-8")
+        (project / "project_config.yaml").write_text(
+            config_text.format(name=Path(rel_path).name, target_format=INTERNAL_STYLE_TARGET_FORMAT),
+            encoding="utf-8",
+        )
         return project
 
     def _write_legacy_project(self, root: Path, rel_path: str) -> Path:
         project = root / rel_path
         config_dir = project / "scripts"
         config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / "project_config.yaml").write_text(VALID_CONFIG.format(name=Path(rel_path).name), encoding="utf-8")
+        (config_dir / "project_config.yaml").write_text(
+            VALID_CONFIG.format(name=Path(rel_path).name, target_format=INTERNAL_STYLE_TARGET_FORMAT),
+            encoding="utf-8",
+        )
         return project
 
     def test_tool_definitions_include_batch_check(self):

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from scripts.check_public_release import PRIVATE_MARKERS
 from scripts.public_core_inventory import (
     blocker_family,
     build_public_core_status,
@@ -87,8 +88,15 @@ def test_public_core_inventory_is_json_serializable():
     assert json.loads(json.dumps(inventory, ensure_ascii=False)) == inventory
 
 
+def test_public_core_inventory_does_not_embed_private_marker_literals():
+    inventory = load_public_core_inventory(HUB_ROOT)
+    serialized = json.dumps(inventory, ensure_ascii=False)
+
+    assert not any(marker in serialized for marker in PRIVATE_MARKERS)
+
+
 def test_blocker_family_classification():
     assert blocker_family("LICENSE is proprietary/all-rights-reserved; public release is blocked.") == "license"
     assert blocker_family("Internal/private style packs are present: surfur_internal.") == "style_pack"
-    assert blocker_family("Private marker 'PI_control' found in README.md.") == "private_marker"
+    assert blocker_family("Private marker 'internal_sample' found in README.md.") == "private_marker"
     assert blocker_family("Private workflow document path present: docs/hks/01.md.") == "private_workflow_doc"
