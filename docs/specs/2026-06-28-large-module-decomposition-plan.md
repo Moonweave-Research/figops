@@ -14,10 +14,10 @@ Measured on 2026-06-28 with the line-count inventory documented in
 
 | File | Lines | Primary reason to split |
 | --- | ---: | --- |
-| `hub_core/data_contract_semantics.py` | 1861 | Many independent semantic checks and unit/statistical helpers share one module. |
 | `hub_core/config_parser.py` | 1858 | Config loading, migration, validation, role/status policy, style contracts, and listing helpers are coupled. |
 | `plotting/bridge_renderer.py` | 1833 | Multipanel layout, overlay/statistical annotation, diagnostics, and export behavior still share one file. |
 | `hub_core/geometry_diagnostics.py` | 1828 | Detection primitives, overlap checks, scoring, and report shaping are co-located. |
+| `hub_core/data_contract_semantics.py` | 1758 | Several independent semantic check families and grouped/statistical helpers still share one module. |
 | `hub_core/mcp/tools/render_csv.py` | 1670 | CSV render argument parsing, normalization, execution, envelope shaping, and multipanel behavior share one tool mixin. |
 
 ## Extraction Rules
@@ -114,8 +114,12 @@ Progress:
 - 2026-06-28: `unit_coherence` and `axis_unit` semantic validator bodies moved
   to `hub_core/data_contract_semantic_units.py`; compatibility wrappers remain
   in `hub_core.data_contract_semantics`.
-- Continue D2 with statistics/order helper families, or switch to D3 if
-  `hub_core.config_parser.py` becomes the better next high-leverage hotspot.
+- 2026-06-28: monotonic and monotonic-within-group ordering validators moved
+  to `hub_core/data_contract_semantic_ordering.py`; compatibility aliases and
+  wrappers remain in `hub_core.data_contract_semantics`.
+- Continue D2 with grouped/statistical helper families only if they remain
+  high leverage after the current inventory; otherwise switch to D1/D3/D4 based
+  on the largest current hotspots.
 
 Compatibility:
 
