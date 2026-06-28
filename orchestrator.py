@@ -226,10 +226,6 @@ def main():
         list_projects(root_dir, recursive=not args.list_root_only, max_depth=args.scan_depth)
         return 0
 
-    # Runtime preflight is required for executable pipeline paths, but read-only
-    # discovery must work on servers that do not have R/project runtimes installed.
-    run_preflight_check(exit_on_failure=True)
-
     start_time = datetime.now(timezone.utc)
     end_time = start_time
     success = False
@@ -330,6 +326,11 @@ def main():
             style="green",
         )
         return 0
+
+    # Runtime preflight is required for executable pipeline paths, but read-only,
+    # scaffold, fingerprint, and Docker-delegated commands must work on machines
+    # that do not have local R/project runtimes installed.
+    run_preflight_check(exit_on_failure=True)
 
     if args.check_all:
         try:
