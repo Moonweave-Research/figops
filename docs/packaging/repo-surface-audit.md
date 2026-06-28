@@ -1,6 +1,6 @@
 # Repository surface audit
 
-Last checked: 2026-06-25
+Last checked: 2026-06-28
 
 This note records the current public/private boundary for the FigOps repository.
 It is separate from the PyPI package gate: the package artifacts are public, but
@@ -37,7 +37,17 @@ Main blocker families:
 - internal/private style pack: `surfur_internal`;
 - internal project/style markers in docs and tests;
 - private workflow docs under `docs/hks/`;
-- post-tag metadata drift after `v0.17.4`.
+- post-tag metadata drift after the latest release tag.
+
+Current structured status:
+
+```bash
+python scripts/public_core_inventory.py --status --format markdown
+```
+
+Expected current shape: public package distribution is allowed, repository
+public release is blocked, and remaining repository blockers require explicit
+confirmation before content is sanitized, moved, split, or version-bumped.
 
 Before changing repository visibility to public, either remove/sanitize those
 files or split a smaller public source repository from the private development
@@ -83,6 +93,7 @@ for repository safety.
 ```bash
 git ls-files -ci --exclude-standard
 gitleaks detect --source . --redact --report-format json
+python scripts/public_core_inventory.py --status --format markdown
 python scripts/public_core_inventory.py --status --include-blockers
 python scripts/check_public_release.py
 python scripts/public_package_surface.py

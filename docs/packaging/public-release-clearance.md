@@ -42,6 +42,7 @@ Before any future TestPyPI or PyPI upload, confirm these items:
 Run these before upload approval:
 
 ```bash
+python scripts/public_core_inventory.py --status --format markdown
 python scripts/public_core_inventory.py --status --include-blockers
 python scripts/check_public_release.py
 uv build
@@ -58,15 +59,17 @@ Expected for a private-repo / public-PyPI path: `guarded_pypi_upload.py` can pas
 Use PyPI for normal installs:
 
 ```bash
-python -m pip install figops==0.17.4
+APPROVED_VERSION=0.17.9  # replace with the approved release version
+python -m pip install "figops==$APPROVED_VERSION"
 figops-mcp --smoke
 ```
 
 Use GitHub Release assets when you need the exact attached artifact:
 
 ```bash
-gh release download v0.17.4 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.4-py3-none-any.whl
+APPROVED_VERSION=0.17.9  # replace with the approved release version
+gh release download "v$APPROVED_VERSION" --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install "dist-release/figops-$APPROVED_VERSION-py3-none-any.whl"
 figops-mcp --smoke
 ```
 

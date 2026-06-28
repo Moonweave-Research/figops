@@ -1,6 +1,6 @@
 # Trusted Publishing runbook
 
-FigOps `0.17.4` is live on TestPyPI and PyPI. Future releases publish to TestPyPI/PyPI through GitHub Actions Trusted Publishing,
+FigOps releases publish to TestPyPI/PyPI through GitHub Actions Trusted Publishing,
 not long-lived PyPI API tokens. The workflow is manual-only so the maintainer
 chooses when a build is promoted.
 
@@ -45,13 +45,14 @@ environment. The extra PyPI index lets normal dependencies resolve from PyPI
 while the FigOps artifact comes from TestPyPI:
 
 ```bash
+APPROVED_VERSION=0.17.9  # replace with the approved release version
 python -m venv /tmp/figops-testpypi-venv
 /tmp/figops-testpypi-venv/bin/python -m pip install --upgrade pip
 /tmp/figops-testpypi-venv/bin/python -m pip download --no-deps \
   --index-url https://test.pypi.org/simple/ \
-  figops==0.17.4 \
+  "figops==$APPROVED_VERSION" \
   -d /tmp/figops-testpypi-dist
-/tmp/figops-testpypi-venv/bin/python -m pip install /tmp/figops-testpypi-dist/figops-0.17.4-py3-none-any.whl
+/tmp/figops-testpypi-venv/bin/python -m pip install "/tmp/figops-testpypi-dist/figops-$APPROVED_VERSION-py3-none-any.whl"
 /tmp/figops-testpypi-venv/bin/figops --help
 /tmp/figops-testpypi-venv/bin/figops-mcp --smoke
 /tmp/figops-testpypi-venv/bin/figops --init --project /tmp/figops-testpypi-project
@@ -67,9 +68,10 @@ gh run list --repo Moonweave-Research/figops --workflow publish.yml --limit 1
 Then verify the public install path:
 
 ```bash
+APPROVED_VERSION=0.17.9  # replace with the approved release version
 python -m venv /tmp/figops-pypi-venv
 /tmp/figops-pypi-venv/bin/python -m pip install --upgrade pip
-/tmp/figops-pypi-venv/bin/python -m pip install figops==0.17.4
+/tmp/figops-pypi-venv/bin/python -m pip install "figops==$APPROVED_VERSION"
 /tmp/figops-pypi-venv/bin/figops --help
 /tmp/figops-pypi-venv/bin/figops-mcp --smoke
 /tmp/figops-pypi-venv/bin/figops --init --project /tmp/figops-pypi-project
@@ -81,5 +83,5 @@ python -m venv /tmp/figops-pypi-venv
   files. This release path does not need them.
 - Keep GitHub environment protection on `pypi` if you want a final manual
   approval before production upload.
-- PyPI versions are immutable. If `figops==0.17.4` is uploaded with a bad
+- PyPI versions are immutable. If an approved version is uploaded with a bad
   artifact, fix forward with a new version instead of trying to replace it.

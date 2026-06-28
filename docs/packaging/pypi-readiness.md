@@ -40,22 +40,25 @@ wheel gets working `figops` and `figops-mcp` commands.
 The primary public install path is PyPI:
 
 ```bash
-python -m pip install figops==0.17.4
+APPROVED_VERSION=0.17.9  # replace with the approved release version
+python -m pip install "figops==$APPROVED_VERSION"
 figops-mcp --smoke
 ```
 
 The GitHub release asset remains available when an exact attached artifact is needed:
 
 ```bash
-gh release download v0.17.4 --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
-python -m pip install dist-release/figops-0.17.4-py3-none-any.whl
+APPROVED_VERSION=0.17.9  # replace with the approved release version
+gh release download "v$APPROVED_VERSION" --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
+python -m pip install "dist-release/figops-$APPROVED_VERSION-py3-none-any.whl"
 figops-mcp --smoke
 ```
 
 Maintainers should attach both built artifacts to each release and verify them:
 
 ```bash
-gh release upload v0.17.4 dist/figops-0.17.4-py3-none-any.whl dist/figops-0.17.4.tar.gz
+APPROVED_VERSION=0.17.9  # replace with the approved release version
+gh release upload "v$APPROVED_VERSION" "dist/figops-$APPROVED_VERSION-py3-none-any.whl" "dist/figops-$APPROVED_VERSION.tar.gz"
 python scripts/github_release_asset_smoke.py
 ```
 
@@ -66,6 +69,7 @@ This repository can remain private/internal while the built FigOps wheel/sdist a
 Use the clearance checklist and structured blocker report before making the full repository public:
 
 ```bash
+python scripts/public_core_inventory.py --status --format markdown
 python scripts/public_core_inventory.py --status --include-blockers
 ```
 
@@ -111,11 +115,12 @@ python scripts/consumer_install_smoke.py
 python scripts/github_release_asset_smoke.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 gh workflow run publish.yml --repo Moonweave-Research/figops --ref main -f repository=testpypi
-python -m pip download --no-deps --index-url https://test.pypi.org/simple/ figops==0.17.4 -d /tmp/figops-testpypi-dist
-python -m pip install /tmp/figops-testpypi-dist/figops-0.17.4-py3-none-any.whl
+APPROVED_VERSION=0.17.9  # replace with the approved release version
+python -m pip download --no-deps --index-url https://test.pypi.org/simple/ "figops==$APPROVED_VERSION" -d /tmp/figops-testpypi-dist
+python -m pip install "/tmp/figops-testpypi-dist/figops-$APPROVED_VERSION-py3-none-any.whl"
 python scripts/guarded_pypi_upload.py --repository pypi
 gh workflow run publish.yml --repo Moonweave-Research/figops --ref main -f repository=pypi
-python -m pip install figops==0.17.4
+python -m pip install "figops==$APPROVED_VERSION"
 figops-mcp --smoke
 ```
 
