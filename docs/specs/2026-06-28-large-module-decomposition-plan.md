@@ -15,9 +15,9 @@ Measured on 2026-06-28 with the line-count inventory documented in
 | File | Lines | Primary reason to split |
 | --- | ---: | --- |
 | `plotting/bridge_renderer.py` | 1833 | Multipanel layout, overlay/statistical annotation, diagnostics, and export behavior still share one file. |
-| `hub_core/geometry_diagnostics.py` | 1828 | Detection primitives, overlap checks, scoring, and report shaping are co-located. |
 | `hub_core/config_parser.py` | 1775 | Config validation, language/data policies, research-ops checks, and listing helpers are coupled. |
 | `hub_core/data_contract_semantics.py` | 1758 | Several independent semantic check families and grouped/statistical helpers still share one module. |
+| `hub_core/geometry_diagnostics.py` | 1697 | Detection checks, scoring, and report shaping are co-located after primitive/style helper extraction. |
 | `hub_core/mcp/tools/render_csv.py` | 1670 | CSV render argument parsing, normalization, execution, envelope shaping, and multipanel behavior share one tool mixin. |
 
 ## Extraction Rules
@@ -180,6 +180,9 @@ Progress:
 
 - 2026-06-28: low-level pixel-space bbox/overlap primitives moved to
   `hub_core/geometry_primitives.py`; `hub_core.geometry_diagnostics` keeps
+  existing private compatibility exports.
+- 2026-06-28: marker color/style normalization helpers moved to
+  `hub_core/geometry_marker_styles.py`; `hub_core.geometry_diagnostics` keeps
   existing private compatibility exports.
 
 Compatibility:

@@ -13,7 +13,7 @@ import numpy as np  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.transforms import Bbox  # noqa: E402
 
-from hub_core import geometry_diagnostics, geometry_primitives  # noqa: E402
+from hub_core import geometry_diagnostics, geometry_marker_styles, geometry_primitives  # noqa: E402
 from hub_core.geometry_diagnostics import (  # noqa: E402
     GEOM_EPS_PX,
     MAX_TEXT_ARTISTS,
@@ -68,6 +68,16 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertIs(geometry_diagnostics._overlap_fraction, geometry_primitives._overlap_fraction)
         self.assertIs(geometry_diagnostics._circle_overlap_fraction, geometry_primitives._circle_overlap_fraction)
         self.assertIs(geometry_diagnostics._overlap_severity, geometry_primitives._overlap_severity)
+
+    def test_geometry_diagnostics_keeps_marker_style_compatibility_exports(self):
+        self.assertIs(geometry_diagnostics._is_none_color, geometry_marker_styles._is_none_color)
+        self.assertIs(geometry_diagnostics._rgba_tuple, geometry_marker_styles._rgba_tuple)
+        self.assertIs(geometry_diagnostics._style_color, geometry_marker_styles._style_color)
+        self.assertIs(geometry_diagnostics._path_signature, geometry_marker_styles._path_signature)
+        self.assertIs(geometry_diagnostics._line_marker_style, geometry_marker_styles._line_marker_style)
+        self.assertIs(geometry_diagnostics._collection_marker_style, geometry_marker_styles._collection_marker_style)
+        self.assertIs(geometry_diagnostics._marker_style, geometry_marker_styles._marker_style)
+        self.assertIs(geometry_diagnostics._style_diff, geometry_marker_styles._style_diff)
 
     def test_contract_shape_and_version(self):
         fig, ax = plt.subplots()

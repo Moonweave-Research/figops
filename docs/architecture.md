@@ -67,9 +67,9 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | File | Lines |
 |---|---:|
 | `plotting/bridge_renderer.py` | 1833 |
-| `hub_core/geometry_diagnostics.py` | 1828 |
 | `hub_core/config_parser.py` | 1775 |
 | `hub_core/data_contract_semantics.py` | 1758 |
+| `hub_core/geometry_diagnostics.py` | 1697 |
 | `hub_core/mcp/tools/render_csv.py` | 1670 |
 | `themes/journal_theme.py` | 1390 |
 | `hub_core/mcp/schemas.py` | 1151 |
@@ -78,8 +78,8 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | `hub_core/visual_regression.py` | 902 |
 <!-- architecture-inventory:end -->
 
-`plotting/bridge_renderer.py`, `hub_core/geometry_diagnostics.py`, and
-`hub_core/config_parser.py` are now the clearest candidates for future
+`plotting/bridge_renderer.py`, `hub_core/config_parser.py`, and
+`hub_core/data_contract_semantics.py` are now the clearest candidates for future
 behavior-preserving decomposition. `hub_core/data_contract.py` has already been
 reduced to a compatibility/orchestration surface after IO and semantic helpers
 were extracted.
