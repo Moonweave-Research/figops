@@ -50,6 +50,10 @@ Expected current shape: public package distribution is allowed, repository
 public release is blocked, and remaining repository blockers require explicit
 confirmation before content is sanitized, moved, split, or version-bumped.
 
+Record those confirmations in
+[public-release-decision-record.md](./public-release-decision-record.md) before
+changing repository visibility.
+
 Before changing repository visibility to public, either remove/sanitize those
 files or split a smaller public source repository from the private development
 repository.

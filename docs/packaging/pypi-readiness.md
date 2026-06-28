@@ -77,6 +77,9 @@ python scripts/public_core_inventory.py --status --include-blockers
 See [public-release-clearance.md](./public-release-clearance.md) for the
 license/IP approval checklist and the recommended Apache-2.0 path after
 approval.
+Use [public-release-decision-record.md](./public-release-decision-record.md) to
+track the human decisions that must be closed before changing the full
+repository visibility.
 
 Before uploading a future version to TestPyPI or PyPI, confirm all of the following:
 

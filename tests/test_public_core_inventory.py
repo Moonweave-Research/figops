@@ -138,6 +138,7 @@ def test_format_public_core_status_markdown_summarizes_decision_state():
     assert "- Package distribution allowed: yes" in markdown
     assert "- Repository public release allowed: no" in markdown
     assert "- Auto-fixable blockers: 0" in markdown
+    assert "Decision record: [public-release-decision-record.md]" in markdown
     assert "| private_marker | 3 | requires_decision | yes | Sanitize or relocate. |" in markdown
 
 
@@ -225,6 +226,17 @@ def test_public_core_inventory_does_not_embed_private_marker_literals():
     serialized = json.dumps(inventory, ensure_ascii=False)
 
     assert not any(marker in serialized for marker in PRIVATE_MARKERS)
+
+
+def test_public_release_decision_docs_do_not_embed_private_marker_literals():
+    doc_paths = (
+        HUB_ROOT / "docs" / "packaging" / "public-release-decision-record.md",
+        HUB_ROOT / "docs" / "packaging" / "public-release-status.md",
+    )
+
+    for doc_path in doc_paths:
+        text = doc_path.read_text(encoding="utf-8")
+        assert not any(marker in text for marker in PRIVATE_MARKERS)
 
 
 def test_blocker_family_classification():

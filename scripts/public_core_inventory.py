@@ -173,6 +173,8 @@ def format_public_core_status_markdown(payload: dict[str, Any]) -> str:
         f"- Auto-fixable blockers: {action_summary['auto_fixable_blocker_count']}",
         f"- Confirmation-required blockers: {action_summary['requires_confirmation_blocker_count']}",
         "",
+        "Decision record: [public-release-decision-record.md](./public-release-decision-record.md)",
+        "",
         "## Next Actions",
         "",
         "| Family | Count | Status | Confirmation | Action |",

@@ -8,6 +8,8 @@
 - Auto-fixable blockers: 0
 - Confirmation-required blockers: 30
 
+Decision record: [public-release-decision-record.md](./public-release-decision-record.md)
+
 ## Next Actions
 
 | Family | Count | Status | Confirmation | Action |
