@@ -68,15 +68,13 @@
       "id": "legend-data-collision",
       "plot_type": "line",
       "data_recipe": "Generate several series occupying all quadrants.",
-      "current_expected_weakness": "Legend collision diagnostics and bounded legend title/order/ncol controls now exist; remaining weakness is shared legend/multipanel placement polish.",
-      "desired_polish_behavior": "Multipanel/shared legend layout can be controlled or diagnosed without bespoke matplotlib.",
+      "current_expected_weakness": "Legend collision diagnostics, bounded per-panel legend controls, and multipanel shared legend placement now exist; remaining weakness is deeper architecture/data-contract cleanup rather than legend polish.",
+      "desired_polish_behavior": "Shared multipanel legends can be controlled without bespoke matplotlib; future work should preserve this contract while reducing renderer/MCP duplication.",
       "automation_level": "automated",
       "acceptance_command": "python hub_uv.py run python -m pytest tests/test_geometry_diagnostics.py tests/test_bridge_renderer.py -q"
     }
   ],
-  "expected_failures": [
-    "shared legend polish"
-  ],
+  "expected_failures": [],
   "completed_slices": [
     "typed-mcp-style-schemas",
     "series-visual-hierarchy-controls",
@@ -86,7 +84,8 @@
     "contrast-diagnostics-v1",
     "tick-readability-v1",
     "multipanel-layout-v1",
-    "fit-trend-overlay-expansion"
+    "fit-trend-overlay-expansion",
+    "shared-legend-polish-v1"
   ],
-  "selected_next_slice": "shared-legend-polish"
+  "selected_next_slice": "architecture-data-contract-debt"
 }

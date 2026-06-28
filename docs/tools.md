@@ -3323,6 +3323,39 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
       "minimum": 1,
       "type": "integer"
     },
+    "shared_legend": {
+      "default": false,
+      "type": "boolean"
+    },
+    "shared_legend_options": {
+      "additionalProperties": false,
+      "properties": {
+        "ncol": {
+          "maximum": 8,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "order": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "position": {
+          "default": "top",
+          "enum": [
+            "top",
+            "bottom",
+            "right"
+          ],
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "target_format": {
       "default": "nature",
       "enum": [

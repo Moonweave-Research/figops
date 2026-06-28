@@ -357,6 +357,15 @@ _MULTIPANEL_LAYOUT_OPTIONS_SCHEMA = _object_schema(
     }
 )
 
+_SHARED_LEGEND_OPTIONS_SCHEMA = _object_schema(
+    {
+        "title": {"type": "string"},
+        "order": {"type": "array", "items": {"type": "string"}},
+        "ncol": {"type": "integer", "minimum": 1, "maximum": 8},
+        "position": {"type": "string", "enum": ["top", "bottom", "right"], "default": "top"},
+    }
+)
+
 
 _GUIDE_CURVE_SCHEMA = {
     **_open_object_schema(
@@ -860,6 +869,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "font_scale": {"type": "number", "default": 1.0},
                     "compose_mode": {"type": "string", "enum": ["draft", "manuscript"], "default": "draft"},
                     "layout_options": _MULTIPANEL_LAYOUT_OPTIONS_SCHEMA,
+                    "shared_legend": {"type": "boolean", "default": False},
+                    "shared_legend_options": _SHARED_LEGEND_OPTIONS_SCHEMA,
                     "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
                     "profile": {
                         "type": "string",

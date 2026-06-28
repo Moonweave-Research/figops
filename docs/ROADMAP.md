@@ -157,18 +157,20 @@ This is strict but scoped:
 
 ### R0 - Polish-layer roadmap and fixture refresh
 
-The first polish-layer implementation waves have shipped: typed complex MCP schemas,
-series visual hierarchy controls, and Smart Callout v1. The active polish roadmap
-now lives in:
+The first polish-layer implementation waves have shipped through shared legend
+polish: typed complex MCP schemas, series visual hierarchy controls, Smart
+Callout v1, bounded legend/axis controls, dense point-label polish, contrast
+diagnostics, tick readability, multipanel layout controls, fit/trend overlay
+styling, and shared multipanel legend placement. The active polish roadmap now
+lives in:
 
 - `docs/specs/polish-layer-adversarial-roadmap.md`
 - `docs/specs/polish-layer-legend-axis-wave.md`
 - `docs/specs/polish-fixture-manifest.json`
 
-Next implementation priority: bounded legend and axis polish controls. Follow-up
-priorities are dense point-label polish, contrast diagnostics, tick readability,
-and multipanel layout polish. Do not reclassify shipped schema, series hierarchy,
-or Smart Callout v1 capabilities as open gaps unless a regression is proven.
+Next implementation priority: architecture/data-contract debt as a separate
+maintenance track. Do not reclassify shipped polish controls as open gaps unless
+a regression is proven.
 
 ### R1 - Data-contract decomposition
 
