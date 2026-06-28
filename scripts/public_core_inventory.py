@@ -135,6 +135,22 @@ def release_next_actions(blockers: tuple[str, ...]) -> list[dict[str, object]]:
     return actions
 
 
+def release_action_summary(actions: list[dict[str, object]]) -> dict[str, object]:
+    auto_fixable = 0
+    requires_confirmation = 0
+    for action in actions:
+        count = int(action["count"])
+        if action["requires_confirmation"]:
+            requires_confirmation += count
+        else:
+            auto_fixable += count
+    return {
+        "auto_fixable_blocker_count": auto_fixable,
+        "requires_confirmation_blocker_count": requires_confirmation,
+        "requires_confirmation": requires_confirmation > 0,
+    }
+
+
 def public_core_status(root: Path = REPO_ROOT) -> dict[str, Any]:
     return build_public_core_status(root)
 
@@ -160,6 +176,7 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
         and policy.get("license_decision_required") is False
         and policy.get("current_status") in {"public_package_approved", "public_pypi_approved"}
     )
+    next_actions = release_next_actions(release_result.blockers)
     payload = {
         "schema_version": inventory.get("schema_version"),
         "inventory_path": str((root / INVENTORY_RELATIVE_PATH).resolve()),
@@ -170,7 +187,8 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
             "ok": release_result.ok,
             "blocker_count": len(release_result.blockers),
             "blocker_families": families,
-            "next_actions": release_next_actions(release_result.blockers),
+            "action_summary": release_action_summary(next_actions),
+            "next_actions": next_actions,
         },
         "package_distribution_allowed": package_distribution_allowed,
         "repository_public_release_allowed": release_result.ok,
