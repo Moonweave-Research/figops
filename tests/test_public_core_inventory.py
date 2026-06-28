@@ -157,6 +157,13 @@ def test_public_core_inventory_markdown_cli_requires_status(capsys):
     assert "```" not in captured.out
 
 
+def test_public_release_status_snapshot_matches_generated_markdown():
+    expected = format_public_core_status_markdown(public_core_status(HUB_ROOT))
+    snapshot_path = HUB_ROOT / "docs" / "packaging" / "public-release-status.md"
+
+    assert snapshot_path.read_text(encoding="utf-8") == expected
+
+
 def test_public_core_inventory_output_writes_markdown_report(tmp_path: Path, capsys):
     report_path = tmp_path / "reports" / "public-release-status.md"
 
