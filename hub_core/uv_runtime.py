@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -68,6 +69,13 @@ def ensure_uv_runtime_dirs(env: Mapping[str, str]) -> None:
 def run_uv(argv: Sequence[str], cwd: str | os.PathLike | None = None) -> int:
     env = build_uv_environment(hub_root=_default_hub_root())
     ensure_uv_runtime_dirs(env)
+    if shutil.which("uv", path=env.get("PATH")) is None:
+        print(
+            "Error: `uv` was not found on PATH. Install uv, then rerun this command, "
+            "or use a Python environment with the FigOps dev dependencies installed.",
+            file=sys.stderr,
+        )
+        return 127
     command = ["uv", *argv]
     return subprocess.call(command, cwd=str(cwd or _default_hub_root()), env=env)
 

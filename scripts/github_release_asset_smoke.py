@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import Sequence
@@ -47,6 +49,10 @@ def gh_release_view_command(gh_bin: str, repo: str, tag: str) -> tuple[str, ...]
 
 
 def _run_json(command: Sequence[str]) -> tuple[dict[str, object] | None, str | None]:
+    if os.name == "nt":
+        executable = Path(command[0])
+        if executable.is_file() and executable.suffix.lower() not in {".exe", ".bat", ".cmd", ".com"}:
+            command = (sys.executable, *command)
     completed = subprocess.run(command, check=False, capture_output=True, text=True)
     if completed.returncode != 0:
         return None, completed.stderr.strip() or completed.stdout.strip() or f"exit {completed.returncode}"

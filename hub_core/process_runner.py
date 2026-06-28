@@ -49,6 +49,12 @@ def _log(message: str = "") -> None:
     logger.log(level, message)
 
 
+def _join_config_path(directory: str, filename: str) -> str:
+    normalized_dir = str(directory or "").replace("\\", "/").rstrip("/")
+    normalized_name = str(filename or "").replace("\\", "/").split("/")[-1]
+    return f"{normalized_dir}/{normalized_name}" if normalized_dir else normalized_name
+
+
 @contextmanager
 def _run_command_env_overlay(env_overrides: dict[str, str]):
     prior = _RUN_COMMAND_ENV_OVERLAY.get() or {}
@@ -847,7 +853,7 @@ def run_sweep(
         for section in ("figures", "diagrams"):
             for artifact in run_config.get(section, []):
                 orig_output = artifact.get("output", "")
-                artifact["output"] = os.path.join(output_dir, os.path.basename(orig_output))
+                artifact["output"] = _join_config_path(output_dir, os.path.basename(orig_output))
 
         run_success = True
         if step in ("plot", "all"):
@@ -994,14 +1000,14 @@ def run_comparison(
 
         # Redirect outputs to a per-condition subdirectory so runs don't overwrite each other
         safe_label = label.replace(" ", "_").replace("/", "_").replace("%", "pct")
-        condition_output_dir = os.path.join("results", "figures", f"comparison_{safe_label}")
+        condition_output_dir = f"results/figures/comparison_{safe_label}"
         abs_condition_dir = os.path.join(project_dir, condition_output_dir)
         os.makedirs(abs_condition_dir, exist_ok=True)
 
         for section in ("figures", "diagrams"):
             for artifact in run_config.get(section, []):
                 orig_output = artifact.get("output", "")
-                artifact["output"] = os.path.join(condition_output_dir, os.path.basename(orig_output))
+                artifact["output"] = _join_config_path(condition_output_dir, os.path.basename(orig_output))
 
         # Apply data_override: redirect pipeline analysis inputs if specified
         if data_override:

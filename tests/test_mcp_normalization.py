@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import yaml
@@ -9,6 +10,7 @@ import yaml
 from hub_core.config_parser import validate_config
 from hub_core.mcp import GraphHubMCPServer
 from hub_core.mcp.schemas import list_tool_definitions
+from tests._symlink import symlink_or_skip
 
 
 def _snapshot_files(root: Path) -> dict[str, tuple[int, int]]:
@@ -286,7 +288,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             target_dir = Path(tmpdir) / "outside_raw"
             target_dir.mkdir(parents=True)
             project_root.mkdir(parents=True)
-            os.symlink(target_dir, project_root / "raw")
+            symlink_or_skip(project_root / "raw", target_dir, target_is_directory=True)
             before = _snapshot_files(project_root)
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
@@ -307,7 +309,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             actual_root = Path(tmpdir) / "Actual_Project"
             actual_root.mkdir()
             symlink_root = Path(tmpdir) / "Project_Link"
-            os.symlink(actual_root, symlink_root)
+            symlink_or_skip(symlink_root, actual_root, target_is_directory=True)
             before_actual = _snapshot_files(actual_root)
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
@@ -328,7 +330,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             actual_parent = Path(tmpdir) / "Actual_Projects"
             actual_parent.mkdir()
             symlink_parent = Path(tmpdir) / "Projects_Link"
-            os.symlink(actual_parent, symlink_parent)
+            symlink_or_skip(symlink_parent, actual_parent, target_is_directory=True)
             before_actual = _snapshot_files(actual_parent)
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
@@ -353,7 +355,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             research_root = Path(tmpdir) / "ResearchOS"
             research_root.mkdir()
             alias = research_root / "Alias"
-            os.symlink(research_root, alias)
+            symlink_or_skip(alias, research_root, target_is_directory=True)
             server = GraphHubMCPServer(research_root=research_root)
 
             result = self._call(
@@ -667,7 +669,7 @@ figures:
             project = Path(tmpdir) / "LegacyGraph"
             (project / "hub_scripts").mkdir(parents=True)
             (project / "plot.py").write_text("print('new')\n", encoding="utf-8")
-            os.symlink(project / "missing_plot.py", project / "hub_scripts" / "plot.py")
+            symlink_or_skip(project / "hub_scripts" / "plot.py", project / "missing_plot.py")
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
@@ -685,7 +687,7 @@ figures:
             project = Path(tmpdir) / "LegacyGraph"
             (project / "hub_scripts").mkdir(parents=True)
             (project / "plot.py").write_text("print('new')\n", encoding="utf-8")
-            os.symlink(project / "missing_target.py", project / "hub_scripts" / "plot.py")
+            symlink_or_skip(project / "hub_scripts" / "plot.py", project / "missing_target.py")
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
             result = self._call(
@@ -860,7 +862,7 @@ visual_style:
             project.mkdir()
             (project / "plot.py").write_text("print('plot')\n", encoding="utf-8")
             (project / "alternate_scripts").mkdir()
-            os.symlink(project / "alternate_scripts", project / "hub_scripts")
+            symlink_or_skip(project / "hub_scripts", project / "alternate_scripts", target_is_directory=True)
             before = _snapshot_files(project)
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
@@ -882,7 +884,7 @@ visual_style:
             actual_root.mkdir()
             (actual_root / "plot.py").write_text("print('plot')\n", encoding="utf-8")
             symlink_root = Path(tmpdir) / "LegacyGraph_Link"
-            os.symlink(actual_root, symlink_root)
+            symlink_or_skip(symlink_root, actual_root, target_is_directory=True)
             before_actual = _snapshot_files(actual_root)
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
@@ -905,7 +907,7 @@ visual_style:
             project.mkdir(parents=True)
             (project / "plot.py").write_text("print('plot')\n", encoding="utf-8")
             symlink_parent = Path(tmpdir) / "Projects_Link"
-            os.symlink(actual_parent, symlink_parent)
+            symlink_or_skip(symlink_parent, actual_parent, target_is_directory=True)
             before_project = _snapshot_files(project)
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
@@ -928,7 +930,7 @@ visual_style:
             project.mkdir(parents=True)
             (project / "plot.py").write_text("print('plot')\n", encoding="utf-8")
             alias = research_root / "Alias"
-            os.symlink(research_root, alias)
+            symlink_or_skip(alias, research_root, target_is_directory=True)
             before_project = _snapshot_files(project)
             server = GraphHubMCPServer(research_root=research_root)
 
@@ -950,7 +952,7 @@ visual_style:
             project.mkdir(parents=True)
             external = Path(tmpdir) / "outside.py"
             external.write_text("print('outside')\n", encoding="utf-8")
-            os.symlink(external, project / "plot.py")
+            symlink_or_skip(project / "plot.py", external)
             server = GraphHubMCPServer(research_root=research_root)
 
             result = self._call(

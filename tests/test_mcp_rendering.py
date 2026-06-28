@@ -15,6 +15,7 @@ from hub_core.mcp import GraphHubMCPServer
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.schemas import list_tool_definitions
 from hub_core.mcp.transport import _handle_json_rpc
+from tests._symlink import symlink_or_skip
 
 
 class _CompletedRenderProcess:
@@ -857,10 +858,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             target.write_text("x,y\n9,9\n", encoding="utf-8")
             data_path = project / "results" / "data" / "summary.csv"
             data_path.unlink()
-            try:
-                data_path.symlink_to(target)
-            except OSError as exc:
-                self.skipTest(f"symlink creation unavailable: {exc}")
+            symlink_or_skip(data_path, target)
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
 
             result = self._call(
@@ -939,7 +937,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_rejects_overwrite_without_flag(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=Path(tmpdir) / "runtime",
+                write_tools_enabled=True,
+            )
             args = {"data_path": str(data_path), "x_column": "x", "y_column": "y", "job_id": "same-job"}
             first = self._call(server, "figops.render_csv_graph", args)
             second = self._call(server, "figops.render_csv_graph", args)
@@ -2386,7 +2388,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_ignores_invalid_csv_size_limit_environment(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=Path(tmpdir) / "runtime",
+                write_tools_enabled=True,
+            )
 
             with patch.dict(os.environ, {"GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES": "not-an-int"}, clear=False):
                 result = self._call(
@@ -2625,7 +2631,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_default_prefetcher_is_noop(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=Path(tmpdir) / "runtime",
+                write_tools_enabled=True,
+            )
 
             with (
                 patch.dict(os.environ, {}, clear=True),
@@ -2642,7 +2652,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
     def test_render_csv_graph_uses_gdrive_prefetcher_when_opted_in(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=Path(tmpdir) / "runtime",
+                write_tools_enabled=True,
+            )
 
             with (
                 patch.dict(os.environ, {"GRAPH_HUB_PREFETCH_ADAPTER": "gdrive"}, clear=False),
@@ -2734,10 +2748,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             real_dir = root / "real"
             link_dir = root / "link"
             data_path = _write_csv(real_dir / "data.csv")
-            try:
-                link_dir.symlink_to(real_dir, target_is_directory=True)
-            except OSError as exc:
-                self.skipTest(f"symlink creation unavailable: {exc}")
+            symlink_or_skip(link_dir, real_dir, target_is_directory=True)
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
 
             result = self._call(

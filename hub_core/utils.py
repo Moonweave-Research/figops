@@ -10,7 +10,8 @@ from .logging import get_logger
 logger = get_logger(__name__)
 
 def resolve_path(base_dir, path):
-    return path if os.path.isabs(path) else os.path.join(base_dir, path)
+    resolved = path if os.path.isabs(path) else os.path.join(base_dir, path)
+    return os.path.normpath(resolved)
 
 def get_hub_path():
     """

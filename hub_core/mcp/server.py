@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Any, Callable
@@ -267,8 +268,18 @@ class FigOpsMCPServer(
         for root_text, label in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
             child_label = label if label.endswith("/") else f"{label}/"
             sanitized = sanitized.replace(f"{root_text}{os.sep}", child_label)
+            if os.altsep:
+                sanitized = sanitized.replace(f"{root_text}{os.altsep}", child_label)
             sanitized = sanitized.replace(root_text, label)
-        return sanitized
+        return self._normalize_sanitized_uris(sanitized)
+
+    @staticmethod
+    def _normalize_sanitized_uris(text: str) -> str:
+        labels = ("runtime://", "research://", "hub://", "input://data_path", "input://project_path")
+        for label in labels:
+            pattern = re.compile(rf"{re.escape(label)}[^\s\"'<>)]*")
+            text = pattern.sub(lambda match: match.group(0).replace("\\", "/"), text)
+        return text
 
     def _diagnostic_path_replacements(self, arguments: dict[str, Any]) -> list[tuple[str, str]]:
         replacements = [

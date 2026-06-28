@@ -19,7 +19,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 from cycler import cycler
-from matplotlib import font_manager
 
 try:
     # Package import path: from themes.journal_theme import ...
@@ -501,17 +500,10 @@ STYLE_PRESETS["default"] = copy.deepcopy(STYLE_PRESETS["nature"])
 _FALLBACK_SANS_FONTS = ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"]
 
 
-def _available_font_names():
-    return {entry.name for entry in font_manager.fontManager.ttflist}
-
-
 def _resolve_sans_fonts(preferred_fonts):
     preferred = preferred_fonts if isinstance(preferred_fonts, list) else _FALLBACK_SANS_FONTS
-    available = _available_font_names()
-    resolved = [font for font in preferred if font in available]
-    if not resolved:
-        resolved = ["DejaVu Sans"]
-    elif "DejaVu Sans" not in resolved:
+    resolved = list(dict.fromkeys(preferred))
+    if "DejaVu Sans" not in resolved:
         # Keep a universal fallback at the end for non-Docker environments.
         resolved.append("DejaVu Sans")
     return resolved

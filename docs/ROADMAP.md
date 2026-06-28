@@ -26,13 +26,13 @@
 - Actions are not part of local verification and should not be triggered for
   docs-only work.
 
-## Current-state scorecard (v0.15.0, 2026-06-21)
+## Current-state scorecard (v0.17.9, 2026-06-28)
 
 | Dimension | Score | Read |
 |---|---:|---|
 | Vision and feature breadth | 9/10 | Data contracts, provenance, regression checks, geometry QA, semantic checks, journal styles, and domain helpers are deep for a lab tool. |
 | Fundamentals and security | 9/10 | Audit-fix issues #153-158 are resolved; MCP root/runtime trust, duplicate-key YAML loading, symlink guards, and runtime-root isolation are in place. |
-| Code maintainability | 7/10 | The MCP monolith is decomposed and ruff is clean. Remaining debt is concentrated in large modules, especially `hub_core/data_contract.py`. |
+| Code maintainability | 7/10 | The MCP monolith is decomposed and data-contract IO/orchestration has been split. Remaining debt is concentrated in large modules such as `plotting/bridge_renderer.py`, `hub_core/data_contract_semantics.py`, and `hub_core/config_parser.py`. |
 | Generality / portability | 7/10 | Prefetch, Athena, and conventions adapters are opt-in with generic defaults; project status and schema versioning are explicit. |
 | DX / docs / discoverability | 8/10 | Registry-backed `figops.describe`, generated `docs/tools.md`, `docs/mcp_errors.md`, and `figops.doctor` have shipped. |
 
@@ -60,7 +60,9 @@ hub_core/
   adapters/                   # opt-in prefetch, Athena, and conventions adapters
   rendering/                  # plot-type registry and render backend surface
   domain_analysis.py          # registered domain analysis helpers
-  data_contract.py            # largest remaining module; future split candidate
+  data_contract.py            # data-contract orchestration and compatibility surface
+  data_contract_io.py         # table loading, supported formats, path collection
+  data_contract_semantics.py  # semantic validators and calculation checks
   process_runner.py           # pipeline execution helpers
 themes/                       # journal styles, palettes, font tokens
 docs/                         # quickstart, generated tool refs, specs, roadmap
@@ -172,17 +174,29 @@ Next implementation priority: architecture/data-contract debt as a separate
 maintenance track. Do not reclassify shipped polish controls as open gaps unless
 a regression is proven.
 
-### R1 - Data-contract decomposition
+### R1 - Large-module decomposition
 
-`hub_core/data_contract.py` has started a behavior-preserving decomposition. Data
-loading, supported-format checks, optional I/O dependency detection, contract path
-collection, and prefetcher resolution live in `hub_core/data_contract_io.py`.
-Semantic-check definitions, semantic validators, calculation sidecar helpers,
-statistical quality checks, and unit helpers live in
-`hub_core/data_contract_semantics.py`. `hub_core.data_contract` keeps
-compatibility shims for existing private imports and monkeypatch surfaces. The
-next safe step is validation orchestration decomposition, keeping public imports
-and the full data-contract test suite green.
+`hub_core/data_contract.py` has already had its IO and semantic helper layers
+extracted. Data loading, supported-format checks, optional I/O dependency
+detection, contract path collection, and prefetcher resolution live in
+`hub_core/data_contract_io.py`. Semantic-check definitions, semantic validators,
+calculation sidecar helpers, statistical quality checks, and unit helpers live
+in `hub_core/data_contract_semantics.py`. `hub_core.data_contract` keeps
+compatibility shims for existing private imports and monkeypatch surfaces.
+
+The next safe decomposition track should target the current hotspots:
+
+- `plotting/bridge_renderer.py` (first wave complete: box/violin distribution renderers moved to `plotting/renderers/distribution.py`, heatmap moved to `plotting/renderers/heatmap.py`, bar renderer and aggregate helpers moved to `plotting/renderers/bar.py`, shared renderer helpers moved to `plotting/renderers/common.py`, XY renderer moved to `plotting/renderers/xy.py`, broken-axis renderer moved to `plotting/renderers/broken_axis.py`, facet renderer moved to `plotting/renderers/facet.py`)
+- `hub_core/data_contract_semantics.py`
+- `hub_core/config_parser.py`
+- `hub_core/geometry_diagnostics.py`
+- `hub_core/mcp/tools/render_csv.py`
+
+Each extraction should be behavior-preserving, keep public imports compatible,
+and add a witness test for the behavior being moved.
+
+The current execution plan for that maintenance track lives in
+`docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 
 ### R2 - Architecture guardrails
 

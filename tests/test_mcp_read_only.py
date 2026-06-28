@@ -21,6 +21,7 @@ from hub_core.mcp.transport import (
     run_stdio_server,
 )
 from hub_core.project_discovery import ProjectDiscoveryService
+from tests._symlink import symlink_or_skip
 from themes.style_profiles import PROFILE_ALIASES, list_profiles
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
@@ -493,10 +494,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             data_path = root / "data.csv"
             data_path.write_text("x,y\n1,2\n", encoding="utf-8")
             link_dir = Path(tmpdir) / "research_link"
-            try:
-                link_dir.symlink_to(root, target_is_directory=True)
-            except OSError as exc:
-                self.skipTest(f"symlink creation unavailable: {exc}")
+            symlink_or_skip(link_dir, root, target_is_directory=True)
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             symlinked_data_path = link_dir / data_path.name
 
@@ -516,7 +514,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             escape_dir = Path(tmpdir) / "escape_link"
             escape_target = Path(tmpdir) / "outside"
             escape_target.mkdir()
-            escape_dir.symlink_to(escape_target, target_is_directory=True)
+            symlink_or_skip(escape_dir, escape_target, target_is_directory=True)
             escaped_path = escape_dir / "escape.txt"
 
             with self.assertRaisesRegex(ValueError, "must stay under"):
@@ -845,7 +843,7 @@ project:
                 "SECRET_TOKEN=do-not-read\nvisual_style:\n  target_format: super_secret\n",
                 encoding="utf-8",
             )
-            (project / "project_config.yaml").symlink_to(secret)
+            symlink_or_skip(project / "project_config.yaml", secret)
             server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
             projects_response = _handle_json_rpc(
                 server,

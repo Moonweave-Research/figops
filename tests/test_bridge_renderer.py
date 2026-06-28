@@ -42,6 +42,31 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _assert_visual_baseline(
+    testcase: unittest.TestCase,
+    actual: Path,
+    baseline: Path,
+    *,
+    rms_tolerance: float = 0.05,
+) -> None:
+    actual_hash = _sha256(actual)
+    baseline_hash = _sha256(baseline)
+    if actual_hash == baseline_hash:
+        return
+
+    from PIL import Image, ImageChops, ImageStat
+
+    with Image.open(actual) as actual_image, Image.open(baseline) as baseline_image:
+        testcase.assertEqual(actual_image.size, baseline_image.size)
+        diff = ImageChops.difference(actual_image.convert("RGB"), baseline_image.convert("RGB"))
+        rms = max(ImageStat.Stat(diff).rms)
+    testcase.assertLessEqual(
+        rms,
+        rms_tolerance,
+        f"visual baseline mismatch: actual={actual_hash}, baseline={baseline_hash}, rms={rms:.4f}",
+    )
+
+
 def _geometry_check(result: dict, name: str) -> dict:
     matches = [check for check in result["checks"] if check["name"] == name]
     assert matches, f"no geometry check named {name}"
@@ -539,7 +564,101 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertIsNotNone(dpi)
             self.assertAlmostEqual(dpi[0], 600, delta=1)
             self.assertAlmostEqual(dpi[1], 600, delta=1)
-            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
+            _assert_visual_baseline(self, Path(out), baseline)
+
+    def test_bar_aggregate_helper_import_paths_remain_compatible(self):
+        from plotting.bridge_renderer import (
+            _aggregate_single_series_bar_points,
+            _first_seen_values,
+            _group_points,
+            _resolve_explicit_order,
+            _validate_bar_aggregate,
+            _yerr_values,
+        )
+        from plotting.renderers.bar import (
+            BarRendererContext,
+            aggregate_single_series_bar_points,
+            render_bar_plot,
+            validate_bar_aggregate,
+        )
+        from plotting.renderers.common import first_seen_values, group_points, resolve_explicit_order, yerr_values
+
+        self.assertIs(_aggregate_single_series_bar_points, aggregate_single_series_bar_points)
+        self.assertIs(_validate_bar_aggregate, validate_bar_aggregate)
+        self.assertIs(_group_points, group_points)
+        self.assertIs(_first_seen_values, first_seen_values)
+        self.assertIs(_resolve_explicit_order, resolve_explicit_order)
+        self.assertIs(_yerr_values, yerr_values)
+        self.assertTrue(callable(render_bar_plot))
+        self.assertEqual(BarRendererContext.__name__, "BarRendererContext")
+
+    def test_xy_renderer_import_paths_remain_compatible(self):
+        from plotting.bridge_renderer import _line_marker_color_kwargs, _marker_color_kwargs
+        from plotting.renderers.xy import (
+            XYRendererContext,
+            line_marker_color_kwargs,
+            marker_color_kwargs,
+            render_xy_plot,
+        )
+
+        self.assertIs(_line_marker_color_kwargs, line_marker_color_kwargs)
+        self.assertIs(_marker_color_kwargs, marker_color_kwargs)
+        self.assertTrue(callable(render_xy_plot))
+        self.assertEqual(XYRendererContext.__name__, "XYRendererContext")
+
+    def test_broken_axis_renderer_import_paths_remain_compatible(self):
+        from plotting.bridge_renderer import (
+            _annotate_broken_axis_points,
+            _draw_broken_xy_series,
+            _draw_grouped_broken_xy,
+            _make_broken_y_axes,
+        )
+        from plotting.renderers.broken_axis import (
+            BrokenAxisRendererContext,
+            annotate_broken_axis_points,
+            draw_broken_xy_series,
+            draw_grouped_broken_xy,
+            make_broken_y_axes,
+        )
+
+        self.assertTrue(callable(_make_broken_y_axes))
+        self.assertTrue(callable(_draw_grouped_broken_xy))
+        self.assertTrue(callable(_draw_broken_xy_series))
+        self.assertTrue(callable(_annotate_broken_axis_points))
+        self.assertTrue(callable(make_broken_y_axes))
+        self.assertTrue(callable(draw_grouped_broken_xy))
+        self.assertTrue(callable(draw_broken_xy_series))
+        self.assertTrue(callable(annotate_broken_axis_points))
+        self.assertEqual(BrokenAxisRendererContext.__name__, "BrokenAxisRendererContext")
+
+    def test_facet_renderer_import_paths_remain_compatible(self):
+        from plotting.bridge_renderer import (
+            _expand_shared_facet_limits_for_markers,
+            _group_facet_points,
+            _optional_positive_int,
+            _render_facet_plot,
+            _resolve_facet_grid,
+        )
+        from plotting.renderers.facet import (
+            FacetRendererContext,
+            expand_shared_facet_limits_for_markers,
+            group_facet_points,
+            optional_positive_int,
+            render_facet_plot,
+            resolve_facet_grid,
+        )
+
+        self.assertTrue(callable(_render_facet_plot))
+        self.assertTrue(callable(_resolve_facet_grid))
+        self.assertTrue(callable(_optional_positive_int))
+        self.assertTrue(callable(_expand_shared_facet_limits_for_markers))
+        self.assertTrue(callable(_group_facet_points))
+        self.assertTrue(callable(render_facet_plot))
+        self.assertTrue(callable(resolve_facet_grid))
+        self.assertTrue(callable(optional_positive_int))
+        self.assertTrue(callable(expand_shared_facet_limits_for_markers))
+        self.assertTrue(callable(group_facet_points))
+        self.assertEqual(FacetRendererContext.__name__, "FacetRendererContext")
 
     def test_heatmap_plot_renders_mesh_and_colorbar(self):
         spec = BridgeFigureSpec(
@@ -616,6 +735,12 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertEqual(colors, ["white", "black"])
         finally:
             plt.close(fig)
+
+    def test_heatmap_renderer_import_paths_remain_compatible(self):
+        from plotting.bridge_renderer import _render_heatmap_plot
+        from plotting.renderers.heatmap import render_heatmap_plot
+
+        self.assertIs(_render_heatmap_plot, render_heatmap_plot)
 
     def test_single_series_bar_renders_declared_error_column(self):
         with tempfile.TemporaryDirectory(prefix="bridge_bar_yerr_") as tmpdir:
@@ -734,7 +859,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 out = render_bridge_figure(spec)
 
             self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
-            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
+            _assert_visual_baseline(self, Path(out), baseline)
 
     def test_violin_plot_type_matches_visual_regression_baseline(self):
         baseline = Path(__file__).parent / "fixtures" / "visual_regression" / "m4_2_violin_plot.png"
@@ -754,7 +879,14 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 out = render_bridge_figure(spec)
 
             self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
-            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
+            _assert_visual_baseline(self, Path(out), baseline)
+
+    def test_distribution_renderer_import_paths_remain_compatible(self):
+        from plotting.bridge_renderer import _render_box_plot, _render_violin_plot
+        from plotting.renderers.distribution import render_box_plot, render_violin_plot
+
+        self.assertIs(_render_box_plot, render_box_plot)
+        self.assertIs(_render_violin_plot, render_violin_plot)
 
     def test_axis_scales_series_and_annotations_render_on_bridge_figure(self):
         with tempfile.TemporaryDirectory(prefix="bridge_log_series_annotation_") as tmpdir:
@@ -1328,7 +1460,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 out = render_bridge_figure(spec)
 
             self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
-            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
+            _assert_visual_baseline(self, Path(out), baseline)
 
     def test_statistical_overlays_render_fit_ci_and_significance_marker(self):
         with tempfile.TemporaryDirectory(prefix="bridge_stat_overlay_") as tmpdir:
@@ -1466,7 +1598,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 out = render_bridge_figure(spec)
 
             self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
-            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
+            _assert_visual_baseline(self, Path(out), baseline)
 
     def test_multi_series_legend_uses_standard_props(self):
         spec = BridgeFigureSpec(

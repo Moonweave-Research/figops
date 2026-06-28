@@ -4,6 +4,7 @@ from pathlib import Path
 
 from hub_core.adapters import SurfurConventions
 from hub_core.project_discovery import ProjectDiscoveryService, get_discoverable_projects
+from tests._symlink import symlink_or_skip
 
 VALID_CONFIG = """
 project:
@@ -54,7 +55,7 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
             real_project = Path(tmpdir) / "external" / "01_Project"
             self._write_config(real_project, "Symlinked Project")
             root.mkdir()
-            (root / "01_Project").symlink_to(real_project, target_is_directory=True)
+            symlink_or_skip(root / "01_Project", real_project, target_is_directory=True)
             self._write_config(root / ".worktrees" / "feature" / "02_Worktree", "Worktree Project")
             self._write_config(root / "[Athena]" / "bridge_jobs" / "job1" / "hub_project", "Bridge Job")
 

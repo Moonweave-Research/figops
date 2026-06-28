@@ -1,6 +1,6 @@
 # FigOps - Architecture
 
-> Companion to `docs/ROADMAP.md`. Describes the current v0.15.0 architecture
+> Companion to `docs/ROADMAP.md`. Describes the current v0.17.9 architecture
 > after the 0.5.0 MCP decomposition and later release work.
 
 ## Layers and dependency direction
@@ -52,25 +52,45 @@ codebase. M1 shipped in 0.5.0 by decomposing that surface into the
 ## Module-size and boundary rules
 
 The architecture budget is aspirational, not currently CI-enforced. There is no
-module-size or import-linter guard in `.github/workflows/ci.yml` as of v0.15.0.
-Future changes should still treat about 800 lines per `hub_core/**.py` module as
-a split signal, but the current tree has known over-budget files.
+module-size or import-linter guard in `.github/workflows/ci.yml` as of v0.17.9.
+Future changes should still treat about 800 lines per core module as a split
+signal, but the current tree has known over-budget files.
 
-Current files over the approximate 800-line budget, measured with `wc -l` on
-2026-06-21:
+Current files over the approximate 800-line budget, measured on 2026-06-28 with
+this Python line-count inventory:
+
+```bash
+python -c "from pathlib import Path; roots=['hub_core','plotting','themes']; rows=[]; [rows.append((len(p.read_text(encoding='utf-8',errors='ignore').splitlines()), str(p))) for root in roots for p in Path(root).rglob('*.py')]; [print(f'{n:5d}  {p}') for n,p in sorted(rows, reverse=True) if n > 800]"
+```
 
 | File | Lines |
 |---|---:|
-| `hub_core/data_contract.py` | 2600 |
-| `hub_core/config_parser.py` | 2023 |
-| `hub_core/geometry_diagnostics.py` | 1691 |
-| `hub_core/mcp/tools/render_tools.py` | 1140 |
+| `plotting/bridge_renderer.py` | 2538 |
+| `hub_core/data_contract_semantics.py` | 2113 |
+| `hub_core/config_parser.py` | 1760 |
+| `hub_core/geometry_diagnostics.py` | 1685 |
+| `hub_core/mcp/tools/render_csv.py` | 1623 |
+| `themes/journal_theme.py` | 1398 |
+| `hub_core/mcp/schemas.py` | 1151 |
 | `hub_core/process_runner.py` | 1131 |
+| `hub_core/mcp/render_orchestration.py` | 925 |
 | `hub_core/visual_regression.py` | 902 |
-| `hub_core/mcp/render_orchestration.py` | 822 |
 
-`hub_core/data_contract.py` is the largest remaining module and the clearest
-candidate for a future decomposition pass.
+`plotting/bridge_renderer.py`, `hub_core/data_contract_semantics.py`, and
+`hub_core/config_parser.py` are now the clearest candidates for future
+behavior-preserving decomposition. `hub_core/data_contract.py` has already been
+reduced to a compatibility/orchestration surface after IO and semantic helpers
+were extracted.
+
+The first `plotting.bridge_renderer` extraction wave moved box/violin
+distribution rendering into `plotting/renderers/distribution.py`, heatmap
+rendering into `plotting/renderers/heatmap.py`, and bar rendering plus bar
+aggregate helpers into `plotting/renderers/bar.py`. Shared renderer ordering,
+grouping, and error-bar helpers now live in `plotting/renderers/common.py`.
+Line/scatter XY rendering now lives in `plotting/renderers/xy.py`, and
+broken-axis XY drawing now lives in `plotting/renderers/broken_axis.py`. The
+facet rendering now lives in `plotting/renderers/facet.py`. The old private
+import paths remain available for compatibility.
 
 ## Current architecture constraints
 

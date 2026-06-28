@@ -125,7 +125,7 @@ class ProjectDiscoveryService:
         from .config_parser import _load_project_metadata
 
         rel_project = self._relative_path(project_path)
-        rel_config = os.path.relpath(config_path, project_path)
+        rel_config = Path(os.path.relpath(config_path, project_path)).as_posix()
         metadata = _load_project_metadata(str(config_path), project_path.name)
         valid = bool(metadata["valid"])
         classification = self._classify(rel_project, rel_config, valid)

@@ -118,7 +118,7 @@ def main():
     os.environ.setdefault("PROJECT_ROOT", inferred_root_dir)
 
     parser = argparse.ArgumentParser(
-        description="🏛️ Research Central Orchestrator (RC-Arch)",
+        description="Research Central Orchestrator (RC-Arch)",
         epilog=(
             "Quick start:\n"
             "  python orchestrator.py\n"

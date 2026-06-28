@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import hub_core.process_runner as pr
 from hub_core.process_runner import _build_r_cmd, run_analysis, run_comparison, run_plots, run_sweep
-from hub_core.scaffold import DEFAULT_ANALYZE_R, scaffold_project
+from hub_core.scaffold import DEFAULT_ANALYZE_R, normalize_scaffold_target_format, scaffold_project
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
 
@@ -202,6 +202,16 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "Missing scaffold template"):
                 scaffold_project(tmp_path / "project", unrelated_hub, project_name="Should Fail")
+
+    def test_scaffold_target_format_normalizes_valid_input(self):
+        self.assertEqual(
+            normalize_scaffold_target_format(" Nature ", {"nature", "science"}),
+            "nature",
+        )
+
+    def test_scaffold_target_format_rejects_internal_placeholder(self):
+        with self.assertRaisesRegex(ValueError, "Allowed values"):
+            normalize_scaffold_target_format("internal", {"nature", "nature_surfur", "science", "ppt"})
 
 
 class TestRunSweepMonkeyPatch(unittest.TestCase):

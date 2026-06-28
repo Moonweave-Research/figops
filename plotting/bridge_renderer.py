@@ -8,7 +8,6 @@ import csv
 import math
 import os
 import warnings
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,10 +15,48 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.font_manager import FontProperties
 
 from hub_core.rendering import PLOT_TYPES, render_plot
 from plotting.axis_break import _draw_break_marks
+from plotting.renderers.bar import (
+    BarRendererContext,
+)
+from plotting.renderers.bar import (
+    aggregate_single_series_bar_points as _aggregate_single_series_bar_points,  # noqa: F401
+)
+from plotting.renderers.bar import (
+    render_bar_plot as _render_bar_plot_impl,
+)
+from plotting.renderers.bar import (
+    validate_bar_aggregate as _validate_bar_aggregate,  # noqa: F401
+)
+from plotting.renderers.broken_axis import BrokenAxisRendererContext
+from plotting.renderers.broken_axis import annotate_broken_axis_points as _annotate_broken_axis_points_impl
+from plotting.renderers.broken_axis import draw_broken_xy_series as _draw_broken_xy_series_impl
+from plotting.renderers.broken_axis import draw_grouped_broken_xy as _draw_grouped_broken_xy_impl
+from plotting.renderers.broken_axis import make_broken_y_axes as _make_broken_y_axes_impl
+from plotting.renderers.common import first_seen_values as _first_seen_values  # noqa: F401
+from plotting.renderers.common import format_order_values as _format_order_values  # noqa: F401
+from plotting.renderers.common import group_points as _group_points  # noqa: F401
+from plotting.renderers.common import normalize_order_value as _normalize_order_value  # noqa: F401
+from plotting.renderers.common import optional_error_float as _optional_error_float  # noqa: F401
+from plotting.renderers.common import resolve_explicit_order as _resolve_explicit_order  # noqa: F401
+from plotting.renderers.common import yerr_values as _yerr_values  # noqa: F401
+from plotting.renderers.distribution import render_box_plot as _render_box_plot  # noqa: F401
+from plotting.renderers.distribution import render_violin_plot as _render_violin_plot  # noqa: F401
+from plotting.renderers.facet import FacetRendererContext
+from plotting.renderers.facet import expand_shared_facet_limits_for_markers as _expand_shared_facet_limits_impl
+from plotting.renderers.facet import group_facet_points as _group_facet_points_impl
+from plotting.renderers.facet import optional_positive_int as _optional_positive_int_impl
+from plotting.renderers.facet import render_facet_plot as _render_facet_plot_impl
+from plotting.renderers.facet import resolve_facet_grid as _resolve_facet_grid_impl
+from plotting.renderers.heatmap import render_heatmap_plot as _render_heatmap_plot  # noqa: F401
+from plotting.renderers.xy import XYRendererContext
+from plotting.renderers.xy import line_marker_color_kwargs as _line_marker_color_kwargs  # noqa: F401
+from plotting.renderers.xy import marker_color_kwargs as _marker_color_kwargs  # noqa: F401
+from plotting.renderers.xy import render_xy_plot as _render_xy_plot_impl
 from plotting.utils import (
     annotate_significance,
     apply_density_alpha,
@@ -38,7 +75,6 @@ from themes.journal_theme import (
     save_journal_fig,
     set_figure_size,
 )
-from themes.physics_colormap import resolve_colormap
 from themes.style_profiles import get_render_style_tokens, get_series_style
 
 from .smart_layout import find_empty_quadrant
@@ -102,11 +138,6 @@ def _column_width_mm(target_format: str, column_width: str, profile_name: str = 
     if isinstance(column_widths, dict) and width_key in column_widths:
         return float(column_widths[width_key])
     return float(DOUBLE_COLUMN if width_key == "double" else SINGLE_COLUMN)
-
-
-def _default_colormap(spec: BridgeFigureSpec) -> str:
-    tokens, _meta = get_render_style_tokens(spec.target_format, spec.profile_name)
-    return str(tokens.get("default_colormap", "viridis"))
 
 
 def _marker_tokens(spec: BridgeFigureSpec, *, small_panel: bool = False) -> tuple[float, float, float | None]:
@@ -376,12 +407,14 @@ def render_multipanel_figure(spec: MultiPanelSpec) -> str:
             fig = _render_multipanel_manuscript(spec)
         else:
             fig = _render_multipanel_draft(spec)
+        FigureCanvasAgg(fig)
         output_path = Path(spec.output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             save_journal_fig(fig, output_path)
         finally:
             plt.close(fig)
+            FigureCanvasAgg(fig)
     finally:
         plt.rcParams.update(_saved_rc)
 
@@ -826,98 +859,6 @@ def _parse_x_value(value: object) -> float | str:
         return text
 
 
-def _group_points(points: list[dict], spec: BridgeFigureSpec) -> dict[str, list[dict]]:
-    grouped: dict[str, list[dict]] = {}
-    for point in points:
-        key = point["series"] if spec.series_column and point["series"] else "__single__"
-        grouped.setdefault(str(key), []).append(point)
-    return grouped
-
-
-def _first_seen_values(values: Sequence[float | str]) -> list[float | str]:
-    ordered: list[float | str] = []
-    for value in values:
-        if value not in ordered:
-            ordered.append(value)
-    return ordered
-
-
-def _format_order_values(values: Sequence[float | str]) -> str:
-    return ", ".join(str(value) for value in values)
-
-
-def _resolve_explicit_order(
-    data_order: Sequence[float | str],
-    explicit_order: Sequence[float | str],
-    *,
-    field_name: str,
-) -> list[float | str]:
-    if not explicit_order:
-        return list(data_order)
-    explicit = [_normalize_order_value(value, data_order) for value in explicit_order]
-    duplicates = [value for index, value in enumerate(explicit) if value in explicit[:index]]
-    if duplicates:
-        raise ValueError(f"{field_name} contains duplicate value(s): {_format_order_values(duplicates)}")
-    missing = [value for value in data_order if value not in explicit]
-    if missing:
-        raise ValueError(f"{field_name} is missing data category value(s): {_format_order_values(missing)}")
-    extra = [value for value in explicit if value not in data_order]
-    if extra:
-        raise ValueError(f"{field_name} includes value(s) not present in data: {_format_order_values(extra)}")
-    return explicit
-
-
-def _normalize_order_value(value: float | str, data_order: Sequence[float | str]) -> float | str:
-    if value in data_order:
-        return value
-    if any(isinstance(item, float) for item in data_order):
-        try:
-            numeric = float(value)
-        except (TypeError, ValueError):
-            pass
-        else:
-            if numeric in data_order:
-                return numeric
-    text = str(value)
-    if text in data_order:
-        return text
-    return value
-
-
-def _optional_error_float(value) -> float | None:
-    if value is None:
-        return None
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not np.isfinite(number):
-        return None
-    return number
-
-
-def _yerr_values(points: list[dict], spec: BridgeFigureSpec):
-    if not spec.yerr_column and not spec.yerr_minus_column:
-        return None
-    if spec.yerr_minus_column:
-        import numpy as np
-
-        minus = [_optional_error_float(point.get("yerr_minus")) for point in points]
-        if any(value is None for value in minus):
-            return None
-        # When only the lower (minus) column is configured, mirror it onto the upper
-        # bound so the configured error data is never silently dropped (symmetric from
-        # the minus values). With both columns present, use them as asymmetric bounds.
-        plus = [_optional_error_float(point.get("yerr")) for point in points] if spec.yerr_column else minus
-        if any(value is None for value in plus):
-            return None
-        return np.array([minus, plus])
-    yerr = [_optional_error_float(point.get("yerr")) for point in points]
-    if any(value is None for value in yerr):
-        return None
-    return yerr
-
-
 def _annotate_points(
     ax,
     xs: list[float],
@@ -1109,134 +1050,19 @@ def _series_style(spec: BridgeFigureSpec, series_index: int, series_name: object
     return style
 
 
-def _marker_color_kwargs(sty: dict[str, object]) -> dict[str, object]:
-    kwargs: dict[str, object] = {}
-    if "markerfacecolor" in sty:
-        kwargs["facecolors"] = sty["markerfacecolor"]
-    if "markeredgecolor" in sty:
-        kwargs["edgecolors"] = sty["markeredgecolor"]
-    if "alpha" in sty:
-        kwargs["alpha"] = sty["alpha"]
-    if "zorder" in sty:
-        kwargs["zorder"] = sty["zorder"]
-    return kwargs
-
-
-def _line_marker_color_kwargs(sty: dict[str, object]) -> dict[str, object]:
-    kwargs: dict[str, object] = {}
-    if "color" in sty:
-        kwargs["color"] = sty["color"]
-    if "markerfacecolor" in sty:
-        kwargs["markerfacecolor"] = sty["markerfacecolor"]
-    if "markeredgecolor" in sty:
-        kwargs["markeredgecolor"] = sty["markeredgecolor"]
-    if "alpha" in sty:
-        kwargs["alpha"] = sty["alpha"]
-    if "zorder" in sty:
-        kwargs["zorder"] = sty["zorder"]
-    return kwargs
-
-
 def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: bool, small_panel: bool = False) -> None:
-    grouped = _group_points(points, spec)
-    has_multi_series = any(key != "__single__" for key in grouped)
-    marker_size, marker_edge_width, _marker_margin = _marker_tokens(spec, small_panel=small_panel)
-    scatter_size = _scatter_marker_area(marker_size)
-    legend_entries: list[tuple[str, str]] = []
-    label_points: list[dict] = []
-
-    for idx, (series_name, series_points) in enumerate(grouped.items()):
-        xs = [point["x"] for point in series_points]
-        ys = [point["y"] for point in series_points]
-        yerr = _yerr_values(series_points, spec)
-        sty = _series_style(spec, idx, series_name)
-        if "label" in sty:
-            legend_label = str(sty["label"])
-        elif has_multi_series:
-            legend_label = _display_label(series_name, compress_labels=spec.compress_labels)
-        else:
-            legend_label = None
-        if legend_label is not None:
-            legend_entries.append((str(series_name), str(legend_label)))
-        series_marker_size = float(sty.get("size", marker_size))
-        series_scatter_size = float(sty.get("size", scatter_size))
-        series_linewidth = float(sty.get("linewidth", 1.2))
-
-        cap_size = spec.yerr_cap_width
-        cap_thick = max(0.5, spec.yerr_cap_width * 0.4)
-        if line:
-            if yerr is not None:
-                ax.errorbar(
-                    xs,
-                    ys,
-                    yerr=yerr,
-                    fmt=sty["marker"],
-                    linestyle=sty["linestyle"],
-                    linewidth=series_linewidth,
-                    markersize=series_marker_size,
-                    markeredgewidth=marker_edge_width,
-                    **_line_marker_color_kwargs(sty),
-                    capsize=cap_size,
-                    capthick=cap_thick,
-                    label=legend_label,
-                )
-            else:
-                ax.plot(
-                    xs,
-                    ys,
-                    marker=sty["marker"],
-                    linestyle=sty["linestyle"],
-                    linewidth=series_linewidth,
-                    markersize=series_marker_size,
-                    markeredgewidth=marker_edge_width,
-                    **_line_marker_color_kwargs(sty),
-                    label=legend_label,
-                )
-        else:
-            if yerr is not None:
-                ax.errorbar(
-                    xs,
-                    ys,
-                    yerr=yerr,
-                    fmt=sty["marker"],
-                    linestyle="none",
-                    markersize=series_marker_size,
-                    markeredgewidth=marker_edge_width,
-                    **_line_marker_color_kwargs(sty),
-                    capsize=cap_size,
-                    capthick=cap_thick,
-                    label=legend_label,
-                )
-            else:
-                ax.scatter(
-                    xs,
-                    ys,
-                    s=series_scatter_size,
-                    marker=sty["marker"],
-                    linewidths=marker_edge_width,
-                    **_marker_color_kwargs(sty),
-                    label=legend_label,
-                )
-
-        if spec.label_column:
-            label_points.extend(series_points)
-
-    if spec.label_column and label_points:
-        _annotate_points(
-            ax,
-            [point["x"] for point in label_points],
-            [point["y"] for point in label_points],
-            [str(point["label"]) for point in label_points],
-            compress_labels=spec.compress_labels,
-            point_label_options=spec.point_label_options,
-            points=label_points,
-        )
-    if has_multi_series:
-        ax._graph_hub_legend_entries = legend_entries
-        _apply_legend(ax, spec, n_series=len(grouped))
-    _apply_marker_axis_margin(ax, spec, small_panel=small_panel)
-    _apply_axis_limits(ax, spec)
-    _apply_tick_style(ax, spec)
+    context = XYRendererContext(
+        marker_tokens=_marker_tokens,
+        scatter_marker_area=_scatter_marker_area,
+        series_style=_series_style,
+        display_label=_display_label,
+        annotate_points=_annotate_points,
+        apply_legend=_apply_legend,
+        apply_marker_axis_margin=_apply_marker_axis_margin,
+        apply_axis_limits=_apply_axis_limits,
+        apply_tick_style=_apply_tick_style,
+    )
+    _render_xy_plot_impl(ax, points, spec, line=line, small_panel=small_panel, context=context)
 
 
 def _has_statistical_overlays(spec: BridgeFigureSpec) -> bool:
@@ -2258,78 +2084,27 @@ def _render_broken_axis_plot(fig, points: list[dict], spec: BridgeFigureSpec) ->
     _separate_top_legend_title(ax_top, spec)
 
 
+def _broken_axis_context() -> BrokenAxisRendererContext:
+    return BrokenAxisRendererContext(
+        draw_break_marks=_draw_break_marks,
+        marker_tokens=_marker_tokens,
+        scatter_marker_area=_scatter_marker_area,
+        series_style=_series_style,
+        display_label=_display_label,
+        normalized_point_label_options=_normalized_point_label_options,
+        point_label_candidates=_point_label_candidates,
+        draw_point_label=_draw_point_label,
+        record_point_label_skips=_record_point_label_skips,
+        apply_legend=_apply_legend,
+    )
+
+
 def _make_broken_y_axes(fig, points: list[dict], break_range: tuple[float, float] | None):
-    if break_range is None:
-        raise ValueError("y_break_range is required for broken-axis rendering")
-    left, bottom, width, height = [0.125, 0.11, 0.775, 0.77]
-    gap_fraction = 0.02
-    top_h = height * 0.5 - gap_fraction / 2
-    bot_h = height * 0.5 - gap_fraction / 2
-    ax_top = fig.add_axes([left, bottom + bot_h + gap_fraction, width, top_h])
-    ax_bot = fig.add_axes([left, bottom, width, bot_h], sharex=ax_top)
-
-    break_start, break_end = break_range
-    ys = [float(point["y"]) for point in points]
-    y_max = max(ys) if ys else break_end
-    y_min = min(ys) if ys else break_start
-    full_range = max(y_max - y_min, abs(break_end - break_start), 1e-6)
-    margin = full_range * 0.05
-
-    ax_top.set_ylim(break_end - margin, y_max + margin)
-    ax_bot.set_ylim(y_min - margin, break_start + margin)
-    ax_top.spines["bottom"].set_visible(False)
-    ax_bot.spines["top"].set_visible(False)
-    ax_top.tick_params(labelbottom=False, bottom=False)
-    ax_bot.tick_params(top=False)
-    _draw_break_marks(ax_top, ax_bot, style="diagonal")
-    return ax_top, ax_bot
+    return _make_broken_y_axes_impl(fig, points, break_range, context=_broken_axis_context())
 
 
 def _draw_grouped_broken_xy(ax_top, ax_bot, points: list[dict], spec: BridgeFigureSpec, *, line: bool) -> None:
-    grouped = _group_points(points, spec)
-    has_multi_series = any(key != "__single__" for key in grouped)
-    legend_entries: list[tuple[str, str]] = []
-
-    for idx, (series_name, series_points) in enumerate(grouped.items()):
-        xs = [point["x"] for point in series_points]
-        ys = [point["y"] for point in series_points]
-        yerr = _yerr_values(series_points, spec)
-        sty = _series_style(spec, idx, series_name)
-        if "label" in sty:
-            legend_label = str(sty["label"])
-        elif has_multi_series:
-            legend_label = _display_label(series_name, compress_labels=spec.compress_labels)
-        else:
-            legend_label = None
-        if legend_label is not None:
-            legend_entries.append((str(series_name), str(legend_label)))
-
-        _draw_broken_xy_series(
-            ax_top,
-            xs,
-            ys,
-            yerr,
-            sty,
-            label=legend_label,
-            spec=spec,
-            line=line,
-        )
-        _draw_broken_xy_series(
-            ax_bot,
-            xs,
-            ys,
-            yerr,
-            sty,
-            label="_nolegend_",
-            spec=spec,
-            line=line,
-        )
-
-    if spec.label_column:
-        _annotate_broken_axis_points(ax_top, ax_bot, points, spec)
-    if has_multi_series:
-        ax_top._graph_hub_legend_entries = legend_entries
-        _apply_legend(ax_top, spec, n_series=len(grouped))
+    _draw_grouped_broken_xy_impl(ax_top, ax_bot, points, spec, line=line, context=_broken_axis_context())
 
 
 def _draw_broken_xy_series(
@@ -2343,444 +2118,60 @@ def _draw_broken_xy_series(
     spec: BridgeFigureSpec,
     line: bool,
 ) -> None:
-    cap_size = spec.yerr_cap_width
-    cap_thick = max(0.5, spec.yerr_cap_width * 0.4)
-    marker_size, marker_edge_width, _marker_margin = _marker_tokens(spec)
-    series_marker_size = float(sty.get("size", marker_size))
-    series_scatter_size = float(sty.get("size", _scatter_marker_area(marker_size)))
-    series_linewidth = float(sty.get("linewidth", 1.2))
-    if line:
-        if yerr is not None:
-            ax.errorbar(
-                xs,
-                ys,
-                yerr=yerr,
-                fmt=sty["marker"],
-                linestyle=sty["linestyle"],
-                linewidth=series_linewidth,
-                markersize=series_marker_size,
-                markeredgewidth=marker_edge_width,
-                **_line_marker_color_kwargs(sty),
-                capsize=cap_size,
-                capthick=cap_thick,
-                label=label,
-            )
-        else:
-            ax.plot(
-                xs,
-                ys,
-                marker=sty["marker"],
-                linestyle=sty["linestyle"],
-                linewidth=series_linewidth,
-                markersize=series_marker_size,
-                markeredgewidth=marker_edge_width,
-                **_line_marker_color_kwargs(sty),
-                label=label,
-            )
-    elif yerr is not None:
-        ax.errorbar(
-            xs,
-            ys,
-            yerr=yerr,
-            fmt=sty["marker"],
-            linestyle="none",
-            markersize=series_marker_size,
-            markeredgewidth=marker_edge_width,
-            **_line_marker_color_kwargs(sty),
-            capsize=cap_size,
-            capthick=cap_thick,
-            label=label,
-        )
-    else:
-        ax.scatter(
-            xs,
-            ys,
-            s=series_scatter_size,
-            marker=sty["marker"],
-            linewidths=marker_edge_width,
-            **_marker_color_kwargs(sty),
-            label=label,
-        )
+    _draw_broken_xy_series_impl(
+        ax,
+        xs,
+        ys,
+        yerr,
+        sty,
+        label=label,
+        spec=spec,
+        line=line,
+        context=_broken_axis_context(),
+    )
 
 
 def _annotate_broken_axis_points(ax_top, ax_bot, series_points: list[dict], spec: BridgeFigureSpec) -> None:
-    break_start, break_end = spec.y_break_range or (float("-inf"), float("inf"))
-    options = _normalized_point_label_options(spec)
-    candidates, skipped = _point_label_candidates(
-        [point["x"] for point in series_points],
-        [point["y"] for point in series_points],
-        [str(point["label"]) for point in series_points],
-        options=options,
-        points=series_points,
+    _annotate_broken_axis_points_impl(ax_top, ax_bot, series_points, spec, context=_broken_axis_context())
+
+
+def _facet_renderer_context() -> FacetRendererContext:
+    return FacetRendererContext(
+        render_xy_plot=_render_xy_plot,
+        display_label=_display_label,
+        marker_tokens=_marker_tokens,
+        apply_facet_headroom=_apply_facet_headroom,
     )
-    for display_index, item in enumerate(candidates):
-        y = float(item["y"])
-        target = ax_top
-        if y <= break_start:
-            target = ax_bot
-        elif break_start < y < break_end:
-            target = ax_top if abs(y - break_end) < abs(y - break_start) else ax_bot
-        _draw_point_label(
-            target,
-            item,
-            options=options,
-            display_index=display_index,
-            compress_labels=spec.compress_labels,
-        )
-    if skipped:
-        _record_point_label_skips(ax_top, skipped=skipped, total=len(series_points), shown=len(candidates))
-
-
-def _render_heatmap_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
-    xs = sorted({point["x"] for point in points})
-    ys = sorted({point["y"] for point in points})
-    x_index = {value: column for column, value in enumerate(xs)}
-    y_index = {value: row for row, value in enumerate(ys)}
-    grid = np.full((len(ys), len(xs)), np.nan)
-    duplicate_cells = 0
-    for point in points:
-        row = y_index[point["y"]]
-        column = x_index[point["x"]]
-        if not math.isnan(grid[row, column]):
-            duplicate_cells += 1
-        grid[row, column] = point["z"]
-    if duplicate_cells:
-        warnings.warn(
-            f"bridge_renderer: {duplicate_cells} duplicate (x,y) heatmap cell(s) overwritten (last value wins)",
-            stacklevel=2,
-        )
-
-    cmap = resolve_colormap(spec.physics_type, fallback=_default_colormap(spec))
-    mesh = ax.pcolormesh(xs, ys, grid, cmap=cmap, shading="auto")
-    if spec.annotate_values:
-        _annotate_heatmap_values(ax, xs, ys, grid, mesh)
-    colorbar = ax.figure.colorbar(mesh, ax=ax)
-    colorbar.ax._graph_hub_role = "colorbar"  # positive tag for geometry-diagnostics classification
-    colorbar.set_label(spec.z_column)
-
-
-def _format_heatmap_annotation_value(value: float) -> str:
-    return f"{value:.3g}"
-
-
-def _heatmap_annotation_color(mesh, value: float) -> str:
-    rgba = mesh.cmap(mesh.norm(value))
-    red, green, blue = rgba[:3]
-    luminance = 0.299 * red + 0.587 * green + 0.114 * blue
-    return "black" if luminance >= 0.5 else "white"
-
-
-def _annotate_heatmap_values(ax, xs: Sequence[float | str], ys: Sequence[float | str], grid, mesh) -> None:
-    for row, y_value in enumerate(ys):
-        for column, x_value in enumerate(xs):
-            value = float(grid[row, column])
-            if not math.isfinite(value):
-                continue
-            ax.text(
-                x_value,
-                y_value,
-                _format_heatmap_annotation_value(value),
-                ha="center",
-                va="center",
-                color=_heatmap_annotation_color(mesh, value),
-                fontsize="small",
-                zorder=5,
-            )
 
 
 def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
-    if not spec.facet_column:
-        raise ValueError("facet plot_type requires facet_column")
-    if spec.facet_scales not in {"fixed", "free"}:
-        raise ValueError("facet_scales must be 'fixed' or 'free'")
-    if not points:
-        warnings.warn(
-            f"bridge_renderer: no valid data points for {spec.title!r}, figure will be blank",
-            stacklevel=2,
-        )
-        return
-
-    fig = ax.figure
-    ax.set_visible(False)
-    grouped = _group_facet_points(points)
-    facet_names = _resolve_explicit_order(
-        list(grouped),
-        spec.facet_order,
-        field_name="facet_order",
-    )
-    n_facets = len(facet_names)
-    n_rows, n_cols = _resolve_facet_grid(n_facets, spec)
-    shared_x = None
-    shared_y = None
-    share_axes = spec.facet_scales == "fixed"
-    facet_axes = []
-
-    for idx, facet_name in enumerate(facet_names):
-        facet_points = grouped[str(facet_name)]
-        row_idx = idx // n_cols
-        col_idx = idx % n_cols
-        facet_ax = fig.add_subplot(
-            n_rows,
-            n_cols,
-            idx + 1,
-            sharex=shared_x if share_axes else None,
-            sharey=shared_y if share_axes else None,
-        )
-        facet_axes.append(facet_ax)
-        if share_axes and shared_x is None:
-            shared_x = facet_ax
-            shared_y = facet_ax
-        _render_xy_plot(facet_ax, facet_points, spec, line=True, small_panel=True)
-        facet_ax.set_title(_display_label(facet_name, compress_labels=spec.compress_labels))
-        if row_idx == n_rows - 1:
-            facet_ax.set_xlabel(spec.x_axis_label or spec.x_column)
-        else:
-            facet_ax.set_xlabel("")
-            facet_ax.tick_params(labelbottom=False)
-        if col_idx == 0:
-            facet_ax.set_ylabel(spec.y_axis_label or spec.y_column)
-        else:
-            facet_ax.set_ylabel("")
-        if facet_ax.get_legend() is not None:
-            facet_ax.get_legend().remove()
-
-    if share_axes and (spec.facet_ncols is not None or spec.facet_nrows is not None or n_cols > 3):
-        _expand_shared_facet_limits_for_markers(facet_axes, spec)
-
-    if spec.title:
-        fig.suptitle(spec.title)
-    _apply_facet_headroom(fig, spec)
+    _render_facet_plot_impl(ax, points, spec, context=_facet_renderer_context())
 
 
 def _resolve_facet_grid(n_facets: int, spec: BridgeFigureSpec) -> tuple[int, int]:
-    n_cols = _optional_positive_int(spec.facet_ncols, "facet_ncols")
-    n_rows = _optional_positive_int(spec.facet_nrows, "facet_nrows")
-    if n_cols is not None and n_rows is not None:
-        if n_cols * n_rows < n_facets:
-            raise ValueError(f"facet_ncols * facet_nrows must hold {n_facets} facets; got {n_cols} * {n_rows}.")
-        return n_rows, n_cols
-    if n_cols is not None:
-        return math.ceil(n_facets / n_cols), n_cols
-    if n_rows is not None:
-        return n_rows, math.ceil(n_facets / n_rows)
-
-    # Automatic facets use a square-ish grid, now capped at five columns. This
-    # preserves compact defaults for small facet counts while allowing larger
-    # sets to avoid the old narrow three-column hard cap.
-    auto_cols = min(5, max(1, math.ceil(math.sqrt(n_facets))))
-    auto_rows = math.ceil(n_facets / auto_cols)
-    if auto_rows > 5:
-        warnings.warn(
-            f"bridge_renderer: automatic facet grid has {auto_rows} rows for {n_facets} facets; "
-            "set facet_ncols/facet_nrows to control large layouts",
-            stacklevel=2,
-        )
-    return auto_rows, auto_cols
+    return _resolve_facet_grid_impl(n_facets, spec)
 
 
 def _optional_positive_int(value: int | None, name: str) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise ValueError(f"{name} must be a positive integer")
-    return value
+    return _optional_positive_int_impl(value, name)
 
 
 def _expand_shared_facet_limits_for_markers(axes, spec: BridgeFigureSpec) -> None:
-    _marker_size, _marker_edge_width, margin = _marker_tokens(spec, small_panel=True)
-    if margin is None or not axes:
-        return
-    margin *= 3.0
-    x_min, x_max = axes[0].get_xlim()
-    y_min, y_max = axes[0].get_ylim()
-    x_span = x_max - x_min
-    y_span = y_max - y_min
-    if x_span > 0:
-        axes[0].set_xlim(x_min - x_span * margin, x_max + x_span * margin)
-    if y_span > 0:
-        axes[0].set_ylim(y_min - y_span * margin, y_max + y_span * margin)
+    _expand_shared_facet_limits_impl(axes, spec, context=_facet_renderer_context())
 
 
 def _group_facet_points(points: list[dict]) -> dict[str, list[dict]]:
-    grouped: dict[str, list[dict]] = {}
-    for point in points:
-        key = str(point.get("facet") or "")
-        grouped.setdefault(key, []).append(point)
-    return grouped
-
-
-def _render_box_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
-    from plotting.common_plots import plot_box_with_points
-
-    plot_box_with_points(
-        _points_to_distribution_frame(points, spec),
-        spec.x_column,
-        spec.y_column,
-        ax=ax,
-        category_order=spec.category_order or None,
-    )
-
-
-def _render_violin_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
-    from plotting.common_plots import plot_violin_with_points
-
-    tokens, _meta = get_render_style_tokens(spec.target_format, spec.profile_name)
-    plot_violin_with_points(
-        _points_to_distribution_frame(points, spec),
-        spec.x_column,
-        spec.y_column,
-        ax=ax,
-        category_order=spec.category_order or None,
-        kde_points=tokens["violin_kde_points"],
-        kde_bw_method=tokens["violin_kde_bw_method"],
-        violin_width=tokens["violin_width"],
-    )
-
-
-def _points_to_distribution_frame(points: list[dict], spec: BridgeFigureSpec):
-    import pandas as pd
-
-    return pd.DataFrame(
-        {
-            spec.x_column: [point["x"] for point in points],
-            spec.y_column: [point["y"] for point in points],
-        }
-    )
-
-
-def _validate_bar_aggregate(spec: BridgeFigureSpec) -> None:
-    aggregate = str(spec.aggregate or "").strip().lower()
-    if not aggregate:
-        return
-    if aggregate not in {"mean", "median"}:
-        raise ValueError("aggregate must be one of: mean, median")
-    if str(spec.plot_type or "").strip().lower() != "bar":
-        raise ValueError("aggregate is only supported for plot_type 'bar'")
-    if spec.series_column:
-        raise ValueError("aggregate is only supported for single-series bar plots")
-
-
-def _aggregate_single_series_bar_points(points: list[dict], method: str) -> list[dict]:
-    grouped: dict[float | str, list[dict]] = {}
-    for point in points:
-        grouped.setdefault(point["x"], []).append(point)
-
-    aggregated: list[dict] = []
-    for category, category_points in grouped.items():
-        values = [float(point["y"]) for point in category_points]
-        if method == "mean":
-            y_value = float(np.mean(values))
-        else:
-            y_value = float(np.median(values))
-        representative = dict(category_points[0])
-        representative["x"] = category
-        representative["y"] = y_value
-        representative["yerr"] = float(np.std(values, ddof=1) / math.sqrt(len(values))) if len(values) > 1 else 0.0
-        representative["yerr_minus"] = None
-        representative["label"] = ""
-        aggregated.append(representative)
-    return aggregated
+    return _group_facet_points_impl(points)
 
 
 def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
-    grouped = _group_points(points, spec)
-    has_multi_series = any(key != "__single__" for key in grouped)
-    aggregate = str(spec.aggregate or "").strip().lower()
-    if aggregate and not has_multi_series:
-        points = _aggregate_single_series_bar_points(points, aggregate)
-        grouped = _group_points(points, spec)
-    data_order = _first_seen_values([point["x"] for point in points])
-    categories = _resolve_explicit_order(
-        data_order,
-        spec.category_order,
-        field_name="category_order",
+    context = BarRendererContext(
+        display_label=_display_label,
+        series_style=_series_style,
+        annotate_points=_annotate_points,
+        apply_legend=_apply_legend,
     )
-
-    base_positions = list(range(len(categories)))
-    category_to_position = {category: index for index, category in enumerate(categories)}
-
-    if has_multi_series:
-        series_names = list(grouped.keys())
-        width = 0.8 / max(len(series_names), 1)
-        offset_start = -0.4 + width / 2
-        legend_entries: list[tuple[str, str]] = []
-        label_positions: list[tuple[float, float, dict]] = []
-        for series_index, series_name in enumerate(series_names):
-            series_points = grouped[series_name]
-            xs = [category_to_position[point["x"]] + offset_start + series_index * width for point in series_points]
-            ys = [point["y"] for point in series_points]
-            yerr = _yerr_values(series_points, spec)
-            sty = _series_style(spec, series_index, series_name)
-            legend_label = _display_label(series_name, compress_labels=spec.compress_labels)
-            legend_entries.append((str(series_name), str(legend_label)))
-            bars = ax.bar(
-                xs,
-                ys,
-                width=width,
-                yerr=yerr,
-                capsize=spec.yerr_cap_width,
-                hatch=sty["hatch"],
-                edgecolor="black",
-                linewidth=0.5,
-                label=legend_label,
-            )
-            if spec.label_column:
-                y_offset = max(abs(v) for v in ys) * 0.03 if ys else 0
-                label_positions.extend(
-                    (bar.get_x() + bar.get_width() / 2, y + y_offset, point)
-                    for bar, y, point in zip(bars, ys, series_points)
-                )
-        if spec.label_column and label_positions:
-            _annotate_points(
-                ax,
-                [item[0] for item in label_positions],
-                [item[1] for item in label_positions],
-                [str(item[2]["label"]) for item in label_positions],
-                compress_labels=spec.compress_labels,
-                point_label_options=spec.point_label_options,
-                points=[item[2] for item in label_positions],
-            )
-        ax._graph_hub_legend_entries = legend_entries
-        _apply_legend(ax, spec, n_series=len(series_names))
-    else:
-        if len(points) > len(categories):
-            # Duplicate categories overplot bars at the same x (last visually wins).
-            # Surface it rather than silently aggregating, which could mask intent.
-            warnings.warn(
-                f"bridge_renderer: single-series bar has {len(points) - len(categories)} "
-                "duplicate category value(s); bars overplot at the same x position",
-                stacklevel=2,
-            )
-        row_positions = [category_to_position[point["x"]] for point in points]
-        ys = [point["y"] for point in points]
-        yerr = _yerr_values(points, spec)
-        bars = ax.bar(
-            row_positions,
-            ys,
-            yerr=yerr,
-            capsize=spec.yerr_cap_width,
-            edgecolor="black",
-            linewidth=0.5,
-        )
-        if spec.label_column:
-            _annotate_points(
-                ax,
-                [bar.get_x() + bar.get_width() / 2 for bar in bars],
-                ys,
-                [str(point["label"]) for point in points],
-                compress_labels=spec.compress_labels,
-                point_label_options=spec.point_label_options,
-                points=points,
-            )
-
-    ax.set_xticks(base_positions)
-    ax._graph_hub_original_xtick_labels = {index: str(category) for index, category in enumerate(categories)}
-    tick_labels = [_display_label(category, compress_labels=spec.compress_labels) for category in categories]
-    ax.set_xticklabels(tick_labels)
-    if any(len(label) > 14 for label in tick_labels):
-        for label in ax.get_xticklabels():
-            label.set_rotation(20)
-            label.set_ha("right")
+    _render_bar_plot_impl(ax, points, spec, context=context)
 
 
 def _render_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:

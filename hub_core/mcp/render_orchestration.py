@@ -32,6 +32,16 @@ MCP_BATCH_TIMEOUT_SECONDS = 30.0
 MCP_WORKER_RESULT_MAX_BYTES = 16 * 1024 * 1024
 
 
+def _ensure_matplotlib_runtime_env(config_root: str | Path | None = None) -> None:
+    os.environ.setdefault("MPLBACKEND", "Agg")
+    if os.environ.get("MPLCONFIGDIR"):
+        return
+    root = Path(config_root) if config_root is not None else Path(tempfile.gettempdir())
+    config_dir = root / ".matplotlib"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["MPLCONFIGDIR"] = str(config_dir)
+
+
 def _write_worker_result(result_path: str | Path, result: dict[str, Any]) -> None:
     try:
         payload = pickle.dumps(result)
@@ -72,7 +82,7 @@ def _read_worker_result(result_path: str | Path, worker_label: str) -> dict[str,
 
 
 def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_path: str) -> None:
-    os.environ.setdefault("MPLBACKEND", "Agg")
+    _ensure_matplotlib_runtime_env(Path(spec_payload["output_path"]).parent)
     try:
         with redirect_stdout(sys.stderr):
             from plotting.bridge_renderer import BridgeFigureSpec, render_bridge_figure
@@ -87,7 +97,7 @@ def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_path: str)
 
 
 def _render_multipanel_figure_worker(spec_payload: dict[str, Any], result_path: str) -> None:
-    os.environ.setdefault("MPLBACKEND", "Agg")
+    _ensure_matplotlib_runtime_env(Path(spec_payload["output_path"]).parent)
     try:
         with redirect_stdout(sys.stderr):
             from plotting.bridge_renderer import BridgeFigureSpec, MultiPanelSpec, render_multipanel_figure
@@ -103,7 +113,7 @@ def _render_multipanel_figure_worker(spec_payload: dict[str, Any], result_path: 
 
 
 def _batch_discovery_worker(root: str, max_depth: int, result_path: str) -> None:
-    os.environ.setdefault("MPLBACKEND", "Agg")
+    _ensure_matplotlib_runtime_env()
     try:
         with redirect_stdout(sys.stderr):
             projects = ProjectDiscoveryService(
@@ -540,8 +550,11 @@ class McpRenderOrchestrationMixin:
                 "THEME_OUTPUT_FORMAT": style_summary["output_format"],
                 "GEOMETRY_DIAGNOSTICS_OUT": str(job_root / "geometry_diagnostics.json"),
                 "GEOMETRY_DIAGNOSTICS_DEADLINE": str(time.time() + MCP_RENDER_TIMEOUT_SECONDS),
+                "MPLBACKEND": env.get("MPLBACKEND", "Agg"),
+                "MPLCONFIGDIR": env.get("MPLCONFIGDIR", str(job_root / ".matplotlib")),
             }
         )
+        Path(env["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
         try:
             completed = subprocess.run(
                 [sys.executable, str(script_path)],

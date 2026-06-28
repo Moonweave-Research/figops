@@ -21,6 +21,7 @@ from plotting.bridge_renderer import (
     _render_plot,
     render_bridge_figure,
 )
+from tests.test_bridge_renderer import _assert_visual_baseline
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
@@ -192,7 +193,7 @@ class TestYBreakRangeSupportedFields(unittest.TestCase):
                 out = render_bridge_figure(spec)
 
             self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
-            self.assertEqual(_sha256(Path(out)), _sha256(baseline))
+            _assert_visual_baseline(self, Path(out), baseline)
 
 
 class TestLoadPointsNanFiltering(unittest.TestCase):

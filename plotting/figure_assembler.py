@@ -5,6 +5,7 @@ import mimetypes
 import os
 import re
 import uuid
+from pathlib import Path
 
 import svgutils.transform as sg
 from lxml import etree
@@ -319,10 +320,44 @@ def _safe_svg_fromfile(svg_path: str) -> sg.SVGFigure:
     or a `file://` external entity (XXE) is expanded during assembly. Parse with a
     hardened parser and hand svgutils the already-built root."""
     parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
-    tree = etree.parse(str(svg_path), parser=parser)
+    try:
+        tree = etree.parse(str(svg_path), parser=parser)
+    except etree.XMLSyntaxError:
+        raw = Path(svg_path).read_bytes()
+        text = raw.decode("utf-8", errors="replace")
+        if "<!DOCTYPE" not in text:
+            raise
+        stripped = _strip_svg_doctype(text)
+        recovery_parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False, recover=True)
+        tree = etree.ElementTree(etree.fromstring(stripped.encode("utf-8"), parser=recovery_parser))
     fig = sg.SVGFigure()
     fig.root = tree.getroot()
     return fig
+
+
+def _strip_svg_doctype(text: str) -> str:
+    """Remove a DOCTYPE block before recovery parsing an unsafe SVG."""
+    start = text.find("<!DOCTYPE")
+    if start < 0:
+        return text
+    index = start + len("<!DOCTYPE")
+    bracket_depth = 0
+    quote: str | None = None
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == quote:
+                quote = None
+        elif char in {'"', "'"}:
+            quote = char
+        elif char == "[":
+            bracket_depth += 1
+        elif char == "]":
+            bracket_depth = max(0, bracket_depth - 1)
+        elif char == ">" and bracket_depth == 0:
+            return text[:start] + text[index + 1 :]
+        index += 1
+    return text[:start]
 
 
 def _read_svg_native_width_mm(svg_path: str) -> float:

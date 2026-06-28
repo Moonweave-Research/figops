@@ -139,10 +139,13 @@ class McpSecurityMixin:
     def _broad_data_root_warning(root: Path) -> str:
         if root == Path(root.anchor):
             return f"Configured broad data root allows the filesystem root: {root}"
-        home = Path.home().resolve()
+        try:
+            home = Path.home().resolve()
+        except RuntimeError:
+            home = None
         if root == home:
             return f"Configured broad data root allows the current user's home directory: {root}"
-        if root != Path(root.anchor) and (
+        if home is not None and root != Path(root.anchor) and (
             root == home.parent or (root.parent == Path(root.anchor) and root.name.lower() in {"home", "users"})
         ):
             return f"Configured broad data root allows a multi-user parent directory: {root}"

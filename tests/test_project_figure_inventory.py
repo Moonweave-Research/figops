@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from scripts.project_figure_inventory import build_inventory, render_markdown
+from tests._symlink import symlink_or_skip
 
 
 def _write_project(root: Path, name: str) -> Path:
@@ -60,7 +61,7 @@ def test_build_inventory_follows_symlinked_project_directories(tmp_path: Path) -
     _write_project(external.parent, "project_a")
     root = tmp_path / "ResearchOS"
     root.mkdir()
-    (root / "project_a").symlink_to(external, target_is_directory=True)
+    symlink_or_skip(root / "project_a", external, target_is_directory=True)
 
     entries = build_inventory(root)
 
@@ -200,7 +201,7 @@ def test_build_inventory_does_not_mark_paths_escaping_project_root_as_candidates
     external_scripts = tmp_path / "external_scripts"
     external_scripts.mkdir()
     (external_scripts / "plot.py").write_text("print('outside')\n", encoding="utf-8")
-    (project / "linked_scripts").symlink_to(external_scripts, target_is_directory=True)
+    symlink_or_skip(project / "linked_scripts", external_scripts, target_is_directory=True)
     (project / "project_config.yaml").write_text(
         """
 project:
@@ -227,7 +228,7 @@ def test_build_inventory_marks_symlinked_config_as_non_candidate(tmp_path: Path)
     target = tmp_path / "external_config.yaml"
     target.write_text(config.read_text(encoding="utf-8"), encoding="utf-8")
     config.unlink()
-    config.symlink_to(target)
+    symlink_or_skip(config, target)
 
     ready = next(entry for entry in build_inventory(tmp_path) if entry.figure_id == "FigReady")
 
@@ -241,7 +242,7 @@ def test_build_inventory_does_not_mark_symlinked_inputs_as_candidates(tmp_path: 
     target = tmp_path / "external_summary.csv"
     target.write_text(data_path.read_text(encoding="utf-8"), encoding="utf-8")
     data_path.unlink()
-    data_path.symlink_to(target)
+    symlink_or_skip(data_path, target)
 
     entries = build_inventory(tmp_path)
     ready = next(entry for entry in entries if entry.figure_id == "FigReady")
@@ -259,7 +260,7 @@ def test_build_inventory_does_not_mark_symlinked_results_data_tree_as_candidate(
     for path in data_dir.iterdir():
         path.unlink()
     data_dir.rmdir()
-    data_dir.symlink_to(target, target_is_directory=True)
+    symlink_or_skip(data_dir, target, target_is_directory=True)
 
     ready = next(entry for entry in build_inventory(tmp_path) if entry.figure_id == "FigReady")
 
@@ -271,7 +272,7 @@ def test_build_inventory_does_not_mark_snapshot_tree_symlinks_as_candidates(tmp_
     project = _write_project(tmp_path, "project_a")
     helper_target = tmp_path / "external_helper.py"
     helper_target.write_text("print('helper')\n", encoding="utf-8")
-    (project / "hub_scripts" / "helper.py").symlink_to(helper_target)
+    symlink_or_skip(project / "hub_scripts" / "helper.py", helper_target)
 
     entries = build_inventory(tmp_path)
     ready = next(entry for entry in entries if entry.figure_id == "FigReady")

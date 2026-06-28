@@ -126,8 +126,15 @@ def fit_ispd_data_with_offset(t, v, p0=None, bounds=None):
 
 def calculate_trap_density(a, tau, thickness_um, permittivity_r, temperature_k=300):
     """
-    Placeholder for trap density calculation logic.
-    Actual implementation depends on the specific ISPD-to-Nt model used in the project.
+    Calculate ISPD trap density for a validated project-specific model.
+
+    FigOps does not currently ship a general ISPD-to-Nt conversion because the
+    formula depends on project-specific assumptions and calibration constants.
+    Callers must use a validated domain helper or implement a named model with
+    tests before using this API for quantitative trap-density extraction.
     """
-    # TODO: Implement project-specific Nt extraction formula if needed
-    pass
+    raise NotImplementedError(
+        "ISPD trap-density extraction is project-specific and no validated "
+        "general model is implemented. Use a project-validated helper or add "
+        "an explicit named model with tests before calling calculate_trap_density()."
+    )

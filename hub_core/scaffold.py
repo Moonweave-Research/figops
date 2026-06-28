@@ -3,6 +3,7 @@ from pathlib import Path
 
 DEFAULT_CONFIG_TEMPLATE = "project_config_template.yaml"
 TEMPLATE_PACKAGE_DIR = Path("hub_core") / "templates"
+DEFAULT_WIZARD_TARGET_FORMAT = "nature"
 
 DEFAULT_RAW_CSV = """time,value,molarity
 0.0,1.0,0.1
@@ -291,10 +292,14 @@ def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
 
 def scaffold_wizard(hub_path):
     """대화형 위저드를 통해 프로젝트를 생성합니다."""
+    from .config_parser import ALLOWED_TARGET_FORMATS
     from .ui_utils import ui_confirm, ui_panel, ui_print, ui_prompt
     from .utils import get_research_root
 
-    ui_panel("🏛️ [bold]Research Project Scaffolding Wizard[/bold]\nNew project configuration made easy.", title="Wizard")
+    ui_panel(
+        "🏛️ [bold]Research Project Scaffolding Wizard[/bold]\nNew project configuration made easy.",
+        title="Wizard",
+    )
 
     project_name = ui_prompt("Enter Project Name", default="New Research Project")
     folder_name = ui_prompt(
@@ -310,8 +315,16 @@ def scaffold_wizard(hub_path):
             ui_print("[yellow]Aborted.[/yellow]")
             return None
 
-    # YAML 구성 자동화
-    target_format = ui_prompt("Journal Target Format (nature/internal/science/ppt)", default="nature")
+    allowed_target_formats = sorted(ALLOWED_TARGET_FORMATS)
+    target_format_input = ui_prompt(
+        f"Journal Target Format ({', '.join(allowed_target_formats)})",
+        default=DEFAULT_WIZARD_TARGET_FORMAT,
+    )
+    try:
+        target_format = normalize_scaffold_target_format(target_format_input, allowed_target_formats)
+    except ValueError as exc:
+        ui_print(f"[red]Invalid target format:[/red] {exc}")
+        return None
     font_scale = ui_prompt("Font Scale", default="1.0")
 
     res = scaffold_project(target_dir, hub_path, project_name=project_name, overwrite=True)
@@ -331,6 +344,19 @@ def scaffold_wizard(hub_path):
     ui_print(f"\n✅ [bold green]Project '{project_name}' successfully initialized![/bold green]")
     ui_print(f"   Location: {target_dir}")
     return res
+
+
+def normalize_scaffold_target_format(target_format, allowed_target_formats=None):
+    if allowed_target_formats is None:
+        from .config_parser import ALLOWED_TARGET_FORMATS
+
+        allowed_target_formats = ALLOWED_TARGET_FORMATS
+    allowed = {str(value).strip().lower() for value in allowed_target_formats}
+    normalized = str(target_format or "").strip().lower()
+    if normalized not in allowed:
+        allowed_display = ", ".join(sorted(allowed))
+        raise ValueError(f"{target_format!r} is not supported. Allowed values: {allowed_display}.")
+    return normalized
 
 
 def _normalize_project_name(project_name, project_path):
