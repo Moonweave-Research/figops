@@ -163,6 +163,12 @@ First extraction seam:
 - Keep the no-cycle constraint: diagnostics helpers must not import `themes/` or
   higher-level `hub_core` modules.
 
+Progress:
+
+- 2026-06-28: low-level pixel-space bbox/overlap primitives moved to
+  `hub_core/geometry_primitives.py`; `hub_core.geometry_diagnostics` keeps
+  existing private compatibility exports.
+
 Compatibility:
 
 - Preserve private helper imports used by `plotting.bridge_renderer` until that

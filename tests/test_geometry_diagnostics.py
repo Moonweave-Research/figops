@@ -13,6 +13,7 @@ import numpy as np  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.transforms import Bbox  # noqa: E402
 
+from hub_core import geometry_diagnostics, geometry_primitives  # noqa: E402
 from hub_core.geometry_diagnostics import (  # noqa: E402
     GEOM_EPS_PX,
     MAX_TEXT_ARTISTS,
@@ -58,6 +59,15 @@ def _find_non_native(value, path="root"):
 class GeometryDiagnosticsUnitTest(unittest.TestCase):
     def tearDown(self):
         plt.close("all")
+
+    def test_geometry_diagnostics_keeps_primitive_compatibility_exports(self):
+        self.assertIs(geometry_diagnostics._extent, geometry_primitives._extent)
+        self.assertIs(geometry_diagnostics._inter_area, geometry_primitives._inter_area)
+        self.assertIs(geometry_diagnostics._boxes_overlap, geometry_primitives._boxes_overlap)
+        self.assertIs(geometry_diagnostics._box_area, geometry_primitives._box_area)
+        self.assertIs(geometry_diagnostics._overlap_fraction, geometry_primitives._overlap_fraction)
+        self.assertIs(geometry_diagnostics._circle_overlap_fraction, geometry_primitives._circle_overlap_fraction)
+        self.assertIs(geometry_diagnostics._overlap_severity, geometry_primitives._overlap_severity)
 
     def test_contract_shape_and_version(self):
         fig, ax = plt.subplots()
