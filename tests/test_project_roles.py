@@ -5,7 +5,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import hub_core.project_roles as project_roles
 import orchestrator
+from hub_core import config_parser
 from hub_core.config_parser import load_config, project_status, validate_config
 from hub_core.mcp import GraphHubMCPServer
 from hub_core.project_discovery import discover_projects_with_status, get_discoverable_projects
@@ -62,6 +64,14 @@ def _master_config_with_folder_roles(name: str = "Master Demo") -> list[str]:
 
 
 class ProjectRoleConfigValidationTest(unittest.TestCase):
+    def test_config_parser_keeps_project_role_compatibility_exports(self):
+        self.assertIs(config_parser.project_role, project_roles.project_role)
+        self.assertIs(config_parser.project_status, project_roles.project_status)
+        self.assertIs(config_parser.project_modules, project_roles.project_modules)
+        self.assertIs(config_parser.folder_role_map, project_roles.folder_role_map)
+        self.assertIs(config_parser.master_execution_error, project_roles.master_execution_error)
+        self.assertIs(config_parser.normalize_project_defaults, project_roles.normalize_project_defaults)
+
     def test_config_without_role_defaults_to_module(self):
         with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
             project_dir = Path(tmpdir)

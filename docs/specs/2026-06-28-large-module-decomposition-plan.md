@@ -139,6 +139,9 @@ Progress:
 - 2026-06-28: style preset resolution helpers moved to
   `hub_core/config_style.py`; `hub_core.config_parser` keeps existing
   compatibility exports.
+- 2026-06-28: project role/status helpers moved to
+  `hub_core/project_roles.py`; `hub_core.config_parser` keeps existing
+  compatibility exports.
 
 Compatibility:
 

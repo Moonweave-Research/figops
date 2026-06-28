@@ -10,6 +10,17 @@ from .config_style import resolve_presets as resolve_presets
 from .config_style import resolve_step_style as resolve_step_style
 from .domain_analysis import DOMAIN_HELPER_NAMES
 from .logging import get_logger
+from .project_roles import ALLOWED_FOLDER_ROLES as ALLOWED_FOLDER_ROLES
+from .project_roles import ALLOWED_PROJECT_ROLES as ALLOWED_PROJECT_ROLES
+from .project_roles import ALLOWED_PROJECT_STATUSES as ALLOWED_PROJECT_STATUSES
+from .project_roles import DEFAULT_PROJECT_ROLE as DEFAULT_PROJECT_ROLE
+from .project_roles import DEFAULT_PROJECT_STATUS as DEFAULT_PROJECT_STATUS
+from .project_roles import folder_role_map as folder_role_map
+from .project_roles import master_execution_error as master_execution_error
+from .project_roles import normalize_project_defaults as normalize_project_defaults
+from .project_roles import project_modules as project_modules
+from .project_roles import project_role as project_role
+from .project_roles import project_status as project_status
 
 INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
 
@@ -42,21 +53,7 @@ ALLOWED_MONOTONIC_MODES = {"increasing", "decreasing", "nondecreasing", "nonincr
 ALLOWED_PREFETCH_ADAPTERS = {"none", "noop", "off", "gdrive"}
 ALLOWED_ATHENA_ADAPTERS = {"none", "null", "off", "legacy", "on"}
 ALLOWED_CONVENTIONS_ADAPTERS = {"none", "generic", "surfur"}
-ALLOWED_PROJECT_ROLES = {"master", "module"}
-ALLOWED_PROJECT_STATUSES = {"active", "legacy"}
 ALLOWED_RAW_INTEGRITY_MODES = {"warn", "strict"}
-ALLOWED_FOLDER_ROLES = {
-    "module",
-    "raw_reservoir",
-    "reference",
-    "theory",
-    "exploratory",
-    "docs",
-    "support",
-    "archive",
-}
-DEFAULT_PROJECT_ROLE = "module"
-DEFAULT_PROJECT_STATUS = "active"
 CONFIG_FILE_CANDIDATES = (
     "project_config.yaml",
     os.path.join("scripts", "project_config.yaml"),
@@ -730,28 +727,6 @@ def find_config_path(project_dir):
     return None
 
 
-def project_role(config):
-    project = config.get("project") if isinstance(config, dict) else {}
-    if not isinstance(project, dict):
-        return DEFAULT_PROJECT_ROLE
-    role = project.get("role", DEFAULT_PROJECT_ROLE)
-    if not isinstance(role, str):
-        return DEFAULT_PROJECT_ROLE
-    role = role.strip().lower()
-    return role if role else DEFAULT_PROJECT_ROLE
-
-
-def project_status(config):
-    project = config.get("project") if isinstance(config, dict) else {}
-    if not isinstance(project, dict):
-        return DEFAULT_PROJECT_STATUS
-    status = project.get("status", DEFAULT_PROJECT_STATUS)
-    if not isinstance(status, str):
-        return DEFAULT_PROJECT_STATUS
-    status = status.strip().lower()
-    return status if status else DEFAULT_PROJECT_STATUS
-
-
 def data_contract_bool(config: dict, key: str) -> bool | None:
     data_contract = config.get("data_contract", {}) if isinstance(config, dict) else {}
     if not isinstance(data_contract, dict):
@@ -765,49 +740,6 @@ def module_default_contract_bool(config: dict, key: str) -> bool:
     if explicit is not None:
         return explicit
     return project_role(config) == DEFAULT_PROJECT_ROLE
-
-
-def project_modules(config):
-    modules = config.get("modules", []) if isinstance(config, dict) else []
-    if not isinstance(modules, list):
-        return []
-    return [str(module).strip() for module in modules if isinstance(module, str) and module.strip()]
-
-
-def folder_role_map(config):
-    folder_roles = config.get("folder_roles", {}) if isinstance(config, dict) else {}
-    if not isinstance(folder_roles, dict):
-        return {}
-    result = {}
-    for raw_path, raw_role in folder_roles.items():
-        if isinstance(raw_path, str) and isinstance(raw_role, str):
-            path = raw_path.strip().strip("/\\")
-            role = raw_role.strip().lower()
-            if path and role:
-                result[path.replace("\\", "/")] = role
-    return result
-
-
-def master_execution_error(config):
-    modules = project_modules(config)
-    module_list = ", ".join(modules) if modules else "none declared"
-    return f"This is a master project root, not an execution module — enter one of its modules: [{module_list}]"
-
-
-def normalize_project_defaults(config):
-    if not isinstance(config, dict):
-        return config
-    project = config.get("project")
-    if isinstance(project, dict):
-        if "role" not in project:
-            project["role"] = DEFAULT_PROJECT_ROLE
-        elif isinstance(project.get("role"), str):
-            project["role"] = project["role"].strip().lower()
-        if "status" not in project:
-            project["status"] = DEFAULT_PROJECT_STATUS
-        elif isinstance(project.get("status"), str):
-            project["status"] = project["status"].strip().lower()
-    return config
 
 
 def _load_project_metadata(config_path, fallback_name):
