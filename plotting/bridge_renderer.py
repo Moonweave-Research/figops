@@ -336,6 +336,9 @@ class MultiPanelSpec:
         Optional relative column/row weights. Draft mode forwards them to
         matplotlib GridSpec; manuscript mode uses them to divide the fixed
         journal-width canvas before preserving each panel box.
+    shared_legend:
+        If True, collect panel legends into one figure-level legend and remove
+        duplicate per-panel legends.
     """
 
     panels: tuple[BridgeFigureSpec | PanelImageSpec, ...]
@@ -355,6 +358,8 @@ class MultiPanelSpec:
     hspace: float = 0.45
     width_ratios: tuple[float, ...] = ()
     height_ratios: tuple[float, ...] = ()
+    shared_legend: bool = False
+    shared_legend_options: dict | None = None
 
 
 def render_multipanel_figure(spec: MultiPanelSpec) -> str:
@@ -425,6 +430,7 @@ def _render_multipanel_draft(spec: MultiPanelSpec):
         if spec.panel_labels and idx < len(_PANEL_LABELS):
             auto_panel_tag(ax, label=_PANEL_LABELS[idx])
 
+    _apply_shared_legend(fig, spec)
     if hasattr(fig, "_graph_hub_layout_lock"):
         delattr(fig, "_graph_hub_layout_lock")
     return fig
@@ -448,14 +454,24 @@ def _validated_compose_mode(spec: MultiPanelSpec) -> str:
         raise ValueError("gutter_h_mm and gutter_v_mm must be non-negative")
     _validated_layout_ratios(spec.width_ratios, expected_len=spec.cols, field_name="width_ratios")
     _validated_layout_ratios(spec.height_ratios, expected_len=spec.rows, field_name="height_ratios")
+    shared_legend_options = _normalized_shared_legend_options(spec)
+    if shared_legend_options and not spec.shared_legend:
+        raise ValueError("shared_legend_options requires shared_legend=True")
     if compose_mode == "manuscript" and str(spec.target_format or "").lower() == "ppt":
         raise ValueError("manuscript compose is not supported for target_format='ppt'")
     return compose_mode
 
 
 def _render_multipanel_manuscript(spec: MultiPanelSpec):
-    fig_w_mm = _column_width_mm(spec.target_format, spec.column_width, spec.profile_name)
-    fig_h_mm = (spec.panel_height_mm * spec.rows) + (spec.gutter_v_mm * max(spec.rows - 1, 0))
+    panel_area_w_mm = _column_width_mm(spec.target_format, spec.column_width, spec.profile_name)
+    panel_area_h_mm = (spec.panel_height_mm * spec.rows) + (spec.gutter_v_mm * max(spec.rows - 1, 0))
+    shared_legend_options = _normalized_shared_legend_options(spec) if spec.shared_legend else {}
+    shared_legend_position = str(shared_legend_options.get("position") or "top") if spec.shared_legend else ""
+    legend_extra_h_mm = 12.0 if shared_legend_position in {"top", "bottom"} else 0.0
+    legend_extra_w_mm = 30.0 if shared_legend_position == "right" else 0.0
+    panel_area_bottom_mm = legend_extra_h_mm if shared_legend_position == "bottom" else 0.0
+    fig_w_mm = panel_area_w_mm + legend_extra_w_mm
+    fig_h_mm = panel_area_h_mm + legend_extra_h_mm
     fig = plt.figure(figsize=(mm_to_inch(fig_w_mm), mm_to_inch(fig_h_mm)))
     setattr(
         fig,
@@ -464,11 +480,17 @@ def _render_multipanel_manuscript(spec: MultiPanelSpec):
             "compose_mode": "manuscript",
             "figure_width_mm": float(fig_w_mm),
             "figure_height_mm": float(fig_h_mm),
+            "panel_area_width_mm": float(panel_area_w_mm),
+            "panel_area_height_mm": float(panel_area_h_mm),
+            "panel_area_bottom_mm": float(panel_area_bottom_mm),
+            "panel_area_bottom": float(panel_area_bottom_mm / fig_h_mm),
+            "panel_area_top": float((panel_area_bottom_mm + panel_area_h_mm) / fig_h_mm),
+            "panel_area_right": float(panel_area_w_mm / fig_w_mm),
         },
     )
 
     col_widths_mm = _distributed_lengths_mm(
-        fig_w_mm - (spec.gutter_h_mm * max(spec.cols - 1, 0)),
+        panel_area_w_mm - (spec.gutter_h_mm * max(spec.cols - 1, 0)),
         spec.cols,
         spec.width_ratios,
     )
@@ -486,7 +508,12 @@ def _render_multipanel_manuscript(spec: MultiPanelSpec):
         cell_w_mm = col_widths_mm[col_idx]
         cell_h_mm = row_heights_mm[row_idx]
         cell_left_mm = sum(col_widths_mm[:col_idx]) + (spec.gutter_h_mm * col_idx)
-        cell_bottom_mm = fig_h_mm - sum(row_heights_mm[: row_idx + 1]) - (spec.gutter_v_mm * row_idx)
+        cell_bottom_mm = (
+            panel_area_bottom_mm
+            + panel_area_h_mm
+            - sum(row_heights_mm[: row_idx + 1])
+            - (spec.gutter_v_mm * row_idx)
+        )
         axis_rect = _manuscript_axis_rect(
             panel,
             fig_w_mm=fig_w_mm,
@@ -504,6 +531,7 @@ def _render_multipanel_manuscript(spec: MultiPanelSpec):
         if spec.panel_labels and idx < len(_PANEL_LABELS):
             auto_panel_tag(ax, label=_PANEL_LABELS[idx])
 
+    _apply_shared_legend(fig, spec)
     return fig
 
 
@@ -515,6 +543,104 @@ def _validated_layout_ratios(values: tuple[float, ...], *, expected_len: int, fi
     for value in values:
         if not math.isfinite(float(value)) or value <= 0:
             raise ValueError(f"{field_name} values must be positive finite numbers")
+
+
+def _normalized_shared_legend_options(spec: MultiPanelSpec) -> dict[str, object]:
+    raw_options = spec.shared_legend_options
+    if raw_options in (None, {}, ()):
+        return {}
+    if not isinstance(raw_options, dict):
+        raise ValueError("shared_legend_options must be an object")
+    allowed = {"title", "order", "ncol", "position"}
+    unsupported = sorted(set(raw_options) - allowed)
+    if unsupported:
+        raise ValueError(f"shared_legend_options has unsupported key(s): {', '.join(unsupported)}")
+    normalized: dict[str, object] = {}
+    if raw_options.get("title") is not None:
+        normalized["title"] = str(raw_options["title"])
+    if raw_options.get("order") is not None:
+        order = raw_options["order"]
+        if not isinstance(order, (list, tuple)):
+            raise ValueError("shared_legend_options.order must be an array of labels")
+        labels = tuple(str(label) for label in order if str(label).strip())
+        if len(labels) != len(set(labels)):
+            raise ValueError("shared_legend_options.order must not contain duplicate labels")
+        normalized["order"] = labels
+    if raw_options.get("ncol") is not None:
+        if isinstance(raw_options["ncol"], bool) or not isinstance(raw_options["ncol"], int):
+            raise ValueError("shared_legend_options.ncol must be an integer")
+        ncol = raw_options["ncol"]
+        if ncol < 1 or ncol > 8:
+            raise ValueError("shared_legend_options.ncol must be between 1 and 8")
+        normalized["ncol"] = ncol
+    position = str(raw_options.get("position") or "top").strip().lower()
+    if position not in {"top", "bottom", "right"}:
+        raise ValueError("shared_legend_options.position must be top, bottom, or right")
+    normalized["position"] = position
+    return normalized
+
+
+def _apply_shared_legend(fig, spec: MultiPanelSpec) -> None:
+    if not spec.shared_legend:
+        return
+    options = _normalized_shared_legend_options(spec)
+    position = str(options.get("position") or "top")
+    raw_entries: dict[str, tuple[object, str]] = {}
+    label_entries: dict[str, tuple[object, str]] = {}
+    for ax in fig.axes:
+        if not ax.get_visible():
+            continue
+        handles, labels = ax.get_legend_handles_labels()
+        label_to_handle = {label: handle for handle, label in zip(handles, labels) if label and label != "_nolegend_"}
+        for raw, label in getattr(ax, "_graph_hub_legend_entries", ()):
+            if label in label_to_handle and raw not in raw_entries:
+                raw_entries[str(raw)] = (label_to_handle[label], str(label))
+        for label, handle in label_to_handle.items():
+            label_entries.setdefault(str(label), (handle, str(label)))
+        legend = ax.get_legend()
+        if legend is not None:
+            legend.remove()
+
+    entries = raw_entries or label_entries
+    if not entries:
+        return
+    ordered_keys = tuple(options.get("order") or ())
+    missing = [key for key in ordered_keys if key not in entries]
+    if missing:
+        raise ValueError(f"shared_legend_options.order contains unknown legend key(s): {', '.join(missing)}")
+    ordered = [entries[key] for key in ordered_keys]
+    seen = set(ordered_keys)
+    ordered.extend(entry for key, entry in entries.items() if key not in seen)
+    handles, labels = zip(*ordered, strict=True)
+    kwargs: dict[str, object] = {
+        "handles": list(handles),
+        "labels": list(labels),
+        "frameon": False,
+        "fontsize": plt.rcParams.get("legend.fontsize", 7.0),
+        "ncol": int(options.get("ncol") or min(max(len(labels), 1), 4)),
+    }
+    if options.get("title") is not None:
+        kwargs["title"] = options["title"]
+    layout_lock = getattr(fig, "_graph_hub_layout_lock", {})
+    is_manuscript = isinstance(layout_lock, dict) and layout_lock.get("compose_mode") == "manuscript"
+    if position == "bottom":
+        bottom_anchor = max(float(layout_lock.get("panel_area_bottom", 0.04)) - 0.02, 0.02) if is_manuscript else 0.02
+        kwargs.update({"loc": "upper center", "bbox_to_anchor": (0.5, bottom_anchor)})
+        if not is_manuscript:
+            fig.subplots_adjust(bottom=max(float(fig.subplotpars.bottom), 0.18))
+    elif position == "right":
+        kwargs["ncol"] = int(options["ncol"]) if "ncol" in options else 1
+        right_anchor = float(layout_lock.get("panel_area_right", 0.84)) + 0.02 if is_manuscript else 0.99
+        kwargs.update({"loc": "center left", "bbox_to_anchor": (right_anchor, 0.5)})
+        if not is_manuscript:
+            fig.subplots_adjust(right=min(float(fig.subplotpars.right), 0.82))
+    else:
+        top_anchor = min(float(layout_lock.get("panel_area_top", 0.96)) + 0.02, 0.98) if is_manuscript else 0.98
+        kwargs.update({"loc": "lower center", "bbox_to_anchor": (0.5, top_anchor)})
+        if not is_manuscript:
+            fig.subplots_adjust(top=min(float(fig.subplotpars.top), 0.86))
+    legend = fig.legend(**kwargs)
+    setattr(legend, "_graph_hub_legend_placement", f"shared_{position}")
 
 
 def _distributed_lengths_mm(total_mm: float, count: int, ratios: tuple[float, ...]) -> tuple[float, ...]:
@@ -2162,6 +2288,7 @@ def _make_broken_y_axes(fig, points: list[dict], break_range: tuple[float, float
 def _draw_grouped_broken_xy(ax_top, ax_bot, points: list[dict], spec: BridgeFigureSpec, *, line: bool) -> None:
     grouped = _group_points(points, spec)
     has_multi_series = any(key != "__single__" for key in grouped)
+    legend_entries: list[tuple[str, str]] = []
 
     for idx, (series_name, series_points) in enumerate(grouped.items()):
         xs = [point["x"] for point in series_points]
@@ -2174,6 +2301,8 @@ def _draw_grouped_broken_xy(ax_top, ax_bot, points: list[dict], spec: BridgeFigu
             legend_label = _display_label(series_name, compress_labels=spec.compress_labels)
         else:
             legend_label = None
+        if legend_label is not None:
+            legend_entries.append((str(series_name), str(legend_label)))
 
         _draw_broken_xy_series(
             ax_top,
@@ -2199,6 +2328,7 @@ def _draw_grouped_broken_xy(ax_top, ax_bot, points: list[dict], spec: BridgeFigu
     if spec.label_column:
         _annotate_broken_axis_points(ax_top, ax_bot, points, spec)
     if has_multi_series:
+        ax_top._graph_hub_legend_entries = legend_entries
         _apply_legend(ax_top, spec, n_series=len(grouped))
 
 

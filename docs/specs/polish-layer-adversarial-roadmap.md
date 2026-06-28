@@ -1,6 +1,6 @@
 # FigOps Polish Layer Adversarial Roadmap
 
-Status: source-of-truth roadmap for the next polish-layer waves after PRs #196-#203 and the fit/trend overlay slice staged on this branch.
+Status: source-of-truth roadmap for the next polish-layer waves after PRs #196-#204 and the shared legend polish slice staged on this branch.
 Scope: roadmap and acceptance criteria only; no renderer or MCP implementation in this document.
 
 ## 1. Baseline
@@ -16,8 +16,9 @@ Completed polish-layer capabilities:
 7. Tick Readability v1: opt-in `tick_style.max_label_chars` truncates long visible x tick labels while preserving source/original labels on formatter metadata.
 8. Multipanel Layout v1: explicit subplot spacing, manuscript gutters, and width/height ratios for bounded panel layout polish.
 9. Fit / Trend Overlay Expansion v1: `fit_options` styles the existing linear fit and confidence band with explicit model semantics.
+10. Shared Legend Polish v1: `shared_legend` and `shared_legend_options` collect multipanel panel legends into one bounded figure-level legend.
 
-Therefore, future polish work must not treat schema discoverability, basic visual hierarchy, deterministic callout offsets, bounded legend/axis controls, deterministic dense point-label controls, overlay/text contrast diagnostics, opt-in long tick label truncation, bounded multipanel spacing, or explicit linear-fit styling as open gaps unless a regression is proven.
+Therefore, future polish work must not treat schema discoverability, basic visual hierarchy, deterministic callout offsets, bounded legend/axis controls, deterministic dense point-label controls, overlay/text contrast diagnostics, opt-in long tick label truncation, bounded multipanel spacing, explicit linear-fit styling, or shared multipanel legend placement as open gaps unless a regression is proven.
 
 ## 2. Adversarial decision gates
 
@@ -170,10 +171,28 @@ Still deferred:
 - hand-drawn semantic trend curves, which remain the responsibility of `guide_curves`
 - automatic model selection or science-claim inference
 
+
+### P7. Shared Legend Polish v1 — staged on current branch
+
+Purpose: remove duplicated per-panel legends in multipanel figures without creating a free-form layout DSL.
+
+Implemented controls:
+
+- `shared_legend` enables a single figure-level legend for multipanel CSV renders
+- `shared_legend_options.title`, `order`, `ncol`, and `position` provide bounded placement and ordering
+- supported positions are `top`, `bottom`, and `right`
+- panel-level legends are removed after their entries are collected
+
+Deferred:
+
+- arbitrary bbox coordinates
+- per-entry legend styling beyond existing series styles
+- automatic legend layout solving
+
 ## 4. Recommended next PR sequence
 
-1. Shared legend polish for multipanel figures.
-2. Architecture/data-contract debt as a separate maintenance track.
+1. Architecture/data-contract debt as a separate maintenance track.
+2. Any further visual polish only after proving it is not a duplicate of completed shared legend or fit overlay controls.
 
 ## 5. Completion definition
 

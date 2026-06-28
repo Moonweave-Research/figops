@@ -1918,6 +1918,13 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                             "width_ratios": [2.0, 1.0],
                             "height_ratios": [1.0],
                         },
+                        "shared_legend": True,
+                        "shared_legend_options": {
+                            "title": "Condition",
+                            "order": ["B", "A"],
+                            "ncol": 2,
+                            "position": "bottom",
+                        },
                         "job_id": "render-csv-multipanel-layout",
                     },
                 )
@@ -1929,11 +1936,18 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["gutter_v_mm"], 4.0)
             self.assertEqual(captured["width_ratios"], (2.0, 1.0))
             self.assertEqual(captured["height_ratios"], (1.0,))
+            self.assertTrue(captured["shared_legend"])
+            self.assertEqual(
+                captured["shared_legend_options"],
+                {"title": "Condition", "order": ("B", "A"), "ncol": 2, "position": "bottom"},
+            )
             config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
             self.assertEqual(config["layout_options"]["width_ratios"], [2.0, 1.0])
             self.assertEqual(config["render_payload"]["wspace"], 0.8)
             self.assertEqual(config["render_payload"]["width_ratios"], [2.0, 1.0])
             self.assertEqual(config["render_payload"]["height_ratios"], [1.0])
+            self.assertTrue(config["render_payload"]["shared_legend"])
+            self.assertEqual(config["render_payload"]["shared_legend_options"]["position"], "bottom")
             self.assertEqual(config["render_payload"]["panels"][0]["csv_path"], captured["panels"][0]["csv_path"])
 
     def test_render_csv_multipanel_rejects_fit_options_without_fit_overlay(self):
@@ -1992,6 +2006,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         )
         properties = tool["inputSchema"]["properties"]
         layout_properties = properties["layout_options"]["properties"]
+        shared_legend_properties = properties["shared_legend_options"]["properties"]
 
         self.assertIn("wspace", layout_properties)
         self.assertIn("hspace", layout_properties)
@@ -1999,6 +2014,57 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         self.assertIn("gutter_v_mm", layout_properties)
         self.assertIn("width_ratios", layout_properties)
         self.assertIn("height_ratios", layout_properties)
+        self.assertEqual(properties["shared_legend"], {"type": "boolean", "default": False})
+        self.assertEqual(shared_legend_properties["position"]["enum"], ["top", "bottom", "right"])
+        self.assertEqual(shared_legend_properties["order"]["items"]["type"], "string")
+
+    def test_render_csv_multipanel_rejects_shared_legend_options_without_shared_legend(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_multipanel",
+                {
+                    "panels": [{"data_path": str(data_path), "x_column": "x", "y_column": "y"}],
+                    "shared_legend_options": {"position": "top"},
+                    "job_id": "shared-legend-options-without-shared-legend",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertTrue(
+                any("shared_legend_options requires shared_legend=true" in error for error in result["errors"])
+            )
+            self.assertFalse((runtime_root / "mcp_jobs").exists())
+
+    def test_render_csv_multipanel_rejects_non_integer_shared_legend_ncol(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+
+            for ncol in (True, 1.7):
+                with self.subTest(ncol=ncol):
+                    result = self._call(
+                        server,
+                        "figops.render_csv_multipanel",
+                        {
+                            "panels": [{"data_path": str(data_path), "x_column": "x", "y_column": "y"}],
+                            "shared_legend": True,
+                            "shared_legend_options": {"ncol": ncol},
+                            "job_id": f"shared-legend-ncol-{type(ncol).__name__}",
+                        },
+                    )
+
+                    self.assertEqual(result["status"], "error")
+                    self.assertEqual(result["failure_stage"], "CONFIG")
+                    self.assertTrue(
+                        any("shared_legend_options.ncol must be an integer" in error for error in result["errors"])
+                    )
 
     def test_render_csv_multipanel_rejects_missing_panel_column(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:

@@ -1934,6 +1934,190 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertAlmostEqual(fig_h_mm, 65.0, places=1)
             self.assertFalse(hasattr(fig, "_graph_hub_layout_lock"))
 
+    def test_multipanel_shared_legend_collects_unique_panel_entries(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_multi_shared_legend_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            left_csv = tmpdir_path / "left.csv"
+            right_csv = tmpdir_path / "right.csv"
+            left_csv.write_text(
+                "x,y,condition\n0,1,A\n1,2,A\n0,2,B\n1,3,B\n",
+                encoding="utf-8",
+            )
+            right_csv.write_text(
+                "x,y,condition\n0,3,B\n1,4,B\n0,4,C\n1,5,C\n",
+                encoding="utf-8",
+            )
+            spec = MultiPanelSpec(
+                panels=(
+                    BridgeFigureSpec(
+                        csv_path=str(left_csv),
+                        output_path=str(tmpdir_path / "left.png"),
+                        plot_type="line",
+                        x_column="x",
+                        y_column="y",
+                        series_column="condition",
+                        title="left",
+                    ),
+                    BridgeFigureSpec(
+                        csv_path=str(right_csv),
+                        output_path=str(tmpdir_path / "right.png"),
+                        plot_type="line",
+                        x_column="x",
+                        y_column="y",
+                        series_column="condition",
+                        title="right",
+                    ),
+                ),
+                output_path=str(tmpdir_path / "multi.png"),
+                rows=1,
+                cols=2,
+                shared_legend=True,
+                shared_legend_options={
+                    "title": "Condition",
+                    "order": ("B", "A", "C"),
+                    "ncol": 3,
+                    "position": "top",
+                },
+            )
+
+            with patch("plotting.bridge_renderer.save_journal_fig") as mock_save:
+                from plotting.bridge_renderer import render_multipanel_figure
+
+                render_multipanel_figure(spec)
+
+            fig = mock_save.call_args.args[0]
+            self.assertEqual(len(fig.legends), 1)
+            legend = fig.legends[0]
+            self.assertEqual(legend.get_title().get_text(), "Condition")
+            self.assertEqual([text.get_text() for text in legend.get_texts()], ["B", "A", "C"])
+            self.assertTrue(all(ax.get_legend() is None for ax in fig.axes if ax.get_visible()))
+
+    def test_multipanel_shared_legend_options_require_shared_legend(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_multi_shared_legend_guard_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_xy_csv(tmpdir_path, "panel.csv")
+            spec = MultiPanelSpec(
+                panels=(
+                    BridgeFigureSpec(
+                        csv_path=str(csv_path),
+                        output_path=str(tmpdir_path / "panel.png"),
+                        plot_type="scatter",
+                        x_column="x",
+                        y_column="y",
+                        title="panel",
+                    ),
+                ),
+                output_path=str(tmpdir_path / "multi.png"),
+                rows=1,
+                cols=1,
+                shared_legend=False,
+                shared_legend_options={"position": "top"},
+            )
+
+            from plotting.bridge_renderer import render_multipanel_figure
+
+            with self.assertRaisesRegex(ValueError, "shared_legend_options requires shared_legend=True"):
+                render_multipanel_figure(spec)
+
+    def test_multipanel_shared_legend_orders_broken_axis_raw_series_keys(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_multi_shared_legend_broken_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            left_csv = tmpdir_path / "left.csv"
+            right_csv = tmpdir_path / "right.csv"
+            rows = "x,y,condition\n0,1,alpha\n1,2,alpha\n0,8,beta\n1,9,beta\n"
+            left_csv.write_text(rows, encoding="utf-8")
+            right_csv.write_text(rows, encoding="utf-8")
+            common_styles = {
+                "alpha": {"label": "Alpha label"},
+                "beta": {"label": "Beta label"},
+            }
+            spec = MultiPanelSpec(
+                panels=(
+                    BridgeFigureSpec(
+                        csv_path=str(left_csv),
+                        output_path=str(tmpdir_path / "left.png"),
+                        plot_type="line",
+                        x_column="x",
+                        y_column="y",
+                        series_column="condition",
+                        y_break_range=(3.0, 7.0),
+                        series_styles=common_styles,
+                        title="left",
+                    ),
+                    BridgeFigureSpec(
+                        csv_path=str(right_csv),
+                        output_path=str(tmpdir_path / "right.png"),
+                        plot_type="line",
+                        x_column="x",
+                        y_column="y",
+                        series_column="condition",
+                        y_break_range=(3.0, 7.0),
+                        series_styles=common_styles,
+                        title="right",
+                    ),
+                ),
+                output_path=str(tmpdir_path / "multi.png"),
+                rows=1,
+                cols=2,
+                shared_legend=True,
+                shared_legend_options={"order": ("beta", "alpha"), "position": "top"},
+            )
+
+            with patch("plotting.bridge_renderer.save_journal_fig") as mock_save:
+                from plotting.bridge_renderer import render_multipanel_figure
+
+                render_multipanel_figure(spec)
+
+            fig = mock_save.call_args.args[0]
+            self.assertEqual(len(fig.legends), 1)
+            self.assertEqual([text.get_text() for text in fig.legends[0].get_texts()], ["Beta label", "Alpha label"])
+
+    def test_multipanel_shared_legend_manuscript_reserves_legend_space(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_multi_shared_legend_manuscript_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = tmpdir_path / "panel.csv"
+            csv_path.write_text("x,y,condition\n0,1,A\n1,2,A\n0,2,B\n1,3,B\n", encoding="utf-8")
+            from plotting.bridge_renderer import render_multipanel_figure
+
+            for position in ("top", "bottom", "right"):
+                with self.subTest(position=position):
+                    spec = MultiPanelSpec(
+                        panels=(
+                            BridgeFigureSpec(
+                                csv_path=str(csv_path),
+                                output_path=str(tmpdir_path / f"panel-{position}.png"),
+                                plot_type="line",
+                                x_column="x",
+                                y_column="y",
+                                series_column="condition",
+                                legend_layout="standard",
+                                title="panel",
+                            ),
+                        ),
+                        output_path=str(tmpdir_path / f"multi-{position}.png"),
+                        rows=1,
+                        cols=1,
+                        compose_mode="manuscript",
+                        shared_legend=True,
+                        shared_legend_options={"position": position},
+                    )
+
+                    with patch("plotting.bridge_renderer.save_journal_fig") as mock_save:
+                        render_multipanel_figure(spec)
+
+                    fig = mock_save.call_args.args[0]
+                    fig.canvas.draw()
+                    renderer = fig.canvas.get_renderer()
+                    legend_box = fig.legends[0].get_window_extent(renderer)
+                    figure_box = fig.bbox
+                    self.assertGreaterEqual(legend_box.x0, figure_box.x0)
+                    self.assertLessEqual(legend_box.x1, figure_box.x1)
+                    self.assertGreaterEqual(legend_box.y0, figure_box.y0)
+                    self.assertLessEqual(legend_box.y1, figure_box.y1)
+                    for ax in fig.axes:
+                        if ax.get_visible():
+                            self.assertFalse(legend_box.overlaps(ax.get_window_extent(renderer)))
+
     def test_multipanel_manuscript_mode_preserves_panel_box_geometry(self):
         with tempfile.TemporaryDirectory(prefix="bridge_multi_manuscript_") as tmpdir:
             tmpdir_path = Path(tmpdir)

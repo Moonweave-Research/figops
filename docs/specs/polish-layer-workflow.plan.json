@@ -880,7 +880,7 @@
       "completion_check": "targeted schema/normalization/renderer tests pass and render or diagnostics smoke proves the controls are not schema-only"
     }
   },
-  "current_status": "polish waves 1-8 completed through fit/trend overlay styling; roadmap refreshed for remaining shared legend polish and architecture/data-contract debt",
+  "current_status": "polish waves 1-9 completed through shared legend polish; roadmap refreshed for architecture/data-contract debt",
   "completed_slices": [
     {
       "id": "typed-mcp-style-schemas",
@@ -925,17 +925,17 @@
     {
       "id": "fit-trend-overlay-expansion",
       "status": "completed"
+    },
+    {
+      "id": "shared-legend-polish-v1",
+      "status": "completed"
     }
   ],
   "next_slices": [
     {
-      "id": "shared-legend-polish",
-      "priority": 1
-    },
-    {
       "id": "architecture-data-contract-debt",
-      "priority": 2
+      "priority": 1
     }
   ],
-  "selected_next_slice": "shared-legend-polish"
+  "selected_next_slice": "architecture-data-contract-debt"
 }

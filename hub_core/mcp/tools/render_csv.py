@@ -155,6 +155,40 @@ def _normalized_multipanel_layout_options_arg(
     return normalized
 
 
+def _normalized_shared_legend_options_arg(value: Any, *, field_name: str) -> dict[str, Any]:
+    if value in (None, {}, []):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be an object.")
+    allowed = {"title", "order", "ncol", "position"}
+    unsupported = sorted(set(value) - allowed)
+    if unsupported:
+        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
+    normalized: dict[str, Any] = {}
+    if value.get("title") is not None:
+        normalized["title"] = str(value["title"])
+    if value.get("order") is not None:
+        order = value["order"]
+        if not isinstance(order, (list, tuple)):
+            raise ValueError(f"{field_name}.order must be an array of labels.")
+        labels = tuple(str(label) for label in order if str(label).strip())
+        if len(labels) != len(set(labels)):
+            raise ValueError(f"{field_name}.order must not contain duplicate labels.")
+        normalized["order"] = labels
+    if value.get("ncol") is not None:
+        if isinstance(value["ncol"], bool) or not isinstance(value["ncol"], int):
+            raise ValueError(f"{field_name}.ncol must be an integer.")
+        ncol = value["ncol"]
+        if ncol < 1 or ncol > 8:
+            raise ValueError(f"{field_name}.ncol must be between 1 and 8.")
+        normalized["ncol"] = ncol
+    position = str(value.get("position") or "top").strip().lower()
+    if position not in {"top", "bottom", "right"}:
+        raise ValueError(f"{field_name}.position must be top, bottom, or right.")
+    normalized["position"] = position
+    return normalized
+
+
 def _normalized_legend_options_arg(value: Any, *, field_name: str) -> dict[str, Any]:
     if value in (None, {}, []):
         return {}
@@ -1157,6 +1191,13 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             layout_options = _normalized_multipanel_layout_options_arg(
                 arguments.get("layout_options"), rows=rows, cols=cols, field_name="layout_options"
             )
+            raw_shared_legend = arguments.get("shared_legend", False)
+            if not isinstance(raw_shared_legend, bool):
+                raise ValueError("shared_legend must be a boolean.")
+            shared_legend = raw_shared_legend
+            shared_legend_options = _normalized_shared_legend_options_arg(
+                arguments.get("shared_legend_options"), field_name="shared_legend_options"
+            )
         except (TypeError, ValueError) as exc:
             return self._csv_render_error(
                 arguments,
@@ -1168,6 +1209,16 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 tool_name="figops.render_csv_multipanel",
             )
 
+        if shared_legend_options and not shared_legend:
+            return self._csv_render_error(
+                arguments,
+                summary="Multipanel render request has invalid shared legend settings.",
+                errors=["shared_legend_options requires shared_legend=true."],
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Set shared_legend=true or remove shared_legend_options.",
+                tool_name="figops.render_csv_multipanel",
+            )
         if not isinstance(panels_arg, list) or not panels_arg:
             return self._csv_render_error(
                 arguments,
@@ -1488,6 +1539,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 "font_scale": font_scale,
                 "profile_name": profile,
                 "compose_mode": str(arguments.get("compose_mode") or "draft"),
+                "shared_legend": shared_legend,
+                "shared_legend_options": shared_legend_options,
                 **layout_options,
             }
             config_path.write_text(
@@ -1498,6 +1551,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "profile": profile,
                         "output_format": output_format,
                         "layout_options": layout_options,
+                        "shared_legend": shared_legend,
+                        "shared_legend_options": shared_legend_options,
                         "render_payload": render_payload,
                         "panels": render_panels,
                     },
