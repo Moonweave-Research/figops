@@ -191,7 +191,7 @@ Deferred:
 
 ## 4. Recommended next PR sequence
 
-1. Architecture/data-contract debt as a separate maintenance track.
+1. Semantic constraint decomposition v1: split data-contract semantic checks without changing public imports or behavior.
 2. Any further visual polish only after proving it is not a duplicate of completed shared legend or fit overlay controls.
 
 ## 5. Completion definition

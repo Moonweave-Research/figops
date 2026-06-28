@@ -34,6 +34,18 @@ class TestReadDataSafe(unittest.TestCase):
         self.assertEqual(list(df.columns), ["x", "y"])
         self.assertEqual(len(df), 2)
 
+    def test_csv_reader_compat_shim_can_be_monkeypatched(self):
+        with tempfile.TemporaryDirectory(prefix="rds_csv_patch_") as tmpdir:
+            csv_file = Path(tmpdir) / "data.csv"
+            csv_file.write_text("x,y\n1,2\n", encoding="utf-8")
+            expected = pd.DataFrame({"patched": [1]})
+
+            with patch("hub_core.data_contract._read_csv_safe", return_value=expected) as read_csv:
+                df = _read_data_safe(str(csv_file), pd)
+
+        read_csv.assert_called_once_with(str(csv_file), pd)
+        self.assertIs(df, expected)
+
     def test_tsv_uses_tab_separator(self):
         with tempfile.TemporaryDirectory(prefix="rds_tsv_") as tmpdir:
             tsv_file = Path(tmpdir) / "data.tsv"

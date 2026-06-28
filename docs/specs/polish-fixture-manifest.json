@@ -85,7 +85,8 @@
     "tick-readability-v1",
     "multipanel-layout-v1",
     "fit-trend-overlay-expansion",
-    "shared-legend-polish-v1"
+    "shared-legend-polish-v1",
+    "architecture-data-contract-debt-v1"
   ],
-  "selected_next_slice": "architecture-data-contract-debt"
+  "selected_next_slice": "semantic-constraint-decomposition-v1"
 }
