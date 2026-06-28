@@ -4,6 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from hub_core import config_parser, config_style
 from hub_core.config_parser import resolve_presets, resolve_step_style, validate_config
 from themes.journal_theme import STYLE_PRESETS, apply_journal_theme
 from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
@@ -25,6 +26,11 @@ def _base_config(**overrides) -> dict:
 # ---------------------------------------------------------------------------
 # resolve_presets
 # ---------------------------------------------------------------------------
+
+def test_config_parser_keeps_style_resolution_compatibility_exports():
+    assert config_parser.resolve_presets is config_style.resolve_presets
+    assert config_parser.resolve_step_style is config_style.resolve_step_style
+
 
 def test_resolve_presets_empty():
     config = _base_config()

@@ -134,6 +134,12 @@ First extraction seam:
 - Move project role/status helpers into `hub_core/project_roles.py` only after
   current imports are inventoried.
 
+Progress:
+
+- 2026-06-28: style preset resolution helpers moved to
+  `hub_core/config_style.py`; `hub_core.config_parser` keeps existing
+  compatibility exports.
+
 Compatibility:
 
 - Keep `hub_core.config_parser` exports stable.
