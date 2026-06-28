@@ -28,6 +28,13 @@ def _base_config(**overrides) -> dict:
 # ---------------------------------------------------------------------------
 
 def test_config_parser_keeps_style_resolution_compatibility_exports():
+    assert config_parser.ALLOWED_TARGET_FORMATS is config_style.ALLOWED_TARGET_FORMATS
+    assert config_parser.ALLOWED_FONT_STRATEGIES is config_style.ALLOWED_FONT_STRATEGIES
+    assert config_parser.ALLOWED_PRESET_KEYS is config_style.ALLOWED_PRESET_KEYS
+    assert config_parser.INTERNAL_STYLE_TARGET_FORMAT is config_style.INTERNAL_STYLE_TARGET_FORMAT
+    assert config_parser.PROFILE_ALIASES is config_style.PROFILE_ALIASES
+    assert config_parser.list_profiles is config_style.list_profiles
+    assert config_parser.resolve_profile_name is config_style.resolve_profile_name
     assert config_parser.resolve_presets is config_style.resolve_presets
     assert config_parser.resolve_step_style is config_style.resolve_step_style
 

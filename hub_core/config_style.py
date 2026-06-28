@@ -2,6 +2,49 @@
 
 from __future__ import annotations
 
+INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
+
+ALLOWED_TARGET_FORMATS = {
+    "nature",
+    INTERNAL_STYLE_TARGET_FORMAT,
+    "science",
+    "ppt",
+    "default",
+    "acs",
+    "rsc",
+    "elsevier",
+    "wiley",
+    "cell",
+}
+ALLOWED_FONT_STRATEGIES = {"compensate", "as_is"}
+ALLOWED_PRESET_KEYS = {
+    "target_format",
+    "font_scale",
+    "profile",
+    "output_format",
+    "colormap",
+}
+
+try:
+    from themes.style_profiles import PROFILE_ALIASES, list_profiles, resolve_profile_name
+
+    KNOWN_STYLE_PROFILES = set(list_profiles())
+    KNOWN_STYLE_PROFILE_KEYS = set(list_profiles()) | set(PROFILE_ALIASES.keys())
+except Exception:
+
+    def resolve_profile_name(profile_name=None):
+        if profile_name is None:
+            return "baseline"
+        key = str(profile_name).strip().lower()
+        return key if key else "baseline"
+
+    def list_profiles():
+        return ["baseline"]
+
+    PROFILE_ALIASES = {"default": "baseline", "base": "baseline"}
+    KNOWN_STYLE_PROFILES = {"baseline"}
+    KNOWN_STYLE_PROFILE_KEYS = {"baseline", "default", "base"}
+
 
 def resolve_presets(config: dict) -> dict:
     raw = config.get("presets", {})

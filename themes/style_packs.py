@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from hub_core.config_parser import ALLOWED_TARGET_FORMATS
+from hub_core.config_style import ALLOWED_TARGET_FORMATS, INTERNAL_STYLE_TARGET_FORMAT
 
 PUBLIC_CORE = "public_core"
 INTERNAL = "internal"
 PRIVATE = "private"
 ALLOWED_VISIBILITIES = {PUBLIC_CORE, INTERNAL, PRIVATE}
-INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
 INTERNAL_RESISTANCE_PROFILE = "_".join(("resistance", "premium"))
 
 

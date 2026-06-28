@@ -14,10 +14,10 @@ Measured on 2026-06-28 with the line-count inventory documented in
 
 | File | Lines | Primary reason to split |
 | --- | ---: | --- |
-| `plotting/bridge_renderer.py` | 2144 | Multipanel layout, overlay/statistical annotation, legend placement, diagnostics, and export behavior still share one file. |
-| `hub_core/config_parser.py` | 2025 | Config loading, migration, validation, role/status policy, presets, and listing helpers are coupled. |
-| `hub_core/geometry_diagnostics.py` | 1890 | Detection primitives, overlap checks, scoring, and report shaping are co-located. |
 | `hub_core/data_contract_semantics.py` | 1861 | Many independent semantic checks and unit/statistical helpers share one module. |
+| `hub_core/config_parser.py` | 1858 | Config loading, migration, validation, role/status policy, style contracts, and listing helpers are coupled. |
+| `plotting/bridge_renderer.py` | 1833 | Multipanel layout, overlay/statistical annotation, diagnostics, and export behavior still share one file. |
+| `hub_core/geometry_diagnostics.py` | 1828 | Detection primitives, overlap checks, scoring, and report shaping are co-located. |
 | `hub_core/mcp/tools/render_csv.py` | 1670 | CSV render argument parsing, normalization, execution, envelope shaping, and multipanel behavior share one tool mixin. |
 
 ## Extraction Rules
@@ -76,10 +76,9 @@ Progress:
 - 2026-06-28: single-axes legend normalization, placement, collision
   avoidance, and application helpers moved to `plotting/renderers/legend.py`;
   `plotting.bridge_renderer` keeps private compatibility aliases.
-- After this extraction, `hub_core/config_parser.py` is the largest file in
-  the architecture inventory. Continue bridge extraction only with tightly
-  scoped visual witness tests; otherwise move to D2/D3 based on current
-  inventory.
+- After this extraction, `plotting/bridge_renderer.py` is no longer the largest
+  hotspot. Continue bridge extraction only with tightly scoped visual witness
+  tests; otherwise move to D2/D3 based on current inventory.
 
 Compatibility:
 
@@ -146,6 +145,9 @@ Progress:
 - 2026-06-28: project role/status helpers moved to
   `hub_core/project_roles.py`; `hub_core.config_parser` keeps existing
   compatibility exports.
+- 2026-06-28: style target-format, preset-key, font-strategy, and profile
+  registry compatibility exports moved to `hub_core/config_style.py`;
+  `hub_core.config_parser` keeps existing compatibility exports.
 
 Compatibility:
 

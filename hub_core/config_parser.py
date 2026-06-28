@@ -6,7 +6,16 @@ from copy import deepcopy
 
 import yaml
 
+from .config_style import ALLOWED_FONT_STRATEGIES as ALLOWED_FONT_STRATEGIES
+from .config_style import ALLOWED_PRESET_KEYS as ALLOWED_PRESET_KEYS
+from .config_style import ALLOWED_TARGET_FORMATS as ALLOWED_TARGET_FORMATS
+from .config_style import INTERNAL_STYLE_TARGET_FORMAT as INTERNAL_STYLE_TARGET_FORMAT
+from .config_style import KNOWN_STYLE_PROFILE_KEYS as _KNOWN_STYLE_PROFILE_KEYS
+from .config_style import KNOWN_STYLE_PROFILES as _KNOWN_STYLE_PROFILES
+from .config_style import PROFILE_ALIASES as PROFILE_ALIASES
+from .config_style import list_profiles as list_profiles
 from .config_style import resolve_presets as resolve_presets
+from .config_style import resolve_profile_name as resolve_profile_name
 from .config_style import resolve_step_style as resolve_step_style
 from .domain_analysis import DOMAIN_HELPER_NAMES
 from .logging import get_logger
@@ -22,30 +31,8 @@ from .project_roles import project_modules as project_modules
 from .project_roles import project_role as project_role
 from .project_roles import project_status as project_status
 
-INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
-
-ALLOWED_TARGET_FORMATS = {
-    "nature",
-    INTERNAL_STYLE_TARGET_FORMAT,
-    "science",
-    "ppt",
-    "default",
-    "acs",
-    "rsc",
-    "elsevier",
-    "wiley",
-    "cell",
-}
-ALLOWED_FONT_STRATEGIES = {"compensate", "as_is"}
 CURRENT_CONFIG_SCHEMA_VERSION = "1.0"
 SUPPORTED_CONFIG_SCHEMA_VERSIONS = ("0.9", CURRENT_CONFIG_SCHEMA_VERSION)
-ALLOWED_PRESET_KEYS = {
-    "target_format",
-    "font_scale",
-    "profile",
-    "output_format",
-    "colormap",
-}
 ALLOWED_ANALYSIS_POLICY_LANGS = {"r"}
 ALLOWED_PLOT_POLICY_LANGS = {"python"}
 ALLOWED_OUTPUT_FORMATS = {"png", "pdf", "svg"}
@@ -67,26 +54,6 @@ class ConfigMigrationError(ValueError):
 
 class ConfigVersionTooNewError(ConfigMigrationError):
     """Raised when a config declares a schema newer than this runtime."""
-
-try:
-    from themes.style_profiles import PROFILE_ALIASES, list_profiles, resolve_profile_name
-
-    _KNOWN_STYLE_PROFILES = set(list_profiles())
-    _KNOWN_STYLE_PROFILE_KEYS = set(list_profiles()) | set(PROFILE_ALIASES.keys())
-except Exception:
-
-    def resolve_profile_name(profile_name=None):
-        if profile_name is None:
-            return "baseline"
-        key = str(profile_name).strip().lower()
-        return key if key else "baseline"
-
-    def list_profiles():
-        return ["baseline"]
-
-    PROFILE_ALIASES = {"default": "baseline", "base": "baseline"}
-    _KNOWN_STYLE_PROFILES = {"baseline"}
-    _KNOWN_STYLE_PROFILE_KEYS = {"baseline", "default", "base"}
 
 
 def normalize_lang(lang):
