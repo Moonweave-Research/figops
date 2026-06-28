@@ -14,7 +14,7 @@ Measured on 2026-06-28 with the line-count inventory documented in
 
 | File | Lines | Primary reason to split |
 | --- | ---: | --- |
-| `plotting/bridge_renderer.py` | 2538 | Multiple plot renderers, schema normalization, labels, legends, diagnostics, and export behavior share one file. |
+| `plotting/bridge_renderer.py` | 2350 | Multipanel layout, overlay/statistical annotation, legend placement, diagnostics, and export behavior still share one file. |
 | `hub_core/data_contract_semantics.py` | 2282 | Many independent semantic checks and unit/statistical helpers share one module. |
 | `hub_core/config_parser.py` | 2025 | Config loading, migration, validation, role/status policy, presets, and listing helpers are coupled. |
 | `hub_core/geometry_diagnostics.py` | 1890 | Detection primitives, overlap checks, scoring, and report shaping are co-located. |
@@ -67,6 +67,9 @@ Progress:
 - 2026-06-28: facet grid resolution, panel creation, shared-axis marker
   expansion, and facet grouping moved behind `plotting/renderers/facet.py`;
   `plotting.bridge_renderer` keeps facet private compatibility wrappers.
+- 2026-06-28: point-label normalization, candidate selection, drawing, and
+  skip-report helpers moved to `plotting/renderers/labels.py`;
+  `plotting.bridge_renderer` keeps private compatibility aliases.
 
 Compatibility:
 
