@@ -151,6 +151,57 @@ def release_action_summary(actions: list[dict[str, object]]) -> dict[str, object
     }
 
 
+def _yes_no(value: object) -> str:
+    return "yes" if bool(value) else "no"
+
+
+def _markdown_cell(value: object) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def format_public_core_status_markdown(payload: dict[str, Any]) -> str:
+    release_gate = payload["release_gate"]
+    action_summary = release_gate["action_summary"]
+    lines = [
+        "# FigOps Public Release Status",
+        "",
+        f"- Inventory valid: {_yes_no(payload['inventory_valid'])}",
+        f"- Package distribution allowed: {_yes_no(payload['package_distribution_allowed'])}",
+        f"- Repository public release allowed: {_yes_no(payload['repository_public_release_allowed'])}",
+        f"- Release gate: {'ok' if release_gate['ok'] else 'blocked'}",
+        f"- Total blockers: {release_gate['blocker_count']}",
+        f"- Auto-fixable blockers: {action_summary['auto_fixable_blocker_count']}",
+        f"- Confirmation-required blockers: {action_summary['requires_confirmation_blocker_count']}",
+        "",
+        "## Next Actions",
+        "",
+        "| Family | Count | Status | Confirmation | Action |",
+        "| --- | ---: | --- | --- | --- |",
+    ]
+    for action in release_gate["next_actions"]:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_cell(action["family"]),
+                    _markdown_cell(action["count"]),
+                    _markdown_cell(action["status"]),
+                    _yes_no(action["requires_confirmation"]),
+                    _markdown_cell(action["action"]),
+                ]
+            )
+            + " |"
+        )
+    if "blockers_by_family" in release_gate:
+        lines.extend(["", "## Blocker Details", ""])
+        for family, blockers in release_gate["blockers_by_family"].items():
+            lines.append(f"### {family}")
+            for blocker in blockers:
+                lines.append(f"- {_markdown_cell(blocker)}")
+            lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def public_core_status(root: Path = REPO_ROOT) -> dict[str, Any]:
     return build_public_core_status(root)
 
@@ -208,15 +259,26 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="When used with --status, include sorted release blockers grouped by blocker family",
     )
+    parser.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format. Markdown is available for --status decision reports.",
+    )
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
+    if args.format == "markdown" and not args.status:
+        parser.error("--format markdown requires --status")
     payload = (
         build_public_core_status(root, include_blockers=args.include_blockers)
         if args.status
         else load_public_core_inventory(root)
     )
-    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    if args.format == "markdown":
+        print(format_public_core_status_markdown(payload), end="")
+    else:
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     if args.status:
         return 0 if payload["inventory_valid"] else 1
     errors = validate_public_core_inventory(payload)

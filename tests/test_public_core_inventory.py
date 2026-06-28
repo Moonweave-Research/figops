@@ -5,7 +5,9 @@ from scripts.check_public_release import PRIVATE_MARKERS
 from scripts.public_core_inventory import (
     blocker_family,
     build_public_core_status,
+    format_public_core_status_markdown,
     load_public_core_inventory,
+    main,
     public_core_status,
     release_action_summary,
     release_blocker_summary,
@@ -102,6 +104,49 @@ def test_release_action_summary_counts_auto_fixable_and_decision_blockers():
     assert summary["auto_fixable_blocker_count"] == 2
     assert summary["requires_confirmation_blocker_count"] == 3
     assert summary["requires_confirmation"] is True
+
+
+def test_format_public_core_status_markdown_summarizes_decision_state():
+    payload = {
+        "inventory_valid": True,
+        "package_distribution_allowed": True,
+        "repository_public_release_allowed": False,
+        "release_gate": {
+            "ok": False,
+            "blocker_count": 3,
+            "action_summary": {
+                "auto_fixable_blocker_count": 0,
+                "requires_confirmation_blocker_count": 3,
+                "requires_confirmation": True,
+            },
+            "next_actions": [
+                {
+                    "family": "private_marker",
+                    "count": 3,
+                    "status": "requires_decision",
+                    "action": "Sanitize or relocate.",
+                    "requires_confirmation": True,
+                }
+            ],
+        },
+    }
+
+    markdown = format_public_core_status_markdown(payload)
+
+    assert "# FigOps Public Release Status" in markdown
+    assert "- Package distribution allowed: yes" in markdown
+    assert "- Repository public release allowed: no" in markdown
+    assert "- Auto-fixable blockers: 0" in markdown
+    assert "| private_marker | 3 | requires_decision | yes | Sanitize or relocate. |" in markdown
+
+
+def test_public_core_inventory_markdown_cli_requires_status(capsys):
+    exit_code = main(["--status", "--format", "markdown"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "# FigOps Public Release Status" in captured.out
+    assert "```" not in captured.out
 
 
 def test_public_core_status_requires_approved_current_status_for_pypi_allowed(tmp_path: Path):
