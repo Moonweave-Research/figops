@@ -1,10 +1,18 @@
 import json
 import logging
 import math
-import re
 from pathlib import Path
 
 from .data_contract_semantic_registry import _MONOTONIC_MODES, SEMANTIC_CHECK_DEFINITIONS  # noqa: F401
+from .data_contract_semantic_units import (
+    check_unit_compatibility as _semantic_unit_compatibility,
+)
+from .data_contract_semantic_units import (
+    format_unit_signature as _format_unit_signature,
+)
+from .data_contract_semantic_units import (
+    parse_unit_signature as _parse_unit_signature,
+)
 from .logging import get_logger
 
 logger = get_logger(__name__)
@@ -25,6 +33,7 @@ try:
     _ureg = _pint.UnitRegistry()
     _PINT_AVAILABLE = True
 except ImportError:
+    _pint = None
     _ureg = None
     _PINT_AVAILABLE = False
 
@@ -1637,46 +1646,6 @@ def _check_outlier_flag_constraint(
     return [message], row_violations
 
 
-_UNIT_TOKEN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(?:\^(-?\d+))?$")
-
-
-def _parse_unit_signature(unit: str) -> dict[str, int]:
-    raw = str(unit).replace(" ", "")
-    if not raw:
-        raise ValueError("unit must be non-empty")
-
-    signature: dict[str, int] = {}
-    pending = ""
-    operator = 1
-    for char in raw + "*":
-        if char in "*/":
-            if not pending:
-                raise ValueError(f"malformed unit expression '{unit}'")
-            if pending != "1":
-                match = _UNIT_TOKEN_RE.match(pending)
-                if not match:
-                    raise ValueError(f"unsupported unit token '{pending}'")
-                base, exponent_text = match.groups()
-                exponent = int(exponent_text or "1") * operator
-                signature[base] = signature.get(base, 0) + exponent
-                if signature[base] == 0:
-                    del signature[base]
-            pending = ""
-            operator = 1 if char == "*" else -1
-        else:
-            pending += char
-    return signature
-
-
-def _format_unit_signature(signature: dict[str, int]) -> str:
-    if not signature:
-        return "1"
-    return "*".join(
-        f"{unit}^{exponent}" if exponent != 1 else unit
-        for unit, exponent in sorted(signature.items())
-    )
-
-
 def _check_unit_coherence_constraint(
     col,
     raw_check,
@@ -2118,22 +2087,13 @@ def _check_unit_compatibility(
     available = _PINT_AVAILABLE if pint_available is None else pint_available
     registry = _ureg if ureg is None else ureg
     log = log_func or _log
-    if not available:
-        log(f"      ⚠️  Column '{col_name}': unit check skipped (pint not installed)")
-        return "skip"
-
-    try:
-        expected = registry.parse_expression(expected_unit_str)
-        actual = registry.parse_expression(actual_unit_str)
-    except Exception:
-        log(f"      ⚠️  Column '{col_name}': could not parse units ('{actual_unit_str}' or '{expected_unit_str}')")
-        return "skip"
-
-    if actual.units == expected.units:
-        return "ok"
-
-    try:
-        factor = actual.to(expected.units).magnitude
-        return (factor, actual_unit_str, expected_unit_str)
-    except _pint.DimensionalityError:
-        return "incompatible"
+    dimensionality_error = _pint.DimensionalityError if _pint is not None else Exception
+    return _semantic_unit_compatibility(
+        col_name,
+        actual_unit_str,
+        expected_unit_str,
+        pint_available=available,
+        ureg=registry,
+        log_func=log,
+        dimensionality_error=dimensionality_error,
+    )

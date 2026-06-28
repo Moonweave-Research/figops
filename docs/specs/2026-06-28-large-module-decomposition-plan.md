@@ -15,7 +15,7 @@ Measured on 2026-06-28 with the line-count inventory documented in
 | File | Lines | Primary reason to split |
 | --- | ---: | --- |
 | `plotting/bridge_renderer.py` | 2144 | Multipanel layout, overlay/statistical annotation, legend placement, diagnostics, and export behavior still share one file. |
-| `hub_core/data_contract_semantics.py` | 2139 | Many independent semantic checks and unit/statistical helpers share one module. |
+| `hub_core/data_contract_semantics.py` | 2099 | Many independent semantic checks and unit/statistical helpers share one module. |
 | `hub_core/config_parser.py` | 2025 | Config loading, migration, validation, role/status policy, presets, and listing helpers are coupled. |
 | `hub_core/geometry_diagnostics.py` | 1890 | Detection primitives, overlap checks, scoring, and report shaping are co-located. |
 | `hub_core/mcp/tools/render_csv.py` | 1670 | CSV render argument parsing, normalization, execution, envelope shaping, and multipanel behavior share one tool mixin. |
@@ -104,10 +104,12 @@ Progress:
 - 2026-06-28: semantic-check registry metadata and schema descriptions moved to
   `hub_core/data_contract_semantic_registry.py`; `hub_core.data_contract` and
   `hub_core.data_contract_semantics` keep existing compatibility exports.
-- After this extraction, `hub_core/data_contract_semantics.py` is nearly tied
-  with `plotting/bridge_renderer.py`; continue D2 with units/statistics/order
-  helper families unless a bridge renderer slice has stronger visual witness
-  coverage.
+- 2026-06-28: unit signature parsing/formatting and Pint compatibility checks
+  moved to `hub_core/data_contract_semantic_units.py`;
+  `hub_core.data_contract` and `hub_core.data_contract_semantics` keep existing
+  private helper compatibility exports.
+- Continue D2 with the remaining unit validators or statistics/order helper
+  families unless a bridge renderer slice has stronger visual witness coverage.
 
 Compatibility:
 
