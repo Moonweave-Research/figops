@@ -8,6 +8,7 @@ from scripts.public_core_inventory import (
     load_public_core_inventory,
     public_core_status,
     release_blocker_summary,
+    release_next_actions,
     validate_public_core_inventory,
 )
 
@@ -35,6 +36,9 @@ def test_public_core_status_reports_current_gate_as_blocked():
     assert status["pypi_upload_allowed"] is True
     assert "private_marker" in status["release_gate"]["blocker_families"]
     assert "style_pack" in status["release_gate"]["blocker_families"]
+    next_actions = {action["family"]: action for action in status["release_gate"]["next_actions"]}
+    assert next_actions["private_marker"]["requires_confirmation"] is True
+    assert next_actions["post_tag_metadata"]["status"] == "requires_release_decision"
     assert "blockers_by_family" not in status["release_gate"]
 
 
@@ -53,6 +57,23 @@ def test_release_blocker_summary_groups_by_family():
     assert "private_marker" in grouped
     assert "private_workflow_doc" in grouped
     assert all(isinstance(blocker, str) for blocker in grouped["private_marker"])
+
+
+def test_release_next_actions_group_counts_and_decision_statuses():
+    actions = release_next_actions(
+        (
+            "Private marker 'internal_sample' found in README.md.",
+            "Private workflow document path present: docs/hks/01.md.",
+            "Unable to decode UTF-8 text file: bad.txt (invalid start byte at byte 1).",
+        )
+    )
+
+    by_family = {action["family"]: action for action in actions}
+    assert by_family["private_marker"]["count"] == 1
+    assert by_family["private_marker"]["status"] == "requires_decision"
+    assert by_family["private_workflow_doc"]["requires_confirmation"] is True
+    assert by_family["encoding"]["status"] == "can_fix"
+    assert by_family["encoding"]["requires_confirmation"] is False
 
 
 def test_public_core_status_requires_approved_current_status_for_pypi_allowed(tmp_path: Path):

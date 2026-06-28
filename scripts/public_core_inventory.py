@@ -75,6 +75,66 @@ def blocker_family(blocker: str) -> str:
     return "other"
 
 
+BLOCKER_ACTIONS: dict[str, dict[str, object]] = {
+    "license": {
+        "status": "requires_decision",
+        "action": "Record license clearance and update LICENSE/NOTICE only after approval.",
+        "requires_confirmation": True,
+    },
+    "style_pack": {
+        "status": "requires_decision",
+        "action": "Split or remove internal style packs from the public repository candidate.",
+        "requires_confirmation": True,
+    },
+    "private_marker": {
+        "status": "requires_decision",
+        "action": "Sanitize or relocate files that contain real project identifiers or private style names.",
+        "requires_confirmation": True,
+    },
+    "private_workflow_doc": {
+        "status": "requires_decision",
+        "action": "Move internal workflow documents out of the public repository candidate.",
+        "requires_confirmation": True,
+    },
+    "post_tag_metadata": {
+        "status": "requires_release_decision",
+        "action": "Choose the next release version, then bump pyproject and changelog together.",
+        "requires_confirmation": True,
+    },
+    "encoding": {
+        "status": "can_fix",
+        "action": "Convert undecodable tracked text files to UTF-8 or remove them from the candidate.",
+        "requires_confirmation": False,
+    },
+    "other": {
+        "status": "inspect",
+        "action": "Inspect unclassified blockers and add a specific action mapping when understood.",
+        "requires_confirmation": True,
+    },
+}
+
+
+def release_next_actions(blockers: tuple[str, ...]) -> list[dict[str, object]]:
+    counts: dict[str, int] = {}
+    for blocker in blockers:
+        family = blocker_family(blocker)
+        counts[family] = counts.get(family, 0) + 1
+
+    actions: list[dict[str, object]] = []
+    for family in sorted(counts):
+        action = BLOCKER_ACTIONS.get(family, BLOCKER_ACTIONS["other"])
+        actions.append(
+            {
+                "family": family,
+                "count": counts[family],
+                "status": action["status"],
+                "action": action["action"],
+                "requires_confirmation": action["requires_confirmation"],
+            }
+        )
+    return actions
+
+
 def public_core_status(root: Path = REPO_ROOT) -> dict[str, Any]:
     return build_public_core_status(root)
 
@@ -110,6 +170,7 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
             "ok": release_result.ok,
             "blocker_count": len(release_result.blockers),
             "blocker_families": families,
+            "next_actions": release_next_actions(release_result.blockers),
         },
         "package_distribution_allowed": package_distribution_allowed,
         "repository_public_release_allowed": release_result.ok,
