@@ -23,6 +23,7 @@ from themes.journal_theme import (
     panel_label,
     save_journal_fig,
 )
+from themes.layout import apply_publication_layout as apply_publication_layout_from_layout_module
 from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 from themes.style_profiles import INTERNAL_RESISTANCE_PROFILE, get_render_style_tokens
 
@@ -681,6 +682,20 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 self.assertAlmostEqual(box_h_mm, 55.0, places=1)
             finally:
                 plt.close(fig)
+
+    def test_layout_module_publication_layout_matches_journal_theme_reexport(self):
+        fig, ax = plt.subplots(figsize=(mm_to_inch(89.0), mm_to_inch(70.0)))
+        try:
+            result = apply_publication_layout_from_layout_module("standard", fig=fig, target_format="nature")
+            box_w_mm, box_h_mm = _axes_box_mm(fig, ax)
+
+            self.assertAlmostEqual(result["figure_width_mm"], 89.0, places=1)
+            self.assertAlmostEqual(result["figure_height_mm"], 75.0, places=1)
+            self.assertAlmostEqual(box_w_mm, 70.0, places=1)
+            self.assertAlmostEqual(box_h_mm, 55.0, places=1)
+            self.assertIs(apply_publication_layout, apply_publication_layout_from_layout_module)
+        finally:
+            plt.close(fig)
 
     def test_top_outside_layout_preserves_absolute_box_size_across_initial_canvas_sizes(self):
         initial_heights_mm = (70.0, 95.0)

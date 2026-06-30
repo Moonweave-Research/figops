@@ -45,47 +45,64 @@ except ImportError:
         def get_render_style_tokens(target_format="nature", profile_name=None):
             return {}, {"target_format": str(target_format or "nature").lower(), "profile": "baseline"}
 
+try:
+    from .layout import (
+        _LAYOUT_LOCK_ATTR,
+        MULTI_PANEL_GRID_SPECS_MM,
+        PUBLICATION_LAYOUT_SPECS_MM,
+        _apply_legacy_publication_layout,
+        _figure_size_mm,
+        _lock_publication_layout,
+        apply_panel_grid_layout,
+        apply_publication_layout,
+        get_legend_args,
+    )
+except ImportError:
+    from layout import (
+        _LAYOUT_LOCK_ATTR,
+        MULTI_PANEL_GRID_SPECS_MM,
+        PUBLICATION_LAYOUT_SPECS_MM,
+        _apply_legacy_publication_layout,
+        _figure_size_mm,
+        _lock_publication_layout,
+        apply_panel_grid_layout,
+        apply_publication_layout,
+        get_legend_args,
+    )
+
+__all__ = [
+    "DOUBLE_COLUMN",
+    "INTERNAL_STYLE_TARGET_FORMAT",
+    "MULTI_PANEL_GRID_SPECS_MM",
+    "PUBLICATION_LAYOUT_SPECS_MM",
+    "SINGLE_COLUMN",
+    "STYLE_PRESETS",
+    "TIFF_AUTO_PRESETS",
+    "_LAYOUT_LOCK_ATTR",
+    "_active_font_token_sizes",
+    "_apply_legacy_publication_layout",
+    "_figure_size_mm",
+    "_lock_publication_layout",
+    "_safe_geometry_diagnostics_inline",
+    "apply_journal_style",
+    "apply_journal_theme",
+    "apply_panel_grid_layout",
+    "apply_publication_layout",
+    "font_tokens",
+    "get_figsize",
+    "get_legend_args",
+    "mm_to_inch",
+    "panel_label",
+    "save_journal_fig",
+    "set_figure_size",
+]
+
 
 # ── Nature/Science Standard Widths (mm) ─────────────────────────
 SINGLE_COLUMN = 89  # mm
 DOUBLE_COLUMN = 183  # mm
-_LAYOUT_LOCK_ATTR = "_graph_hub_layout_lock"
 DIAG_BUDGET_FLOOR_SECONDS = 5.0
 INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
-
-_PUBLICATION_LAYOUT_SPECS_MM = {
-    "standard": {
-        "box_width_mm": 70.0,
-        "box_height_mm": 55.0,
-        "margins_mm": {"left": 14.0, "right": 5.0, "bottom": 12.0, "top": 8.0},
-    },
-    "top_outside": {
-        "box_width_mm": 70.0,
-        "box_height_mm": 55.0,
-        "margins_mm": {"left": 14.0, "right": 5.0, "bottom": 12.0, "top": 20.0},
-    },
-    # PPT/default right-side legend keeps the older ratio workflow unless an
-    # explicit absolute-mm box is requested by the caller.
-    "right_outside": {
-        "box_width_mm": 70.0,
-        "box_height_mm": 55.0,
-        "margins_mm": {"left": 14.0, "right": 18.0, "bottom": 12.0, "top": 8.0},
-    },
-    # Internal project preset — square 50x50 mm plot box (3-up double-col 기준)
-    # 독립 single-panel 용. 3-up/2-up 멀티패널은 스크립트에서 figsize 직접 계산.
-    "surfur_square": {
-        "box_width_mm": 50.0,
-        "box_height_mm": 50.0,
-        "margins_mm": {"left": 12.0, "right": 4.0, "bottom": 10.0, "top": 6.0},
-    },
-}
-PUBLICATION_LAYOUT_SPECS_MM = copy.deepcopy(_PUBLICATION_LAYOUT_SPECS_MM)
-
-_LEGACY_LAYOUT_RATIOS = {
-    "top_outside": {"left": 0.18, "right": 0.95, "bottom": 0.22, "top": 0.76},
-    "right_outside": {"left": 0.15, "right": 0.75, "bottom": 0.18, "top": 0.92},
-    "standard": {"left": 0.15, "right": 0.95, "bottom": 0.15, "top": 0.90},
-}
 
 TIFF_AUTO_PRESETS: set[str] = {
     "nature",
@@ -1159,232 +1176,3 @@ def save_journal_fig(
                 bbox_inches="tight",
                 pil_kwargs={"compression": "tiff_lzw"},
             )
-
-
-def _figure_size_mm(fig):
-    width_in, height_in = fig.get_size_inches()
-    return width_in * 25.4, height_in * 25.4
-
-
-def _lock_publication_layout(fig, *, layout_type, target_format, box_width_mm, box_height_mm, margins_mm):
-    setattr(
-        fig,
-        _LAYOUT_LOCK_ATTR,
-        {
-            "layout_type": layout_type,
-            "target_format": target_format,
-            "box_width_mm": float(box_width_mm),
-            "box_height_mm": float(box_height_mm),
-            "margins_mm": {k: float(v) for k, v in margins_mm.items()},
-        },
-    )
-
-
-def _apply_legacy_publication_layout(fig, layout_type):
-    ratios = _LEGACY_LAYOUT_RATIOS.get(layout_type, _LEGACY_LAYOUT_RATIOS["standard"])
-    fig.subplots_adjust(**ratios)
-    if hasattr(fig, _LAYOUT_LOCK_ATTR):
-        delattr(fig, _LAYOUT_LOCK_ATTR)
-    return ratios
-
-
-# ── Multi-panel grid specs (unified source, 2026-04-10) ──────────
-# 여러 프로젝트가 각자 local copy를 두던 PANEL_GRID_SPECS_MM을
-# hub 단일 소스로 통합. 프로젝트별 예외는 script kwargs로만 허용.
-# 모든 layout은 NatComm double column 180mm 이내 + log-scale label
-# 충돌 방지를 위한 여유 있는 wspace 기준.
-MULTI_PANEL_GRID_SPECS_MM: dict[str, dict[str, float]] = {
-    # 3-up triplet: 44×44 box, wspace 14mm → 178mm width (180 이내 2mm 버퍼)
-    # wspace 14mm는 log-scale tick label("10^{14}") + y-label rotation
-    # + 양쪽 padding 전부 여유 있게 수용
-    "triplet": {
-        "box_width_mm": 44.0,
-        "box_height_mm": 44.0,
-        "left_mm": 12.0,
-        "right_mm": 6.0,
-        "bottom_mm": 12.0,
-        "top_mm": 8.0,
-        "wspace_mm": 14.0,
-        "hspace_mm": 10.0,
-    },
-    # 2-up pair: 72×72 box, wspace 14mm → 176mm width
-    "pair": {
-        "box_width_mm": 72.0,
-        "box_height_mm": 72.0,
-        "left_mm": 12.0,
-        "right_mm": 6.0,
-        "bottom_mm": 12.0,
-        "top_mm": 8.0,
-        "wspace_mm": 14.0,
-        "hspace_mm": 10.0,
-    },
-    # 2x2 quad: 70×70 box, wspace 14mm → 175mm width, 174mm height
-    "quad": {
-        "box_width_mm": 70.0,
-        "box_height_mm": 70.0,
-        "left_mm": 12.0,
-        "right_mm": 9.0,
-        "bottom_mm": 12.0,
-        "top_mm": 8.0,
-        "wspace_mm": 14.0,
-        "hspace_mm": 10.0,
-    },
-    # triplet_cell: triplet 1x3 row의 "per-cell" 치수에 맞춘 단독 single panel.
-    # mockup 1col3 슬롯에 들어갈 single panel이 triplet row의 cell과 동일 크기로
-    # 보이도록 margin을 줄여 per-cell proportion(178/3 ≈ 59mm) 일치.
-    "triplet_cell": {
-        "box_width_mm": 44.0,
-        "box_height_mm": 44.0,
-        "left_mm": 10.0,
-        "right_mm": 5.0,
-        "bottom_mm": 12.0,
-        "top_mm": 8.0,
-        "wspace_mm": 0.0,
-        "hspace_mm": 0.0,
-    },
-    # solo: NatComm Slot A 단일 standalone panel (기본 가로형)
-    # 가로형 기본 (시계열/스펙트럼 등 x축 길이 중요), 정사각 원하면
-    # apply_panel_grid_layout(layout_type="solo", box_height_mm=70)으로 override.
-    # figure: 90×77 mm → NatComm single column 88-89mm 수용.
-    "solo": {
-        "box_width_mm": 70.0,
-        "box_height_mm": 55.0,
-        "left_mm": 14.0,
-        "right_mm": 6.0,
-        "bottom_mm": 14.0,
-        "top_mm": 8.0,
-        "wspace_mm": 0.0,
-        "hspace_mm": 0.0,
-    },
-}
-
-
-def apply_panel_grid_layout(
-    fig,
-    *,
-    nrows: int,
-    ncols: int,
-    layout_type: str,
-    box_width_mm: float | None = None,
-    box_height_mm: float | None = None,
-    **overrides,
-) -> dict[str, float]:
-    """Set deterministic multi-panel layout with absolute mm dimensions.
-
-    Reads MULTI_PANEL_GRID_SPECS_MM[layout_type] as the default.
-    Per-script overrides (box_width_mm, box_height_mm, any spec key) are
-    explicit at the call site — preferred over hidden project-level overrides.
-
-    Returns dict with figure_width_mm, figure_height_mm, box_width_mm, box_height_mm.
-    """
-    if layout_type not in MULTI_PANEL_GRID_SPECS_MM:
-        raise KeyError(f"Unknown layout_type {layout_type!r}. Available: {sorted(MULTI_PANEL_GRID_SPECS_MM)}")
-    spec = dict(MULTI_PANEL_GRID_SPECS_MM[layout_type])
-    if box_width_mm is not None:
-        spec["box_width_mm"] = float(box_width_mm)
-    if box_height_mm is not None:
-        spec["box_height_mm"] = float(box_height_mm)
-    for key, value in overrides.items():
-        if key in spec:
-            spec[key] = float(value)
-
-    figure_width_mm = (
-        spec["left_mm"] + spec["right_mm"] + ncols * spec["box_width_mm"] + max(ncols - 1, 0) * spec["wspace_mm"]
-    )
-    figure_height_mm = (
-        spec["bottom_mm"] + spec["top_mm"] + nrows * spec["box_height_mm"] + max(nrows - 1, 0) * spec["hspace_mm"]
-    )
-
-    fig.set_size_inches(figure_width_mm / 25.4, figure_height_mm / 25.4, forward=True)
-    fig.subplots_adjust(
-        left=spec["left_mm"] / figure_width_mm,
-        right=1.0 - (spec["right_mm"] / figure_width_mm),
-        bottom=spec["bottom_mm"] / figure_height_mm,
-        top=1.0 - (spec["top_mm"] / figure_height_mm),
-        wspace=(spec["wspace_mm"] / spec["box_width_mm"]) if ncols > 1 else 0.0,
-        hspace=(spec["hspace_mm"] / spec["box_height_mm"]) if nrows > 1 else 0.0,
-    )
-    return {
-        "figure_width_mm": figure_width_mm,
-        "figure_height_mm": figure_height_mm,
-        "box_width_mm": spec["box_width_mm"],
-        "box_height_mm": spec["box_height_mm"],
-    }
-
-
-def apply_publication_layout(
-    layout_type="top_outside",
-    *,
-    fig=None,
-    target_format="nature",
-    box_width_mm=None,
-    box_height_mm=None,
-    margins_mm=None,
-    resize_figure=True,
-):
-    """
-    [Promoted from Pusan DEA Project]
-    Publication figure layout with deterministic axes-box sizing.
-    For non-PPT publication formats, the data box is fixed in absolute mm and
-    the figure canvas is derived from margins + box size.
-    """
-    fig = fig or plt.gcf()
-    normalized_format = str(target_format or "nature").lower()
-
-    if normalized_format == "ppt" and box_width_mm is None and box_height_mm is None and margins_mm is None:
-        return _apply_legacy_publication_layout(fig, layout_type)
-
-    layout_spec = PUBLICATION_LAYOUT_SPECS_MM.get(layout_type, PUBLICATION_LAYOUT_SPECS_MM["standard"])
-    resolved_box_width = float(box_width_mm or layout_spec["box_width_mm"])
-    resolved_box_height = float(box_height_mm or layout_spec["box_height_mm"])
-    resolved_margins = dict(layout_spec["margins_mm"])
-    if margins_mm:
-        resolved_margins.update({k: float(v) for k, v in margins_mm.items()})
-
-    figure_width_mm = resolved_margins["left"] + resolved_box_width + resolved_margins["right"]
-    figure_height_mm = resolved_margins["bottom"] + resolved_box_height + resolved_margins["top"]
-
-    if resize_figure:
-        fig.set_size_inches(mm_to_inch(figure_width_mm), mm_to_inch(figure_height_mm), forward=True)
-    else:
-        current_w_mm, current_h_mm = _figure_size_mm(fig)
-        figure_width_mm = current_w_mm
-        figure_height_mm = current_h_mm
-
-    left = resolved_margins["left"] / figure_width_mm
-    right = 1.0 - (resolved_margins["right"] / figure_width_mm)
-    bottom = resolved_margins["bottom"] / figure_height_mm
-    top = 1.0 - (resolved_margins["top"] / figure_height_mm)
-    fig.subplots_adjust(left=left, right=right, bottom=bottom, top=top)
-    _lock_publication_layout(
-        fig,
-        layout_type=layout_type,
-        target_format=normalized_format,
-        box_width_mm=resolved_box_width,
-        box_height_mm=resolved_box_height,
-        margins_mm=resolved_margins,
-    )
-    return {
-        "left": left,
-        "right": right,
-        "bottom": bottom,
-        "top": top,
-        "figure_width_mm": figure_width_mm,
-        "figure_height_mm": figure_height_mm,
-        "box_width_mm": resolved_box_width,
-        "box_height_mm": resolved_box_height,
-    }
-
-
-def get_legend_args(layout_type="top_outside", ncol=2):
-    """
-    [Promoted from Pusan DEA Project]
-    지정된 레이아웃 프리셋에 최적화된 legend 설정값을 딕셔너리로 반환합니다.
-    사용법: plt.legend(**get_legend_args('top_outside'))
-    """
-    _fs = plt.rcParams.get("legend.fontsize", 7.0)
-    if layout_type == "top_outside":
-        return {"fontsize": _fs, "loc": "lower center", "bbox_to_anchor": (0.5, 1.02), "ncol": ncol, "frameon": False}
-    elif layout_type == "right_outside":
-        return {"fontsize": _fs, "loc": "center left", "bbox_to_anchor": (1.02, 0.5), "ncol": 1, "frameon": False}
-    return {"fontsize": _fs, "loc": "best"}

@@ -69,7 +69,7 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 <!-- architecture-inventory:start -->
 | File | Lines |
 |---|---:|
-| `themes/journal_theme.py` | 1390 |
+| `themes/journal_theme.py` | 1178 |
 | `hub_core/process_runner.py` | 1137 |
 | `plotting/bridge_renderer.py` | 985 |
 | `hub_core/mcp/tools/render_csv.py` | 979 |
