@@ -3191,6 +3191,51 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             },
             "type": "object"
           },
+          "secondary_y": {
+            "additionalProperties": false,
+            "properties": {
+              "axis_label": {
+                "type": "string"
+              },
+              "column": {
+                "type": "string"
+              },
+              "enabled": {
+                "default": true,
+                "type": "boolean"
+              },
+              "limits": {
+                "additionalProperties": false,
+                "properties": {
+                  "max": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "min": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "scale": {
+                "default": "linear",
+                "enum": [
+                  "linear",
+                  "log"
+                ],
+                "type": "string"
+              },
+              "series_label": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "series_column": {
             "type": "string"
           },

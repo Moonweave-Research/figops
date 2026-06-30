@@ -616,7 +616,10 @@ def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
     _normalized_legend_options(panel)
     _validate_manual_overlays(panel)
     _normalized_annotations(panel.annotations)
-    _render_plot(ax, points, panel)
+    if panel.secondary_y:
+        _render_secondary_y_plot(ax, points, panel)
+    else:
+        _render_plot(ax, points, panel)
     _draw_manual_overlays(ax, Path(panel.csv_path), panel)
     _draw_overlay_baselines(ax, panel.overlay_baselines)
     _apply_axes_metadata(ax, panel)
@@ -873,6 +876,7 @@ def _render_secondary_y_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> 
         primary_label = str(spec.y_axis_label or spec.y_column)
         primary_lines = list(ax.lines) + list(ax.collections)
         if primary_lines:
+            primary_lines[0].set_label(primary_label)
             handles.insert(0, primary_lines[0])
             labels.insert(0, primary_label)
     if handles:
@@ -907,7 +911,8 @@ def _render_broken_axis_plot(fig, points: list[dict], spec: BridgeFigureSpec) ->
     _draw_overlay_baselines(ax_top, spec.overlay_baselines)
     ax_bot.set_xlabel(spec.x_axis_label or spec.x_column)
     ax_top.set_ylabel(spec.y_axis_label or spec.y_column)
-    ax_top.set_title(spec.title)
+    if spec.title:
+        ax_top.set_title(spec.title)
     _separate_top_legend_title(ax_top, spec)
 
 

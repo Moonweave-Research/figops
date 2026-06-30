@@ -512,6 +512,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                                 "label_column": {"type": "string"},
                                 "point_label_options": _POINT_LABEL_OPTIONS_SCHEMA,
                                 "series_styles": _SERIES_STYLES_SCHEMA,
+                                "secondary_y": _SECONDARY_Y_SCHEMA,
                                 "x_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
                                 "y_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
                                 "legend_layout": _LEGEND_LAYOUT_SCHEMA,

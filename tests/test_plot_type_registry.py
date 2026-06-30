@@ -414,6 +414,7 @@ def test_render_csv_multipanel_schema_accepts_panel_specs():
     assert panel_properties["ci_band"] == {"type": "boolean"}
     assert panel_properties["fit_options"]["properties"]["model"]["enum"] == ["linear"]
     assert panel_properties["significance_markers"] == {"type": "array", "items": {"type": "object"}}
+    assert panel_properties["secondary_y"]["properties"]["scale"]["enum"] == ["linear", "log"]
     panel_annotation_branches = panel_properties["annotations"]["items"]["anyOf"]
     assert panel_annotation_branches[3]["properties"]["hspan"]["required"] == ["ymin", "ymax"]
     assert "xytext_offset" not in panel_annotation_branches[3]["properties"]
@@ -440,6 +441,13 @@ def test_render_csv_multipanel_schema_accepts_panel_specs():
                         "y_column": "y",
                         "plot_type": "scatter",
                         "x_scale": "log",
+                        "secondary_y": {
+                            "column": "sem",
+                            "axis_label": "SEM",
+                            "scale": "log",
+                            "series_label": "uncertainty",
+                            "limits": {"min": 0.5, "max": 5},
+                        },
                         "yerr_column": "sem",
                         "fit_line": True,
                         "fit_options": {"model": "linear", "label": "Panel fit"},
