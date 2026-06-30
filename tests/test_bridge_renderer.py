@@ -2138,6 +2138,40 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertEqual([text.get_text() for text in legend.get_texts()], ["B", "A", "C"])
             self.assertTrue(all(ax.get_legend() is None for ax in fig.axes if ax.get_visible()))
 
+    def test_multipanel_csv_panel_renders_statistical_overlays(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_multi_stat_overlay_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = self._write_overlay_csv(tmpdir_path, "overlay.csv")
+            spec = MultiPanelSpec(
+                panels=(
+                    BridgeFigureSpec(
+                        csv_path=str(csv_path),
+                        output_path=str(tmpdir_path / "panel.png"),
+                        plot_type="scatter",
+                        x_column="strain",
+                        y_column="stress",
+                        title="",
+                        fit_line=True,
+                        ci_band=True,
+                        significance_markers=({"x1": 1.0, "x2": 4.0, "y": 5.6, "label": "p<0.01"},),
+                    ),
+                ),
+                output_path=str(tmpdir_path / "multi.png"),
+                rows=1,
+                cols=1,
+            )
+
+            with patch("plotting.bridge_renderer.save_journal_fig") as mock_save:
+                from plotting.bridge_renderer import render_multipanel_figure
+
+                render_multipanel_figure(spec)
+
+            fig = mock_save.call_args.args[0]
+            ax = fig.axes[0]
+            self.assertIn("Linear fit", [line.get_label() for line in ax.lines])
+            self.assertTrue(any(isinstance(collection, PolyCollection) for collection in ax.collections))
+            self.assertIn("p<0.01", [text.get_text() for text in ax.texts])
+
     def test_multipanel_shared_legend_keeps_secondary_y_single_series_labels(self):
         with tempfile.TemporaryDirectory(prefix="bridge_multi_shared_secondary_") as tmpdir:
             tmpdir_path = Path(tmpdir)

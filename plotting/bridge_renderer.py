@@ -615,12 +615,14 @@ def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
     _normalized_tick_style(panel)
     _normalized_legend_options(panel)
     _validate_manual_overlays(panel)
+    _validate_statistical_overlays(points, panel)
     _normalized_annotations(panel.annotations)
     if panel.secondary_y:
         _render_secondary_y_plot(ax, points, panel)
     else:
         _render_plot(ax, points, panel)
     _draw_manual_overlays(ax, Path(panel.csv_path), panel)
+    _draw_statistical_overlays(ax, points, panel)
     _draw_overlay_baselines(ax, panel.overlay_baselines)
     _apply_axes_metadata(ax, panel)
     if panel.title:
