@@ -2,11 +2,9 @@ import glob as glob_module
 import logging
 import os
 import subprocess
-import sys
 import tempfile
 from contextlib import contextmanager
 from contextvars import ContextVar
-from pathlib import Path
 
 from .adapters import select_adapters
 from .cache_manager import (
@@ -20,6 +18,12 @@ from .config_parser import get_language_policy, normalize_lang, resolve_presets,
 from .data_contract import get_data_contract_paths
 from .domain_analysis import DomainAnalysisError, run_domain_helper
 from .logging import get_logger
+from .process_runner_commands import build_r_cmd as _build_r_cmd
+from .process_runner_commands import fallback_sanitize_path as _fallback_sanitize_path
+from .process_runner_commands import join_config_path as _join_config_path
+from .process_runner_commands import prefix_uv_if_needed as _prefix_uv_if_needed
+from .process_runner_commands import resolve_runner as _resolve_runner
+from .process_runner_commands import sanitize_script_path as _sanitize_script_path
 from .utils import (
     expand_glob_inputs,
     flatten_glob_results,
@@ -38,6 +42,22 @@ _RUN_COMMAND_ENV_OVERLAY: ContextVar[dict[str, str] | None] = ContextVar(
     default=None,
 )
 
+__all__ = [
+    "_build_r_cmd",
+    "_fallback_sanitize_path",
+    "_join_config_path",
+    "_prefix_uv_if_needed",
+    "_resolve_runner",
+    "_sanitize_script_path",
+    "run_analysis",
+    "run_assemblies",
+    "run_command",
+    "run_comparison",
+    "run_diagrams",
+    "run_plots",
+    "run_sweep",
+]
+
 
 def _log(message: str = "") -> None:
     if "❌" in message or "FAIL" in message:
@@ -47,12 +67,6 @@ def _log(message: str = "") -> None:
     else:
         level = logging.INFO
     logger.log(level, message)
-
-
-def _join_config_path(directory: str, filename: str) -> str:
-    normalized_dir = str(directory or "").replace("\\", "/").rstrip("/")
-    normalized_name = str(filename or "").replace("\\", "/").split("/")[-1]
-    return f"{normalized_dir}/{normalized_name}" if normalized_dir else normalized_name
 
 
 @contextmanager
@@ -65,39 +79,6 @@ def _run_command_env_overlay(env_overrides: dict[str, str]):
         yield
     finally:
         _RUN_COMMAND_ENV_OVERLAY.reset(token)
-
-
-def _fallback_sanitize_path(raw_path: str, allowed_roots: list[Path]) -> Path:
-    """Standalone fallback when Athena's path_sanitizer is unavailable."""
-    if ".." in Path(raw_path).parts:
-        raise ValueError(f"Path traversal rejected: '..' found in '{raw_path}'")
-
-    candidate = Path(raw_path).expanduser().resolve()
-    for root in allowed_roots:
-        resolved_root = root.expanduser().resolve()
-        try:
-            candidate.relative_to(resolved_root)
-            return candidate
-        except ValueError:
-            continue
-
-    allowed_strs = ", ".join(str(root) for root in allowed_roots)
-    raise ValueError(f"Path '{candidate}' is outside all allowed roots: {allowed_strs}")
-
-
-def _sanitize_script_path(raw_path: str, project_dir: str) -> str:
-    """Verify script path is within FigOps before execution.
-
-    Raises ValueError with a descriptive message if the resolved path
-    escapes the hub root.  Returns the resolved absolute path string on success.
-    """
-    hub_root = Path(get_hub_path()).resolve()
-    project_root = Path(project_dir).resolve()
-    allowed = [hub_root, project_root]
-    try:
-        return str(_fallback_sanitize_path(raw_path, allowed))
-    except ValueError as exc:
-        raise ValueError(f"Script path rejected (path traversal guard): {exc}") from exc
 
 
 try:
@@ -124,38 +105,6 @@ def _resolve_prefetcher(config: dict, prefetcher=None):
 
 def _resolve_athena(config: dict, athena=None):
     return athena if athena is not None else select_adapters(config).athena
-
-
-def _resolve_runner(lang, step_cfg, config):
-    execution = config.get("execution", {}) if isinstance(config.get("execution", {}), dict) else {}
-    if lang == "r":
-        return step_cfg.get("r_exec") or execution.get("rscript") or "Rscript"
-    if lang in {"python", "py"}:
-        return step_cfg.get("python_exec") or execution.get("python") or sys.executable
-    return None
-
-
-def _prefix_uv_if_needed(cmd, config):
-    environment = config.get("environment", {})
-    if environment.get("uv_run") is True:
-        return ["uv", "run"] + cmd
-    return cmd
-
-
-def _build_r_cmd(runner: str, script_path: str, config: dict) -> list[str]:
-    """Build the Rscript command, wrapping with renv::activate() when r_strict is enabled."""
-    environment = config.get("environment", {}) or {}
-    r_strict = bool(environment.get("r_strict", False))
-    if r_strict:
-        safe_path = str(script_path).replace("\\", "\\\\").replace("'", "\\'")
-        renv_expr = (
-            "tryCatch("
-            "renv::activate(), "
-            "error=function(e) stop(paste('[renv] activate() failed:', conditionMessage(e)))"
-            f"); source('{safe_path}')"
-        )
-        return [runner, "-e", renv_expr]
-    return [runner, script_path]
 
 
 _OUTPUT_TAIL_LINES = 20

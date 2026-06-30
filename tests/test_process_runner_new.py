@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import hub_core.process_runner as pr
 from hub_core.process_runner import _build_r_cmd, run_analysis, run_comparison, run_plots, run_sweep
+from hub_core.process_runner_commands import build_r_cmd as build_r_cmd_from_command_helpers
 from hub_core.scaffold import DEFAULT_ANALYZE_R, normalize_scaffold_target_format, scaffold_project
 from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 
@@ -53,6 +54,9 @@ class TestBuildRCmd(unittest.TestCase):
         config = {"project": {"name": "test"}}
         cmd = _build_r_cmd("Rscript", "/script.R", config)
         self.assertEqual(cmd, ["Rscript", "/script.R"])
+
+    def test_process_runner_reexports_command_helper(self):
+        self.assertIs(_build_r_cmd, build_r_cmd_from_command_helpers)
 
 
 class TestRunCommandRuntimeEnv(unittest.TestCase):
