@@ -83,8 +83,9 @@ def run_uv(argv: Sequence[str], cwd: str | os.PathLike | None = None) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args == ["--help"]:
-        print("Usage: python hub_uv.py <uv-args...>")
-        print("Example: python hub_uv.py run python orchestrator.py --list-projects")
+        python_cmd = Path(sys.executable).name or "python"
+        print(f"Usage: {python_cmd} hub_uv.py <uv-args...>")
+        print(f"Example: {python_cmd} hub_uv.py run python orchestrator.py --list-projects")
         print(f"UV_PROJECT_ENVIRONMENT={resolve_uv_project_environment()}")
         return 0
     if args == ["--print-env"]:

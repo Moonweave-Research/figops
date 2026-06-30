@@ -1,0 +1,172 @@
+{
+  "objective": "Advance the FigOps roadmap autonomously by completing the safest high-value decomposition slice, preserving compatibility exports, and verifying with focused regression tests.",
+  "surface": [
+    "hub_core/data_contract_semantics.py",
+    "hub_core/data_contract_calculation_checks.py",
+    "hub_core/data_contract_semantic_grouped.py",
+    "hub_core/data_contract_semantic_quality.py",
+    "hub_core/data_contract_semantic_statistics.py",
+    "docs/specs/2026-06-28-large-module-decomposition-plan.md"
+  ],
+  "assumptions": [
+    {
+      "claim": "The safest current roadmap slice is to finish D2 data-contract semantic helper extraction before larger render_csv or bridge_renderer work.",
+      "verification": "Confirmed against local hotspot inventory and two read-only explorer audits."
+    },
+    {
+      "claim": "Private compatibility paths through hub_core.data_contract and hub_core.data_contract_semantics must remain importable.",
+      "verification": "Preserved aliases and ran focused data-contract and MCP tests."
+    }
+  ],
+  "phases": [
+    {
+      "id": "phase_1_inventory",
+      "entry": "Dirty working tree with prior remediation changes present.",
+      "actions": [
+        "Measure largest modules.",
+        "Read decomposition roadmap/spec.",
+        "Spawn read-only explorer agents for D2 compatibility and remaining roadmap priorities."
+      ],
+      "exit": "Select bounded, testable first-wave implementation slice."
+    },
+    {
+      "id": "phase_2_d2_implementation",
+      "entry": "D2 selected as first-wave slice.",
+      "actions": [
+        "Extract calculation-check sidecar and JSON-safe utilities.",
+        "Extract grouped semantic validators.",
+        "Extract statistical/calculation-style semantic validators.",
+        "Keep compatibility aliases in hub_core.data_contract_semantics."
+      ],
+      "exit": "Code compiles and focused tests pass."
+    },
+    {
+      "id": "phase_3_verification",
+      "entry": "Implementation complete.",
+      "actions": [
+        "Run py_compile on touched modules and related tests.",
+        "Run data-contract regression tests.",
+        "Run MCP semantic/calculation witness tests.",
+        "Compare remaining hotspot inventory."
+      ],
+      "exit": "No focused regression failures; residual risks recorded."
+    },
+    {
+      "id": "phase_4_fan_in",
+      "entry": "Explorer outputs and test results available.",
+      "actions": [
+        "Integrate explorer recommendations.",
+        "Update roadmap progress document.",
+        "Record next safe slices."
+      ],
+      "exit": "Final handoff includes completed work, verification evidence, and remaining roadmap."
+    }
+  ],
+  "workers": [
+    {
+      "id": "main_codex",
+      "role": "Implementer and integrator",
+      "ownership": [
+        "D2 data-contract module extraction",
+        "Verification execution",
+        "Workflow and progress documentation"
+      ]
+    },
+    {
+      "id": "explorer_d2",
+      "role": "Read-only compatibility auditor",
+      "ownership": [
+        "Remaining data-contract helper families",
+        "Compatibility and monkeypatch watchpoints",
+        "Witness test recommendations"
+      ]
+    },
+    {
+      "id": "explorer_roadmap",
+      "role": "Read-only roadmap prioritizer",
+      "ownership": [
+        "Hotspot ordering",
+        "Next safe slices",
+        "Risk and witness-test mapping"
+      ]
+    }
+  ],
+  "handoffs": [
+    "Explorer D2 audit notification",
+    "Explorer roadmap audit notification",
+    "Updated decomposition spec progress bullets",
+    "Focused test command results"
+  ],
+  "parallelism": {
+    "fan_out_count": 2,
+    "concurrency_cap": 3,
+    "fan_in_rule": "Explorer outputs are advisory; implementation proceeds only on non-overlapping D2 files and fan-in occurs before final summary."
+  },
+  "verification": [
+    "py_compile on touched modules and related test files",
+    "tests/test_data_contract_quality.py",
+    "tests/test_data_contract_new.py",
+    "selected tests/test_mcp_rendering.py semantic/calculation cases"
+  ],
+  "risk_gates": [
+    {
+      "risk": "Dependency installation or environment mutation",
+      "default": "Do not install; use existing external FigOps virtualenv."
+    },
+    {
+      "risk": "Destructive git cleanup or reverting unrelated dirty files",
+      "default": "Do not revert; preserve existing user/generated changes."
+    },
+    {
+      "risk": "Large render_csv or bridge_renderer refactor with visual/API drift",
+      "default": "Defer until D2 focused verification is green."
+    }
+  ],
+  "budget": {
+    "max_first_wave_files_touched": 8,
+    "test_scope": "Focused regression before any full-suite expansion",
+    "retry_limit_per_failure": 2
+  },
+  "resume_plan": {
+    "cacheable_artifacts": [
+      "workflow.plan.json",
+      "decomposition spec progress",
+      "test command results"
+    ],
+    "next_resume_points": [
+      "The active D1-D6 primary-hotspot decomposition track is closed; start future work from the live docs/architecture.md inventory",
+      "Treat remaining over-budget files as separate maintenance candidates with their own witness tests"
+    ],
+    "completed_follow_ups": [
+      "Extract render_csv argument normalization into hub_core/mcp/tools/render_csv_args.py",
+      "Extract bridge_renderer overlays and annotations into plotting/renderers/overlays.py",
+      "Extract config semantic-check schema validation into hub_core/config_semantic_checks.py",
+      "Extract geometry diagnostics font-token drift, journal compliance, and line-width offender checks into hub_core/geometry_style_checks.py",
+      "Extract data-contract scalar validators for allow_null, range, and unique into hub_core/data_contract_semantic_scalar.py",
+      "Extract geometry diagnostics annotation overlay contrast and color/luminance helpers into hub_core/geometry_overlay_contrast.py",
+      "Extract geometry diagnostics repeated-label offset consistency and nearest-marker direction helpers into hub_core/geometry_label_offsets.py",
+      "Extract config top-level key typo detection and Levenshtein suggestion helpers into hub_core/config_top_level_keys.py",
+      "Extract config canonical-docs, experimental-conditions, sample-registry, raw-integrity, and relative-path validators into hub_core/config_research_metadata.py",
+      "Extract MCP CSV render plot-argument compatibility validation into hub_core/mcp/tools/render_csv_args.py",
+      "Extract geometry diagnostics point-label skip reporting into hub_core/geometry_label_offsets.py",
+      "Extract geometry diagnostics text-axis-edge proximity reporting into hub_core/geometry_label_offsets.py",
+      "Extract geometry diagnostics axis-label/title and figure-title/panel-title overlap checks into hub_core/geometry_layout_checks.py",
+      "Extract geometry diagnostics generic artist-overlap candidate collection, reportability filtering, and leader-marker suppression helpers into hub_core/geometry_artist_overlaps.py",
+      "Extract geometry diagnostics tick-label visibility, overlap, truncation, and crowding checks into hub_core/geometry_tick_labels.py",
+      "Extract geometry diagnostics visible data extent, data-outside-axes, chrome-outside-figure, and degenerate outside-fraction helpers into hub_core/geometry_bounds_checks.py",
+      "Extract config parser legacy project registry operational-state loading, path normalization, and longest-prefix matching into hub_core/config_project_registry.py",
+      "Extract bridge renderer multipanel shared-legend option normalization and figure-level legend application into plotting/renderers/shared_legend.py",
+      "Extract bridge renderer manuscript multipanel layout ratio validation, distributed lengths, panel geometry, axis-rect placement, and split-bias helpers into plotting/renderers/multipanel_layout.py",
+      "Extract MCP CSV multipanel layout/shared-legend settings normalization into hub_core/mcp/tools/render_csv_args.py",
+      "Extract MCP CSV multipanel copied-panel payload and config YAML assembly into hub_core/mcp/tools/render_csv_multipanel.py",
+      "Extract MCP render geometry diagnostics and layout output schema fragments into hub_core/mcp/render_geometry_schemas.py",
+      "Extract MCP render input schema fragments into hub_core/mcp/render_input_schemas.py",
+      "Extract MCP CSV multipanel panel normalization, plot compatibility checks, data contract validation, calculation-check accumulation, and panel spec assembly into hub_core/mcp/tools/render_csv_multipanel.py",
+      "Extract config sweep/comparison validation and parser helpers into hub_core/config_sweep_comparison.py",
+      "Extract bridge renderer figure sizing, column-width, marker-token, scatter-area, and marker-axis-margin helpers into plotting/renderers/figure_style.py",
+      "Extract config figure/diagram visual-output validation into hub_core/config_visual_outputs.py",
+      "Sync docs/architecture.md, docs/ROADMAP.md, and the decomposition plan with the 2026-06-29 closure inventory"
+    ]
+  },
+  "execution_path": "Direct Codex implementation with two read-only explorer subagents and focused verification gates."
+}

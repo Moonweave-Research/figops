@@ -8,6 +8,9 @@ import unittest.mock
 from io import BytesIO
 from pathlib import Path
 
+import hub_core.mcp.render_geometry_schemas as render_geometry_schemas
+import hub_core.mcp.render_input_schemas as render_input_schemas
+import hub_core.mcp.schemas as mcp_schemas
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
 from hub_core.mcp import GraphHubMCPServer, McpServerConfig
 from hub_core.mcp.config import ROOT_ADAPTER_SECURITY_ENV_VARS
@@ -222,6 +225,26 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         for tool in definitions.values():
             self.assertEqual(tool["inputSchema"]["type"], "object")
             self.assertEqual(tool["outputSchema"]["type"], "object")
+
+    def test_schema_module_keeps_render_geometry_schema_compatibility_exports(self):
+        self.assertIs(mcp_schemas._GEOMETRY_METRIC_NAMES, render_geometry_schemas.GEOMETRY_METRIC_NAMES)
+        self.assertIs(mcp_schemas._GEOMETRY_DIAGNOSTICS_SCHEMA, render_geometry_schemas.GEOMETRY_DIAGNOSTICS_SCHEMA)
+        self.assertIs(mcp_schemas._LAYOUT_REPORT_SCHEMA, render_geometry_schemas.LAYOUT_REPORT_SCHEMA)
+
+    def test_schema_module_keeps_render_input_schema_compatibility_exports(self):
+        self.assertIs(mcp_schemas._ANNOTATIONS_SCHEMA, render_input_schemas.ANNOTATIONS_SCHEMA)
+        self.assertIs(mcp_schemas._AXIS_LIMITS_SCHEMA, render_input_schemas.AXIS_LIMITS_SCHEMA)
+        self.assertIs(mcp_schemas._FILL_BETWEEN_OVERLAYS_SCHEMA, render_input_schemas.FILL_BETWEEN_OVERLAYS_SCHEMA)
+        self.assertIs(mcp_schemas._FIT_OPTIONS_SCHEMA, render_input_schemas.FIT_OPTIONS_SCHEMA)
+        self.assertIs(mcp_schemas._GUIDE_CURVES_SCHEMA, render_input_schemas.GUIDE_CURVES_SCHEMA)
+        self.assertIs(mcp_schemas._LEGEND_LAYOUT_SCHEMA, render_input_schemas.LEGEND_LAYOUT_SCHEMA)
+        self.assertIs(
+            mcp_schemas._MULTIPANEL_LAYOUT_OPTIONS_SCHEMA,
+            render_input_schemas.MULTIPANEL_LAYOUT_OPTIONS_SCHEMA,
+        )
+        self.assertIs(mcp_schemas._POINT_LABEL_OPTIONS_SCHEMA, render_input_schemas.POINT_LABEL_OPTIONS_SCHEMA)
+        self.assertIs(mcp_schemas._SERIES_STYLES_SCHEMA, render_input_schemas.SERIES_STYLES_SCHEMA)
+        self.assertIs(mcp_schemas._SHARED_LEGEND_OPTIONS_SCHEMA, render_input_schemas.SHARED_LEGEND_OPTIONS_SCHEMA)
 
     def test_list_styles_uses_graph_hub_canonical_contract(self):
         server = GraphHubMCPServer()

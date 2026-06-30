@@ -9,7 +9,19 @@ from dataclasses import dataclass
 from typing import Any
 
 from hub_core.adapters.selection import AdapterSelectionError, select_adapters
-from hub_core.mcp import FigOpsMCPServer, McpServerConfig
+from hub_core.mcp.config import McpServerConfig
+from hub_core.mcp.security import McpSecurityMixin
+
+
+class _DoctorSecurityState(McpSecurityMixin):
+    def __init__(self, config: McpServerConfig) -> None:
+        self._init_security_state(
+            config=config,
+            hub_path=None,
+            research_root=None,
+            runtime_root=None,
+            write_tools_enabled=None,
+        )
 
 
 @dataclass(frozen=True)
@@ -34,12 +46,14 @@ class DoctorCheck:
 
 
 def run_doctor(config: McpServerConfig) -> dict[str, Any]:
-    server = FigOpsMCPServer(config=config)
+    server = _DoctorSecurityState(config)
     checks = [
         _check_python(),
         _check_uv(),
-        _check_optional_io_dependency("pyarrow", "Parquet/Feather support", "uv sync --extra io"),
-        _check_optional_io_dependency("tables", "HDF5 support", "uv sync --extra io"),
+        _check_runtime_dependencies(),
+        _check_pytest(),
+        _check_optional_io_dependency("pyarrow", "Parquet/Feather support", "python hub_uv.py sync --extra io"),
+        _check_optional_io_dependency("tables", "HDF5 support", "python hub_uv.py sync --extra io"),
         _check_rscript(),
         _check_write_tools(server),
         _check_roots(server),
@@ -93,7 +107,7 @@ def _check_python() -> DoctorCheck:
             "python",
             "error",
             f"Python {version} is below the required 3.12 runtime.",
-            "Run with `uv run python ...` using Python 3.12 or newer.",
+            "Use Python 3.12 or newer; from a source checkout prefer `python hub_uv.py run python ...`.",
             {"executable": sys.executable, "version": version},
         )
     return DoctorCheck("python", "ok", f"Python {version} is supported.", details={"executable": sys.executable})
@@ -106,7 +120,8 @@ def _check_uv() -> DoctorCheck:
             "uv",
             "error",
             "uv is not available on PATH.",
-            "Install uv and run commands through `uv run` / `uv sync`.",
+            "Install uv outside this checkout, then use `python hub_uv.py sync` and "
+            "`python hub_uv.py run ...` for source-checkout commands.",
         )
     completed = subprocess.run([uv_path, "--version"], text=True, capture_output=True, check=False)
     if completed.returncode != 0:
@@ -118,6 +133,47 @@ def _check_uv() -> DoctorCheck:
             {"path": uv_path, "stderr": completed.stderr.strip()},
         )
     return DoctorCheck("uv", "ok", completed.stdout.strip() or "uv is available.", details={"path": uv_path})
+
+
+def _check_runtime_dependencies() -> DoctorCheck:
+    required_modules = {
+        "matplotlib": "plot rendering",
+        "pandas": "CSV/table contracts",
+        "yaml": "project_config.yaml parsing",
+    }
+    missing = [module for module in required_modules if not importlib.util.find_spec(module)]
+    details = {
+        "checked": sorted(required_modules),
+        "missing": sorted(missing),
+    }
+    if missing:
+        capabilities = ", ".join(required_modules[module] for module in missing)
+        return DoctorCheck(
+            "runtime_dependencies",
+            "error",
+            f"Missing Python runtime dependencies for {capabilities}.",
+            "From a source checkout, run `python hub_uv.py sync`, then rerun doctor with "
+            "`python hub_uv.py run python figops_mcp_server.py doctor`.",
+            details,
+        )
+    return DoctorCheck(
+        "runtime_dependencies",
+        "ok",
+        "Core Python runtime dependencies are importable.",
+        details=details,
+    )
+
+
+def _check_pytest() -> DoctorCheck:
+    if importlib.util.find_spec("pytest"):
+        return DoctorCheck("pytest", "ok", "pytest is importable for source-checkout verification.")
+    return DoctorCheck(
+        "pytest",
+        "warning",
+        "pytest is missing; source-checkout tests cannot run in this Python environment.",
+        "Use `python hub_uv.py sync --group dev`, then verify with "
+        "`python hub_uv.py run python -m pytest tests/test_doctor.py -q`.",
+    )
 
 
 def _check_optional_io_dependency(module_name: str, purpose: str, install_hint: str) -> DoctorCheck:
@@ -138,7 +194,7 @@ def _check_rscript() -> DoctorCheck:
             "Rscript",
             "warning",
             "Rscript is not available on PATH; R analysis steps cannot run.",
-            "Install R, for example `brew install r` on macOS, then rerun doctor.",
+            "Install R for projects that declare `lang: R`, ensure `Rscript` is on PATH, then rerun doctor.",
         )
     completed = subprocess.run([rscript, "--version"], text=True, capture_output=True, check=False)
     if completed.returncode != 0:
@@ -153,7 +209,7 @@ def _check_rscript() -> DoctorCheck:
     return DoctorCheck("Rscript", "ok", version or "Rscript is available.", details={"path": rscript})
 
 
-def _check_write_tools(server: FigOpsMCPServer) -> DoctorCheck:
+def _check_write_tools(server: _DoctorSecurityState) -> DoctorCheck:
     if server.write_tools_enabled:
         return DoctorCheck(
             "write_tools",
@@ -170,7 +226,7 @@ def _check_write_tools(server: FigOpsMCPServer) -> DoctorCheck:
     )
 
 
-def _check_roots(server: FigOpsMCPServer) -> DoctorCheck:
+def _check_roots(server: _DoctorSecurityState) -> DoctorCheck:
     details = {
         "hub_path": str(server.hub_path),
         "research_root": str(server.research_root),

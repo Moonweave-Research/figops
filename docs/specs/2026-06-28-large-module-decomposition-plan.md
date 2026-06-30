@@ -7,18 +7,26 @@ hardening pass. This plan intentionally does not perform broad refactors. It
 names extraction seams, compatibility requirements, and witness tests required
 before code is moved.
 
-## Current Hotspots
+## Hotspot Snapshot
 
-Measured on 2026-06-28 with the line-count inventory documented in
+Initial primary hotspots measured on 2026-06-28 were the target of this
+behavior-preserving decomposition track. The closure snapshot below was
+measured on 2026-06-29 with `scripts/architecture_inventory.py` and matches
 `docs/architecture.md`:
 
 | File | Lines | Primary reason to split |
 | --- | ---: | --- |
-| `plotting/bridge_renderer.py` | 1833 | Multipanel layout, overlay/statistical annotation, diagnostics, and export behavior still share one file. |
-| `hub_core/config_parser.py` | 1775 | Config validation, language/data policies, research-ops checks, and listing helpers are coupled. |
-| `hub_core/data_contract_semantics.py` | 1758 | Several independent semantic check families and grouped/statistical helpers still share one module. |
-| `hub_core/geometry_diagnostics.py` | 1697 | Detection checks, scoring, and report shaping are co-located after primitive/style helper extraction. |
-| `hub_core/mcp/tools/render_csv.py` | 1670 | CSV render argument parsing, normalization, execution, envelope shaping, and multipanel behavior share one tool mixin. |
+| `plotting/bridge_renderer.py` | 985 | Prior primary hotspot; now split across plot-type, overlay, shared-legend, layout, and figure-style helper modules. |
+| `hub_core/mcp/tools/render_csv.py` | 972 | Prior primary hotspot; argument, multipanel settings, payload, and panel-validation helpers now live in focused modules. |
+| `hub_core/config_parser.py` | 913 | Prior primary hotspot; style/schema, metadata, semantic-check, registry, sweep/comparison, and visual-output validators are split out. |
+| `hub_core/geometry_diagnostics.py` | 852 | Prior primary hotspot; style, contrast, label, layout, overlap, tick, and bounds checks are split out. |
+| `hub_core/mcp/schemas.py` | 831 | Prior schema hotspot; render input/output schema fragments are split out. |
+| `hub_core/data_contract_semantics.py` | 503 | Prior primary hotspot; now mainly compatibility/orchestration after semantic helper-family extraction. |
+
+Remaining over-budget files such as `themes/journal_theme.py`,
+`hub_core/process_runner.py`, `hub_core/mcp/render_orchestration.py`, and
+`hub_core/visual_regression.py` are separate future maintenance candidates, not
+unfinished work from this decomposition track.
 
 ## Extraction Rules
 
@@ -76,6 +84,21 @@ Progress:
 - 2026-06-28: single-axes legend normalization, placement, collision
   avoidance, and application helpers moved to `plotting/renderers/legend.py`;
   `plotting.bridge_renderer` keeps private compatibility aliases.
+- 2026-06-29: manual overlays, annotation normalization/drawing, fit/CI
+  statistical overlays, and significance marker helpers moved to
+  `plotting/renderers/overlays.py`; `plotting.bridge_renderer` keeps private
+  compatibility aliases.
+- 2026-06-29: multipanel shared-legend option normalization and figure-level
+  legend application moved to `plotting/renderers/shared_legend.py`;
+  `plotting.bridge_renderer` keeps private compatibility aliases.
+- 2026-06-29: manuscript multipanel layout ratio validation, distributed
+  lengths, panel geometry, axis-rect placement, and split-bias helpers moved to
+  `plotting/renderers/multipanel_layout.py`; `plotting.bridge_renderer` keeps
+  private compatibility aliases/wrappers.
+- 2026-06-29: figure sizing, column-width, marker-token, scatter-area, and
+  marker-axis-margin helpers moved to `plotting/renderers/figure_style.py`;
+  `plotting.bridge_renderer` keeps private compatibility aliases and is below
+  1000 lines after this extraction.
 - After this extraction, `plotting/bridge_renderer.py` is no longer the largest
   hotspot. Continue bridge extraction only with tightly scoped visual witness
   tests; otherwise move to D2/D3 based on current inventory.
@@ -117,6 +140,24 @@ Progress:
 - 2026-06-28: monotonic and monotonic-within-group ordering validators moved
   to `hub_core/data_contract_semantic_ordering.py`; compatibility aliases and
   wrappers remain in `hub_core.data_contract_semantics`.
+- 2026-06-29: statistical quality scoring and diagnostics sidecar writing moved
+  to `hub_core/data_contract_semantic_quality.py`; compatibility wrapper
+  remains in `hub_core.data_contract_semantics`.
+- 2026-06-29: calculation-check summary, sidecar writing, group payload, and
+  JSON-safe helper utilities moved to `hub_core/data_contract_calculation_checks.py`;
+  compatibility exports remain in `hub_core.data_contract_semantics`.
+- 2026-06-29: grouped semantic validators for `min_replicates`,
+  `expected_sample_count`, and `grouped_cv` moved to
+  `hub_core/data_contract_semantic_grouped.py`; compatibility aliases remain in
+  `hub_core.data_contract_semantics`.
+- 2026-06-29: calculation-style semantic validators for `log_scale_positive`,
+  `error_bar_source`, `mean_sem`, `linear_fit`, and `outlier_flag` moved to
+  `hub_core/data_contract_semantic_statistics.py`; compatibility aliases remain
+  in `hub_core.data_contract_semantics`.
+- 2026-06-29: scalar semantic validators for `allow_null`, `range`, and
+  `unique` moved to `hub_core/data_contract_semantic_scalar.py`;
+  compatibility aliases remain in `hub_core.data_contract` and
+  `hub_core.data_contract_semantics`.
 - Continue D2 with grouped/statistical helper families only if they remain
   high leverage after the current inventory; otherwise switch to D1/D3/D4 based
   on the largest current hotspots.
@@ -155,6 +196,32 @@ Progress:
 - 2026-06-28: schema-version migration and duplicate-key-safe YAML loading
   moved to `hub_core/config_schema.py`; `hub_core.config_parser` keeps existing
   compatibility exports.
+- 2026-06-29: data-contract semantic-check config validators and
+  `csv_checks[].semantic_checks` validation moved to
+  `hub_core/config_semantic_checks.py`; `hub_core.config_parser` keeps existing
+  compatibility exports and error strings.
+- 2026-06-29: top-level config-key typo detection and Levenshtein suggestion
+  helpers moved to `hub_core/config_top_level_keys.py`;
+  `hub_core.config_parser` keeps existing compatibility exports and error
+  strings.
+- 2026-06-29: canonical-docs, experimental-conditions, sample-registry,
+  raw-integrity, and relative-path validators moved to
+  `hub_core/config_research_metadata.py`; `hub_core.config_parser` keeps
+  existing compatibility exports and error strings.
+- 2026-06-29: legacy project registry operational-state loading, path
+  normalization, and longest-prefix matching moved to
+  `hub_core/config_project_registry.py`; `hub_core.config_parser` keeps
+  existing private compatibility aliases.
+- 2026-06-29: sweep/comparison validation and normalized parser helpers moved
+  to `hub_core/config_sweep_comparison.py`; `hub_core.config_parser` keeps
+  existing `parse_sweep_config` and `parse_comparison_config` compatibility
+  exports plus private validation aliases.
+- 2026-06-29: figure/diagram visual-output validation, including traceability
+  declarations, input path checks, theme/format validation, preset references,
+  expansion rules, and language-policy checks moved to
+  `hub_core/config_visual_outputs.py`; `hub_core.config_parser` keeps the
+  private `_validate_visual_outputs` compatibility wrapper and is below 1000
+  lines after this extraction.
 
 Compatibility:
 
@@ -184,6 +251,35 @@ Progress:
 - 2026-06-28: marker color/style normalization helpers moved to
   `hub_core/geometry_marker_styles.py`; `hub_core.geometry_diagnostics` keeps
   existing private compatibility exports.
+- 2026-06-29: font-token drift, journal compliance, font-floor, and line-width
+  offender checks moved to `hub_core/geometry_style_checks.py`;
+  `hub_core.geometry_diagnostics` keeps existing private compatibility exports.
+- 2026-06-29: annotation overlay contrast and color/luminance helpers moved to
+  `hub_core/geometry_overlay_contrast.py`; `hub_core.geometry_diagnostics`
+  keeps existing private compatibility exports.
+- 2026-06-29: repeated-label offset consistency and nearest-marker direction
+  helpers moved to `hub_core/geometry_label_offsets.py`;
+  `hub_core.geometry_diagnostics` keeps existing private compatibility wrappers.
+- 2026-06-29: point-label skip reporting moved to
+  `hub_core/geometry_label_offsets.py`; `hub_core.geometry_diagnostics` keeps
+  existing private compatibility exports.
+- 2026-06-29: text-axis-edge proximity reporting moved to
+  `hub_core/geometry_label_offsets.py`; `hub_core.geometry_diagnostics` keeps
+  existing private compatibility wrappers.
+- 2026-06-29: axis-label/title and figure-title/panel-title overlap checks
+  moved to `hub_core/geometry_layout_checks.py`;
+  `hub_core.geometry_diagnostics` keeps existing private compatibility wrappers.
+- 2026-06-29: generic artist-overlap candidate collection, line overlap boxes,
+  reportability filtering, and leader-marker suppression helpers moved to
+  `hub_core/geometry_artist_overlaps.py`; `hub_core.geometry_diagnostics` keeps
+  existing private compatibility aliases and wrappers.
+- 2026-06-29: tick-label visibility, overlap, truncation, and crowding checks
+  moved to `hub_core/geometry_tick_labels.py`; `hub_core.geometry_diagnostics`
+  keeps existing private compatibility wrappers.
+- 2026-06-29: visible data extent, data-outside-axes, chrome-outside-figure,
+  and degenerate outside-fraction helpers moved to
+  `hub_core/geometry_bounds_checks.py`; `hub_core.geometry_diagnostics` keeps
+  existing private compatibility aliases and wrappers.
 
 Compatibility:
 
@@ -204,6 +300,27 @@ First extraction seam:
   module under `hub_core/mcp/tools/`.
 - Keep tool method names and schemas unchanged.
 
+Progress:
+
+- 2026-06-29: CSV render argument normalization helpers for legends, axes,
+  ticks, multipanel layout, point labels, annotations, series styles, fit
+  options, guide curves, and fill-between overlays moved to
+  `hub_core/mcp/tools/render_csv_args.py`; `hub_core.mcp.tools.render_csv`
+  keeps private compatibility imports.
+- 2026-06-29: CSV render plot-argument compatibility validation for
+  `annotate_values`, error bars, labels, series, guide curves, and fill-between
+  overlays moved to `hub_core/mcp/tools/render_csv_args.py`;
+  `hub_core.mcp.tools.render_csv` keeps private compatibility imports.
+- 2026-06-29: multipanel layout/shared-legend settings normalization moved to
+  `hub_core/mcp/tools/render_csv_args.py`, and multipanel copied-panel payload
+  plus config YAML assembly moved to `hub_core/mcp/tools/render_csv_multipanel.py`;
+  `hub_core.mcp.tools.render_csv` keeps the public tool envelope unchanged.
+- 2026-06-29: multipanel panel normalization, plot compatibility checks, data
+  contract validation, calculation-check accumulation, and panel spec assembly
+  moved to `hub_core/mcp/tools/render_csv_multipanel.py`; the
+  `figops.render_csv_multipanel` envelope remains unchanged and
+  `hub_core/mcp/tools/render_csv.py` is below 1000 lines.
+
 Compatibility:
 
 - `figops.render_csv_graph` and `figops.render_csv_multipanel` inputs/outputs
@@ -216,6 +333,36 @@ Witness tests:
 - `tests/test_mcp_batch_quality.py`
 - `tests/test_plot_type_registry.py`
 - Generated `docs/tools.md` freshness test if schemas change.
+
+### D6 - `hub_core/mcp/schemas.py`
+
+First extraction seam:
+
+- Move render schema fragments into focused MCP schema modules while preserving
+  the existing `hub_core.mcp.schemas` tool registry and private compatibility
+  aliases.
+
+Progress:
+
+- 2026-06-29: render geometry diagnostics metric/output schema fragments moved
+  to `hub_core/mcp/render_geometry_schemas.py`; `hub_core.mcp.schemas` keeps
+  private compatibility aliases.
+- 2026-06-29: render input schema fragments for annotations, legends, axes,
+  ticks, multipanel layout, guide curves, fit options, fill-between overlays,
+  and series styles moved to `hub_core/mcp/render_input_schemas.py`;
+  `hub_core.mcp.schemas` keeps private compatibility aliases.
+
+Compatibility:
+
+- `list_tool_definitions()` output must stay schema-compatible for all MCP
+  tools.
+- Do not change tool names, input schema keys, output schema keys, or write-tool
+  trust boundaries.
+
+Witness tests:
+
+- `tests/test_mcp_read_only.py`
+- `tests/test_mcp_rendering.py`
 
 ## Review Gate For Each Future Extraction
 

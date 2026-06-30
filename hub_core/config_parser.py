@@ -1,11 +1,20 @@
 import hashlib
-import math
 import os
-import unicodedata
 
 import yaml
 
 from . import config_schema as _config_schema
+from .config_project_registry import load_registry_operational_states as _load_registry_operational_states
+from .config_project_registry import normalize_registry_path as _normalize_registry_path  # noqa: F401
+from .config_project_registry import resolve_operational_state as _resolve_operational_state
+from .config_research_metadata import condition_sample_references as _condition_sample_references
+from .config_research_metadata import experimental_condition_ids as _experimental_condition_ids
+from .config_research_metadata import validate_canonical_docs as _validate_canonical_docs
+from .config_research_metadata import validate_experimental_conditions as _validate_experimental_conditions
+from .config_research_metadata import validate_relative_path_value as _validate_relative_path_value  # noqa: F401
+from .config_research_metadata import validate_sample_registry as _validate_sample_registry
+from .config_semantic_checks import ALLOWED_MONOTONIC_MODES as ALLOWED_MONOTONIC_MODES
+from .config_semantic_checks import validate_csv_semantic_checks as _validate_csv_semantic_checks
 from .config_style import ALLOWED_FONT_STRATEGIES as ALLOWED_FONT_STRATEGIES
 from .config_style import ALLOWED_PRESET_KEYS as ALLOWED_PRESET_KEYS
 from .config_style import ALLOWED_TARGET_FORMATS as ALLOWED_TARGET_FORMATS
@@ -17,6 +26,16 @@ from .config_style import list_profiles as list_profiles
 from .config_style import resolve_presets as resolve_presets
 from .config_style import resolve_profile_name as resolve_profile_name
 from .config_style import resolve_step_style as resolve_step_style
+from .config_sweep_comparison import parse_comparison_config as parse_comparison_config
+from .config_sweep_comparison import parse_sweep_config as parse_sweep_config
+from .config_sweep_comparison import validate_comparison as _validate_comparison
+from .config_sweep_comparison import validate_sweep as _validate_sweep
+from .config_top_level_keys import KNOWN_TOP_LEVEL_CONFIG_KEYS as KNOWN_TOP_LEVEL_CONFIG_KEYS
+from .config_top_level_keys import levenshtein_distance as _levenshtein_distance  # noqa: F401
+from .config_top_level_keys import top_level_key_fingerprint as _top_level_key_fingerprint  # noqa: F401
+from .config_top_level_keys import top_level_key_suggestion as _top_level_key_suggestion  # noqa: F401
+from .config_top_level_keys import validate_top_level_key_near_misses as _validate_top_level_key_near_misses
+from .config_visual_outputs import validate_visual_outputs as _validate_visual_outputs_impl
 from .domain_analysis import DOMAIN_HELPER_NAMES
 from .logging import get_logger
 from .project_roles import ALLOWED_FOLDER_ROLES as ALLOWED_FOLDER_ROLES
@@ -48,7 +67,6 @@ migrate_config = _config_schema.migrate_config
 ALLOWED_ANALYSIS_POLICY_LANGS = {"r"}
 ALLOWED_PLOT_POLICY_LANGS = {"python"}
 ALLOWED_OUTPUT_FORMATS = {"png", "pdf", "svg"}
-ALLOWED_MONOTONIC_MODES = {"increasing", "decreasing", "nondecreasing", "nonincreasing"}
 ALLOWED_PREFETCH_ADAPTERS = {"none", "noop", "off", "gdrive"}
 ALLOWED_ATHENA_ADAPTERS = {"none", "null", "off", "legacy", "on"}
 ALLOWED_CONVENTIONS_ADAPTERS = {"none", "generic", "surfur"}
@@ -69,402 +87,10 @@ def normalize_lang(lang):
     return key
 
 
-KNOWN_TOP_LEVEL_CONFIG_KEYS = {
-    "assemblies",
-    "canonical_docs",
-    "comparison",
-    "data_contract",
-    "diagrams",
-    "environment",
-    "execution",
-    "experimental_conditions",
-    "figures",
-    "folder_roles",
-    "golden_metrics",
-    "language_policy",
-    "modules",
-    "pipeline",
-    "presets",
-    "project",
-    "raw_integrity",
-    "regression",
-    "sample_registry",
-    "schema_version",
-    "sweep",
-    "visual_style",
-}
-
-
-def _top_level_key_fingerprint(key: str) -> str:
-    return "".join(ch.lower() for ch in key if ch.isalnum())
-
-
-def _levenshtein_distance(left: str, right: str) -> int:
-    if left == right:
-        return 0
-    if not left:
-        return len(right)
-    if not right:
-        return len(left)
-
-    previous = list(range(len(right) + 1))
-    for left_index, left_char in enumerate(left, 1):
-        current = [left_index]
-        for right_index, right_char in enumerate(right, 1):
-            current.append(
-                min(
-                    previous[right_index] + 1,
-                    current[right_index - 1] + 1,
-                    previous[right_index - 1] + (left_char != right_char),
-                )
-            )
-        previous = current
-    return previous[-1]
-
-
-def _top_level_key_suggestion(raw_key: object) -> str | None:
-    if not isinstance(raw_key, str) or raw_key in KNOWN_TOP_LEVEL_CONFIG_KEYS:
-        return None
-
-    fingerprint = _top_level_key_fingerprint(raw_key)
-    for known_key in sorted(KNOWN_TOP_LEVEL_CONFIG_KEYS):
-        if fingerprint == _top_level_key_fingerprint(known_key):
-            return known_key
-
-    candidates = []
-    raw_lower = raw_key.lower()
-    for known_key in KNOWN_TOP_LEVEL_CONFIG_KEYS:
-        distance = _levenshtein_distance(raw_lower, known_key.lower())
-        if distance <= 2:
-            candidates.append((distance, known_key))
-    if not candidates:
-        return None
-    return sorted(candidates)[0][1]
-
-
-def _validate_top_level_key_near_misses(errors: list[str], config: dict) -> None:
-    for key in config:
-        suggestion = _top_level_key_suggestion(key)
-        if suggestion is not None:
-            errors.append(f"Unknown top-level key '{key}' — did you mean '{suggestion}'?")
-
-
-def _validate_grouped_check_config(errors, *, column: str, check_name: str, raw_check: object) -> None:
-    if not isinstance(raw_check, dict):
-        errors.append(f"Semantic {check_name} for '{column}' must be a mapping.")
-        return
-
-    group_by = raw_check.get("group_by")
-    if not isinstance(group_by, list) or not group_by:
-        errors.append(f"Semantic {check_name}.group_by for '{column}' must be a non-empty list of column names.")
-    elif any(not isinstance(item, str) or not item.strip() for item in group_by):
-        errors.append(f"Semantic {check_name}.group_by for '{column}' must contain only non-empty strings.")
-
-    if check_name == "min_replicates":
-        min_count = raw_check.get("min_count")
-        if isinstance(min_count, bool) or not isinstance(min_count, int) or min_count <= 0:
-            errors.append(f"Semantic min_replicates.min_count for '{column}' must be a positive integer.")
-        return
-
-    threshold = raw_check.get("threshold")
-    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or threshold <= 0:
-        errors.append(f"Semantic grouped_cv.threshold for '{column}' must be a positive number.")
-
-    min_count = raw_check.get("min_count", 2)
-    if isinstance(min_count, bool) or not isinstance(min_count, int) or min_count <= 0:
-        errors.append(f"Semantic grouped_cv.min_count for '{column}' must be a positive integer when provided.")
-
-    warn_only = raw_check.get("warn_only", True)
-    if not isinstance(warn_only, bool):
-        errors.append(f"Semantic grouped_cv.warn_only for '{column}' must be a boolean.")
-
-
-def _validate_errorbar_check_config(errors, *, column: str, raw_check: object) -> None:
-    if not isinstance(raw_check, dict):
-        errors.append(f"Semantic error_bar_source for '{column}' must be a mapping.")
-        return
-    error_column = raw_check.get("column")
-    if not isinstance(error_column, str) or not error_column.strip():
-        errors.append(f"Semantic error_bar_source.column for '{column}' must be a non-empty string.")
-    source = raw_check.get("source", "custom")
-    if not isinstance(source, str) or not source.strip():
-        errors.append(f"Semantic error_bar_source.source for '{column}' must be a non-empty string.")
-
-
-def _validate_mean_sem_check_config(errors, *, column: str, raw_check: object) -> None:
-    if not isinstance(raw_check, dict):
-        errors.append(f"Semantic mean_sem for '{column}' must be a mapping.")
-        return
-    for key in ("sem_column", "std_column", "n_column"):
-        value = raw_check.get(key)
-        if not isinstance(value, str) or not value.strip():
-            errors.append(f"Semantic mean_sem.{key} for '{column}' must be a non-empty string.")
-    tolerance = raw_check.get("tolerance", 1.0e-6)
-    if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)) or tolerance < 0:
-        errors.append(f"Semantic mean_sem.tolerance for '{column}' must be a non-negative number.")
-
-
-def _is_finite_number(value: object) -> bool:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return False
-    try:
-        return math.isfinite(float(value))
-    except (TypeError, ValueError):
-        return False
-
-
-def _validate_linear_fit_check_config(errors, *, column: str, raw_check: object) -> None:
-    if not isinstance(raw_check, dict):
-        errors.append(f"Semantic linear_fit for '{column}' must be a mapping.")
-        return
-    x_column = raw_check.get("x_column")
-    if not isinstance(x_column, str) or not x_column.strip():
-        errors.append(f"Semantic linear_fit.x_column for '{column}' must be a non-empty string.")
-    for key in ("slope", "intercept"):
-        if not _is_finite_number(raw_check.get(key)):
-            errors.append(f"Semantic linear_fit.{key} for '{column}' must be a finite number.")
-    if "r2_min" in raw_check:
-        r2_min = raw_check.get("r2_min")
-        if not _is_finite_number(r2_min) or not 0 <= float(r2_min) <= 1:
-            errors.append(f"Semantic linear_fit.r2_min for '{column}' must be a finite number between 0 and 1.")
-    tolerance = raw_check.get("tolerance", 1.0e-6)
-    if not _is_finite_number(tolerance) or float(tolerance) < 0:
-        errors.append(f"Semantic linear_fit.tolerance for '{column}' must be a non-negative finite number.")
-
-
-def _validate_experimental_conditions(errors: list[str], experimental_conditions: object) -> None:
-    if experimental_conditions is None:
-        return
-    if not isinstance(experimental_conditions, dict):
-        errors.append("experimental_conditions must be a mapping.")
-        return
-
-    common = experimental_conditions.get("common", {})
-    if common is not None and not isinstance(common, dict):
-        errors.append("experimental_conditions.common must be a mapping when provided.")
-
-    conditions = experimental_conditions.get("conditions", [])
-    seen_condition_ids: set[str] = set()
-    if conditions is None:
-        conditions = []
-    if not isinstance(conditions, list):
-        errors.append("experimental_conditions.conditions must be a list when provided.")
-    else:
-        for index, condition in enumerate(conditions, 1):
-            if not isinstance(condition, dict):
-                errors.append(f"experimental_conditions.conditions[{index}] must be a mapping.")
-                continue
-            condition_id = condition.get("id")
-            if not isinstance(condition_id, str) or not condition_id.strip():
-                errors.append(
-                    f"experimental_conditions.conditions[{index}].id is required and must be a non-empty string."
-                )
-            else:
-                normalized_id = condition_id.strip()
-                if normalized_id in seen_condition_ids:
-                    errors.append(f"Duplicate experimental_conditions.conditions id: '{normalized_id}'.")
-                seen_condition_ids.add(normalized_id)
-
-            description = condition.get("description")
-            if description is not None and not isinstance(description, str):
-                errors.append(f"experimental_conditions.conditions[{index}].description must be a string.")
-
-            parameters = condition.get("parameters", {})
-            if parameters is not None and not isinstance(parameters, dict):
-                errors.append(
-                    f"experimental_conditions.conditions[{index}].parameters must be a mapping when provided."
-                )
-                continue
-            if isinstance(parameters, dict):
-                samples = parameters.get("samples")
-                if samples is not None and not isinstance(samples, list):
-                    errors.append(f"experimental_conditions.conditions[{index}].parameters.samples must be a list.")
-                batch = parameters.get("batch")
-                if batch is not None and not isinstance(batch, str):
-                    errors.append(f"experimental_conditions.conditions[{index}].parameters.batch must be a string.")
-
-    equipment = experimental_conditions.get("equipment", [])
-    if equipment is None:
-        equipment = []
-    if not isinstance(equipment, list):
-        errors.append("experimental_conditions.equipment must be a list when provided.")
-    else:
-        for index, item in enumerate(equipment, 1):
-            if not isinstance(item, dict):
-                errors.append(f"experimental_conditions.equipment[{index}] must be a mapping.")
-                continue
-            name = item.get("name")
-            if name is not None and not isinstance(name, str):
-                errors.append(f"experimental_conditions.equipment[{index}].name must be a string.")
-            role = item.get("role")
-            if role is not None and not isinstance(role, str):
-                errors.append(f"experimental_conditions.equipment[{index}].role must be a string.")
-
-
-def _validate_sample_registry(errors: list[str], sample_registry: object) -> set[str] | None:
-    if sample_registry is None:
-        return None
-    if not isinstance(sample_registry, list):
-        errors.append("sample_registry must be a list when provided.")
-        return set()
-
-    sample_ids: set[str] = set()
-    for index, sample in enumerate(sample_registry, 1):
-        if not isinstance(sample, dict):
-            errors.append(f"sample_registry[{index}] must be a mapping.")
-            continue
-
-        sample_id = sample.get("sample_id")
-        if not isinstance(sample_id, str) or not sample_id.strip():
-            errors.append(f"sample_registry[{index}].sample_id is required and must be a non-empty string.")
-        else:
-            normalized_id = sample_id.strip()
-            if normalized_id in sample_ids:
-                errors.append(f"Duplicate sample_registry sample_id: '{normalized_id}'.")
-            sample_ids.add(normalized_id)
-
-        composition = sample.get("composition")
-        if composition is not None and (
-            isinstance(composition, bool) or not isinstance(composition, (str, int, float))
-        ):
-            errors.append(f"sample_registry[{index}].composition must be a string or number.")
-
-        for key in ("material", "batch", "fabrication_date", "status", "notes"):
-            value = sample.get(key)
-            if value is not None and not isinstance(value, str):
-                errors.append(f"sample_registry[{index}].{key} must be a string.")
-
-        raw_paths = sample.get("raw_paths")
-        if raw_paths is None:
-            continue
-        if not isinstance(raw_paths, list):
-            errors.append(f"sample_registry[{index}].raw_paths must be a list when provided.")
-            continue
-        for path_index, raw_path in enumerate(raw_paths, 1):
-            if not isinstance(raw_path, str) or not raw_path.strip():
-                errors.append(f"sample_registry[{index}].raw_paths[{path_index}] must be a non-empty relative path.")
-                continue
-            if os.path.isabs(raw_path):
-                errors.append(
-                    f"sample_registry[{index}].raw_paths[{path_index}] must be a relative path; "
-                    "absolute path is not allowed."
-                )
-            elif ".." in raw_path.replace("\\", "/").split("/"):
-                errors.append(f"sample_registry[{index}].raw_paths[{path_index}] must not contain path traversal '..'.")
-
-    return sample_ids
-
-
-def _condition_sample_references(experimental_conditions: object) -> set[str]:
-    if not isinstance(experimental_conditions, dict):
-        return set()
-    conditions = experimental_conditions.get("conditions", [])
-    if not isinstance(conditions, list):
-        return set()
-
-    sample_refs: set[str] = set()
-    for condition in conditions:
-        if not isinstance(condition, dict):
-            continue
-        parameters = condition.get("parameters", {})
-        if not isinstance(parameters, dict):
-            continue
-        samples = parameters.get("samples", [])
-        if not isinstance(samples, list):
-            continue
-        for sample in samples:
-            if isinstance(sample, str) and sample.strip():
-                sample_refs.add(sample.strip())
-    return sample_refs
-
-
 def _validate_raw_integrity_config(errors: list[str], raw_integrity: object) -> None:
-    if raw_integrity is None:
-        return
-    if not isinstance(raw_integrity, dict):
-        errors.append("data_contract.raw_integrity must be a mapping when provided.")
-        return
+    from .config_research_metadata import validate_raw_integrity_config
 
-    manifest = raw_integrity.get("manifest", "raw/.raw_manifest.json")
-    if not isinstance(manifest, str) or not manifest.strip():
-        errors.append("data_contract.raw_integrity.manifest must be a non-empty relative path.")
-    else:
-        _validate_relative_path_value(errors, "data_contract.raw_integrity.manifest", manifest)
-
-    mode = raw_integrity.get("mode", "warn")
-    if not isinstance(mode, str) or mode.strip().lower() not in ALLOWED_RAW_INTEGRITY_MODES:
-        allowed = ", ".join(sorted(ALLOWED_RAW_INTEGRITY_MODES))
-        errors.append(f"data_contract.raw_integrity.mode must be one of: {allowed}.")
-
-    paths = raw_integrity.get("paths", ["raw/"])
-    if paths is None:
-        paths = ["raw/"]
-    if not isinstance(paths, list):
-        errors.append("data_contract.raw_integrity.paths must be a list of relative paths when provided.")
-        return
-    for index, path in enumerate(paths, 1):
-        if not isinstance(path, str) or not path.strip():
-            errors.append(f"data_contract.raw_integrity.paths[{index}] must be a non-empty relative path.")
-            continue
-        _validate_relative_path_value(errors, f"data_contract.raw_integrity.paths[{index}]", path)
-
-
-def _validate_relative_path_value(errors: list[str], field_name: str, path: str) -> None:
-    normalized = path.strip().replace("\\", "/")
-    if os.path.isabs(path):
-        errors.append(f"{field_name} must be a relative path, got absolute path '{path}'.")
-    elif ".." in normalized.split("/"):
-        errors.append(f"{field_name} must not contain path traversal '..': '{path}'.")
-
-
-def _validate_canonical_docs(errors: list[str], canonical_docs: object) -> None:
-    if canonical_docs is None:
-        return
-    if not isinstance(canonical_docs, list):
-        errors.append("canonical_docs must be an ordered list when provided.")
-        return
-
-    seen_paths: set[str] = set()
-    for index, item in enumerate(canonical_docs, 1):
-        field_name = f"canonical_docs[{index}].path"
-        label: object = None
-        if isinstance(item, str):
-            path = item
-        elif isinstance(item, dict):
-            path = item.get("path")
-            label = item.get("label")
-        else:
-            errors.append(f"canonical_docs[{index}] must be a relative path string or a mapping with path.")
-            continue
-
-        if not isinstance(path, str) or not path.strip():
-            errors.append(f"{field_name} must be a non-empty relative path.")
-            continue
-        _validate_relative_path_value(errors, field_name, path)
-        if label is not None and not isinstance(label, str):
-            errors.append(f"canonical_docs[{index}].label must be a string when provided.")
-
-        normalized_path = path.strip().replace("\\", "/").strip("/")
-        if normalized_path in seen_paths:
-            errors.append(f"Duplicate canonical_docs path: '{normalized_path}'.")
-        seen_paths.add(normalized_path)
-
-
-def _experimental_condition_ids(experimental_conditions: object) -> set[str] | None:
-    if not isinstance(experimental_conditions, dict) or "conditions" not in experimental_conditions:
-        return None
-    conditions = experimental_conditions.get("conditions", [])
-    if not isinstance(conditions, list):
-        return set()
-    return {
-        condition["id"].strip()
-        for condition in conditions
-        if isinstance(condition, dict) and isinstance(condition.get("id"), str) and condition["id"].strip()
-    }
-
-
-def _is_scalar_flag_value(value: object) -> bool:
-    return isinstance(value, (str, bool, int, float)) and not (isinstance(value, float) and math.isnan(value))
+    return validate_raw_integrity_config(errors, raw_integrity, allowed_modes=ALLOWED_RAW_INTEGRITY_MODES)
 
 
 def _validate_named_adapter(
@@ -483,107 +109,6 @@ def _validate_named_adapter(
     if value not in allowed_values:
         allowed = ", ".join(sorted(allowed_values))
         errors.append(f"environment.adapters.{key} '{raw_value}' is invalid. Allowed: {allowed}.")
-
-
-def _validate_outlier_flag_check_config(errors, *, column: str, raw_check: object) -> None:
-    if not isinstance(raw_check, dict):
-        errors.append(f"Semantic outlier_flag for '{column}' must be a mapping.")
-        return
-    flag_column = raw_check.get("column")
-    if not isinstance(flag_column, str) or not flag_column.strip():
-        errors.append(f"Semantic outlier_flag.column for '{column}' must be a non-empty string.")
-    if "allowed" in raw_check:
-        allowed = raw_check.get("allowed")
-        if not isinstance(allowed, list) or not allowed:
-            errors.append(f"Semantic outlier_flag.allowed for '{column}' must be a non-empty list.")
-        elif any(not _is_scalar_flag_value(item) for item in allowed):
-            errors.append(
-                f"Semantic outlier_flag.allowed for '{column}' must contain only scalar strings, numbers, or booleans."
-            )
-    if "max_fraction" in raw_check:
-        max_fraction = raw_check.get("max_fraction")
-        if not _is_finite_number(max_fraction) or not 0 <= float(max_fraction) <= 1:
-            errors.append(f"Semantic outlier_flag.max_fraction for '{column}' must be a finite number between 0 and 1.")
-
-
-def _validate_axis_unit_check_config(errors, *, column: str, raw_check: object) -> None:
-    if not isinstance(raw_check, dict):
-        errors.append(f"Semantic axis_unit for '{column}' must be a mapping.")
-        return
-    for key in ("data_unit", "display_unit"):
-        value = raw_check.get(key)
-        if not isinstance(value, str) or not value.strip():
-            errors.append(f"Semantic axis_unit.{key} for '{column}' must be a non-empty string.")
-
-
-def _validate_monotonic_within_group_config(errors, *, column: str, raw_check: object) -> None:
-    if not isinstance(raw_check, dict):
-        errors.append(f"Semantic monotonic_within_group for '{column}' must be a mapping.")
-        return
-    group_by = raw_check.get("group_by")
-    if not isinstance(group_by, list) or not group_by:
-        errors.append(f"Semantic monotonic_within_group.group_by for '{column}' must be a non-empty list.")
-    elif any(not isinstance(item, str) or not item.strip() for item in group_by):
-        errors.append(f"Semantic monotonic_within_group.group_by for '{column}' must contain only non-empty strings.")
-    mode = raw_check.get("mode")
-    if not isinstance(mode, str) or mode not in ALLOWED_MONOTONIC_MODES:
-        allowed = ", ".join(sorted(ALLOWED_MONOTONIC_MODES))
-        errors.append(f"Semantic monotonic_within_group.mode for '{column}' must be one of: {allowed}.")
-
-
-def _validate_expected_sample_count_config(errors, *, column: str, raw_check: object) -> None:
-    if not isinstance(raw_check, dict):
-        errors.append(f"Semantic expected_sample_count for '{column}' must be a mapping.")
-        return
-    group_by = raw_check.get("group_by")
-    if not isinstance(group_by, list) or not group_by:
-        errors.append(f"Semantic expected_sample_count.group_by for '{column}' must be a non-empty list.")
-    elif any(not isinstance(item, str) or not item.strip() for item in group_by):
-        errors.append(f"Semantic expected_sample_count.group_by for '{column}' must contain only non-empty strings.")
-    has_count = "count" in raw_check
-    has_range = "range" in raw_check
-    if has_count == has_range:
-        errors.append(f"Semantic expected_sample_count for '{column}' must specify exactly one of count or range.")
-    if has_count:
-        count = raw_check.get("count")
-        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
-            errors.append(f"Semantic expected_sample_count.count for '{column}' must be a positive integer.")
-    if has_range:
-        count_range = raw_check.get("range")
-        if (
-            not isinstance(count_range, list)
-            or len(count_range) != 2
-            or any(isinstance(item, bool) or not isinstance(item, int) or item <= 0 for item in count_range)
-        ):
-            errors.append(
-                f"Semantic expected_sample_count.range for '{column}' must be [min_count, max_count] positive integers."
-            )
-        elif count_range[0] > count_range[1]:
-            errors.append(f"Semantic expected_sample_count.range for '{column}' must have min_count <= max_count.")
-
-
-def _validate_unit_coherence_config(errors, *, column: str, raw_check: object) -> None:
-    if not isinstance(raw_check, dict):
-        errors.append(f"Semantic unit_coherence for '{column}' must be a mapping.")
-        return
-    expected_unit = raw_check.get("expected_unit")
-    if not isinstance(expected_unit, str) or not expected_unit.strip():
-        errors.append(f"Semantic unit_coherence.expected_unit for '{column}' must be a non-empty string.")
-    terms = raw_check.get("terms")
-    if not isinstance(terms, list) or not terms:
-        errors.append(f"Semantic unit_coherence.terms for '{column}' must be a non-empty list.")
-        return
-    for idx, term in enumerate(terms, 1):
-        if not isinstance(term, dict):
-            errors.append(f"Semantic unit_coherence.terms[{idx}] for '{column}' must be a mapping.")
-            continue
-        for key in ("column", "unit"):
-            value = term.get(key)
-            if not isinstance(value, str) or not value.strip():
-                errors.append(f"Semantic unit_coherence.terms[{idx}].{key} for '{column}' must be a non-empty string.")
-        exponent = term.get("exponent", 1)
-        if isinstance(exponent, bool) or not isinstance(exponent, int) or exponent == 0:
-            errors.append(f"Semantic unit_coherence.terms[{idx}].exponent for '{column}' must be a non-zero integer.")
 
 
 def get_language_policy(config):
@@ -1052,99 +577,11 @@ def validate_config(config):
                 if min_rows is not None and (not isinstance(min_rows, int) or min_rows < 0):
                     errors.append(f"data_contract.csv_checks[{i}].min_rows must be a non-negative integer.")
 
-                semantic_checks = check.get("semantic_checks", {})
-                if semantic_checks is not None and not isinstance(semantic_checks, dict):
-                    errors.append(f"data_contract.csv_checks[{i}].semantic_checks must be a mapping.")
-                elif semantic_checks:
-                    for col, constraints in semantic_checks.items():
-                        if not isinstance(constraints, dict):
-                            errors.append(f"Semantic constraints for '{col}' must be a mapping.")
-                            continue
-                        if "range" in constraints:
-                            r = constraints["range"]
-                            if not isinstance(r, list) or len(r) != 2:
-                                errors.append(f"Semantic range for '{col}' must be a list of 2 numbers.")
-                            elif any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in r):
-                                errors.append(f"Semantic range for '{col}' must contain only numeric bounds.")
-                            elif r[0] > r[1]:
-                                errors.append(f"Semantic range for '{col}' min must be <= max.")
-                        if "allow_null" in constraints and not isinstance(constraints["allow_null"], bool):
-                            errors.append(f"Semantic allow_null for '{col}' must be a boolean.")
-                        if "unique" in constraints and not isinstance(constraints["unique"], bool):
-                            errors.append(f"Semantic unique for '{col}' must be a boolean.")
-                        if "monotonic" in constraints:
-                            monotonic_mode = constraints["monotonic"]
-                            if not isinstance(monotonic_mode, str) or monotonic_mode not in ALLOWED_MONOTONIC_MODES:
-                                allowed = ", ".join(sorted(ALLOWED_MONOTONIC_MODES))
-                                errors.append(
-                                    f"Semantic monotonic for '{col}' must be one of: {allowed}. Got '{monotonic_mode}'."
-                                )
-                        if "monotonic_within_group" in constraints:
-                            _validate_monotonic_within_group_config(
-                                errors,
-                                column=str(col),
-                                raw_check=constraints["monotonic_within_group"],
-                            )
-                        if "min_replicates" in constraints:
-                            _validate_grouped_check_config(
-                                errors,
-                                column=str(col),
-                                check_name="min_replicates",
-                                raw_check=constraints["min_replicates"],
-                            )
-                        if "expected_sample_count" in constraints:
-                            _validate_expected_sample_count_config(
-                                errors,
-                                column=str(col),
-                                raw_check=constraints["expected_sample_count"],
-                            )
-                        if "grouped_cv" in constraints:
-                            _validate_grouped_check_config(
-                                errors,
-                                column=str(col),
-                                check_name="grouped_cv",
-                                raw_check=constraints["grouped_cv"],
-                            )
-                        if "log_scale_positive" in constraints and not isinstance(
-                            constraints["log_scale_positive"], bool
-                        ):
-                            errors.append(f"Semantic log_scale_positive for '{col}' must be a boolean.")
-                        if "error_bar_source" in constraints:
-                            _validate_errorbar_check_config(
-                                errors,
-                                column=str(col),
-                                raw_check=constraints["error_bar_source"],
-                            )
-                        if "mean_sem" in constraints:
-                            _validate_mean_sem_check_config(
-                                errors,
-                                column=str(col),
-                                raw_check=constraints["mean_sem"],
-                            )
-                        if "linear_fit" in constraints:
-                            _validate_linear_fit_check_config(
-                                errors,
-                                column=str(col),
-                                raw_check=constraints["linear_fit"],
-                            )
-                        if "outlier_flag" in constraints:
-                            _validate_outlier_flag_check_config(
-                                errors,
-                                column=str(col),
-                                raw_check=constraints["outlier_flag"],
-                            )
-                        if "axis_unit" in constraints:
-                            _validate_axis_unit_check_config(
-                                errors,
-                                column=str(col),
-                                raw_check=constraints["axis_unit"],
-                            )
-                        if "unit_coherence" in constraints:
-                            _validate_unit_coherence_config(
-                                errors,
-                                column=str(col),
-                                raw_check=constraints["unit_coherence"],
-                            )
+                _validate_csv_semantic_checks(
+                    errors,
+                    check.get("semantic_checks", {}),
+                    check_index=i,
+                )
 
     golden_metrics = config.get("golden_metrics", [])
     if golden_metrics is None:
@@ -1283,162 +720,6 @@ def validate_config(config):
     return errors
 
 
-def _validate_sweep(sweep: dict) -> list[str]:
-    errors: list[str] = []
-
-    if not isinstance(sweep, dict):
-        errors.append("sweep must be a mapping.")
-        return errors
-
-    enabled = sweep.get("enabled", False)
-    if not isinstance(enabled, bool):
-        errors.append("sweep.enabled must be a boolean.")
-
-    has_values = "values" in sweep
-    has_grid = "grid" in sweep
-
-    if has_values and has_grid:
-        errors.append("sweep: specify either 'values' or 'grid', not both.")
-
-    if has_values:
-        parameter = sweep.get("parameter")
-        if not isinstance(parameter, str) or not parameter.strip():
-            errors.append("sweep.parameter is required and must be a non-empty string when 'values' is used.")
-        values = sweep.get("values")
-        if not isinstance(values, list) or len(values) == 0:
-            errors.append("sweep.values must be a non-empty list.")
-        elif any(not isinstance(v, (int, float, str)) for v in values):
-            errors.append("sweep.values entries must be numbers or strings.")
-
-    if has_grid:
-        grid = sweep.get("grid")
-        if not isinstance(grid, dict) or len(grid) == 0:
-            errors.append("sweep.grid must be a non-empty mapping.")
-        else:
-            for param_name, param_values in grid.items():
-                if not isinstance(param_name, str) or not param_name.strip():
-                    errors.append("sweep.grid keys must be non-empty strings.")
-                if not isinstance(param_values, list) or len(param_values) == 0:
-                    errors.append(f"sweep.grid.{param_name} must be a non-empty list.")
-                elif any(not isinstance(v, (int, float, str)) for v in param_values):
-                    errors.append(f"sweep.grid.{param_name} entries must be numbers or strings.")
-
-    output_dir_pattern = sweep.get("output_dir_pattern")
-    if output_dir_pattern is not None:
-        if not isinstance(output_dir_pattern, str) or not output_dir_pattern.strip():
-            errors.append("sweep.output_dir_pattern must be a non-empty string.")
-
-    return errors
-
-
-def _validate_comparison(comparison: dict) -> list[str]:
-    errors: list[str] = []
-
-    if not isinstance(comparison, dict):
-        errors.append("comparison must be a mapping.")
-        return errors
-
-    enabled = comparison.get("enabled", False)
-    if not isinstance(enabled, bool):
-        errors.append("comparison.enabled must be a boolean.")
-
-    conditions = comparison.get("conditions", [])
-    if conditions is None:
-        conditions = []
-    if not isinstance(conditions, list):
-        errors.append("comparison.conditions must be a list.")
-    else:
-        for i, cond in enumerate(conditions, 1):
-            if not isinstance(cond, dict):
-                errors.append(f"comparison.conditions[{i}] must be a mapping.")
-                continue
-            label = cond.get("label")
-            if not isinstance(label, str) or not label.strip():
-                errors.append(f"comparison.conditions[{i}].label is required and must be a non-empty string.")
-            data_override = cond.get("data_override")
-            if data_override is not None:
-                if not isinstance(data_override, str) or not data_override.strip():
-                    errors.append(f"comparison.conditions[{i}].data_override must be a non-empty string.")
-                elif os.path.isabs(data_override):
-                    errors.append(
-                        f"comparison.conditions[{i}].data_override must be a relative path, "
-                        f"got absolute: '{data_override}'."
-                    )
-                elif ".." in data_override.replace("\\", "/").split("/"):
-                    errors.append(
-                        f"comparison.conditions[{i}].data_override contains path traversal '..': '{data_override}'."
-                    )
-            env = cond.get("env", {})
-            if env is not None and not isinstance(env, dict):
-                errors.append(f"comparison.conditions[{i}].env must be a mapping.")
-            elif isinstance(env, dict):
-                for key, val in env.items():
-                    if not isinstance(key, str):
-                        errors.append(f"comparison.conditions[{i}].env keys must be strings.")
-                    if not isinstance(val, (str, int, float, bool)):
-                        errors.append(
-                            f"comparison.conditions[{i}].env.{key} value must be a scalar (str/int/float/bool)."
-                        )
-
-    overlay_output = comparison.get("overlay_output")
-    if overlay_output is not None:
-        if not isinstance(overlay_output, str) or not overlay_output.strip():
-            errors.append("comparison.overlay_output must be a non-empty string.")
-        elif os.path.isabs(overlay_output):
-            errors.append("comparison.overlay_output must be a relative path.")
-        elif ".." in overlay_output.replace("\\", "/").split("/"):
-            errors.append("comparison.overlay_output contains path traversal '..'.")
-
-    return errors
-
-
-def parse_comparison_config(comparison: dict) -> dict:
-    """Return a normalized comparison config with a flat list of condition dicts."""
-    enabled = bool(comparison.get("enabled", False))
-    conditions: list[dict] = []
-    for cond in comparison.get("conditions", []) or []:
-        conditions.append(
-            {
-                "label": str(cond.get("label", "")).strip(),
-                "data_override": cond.get("data_override"),
-                "env": {str(k): str(v) for k, v in (cond.get("env") or {}).items()},
-            }
-        )
-    overlay_output: str | None = comparison.get("overlay_output")
-    return {
-        "enabled": enabled,
-        "conditions": conditions,
-        "overlay_output": overlay_output,
-    }
-
-
-def parse_sweep_config(sweep: dict) -> dict:
-    """Return a normalized sweep config with a flat list of (env_var, value) runs."""
-    enabled = bool(sweep.get("enabled", False))
-    output_dir_pattern = sweep.get("output_dir_pattern", "results/figures/sweep_{parameter}_{value}")
-
-    runs: list[dict[str, str]] = []
-
-    if "values" in sweep:
-        parameter = sweep["parameter"].strip()
-        for value in sweep["values"]:
-            runs.append({parameter: str(value)})
-    elif "grid" in sweep:
-        grid = sweep["grid"]
-        import itertools
-
-        param_names = list(grid.keys())
-        param_value_lists = [grid[k] for k in param_names]
-        for combo in itertools.product(*param_value_lists):
-            runs.append({name: str(val) for name, val in zip(param_names, combo)})
-
-    return {
-        "enabled": enabled,
-        "output_dir_pattern": output_dir_pattern,
-        "runs": runs,
-    }
-
-
 def _validate_visual_outputs(
     errors,
     items,
@@ -1450,131 +731,19 @@ def _validate_visual_outputs(
     condition_ids: set[str] | None = None,
     require_traceability: bool = False,
 ):
-    if items is None:
-        items = []
-    if not isinstance(items, list):
-        errors.append(f"Invalid '{section_name}' section (must be a list).")
-        return
-
-    for i, item in enumerate(items, 1):
-        if not isinstance(item, dict):
-            errors.append(f"{section_name}[{i}] must be a mapping.")
-            continue
-        script = item.get("script")
-        output = item.get("output")
-        lang = normalize_lang(item.get("lang"))
-
-        if lang != "athena":
-            if not isinstance(script, str) or not script.strip():
-                errors.append(f"{section_name}[{i}].script is required.")
-
-        if not isinstance(output, str) or not output.strip():
-            errors.append(f"{section_name}[{i}].output is required for output verification.")
-
-        claim = item.get("claim")
-        if claim is not None and (not isinstance(claim, str) or not claim.strip()):
-            errors.append(f"{section_name}[{i}].claim must be a non-empty string when provided.")
-
-        trace_samples = item.get("samples", [])
-        if trace_samples is None:
-            trace_samples = []
-        if not isinstance(trace_samples, list):
-            errors.append(f"{section_name}[{i}].samples must be a list when provided.")
-            trace_samples = []
-        else:
-            valid_trace_samples = []
-            for sample_index, sample in enumerate(trace_samples, 1):
-                if not isinstance(sample, str) or not sample.strip():
-                    errors.append(f"{section_name}[{i}].samples[{sample_index}] must be a non-empty string.")
-                    continue
-                valid_trace_samples.append(sample.strip())
-            if sample_ids is not None:
-                unknown_samples = sorted(sample for sample in valid_trace_samples if sample not in sample_ids)
-                if unknown_samples:
-                    errors.append(
-                        f"{section_name}[{i}].samples references unknown sample_id(s): "
-                        f"{', '.join(unknown_samples)}."
-                    )
-
-        trace_conditions = item.get("conditions", [])
-        if trace_conditions is None:
-            trace_conditions = []
-        if not isinstance(trace_conditions, list):
-            errors.append(f"{section_name}[{i}].conditions must be a list when provided.")
-            trace_conditions = []
-        else:
-            valid_trace_conditions = []
-            for condition_index, condition in enumerate(trace_conditions, 1):
-                if not isinstance(condition, str) or not condition.strip():
-                    errors.append(f"{section_name}[{i}].conditions[{condition_index}] must be a non-empty string.")
-                    continue
-                valid_trace_conditions.append(condition.strip())
-            if condition_ids is not None:
-                unknown_conditions = sorted(
-                    condition for condition in valid_trace_conditions if condition not in condition_ids
-                )
-                if unknown_conditions:
-                    errors.append(
-                        f"{section_name}[{i}].conditions references unknown condition id(s): "
-                        f"{', '.join(unknown_conditions)}."
-                    )
-
-        has_traceability_declaration = any(
-            key in item and item.get(key) is not None for key in ("claim", "samples", "conditions")
-        )
-        if require_traceability and has_traceability_declaration:
-            missing = []
-            if not isinstance(claim, str) or not claim.strip():
-                missing.append("claim")
-            if not trace_samples:
-                missing.append("samples")
-            if not trace_conditions:
-                missing.append("conditions")
-            if missing:
-                figure_id = item.get("id") if isinstance(item.get("id"), str) and item.get("id").strip() else f"#{i}"
-                missing_text = ", ".join(f"missing {field}" for field in missing)
-                errors.append(f"{section_name}[{i}] '{figure_id}' {missing_text} for traceability.")
-
-        inputs = item.get("inputs", None)
-        if inputs is not None and not isinstance(inputs, list):
-            errors.append(f"{section_name}[{i}].inputs must be a list.")
-        elif isinstance(inputs, list):
-            for inp in inputs:
-                if isinstance(inp, str):
-                    if os.path.isabs(inp):
-                        errors.append(f"{section_name}[{i}].inputs: absolute path '{inp}' is not allowed.")
-                    elif ".." in inp.replace("\\", "/").split("/"):
-                        errors.append(f"{section_name}[{i}].inputs: path traversal '..' in '{inp}' is not allowed.")
-        if "cache" in item and not isinstance(item.get("cache"), bool):
-            errors.append(f"{section_name}[{i}].cache must be a boolean.")
-        if "theme" in item:
-            theme = item.get("theme")
-            if not isinstance(theme, str) or theme.strip().lower() not in ALLOWED_TARGET_FORMATS:
-                allowed = ", ".join(sorted(ALLOWED_TARGET_FORMATS))
-                errors.append(f"{section_name}[{i}].theme must be one of: {allowed}.")
-        if "format" in item:
-            output_format = item.get("format")
-            if not isinstance(output_format, str) or output_format.strip().lower() not in ALLOWED_OUTPUT_FORMATS:
-                allowed = ", ".join(sorted(ALLOWED_OUTPUT_FORMATS))
-                errors.append(f"{section_name}[{i}].format must be one of: {allowed}.")
-        if preset_names is not None and "preset" in item:
-            item_preset = item.get("preset")
-            if item_preset not in preset_names:
-                errors.append(f"{section_name}[{i}].preset '{item_preset}' references an undefined preset.")
-        expand = item.get("expand")
-        if expand is not None and expand not in ("batch", "each"):
-            errors.append(f"{section_name}[{i}].expand must be 'batch' or 'each'.")
-        if expand == "each" and isinstance(output, str) and "{stem}" not in output:
-            errors.append(f"{section_name}[{i}].output must contain '{{stem}}' placeholder when expand='each'.")
-        if not norm_policy["allow_nonstandard"] and isinstance(script, str) and script.strip():
-            item_lang = normalize_lang(item.get("lang"))
-            if not item_lang:
-                item_lang = "r" if script.lower().endswith(".r") else "python"
-            if item_lang != norm_policy["plot_lang"]:
-                errors.append(
-                    f"{section_name}[{i}] language '{item_lang}' violates policy "
-                    f"(plot must be '{norm_policy['plot_lang']}')."
-                )
+    _validate_visual_outputs_impl(
+        errors,
+        items,
+        section_name=section_name,
+        norm_policy=norm_policy,
+        normalize_lang_func=normalize_lang,
+        allowed_target_formats=ALLOWED_TARGET_FORMATS,
+        allowed_output_formats=ALLOWED_OUTPUT_FORMATS,
+        preset_names=preset_names,
+        sample_ids=sample_ids,
+        condition_ids=condition_ids,
+        require_traceability=require_traceability,
+    )
 
 
 def load_config(project_dir):
@@ -1654,7 +823,8 @@ def list_projects(root_dir, recursive=True, max_depth=4):
     if max_depth < 1:
         max_depth = 1
 
-    discovered = discover_projects_with_status(root_dir, max_depth=max_depth)
+    scan_depth = max_depth if recursive else 1
+    discovered = discover_projects_with_status(root_dir, max_depth=scan_depth)
     operational_states = _load_registry_operational_states(root_dir)
 
     if not discovered:
@@ -1719,51 +889,6 @@ def discover_projects_with_status(root_dir, max_depth=4):
     from .project_discovery import discover_projects_with_status as _discover_projects_with_status
 
     return _discover_projects_with_status(root_dir, max_depth=max_depth)
-
-
-def _load_registry_operational_states(root_dir):
-    registry_path = os.path.join(root_dir, "ACTIVE_PROJECTS.yaml")
-    if not os.path.exists(registry_path):
-        return {}
-
-    try:
-        with open(registry_path, "r", encoding="utf-8") as f:
-            registry = yaml.safe_load(f) or {}
-    except Exception:
-        return {}
-
-    states = {}
-    for section_name in ("active_projects", "published_project_archives", "incubation_candidates"):
-        for item in registry.get(section_name, []) or []:
-            if not isinstance(item, dict):
-                continue
-            path = item.get("path")
-            op_state = item.get("operational_state")
-            if isinstance(path, str) and path.strip() and isinstance(op_state, str) and op_state.strip():
-                normalized_path = _normalize_registry_path(path.strip())
-                states.setdefault(normalized_path, op_state.strip())
-    return states
-
-
-def _normalize_registry_path(path):
-    return unicodedata.normalize("NFC", str(path).strip())
-
-
-def _resolve_operational_state(operational_states, project_path):
-    normalized = _normalize_registry_path(project_path)
-    if normalized in operational_states:
-        return operational_states[normalized]
-
-    best_match = None
-    for registered_path, op_state in operational_states.items():
-        prefix = registered_path + os.sep
-        if normalized.startswith(prefix):
-            if best_match is None or len(registered_path) > len(best_match[0]):
-                best_match = (registered_path, op_state)
-
-    if best_match is not None:
-        return best_match[1]
-    return "-"
 
 
 def get_discoverable_projects(root_dir, max_depth=4):

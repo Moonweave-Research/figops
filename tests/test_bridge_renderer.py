@@ -660,6 +660,23 @@ class BridgeRendererUnitTest(unittest.TestCase):
         self.assertTrue(callable(group_facet_points))
         self.assertEqual(FacetRendererContext.__name__, "FacetRendererContext")
 
+    def test_shared_legend_helper_import_paths_remain_compatible(self):
+        from plotting.bridge_renderer import _apply_shared_legend, _normalized_shared_legend_options
+        from plotting.renderers.shared_legend import apply_shared_legend, normalized_shared_legend_options
+
+        self.assertIs(_apply_shared_legend, apply_shared_legend)
+        self.assertIs(_normalized_shared_legend_options, normalized_shared_legend_options)
+
+    def test_multipanel_layout_helper_import_paths_remain_compatible(self):
+        from plotting.bridge_renderer import _distributed_lengths_mm, _split_bias, _validated_layout_ratios
+        from plotting.renderers.multipanel_layout import distributed_lengths_mm, split_bias, validated_layout_ratios
+
+        self.assertIs(_distributed_lengths_mm, distributed_lengths_mm)
+        self.assertIs(_split_bias, split_bias)
+        self.assertIs(_validated_layout_ratios, validated_layout_ratios)
+        self.assertEqual(_distributed_lengths_mm(90.0, 2, (2.0, 1.0)), (60.0, 30.0))
+        self.assertEqual(_split_bias(10.0, 1.0, 3.0), (2.5, 7.5))
+
     def test_heatmap_plot_renders_mesh_and_colorbar(self):
         spec = BridgeFigureSpec(
             csv_path="unused.csv",

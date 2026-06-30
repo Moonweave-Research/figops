@@ -5,7 +5,9 @@ Checks generated figure files against journal submission requirements.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from xml.etree import ElementTree
 
 from PIL import Image
 
@@ -14,6 +16,40 @@ from .journal_specs import ERROR, PREFLIGHT_POLICY_TOKENS, JournalToken, get_pre
 _RASTER_EXTENSIONS = {".png", ".tiff", ".tif", ".jpg", ".jpeg", ".bmp"}
 _VECTOR_EXTENSIONS = {".pdf", ".svg", ".eps"}
 _VECTOR_MAX_BYTES = 50 * 1024 * 1024  # 50 MB
+_SVG_LENGTH_RE = re.compile(r"^\s*([0-9]*\.?[0-9]+)\s*([a-zA-Z%]*)\s*$")
+
+
+def _svg_length_to_mm(value: str | None) -> float | None:
+    if not value:
+        return None
+    match = _SVG_LENGTH_RE.match(value)
+    if not match:
+        return None
+    magnitude = float(match.group(1))
+    unit = match.group(2).lower() or "px"
+    if unit == "mm":
+        return magnitude
+    if unit == "cm":
+        return magnitude * 10
+    if unit == "in":
+        return magnitude * 25.4
+    if unit == "pt":
+        return magnitude * 25.4 / 72
+    if unit == "px":
+        return magnitude * 25.4 / 96
+    return None
+
+
+def _svg_dimensions_mm(path: Path) -> tuple[float, float] | None:
+    try:
+        root = ElementTree.parse(path).getroot()
+    except ElementTree.ParseError:
+        return None
+    width_mm = _svg_length_to_mm(root.attrib.get("width"))
+    height_mm = _svg_length_to_mm(root.attrib.get("height"))
+    if width_mm is None or height_mm is None:
+        return None
+    return width_mm, height_mm
 
 
 def validate_figure_preflight(
@@ -106,7 +142,7 @@ def validate_figure_preflight(
     else:
         add_check("dpi", True, "Vector format — DPI check skipped", spec.min_dpi)
 
-    # 3. Dimensions check (raster only)
+    # 3. Dimensions check
     if is_raster and img is not None:
         width_px, height_px = img.size
         if dpi_tuple is not None:
@@ -127,6 +163,23 @@ def validate_figure_preflight(
                 "dimensions",
                 True,
                 f"{width_px}x{height_px} px (DPI unknown, mm conversion skipped)",
+                spec.max_width_mm,
+            )
+    elif suffix == ".svg":
+        dims = _svg_dimensions_mm(figure_path)
+        if dims is None:
+            add_check("dimensions", True, "SVG physical dimensions unavailable (skipped)", spec.max_width_mm)
+            warnings.append("SVG physical dimensions unavailable")
+        else:
+            width_mm, height_mm = dims
+            max_w = float(spec.max_width_mm.value)
+            dims_pass = width_mm <= max_w
+            if not dims_pass:
+                warnings.append(f"Width {width_mm:.1f}mm exceeds journal max {max_w}mm")
+            add_check(
+                "dimensions",
+                dims_pass,
+                f"{width_mm:.1f}mm x {height_mm:.1f}mm (max width: {max_w:g}mm)",
                 spec.max_width_mm,
             )
     else:

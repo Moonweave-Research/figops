@@ -41,16 +41,22 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 - **Agents can inspect safely** — the MCP server exposes read, render, and smoke
   surfaces for tool-assisted figure workflows.
 
-## Current release
+## Current State
 
 | Item | Status |
 | --- | --- |
-| Package | [`figops==0.17.9`](https://pypi.org/project/figops/0.17.9/) is live on PyPI |
+| Source checkout | `0.17.10` development line (`pyproject.toml`) |
+| Published package | [`figops==0.17.9`](https://pypi.org/project/figops/0.17.9/) is the latest locally documented PyPI release |
 | Python | 3.12+ |
 | License | Apache-2.0 for public package distribution |
 | Commands | `figops`, `figops-mcp` |
 | Compatibility aliases | `graphhub`, `graphhub-mcp` |
-| GitHub Release | [`v0.17.9`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.9) |
+| GitHub Release | [`v0.17.9`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.9) is the latest locally documented release asset |
+
+The repository may be ahead of the published package. Treat `pyproject.toml` as
+the source version and the pinned install snippets below as the locally
+documented public install path until a release maintainer publishes and verifies
+a newer version.
 
 ## Install
 
@@ -75,6 +81,28 @@ figops-mcp --smoke
 ```
 
 ## Quick start
+
+For an installed package, verify the published CLI surface first:
+
+```bash
+figops --help
+figops-mcp --smoke
+figops-mcp doctor
+```
+
+For a source checkout, use `hub_uv.py` instead of bare `uv run` so the managed
+environment stays outside the repository:
+
+```bash
+python hub_uv.py sync
+python hub_uv.py run python figops_mcp_server.py doctor
+python hub_uv.py run python -m pytest tests/test_doctor.py -q
+```
+
+If `uv` is not installed, the source-checkout path cannot bootstrap itself. Use
+an already prepared Python 3.12+ environment with the FigOps runtime/dev
+dependencies, or install `uv` outside the repository and rerun the wrapper
+commands. R is only required for projects that declare `lang: R`.
 
 Create a new figure project:
 
@@ -172,6 +200,7 @@ figops --project "ProjectName" --step all --force
 From a source checkout, use the repo-local runtime wrapper:
 
 ```bash
+python hub_uv.py sync
 python hub_uv.py run python orchestrator.py --list-projects
 python hub_uv.py run python -m pytest tests/test_runtime_paths.py -q
 ```
@@ -205,6 +234,8 @@ an alias.
 | `Project directory not found` | Run `figops --list-projects` and copy the exact configured name. |
 | Strict lockfile errors | `--strict-lock` is for reproducibility checks. For quick local rendering, rerun without strict mode. |
 | Google Drive files feel stuck | Let Drive finish syncing, then rerun. The prefetch layer can help with declared inputs, but it cannot repair a broken Drive login/session. |
+| Source-checkout tests fail with `No module named pytest` | Run `python hub_uv.py sync --group dev`, then rerun tests through `python hub_uv.py run python -m pytest ...`. |
+| Doctor reports missing `pandas`, `matplotlib`, or `yaml` | Run `python hub_uv.py sync` from the checkout, or use a Python 3.12+ environment with FigOps runtime dependencies installed. |
 | R script fails immediately | Confirm `Rscript` is available if your project config uses `lang: R`. |
 
 ## For maintainers
@@ -252,7 +283,7 @@ for the exact runbook.
 
 ## Next release checklist
 
-The public package is live. For the next release, keep the same conservative path:
+For the next release, keep the same conservative path:
 
 1. bump the version,
 2. rebuild wheel/sdist from a clean tree,

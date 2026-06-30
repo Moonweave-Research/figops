@@ -140,6 +140,9 @@ def _write_manifest_and_status(
 
     Shared boilerplate for render success and failure artifact methods.
     """
+    _ensure_no_symlinked_runtime_path(manifest_path)
+    _ensure_no_symlinked_runtime_path(status_path)
+    _ensure_no_symlinked_runtime_path(latest_dir)
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
         encoding="utf-8",
@@ -151,6 +154,23 @@ def _write_manifest_and_status(
     latest_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(manifest_path, latest_dir / "manifest.json")
     shutil.copy2(status_path, latest_dir / "status.json")
+
+
+def _first_symlink_component(path: Path) -> Path | None:
+    raw_path = Path(path)
+    current = Path(raw_path.anchor) if raw_path.is_absolute() else Path()
+    parts = raw_path.parts[1:] if raw_path.is_absolute() else raw_path.parts
+    for part in parts:
+        current = current / part
+        if current.is_symlink():
+            return current
+    return None
+
+
+def _ensure_no_symlinked_runtime_path(path: Path) -> None:
+    symlink = _first_symlink_component(path)
+    if symlink is not None:
+        raise RuntimeError(f"Runtime write target must not include symlinked path components: {symlink}")
 
 
 def _build_manifest(

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import shutil
 import sys
 from contextlib import redirect_stdout
@@ -11,534 +10,30 @@ import yaml
 from hub_core.adapters import select_adapters
 from hub_core.config_parser import validate_config
 from hub_core.mcp import render_orchestration as render_helpers
+from hub_core.mcp.tools.render_csv_args import (
+    LEGEND_LAYOUT_PRESETS,  # noqa: F401
+    _fill_between_required_columns,
+    _normalized_annotation_args,
+    _normalized_axis_limits_arg,
+    _normalized_axis_scale_arg,
+    _normalized_fill_between_args,
+    _normalized_fit_options_arg,
+    _normalized_guide_curve_args,
+    _normalized_legend_layout_arg,
+    _normalized_legend_options_arg,
+    _normalized_multipanel_render_settings,
+    _normalized_point_label_options_arg,
+    _normalized_series_style_args,
+    _normalized_span_annotation_arg,  # noqa: F401
+    _normalized_tick_style_arg,
+    _reject_non_point_callout_args,  # noqa: F401
+    _validated_plot_argument_compatibility,
+)
+from hub_core.mcp.tools.render_csv_multipanel import prepare_multipanel_render_payload, validate_multipanel_panel_specs
 from hub_core.mcp.tools.render_support import McpRenderToolSupportMixin
 from hub_core.mcp.tools.render_validation import _optional_positive_int_arg
 from hub_core.rendering import PLOT_TYPES
 from themes.style_profiles import DEFAULT_PROFILE
-
-LEGEND_LAYOUT_PRESETS = {"auto", "smart", "standard", "best", "top_outside", "right_outside"}
-
-
-def _normalized_legend_layout_arg(value: Any, *, field_name: str) -> str:
-    layout = str(value or "auto").strip().lower()
-    if layout not in LEGEND_LAYOUT_PRESETS:
-        allowed = ", ".join(sorted(LEGEND_LAYOUT_PRESETS))
-        raise ValueError(f"{field_name} must be one of: {allowed}.")
-    return layout
-
-
-def _normalized_axis_scale_arg(value: Any, *, field_name: str) -> str:
-    scale = str(value or "linear").strip().lower()
-    if scale not in {"linear", "log"}:
-        raise ValueError(f"{field_name} must be 'linear' or 'log'.")
-    return scale
-
-
-def _normalized_axis_limits_arg(
-    value: Any, *, field_name: str, x_scale: str, y_scale: str
-) -> dict[str, dict[str, float]]:
-    if value in (None, {}, []):
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError(f"{field_name} must be an object keyed by x and/or y.")
-    unsupported = sorted(set(value) - {"x", "y"})
-    if unsupported:
-        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
-    normalized: dict[str, dict[str, float]] = {}
-    for axis_name, scale in (("x", x_scale), ("y", y_scale)):
-        raw_pair = value.get(axis_name)
-        if raw_pair in (None, {}):
-            continue
-        if not isinstance(raw_pair, dict):
-            raise ValueError(f"{field_name}.{axis_name} must be an object with min and/or max.")
-        unsupported_pair = sorted(set(raw_pair) - {"min", "max"})
-        if unsupported_pair:
-            raise ValueError(
-                f"{field_name}.{axis_name} has unsupported key(s): {', '.join(unsupported_pair)}."
-            )
-        if not any(key in raw_pair for key in ("min", "max")):
-            raise ValueError(f"{field_name}.{axis_name} must contain min and/or max.")
-        item: dict[str, float] = {}
-        for key in ("min", "max"):
-            if raw_pair.get(key) is None or raw_pair.get(key) == "":
-                continue
-            try:
-                numeric = float(raw_pair[key])
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"{field_name}.{axis_name}.{key} must be numeric.") from exc
-            if not math.isfinite(numeric):
-                raise ValueError(f"{field_name}.{axis_name}.{key} must be finite.")
-            if scale == "log" and numeric <= 0:
-                raise ValueError(f"{field_name}.{axis_name}.{key} must be > 0 when {axis_name}_scale='log'.")
-            item[key] = numeric
-        if "min" in item and "max" in item and item["min"] >= item["max"]:
-            raise ValueError(f"{field_name}.{axis_name}.min must be less than {field_name}.{axis_name}.max.")
-        if item:
-            normalized[axis_name] = item
-    return normalized
-
-
-def _normalized_tick_style_arg(value: Any, *, field_name: str) -> dict[str, Any]:
-    if value in (None, {}, []):
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError(f"{field_name} must be an object.")
-    allowed = {"rotation", "format", "max_label_chars"}
-    unsupported = sorted(set(value) - allowed)
-    if unsupported:
-        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
-    normalized: dict[str, Any] = {}
-    if value.get("rotation") is not None:
-        try:
-            rotation = float(value["rotation"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field_name}.rotation must be numeric.") from exc
-        if not math.isfinite(rotation) or not -360 <= rotation <= 360:
-            raise ValueError(f"{field_name}.rotation must be finite and between -360 and 360.")
-        normalized["rotation"] = rotation
-    if value.get("format") is not None:
-        tick_format = str(value["format"]).strip().lower()
-        if tick_format not in {"default", "plain", "scientific", "compact"}:
-            raise ValueError(f"{field_name}.format must be default, plain, scientific, or compact.")
-        normalized["format"] = tick_format
-    if value.get("max_label_chars") is not None:
-        try:
-            max_label_chars = int(value["max_label_chars"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field_name}.max_label_chars must be an integer.") from exc
-        if max_label_chars < 4:
-            raise ValueError(f"{field_name}.max_label_chars must be at least 4.")
-        normalized["max_label_chars"] = max_label_chars
-    return normalized
-
-
-def _normalized_multipanel_layout_options_arg(
-    value: Any, *, rows: int, cols: int, field_name: str
-) -> dict[str, Any]:
-    if value in (None, {}, []):
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError(f"{field_name} must be an object.")
-    allowed = {"wspace", "hspace", "gutter_h_mm", "gutter_v_mm", "width_ratios", "height_ratios"}
-    unsupported = sorted(set(value) - allowed)
-    if unsupported:
-        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
-    normalized: dict[str, Any] = {}
-    for key in ("wspace", "hspace", "gutter_h_mm", "gutter_v_mm"):
-        if value.get(key) is None:
-            continue
-        try:
-            numeric = float(value[key])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field_name}.{key} must be numeric.") from exc
-        if not math.isfinite(numeric) or numeric < 0:
-            raise ValueError(f"{field_name}.{key} must be a non-negative finite number.")
-        normalized[key] = numeric
-    for key, expected_len in (("width_ratios", cols), ("height_ratios", rows)):
-        if value.get(key) is None:
-            continue
-        raw_values = value[key]
-        if not isinstance(raw_values, list) or not raw_values:
-            raise ValueError(f"{field_name}.{key} must be a non-empty array.")
-        if len(raw_values) != expected_len:
-            raise ValueError(f"{field_name}.{key} must contain exactly {expected_len} value(s).")
-        ratios: list[float] = []
-        for raw_value in raw_values:
-            try:
-                numeric = float(raw_value)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"{field_name}.{key} values must be numeric.") from exc
-            if not math.isfinite(numeric) or numeric <= 0:
-                raise ValueError(f"{field_name}.{key} values must be positive finite numbers.")
-            ratios.append(numeric)
-        normalized[key] = tuple(ratios)
-    return normalized
-
-
-def _normalized_shared_legend_options_arg(value: Any, *, field_name: str) -> dict[str, Any]:
-    if value in (None, {}, []):
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError(f"{field_name} must be an object.")
-    allowed = {"title", "order", "ncol", "position"}
-    unsupported = sorted(set(value) - allowed)
-    if unsupported:
-        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
-    normalized: dict[str, Any] = {}
-    if value.get("title") is not None:
-        normalized["title"] = str(value["title"])
-    if value.get("order") is not None:
-        order = value["order"]
-        if not isinstance(order, (list, tuple)):
-            raise ValueError(f"{field_name}.order must be an array of labels.")
-        labels = tuple(str(label) for label in order if str(label).strip())
-        if len(labels) != len(set(labels)):
-            raise ValueError(f"{field_name}.order must not contain duplicate labels.")
-        normalized["order"] = labels
-    if value.get("ncol") is not None:
-        if isinstance(value["ncol"], bool) or not isinstance(value["ncol"], int):
-            raise ValueError(f"{field_name}.ncol must be an integer.")
-        ncol = value["ncol"]
-        if ncol < 1 or ncol > 8:
-            raise ValueError(f"{field_name}.ncol must be between 1 and 8.")
-        normalized["ncol"] = ncol
-    position = str(value.get("position") or "top").strip().lower()
-    if position not in {"top", "bottom", "right"}:
-        raise ValueError(f"{field_name}.position must be top, bottom, or right.")
-    normalized["position"] = position
-    return normalized
-
-
-def _normalized_legend_options_arg(value: Any, *, field_name: str) -> dict[str, Any]:
-    if value in (None, {}, []):
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError(f"{field_name} must be an object.")
-    allowed = {"title", "order", "ncol"}
-    unsupported = sorted(set(value) - allowed)
-    if unsupported:
-        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
-    normalized: dict[str, Any] = {}
-    if value.get("title") is not None:
-        normalized["title"] = str(value["title"])
-    if value.get("order") is not None:
-        order = value["order"]
-        if not isinstance(order, (list, tuple)):
-            raise ValueError(f"{field_name}.order must be an array of labels.")
-        labels = tuple(str(label) for label in order if str(label).strip())
-        if len(labels) != len(set(labels)):
-            raise ValueError(f"{field_name}.order must not contain duplicate labels.")
-        normalized["order"] = labels
-    if value.get("ncol") is not None:
-        try:
-            ncol = int(value["ncol"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field_name}.ncol must be an integer.") from exc
-        if ncol < 1 or ncol > 8:
-            raise ValueError(f"{field_name}.ncol must be between 1 and 8.")
-        normalized["ncol"] = ncol
-    return normalized
-
-
-def _normalized_point_label_options_arg(value: Any, *, field_name: str) -> dict[str, Any]:
-    if value in (None, {}, []):
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError(f"{field_name} must be an object.")
-    unsupported = sorted(set(value) - {"offset", "fanout", "max_labels", "priority_column", "skip_column"})
-    if unsupported:
-        raise ValueError(f"{field_name} has unsupported key(s): {', '.join(unsupported)}.")
-    normalized: dict[str, Any] = {}
-    if value.get("offset") is not None:
-        offset = value["offset"]
-        if not isinstance(offset, dict) or "dx" not in offset or "dy" not in offset:
-            raise ValueError(f"{field_name}.offset must contain dx and dy.")
-        try:
-            dx = float(offset["dx"])
-            dy = float(offset["dy"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field_name}.offset dx and dy must be numeric.") from exc
-        if not math.isfinite(dx) or not math.isfinite(dy):
-            raise ValueError(f"{field_name}.offset dx and dy must be finite.")
-        normalized["offset"] = {"dx": dx, "dy": dy}
-    if value.get("fanout") is not None:
-        fanout = str(value["fanout"]).strip().lower().replace("-", "_")
-        if fanout not in {"none", "compass"}:
-            raise ValueError(f"{field_name}.fanout must be 'none' or 'compass'.")
-        normalized["fanout"] = fanout
-    if value.get("max_labels") is not None:
-        try:
-            max_labels = int(value["max_labels"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field_name}.max_labels must be an integer.") from exc
-        if max_labels < 1:
-            raise ValueError(f"{field_name}.max_labels must be at least 1.")
-        normalized["max_labels"] = max_labels
-    for key in ("priority_column", "skip_column"):
-        if value.get(key) is None or value.get(key) == "":
-            continue
-        if not isinstance(value[key], str):
-            raise ValueError(f"{field_name}.{key} must be a string.")
-        column = value[key].strip()
-        if not column:
-            raise ValueError(f"{field_name}.{key} must be a non-empty string when provided.")
-        normalized[key] = column
-    return normalized
-
-
-def _normalized_span_annotation_arg(
-    annotation: dict[str, Any],
-    index: int,
-    *,
-    field: str,
-    bounds: tuple[str, str],
-) -> dict[str, Any]:
-    span = annotation[field]
-    lower_key, upper_key = bounds
-    if not isinstance(span, dict) or lower_key not in span or upper_key not in span:
-        raise ValueError(f"annotations[{index}].{field} must contain {lower_key} and {upper_key}.")
-    item: dict[str, Any] = {field: {lower_key: span[lower_key], upper_key: span[upper_key]}}
-    if annotation.get("text"):
-        item["text"] = str(annotation["text"]).strip()
-    if "color" in annotation:
-        item["color"] = str(annotation.get("color") or "black")
-    if "alpha" in annotation:
-        item["alpha"] = annotation["alpha"]
-    return item
-
-
-def _normalized_series_style_args(value: Any) -> dict[str, dict[str, str]]:
-    if value in (None, {}, []):
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError("series_styles must be an object keyed by series label.")
-    allowed_keys = {
-        "marker",
-        "fill",
-        "facecolor",
-        "edgecolor",
-        "markerfacecolor",
-        "markeredgecolor",
-        "linestyle",
-        "hatch",
-        "color",
-        "alpha",
-        "size",
-        "linewidth",
-        "zorder",
-        "label",
-    }
-    normalized: dict[str, dict[str, str]] = {}
-    for series_name, style in value.items():
-        key = str(series_name).strip()
-        if not key:
-            raise ValueError("series_styles keys must be non-empty series labels.")
-        if not isinstance(style, dict):
-            raise ValueError(f"series_styles[{key!r}] must be an object.")
-        item: dict[str, str] = {}
-        for style_key, raw_style_value in style.items():
-            if style_key not in allowed_keys:
-                raise ValueError(
-                    f"series_styles[{key!r}] has unsupported key {style_key!r}; "
-                    f"supported keys: {', '.join(sorted(allowed_keys))}."
-                )
-            if raw_style_value is None:
-                continue
-            text = str(raw_style_value).strip()
-            if text:
-                item[style_key] = text
-        if item:
-            normalized[key] = item
-    return normalized
-
-
-def _normalized_fit_options_arg(value: Any) -> dict[str, Any]:
-    if value in (None, {}, []):
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError("fit_options must be an object.")
-    allowed_keys = {"model", "label", "color", "linestyle", "linewidth", "zorder", "ci_alpha", "ci_label"}
-    unsupported = sorted(set(value) - allowed_keys)
-    if unsupported:
-        raise ValueError(f"fit_options has unsupported key(s): {', '.join(unsupported)}.")
-    normalized: dict[str, Any] = {"model": "linear"}
-    if value.get("model") is not None:
-        model = str(value["model"]).strip().lower()
-        if model != "linear":
-            raise ValueError("fit_options.model must be 'linear'.")
-    for key in ("label", "color", "linestyle", "ci_label"):
-        if value.get(key) is None:
-            continue
-        text = str(value[key]).strip()
-        if text:
-            normalized[key] = text
-    for key in ("linewidth", "zorder", "ci_alpha"):
-        if value.get(key) is None:
-            continue
-        try:
-            numeric = float(value[key])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"fit_options.{key} must be numeric.") from exc
-        if not math.isfinite(numeric):
-            raise ValueError(f"fit_options.{key} must be finite.")
-        if key == "linewidth" and numeric <= 0:
-            raise ValueError("fit_options.linewidth must be positive.")
-        if key == "ci_alpha" and not 0 <= numeric <= 1:
-            raise ValueError("fit_options.ci_alpha must be between 0 and 1.")
-        normalized[key] = numeric
-    return normalized
-
-
-def _normalized_guide_curve_args(value: Any) -> tuple[dict[str, Any], ...]:
-    if value in (None, (), []):
-        return ()
-    if not isinstance(value, (list, tuple)):
-        raise ValueError("guide_curves must be an array of objects.")
-    normalized: list[dict[str, Any]] = []
-    for index, overlay in enumerate(value):
-        if not isinstance(overlay, dict):
-            raise ValueError(f"guide_curves[{index}] must be an object.")
-        item: dict[str, Any] = {}
-        if overlay.get("points") is not None:
-            points = overlay["points"]
-            if not isinstance(points, (list, tuple)):
-                raise ValueError(f"guide_curves[{index}].points must be an array.")
-            item["points"] = list(points)
-        else:
-            if not isinstance(overlay.get("x"), (list, tuple)) or not isinstance(overlay.get("y"), (list, tuple)):
-                raise ValueError(f"guide_curves[{index}] requires points or x/y arrays.")
-            item["x"] = list(overlay["x"])
-            item["y"] = list(overlay["y"])
-        for key in ("color", "linestyle", "linewidth", "label", "zorder"):
-            if key in overlay:
-                item[key] = overlay[key]
-        item.setdefault("color", "black")
-        normalized.append(item)
-    return tuple(normalized)
-
-
-def _normalized_fill_between_args(value: Any) -> tuple[dict[str, Any], ...]:
-    if value in (None, (), []):
-        return ()
-    if not isinstance(value, (list, tuple)):
-        raise ValueError("fill_between must be an array of objects.")
-    normalized: list[dict[str, Any]] = []
-    for index, overlay in enumerate(value):
-        if not isinstance(overlay, dict):
-            raise ValueError(f"fill_between[{index}] must be an object.")
-        item: dict[str, Any] = {}
-        if overlay.get("points") is not None:
-            points = overlay["points"]
-            if not isinstance(points, (list, tuple)):
-                raise ValueError(f"fill_between[{index}].points must be an array.")
-            item["points"] = list(points)
-        else:
-            missing = [key for key in ("x_column", "y1_column", "y2_column") if not str(overlay.get(key) or "").strip()]
-            if missing:
-                raise ValueError(
-                    f"fill_between[{index}] requires points or column field(s): {', '.join(missing)}."
-                )
-            item["x_column"] = str(overlay["x_column"]).strip()
-            item["y1_column"] = str(overlay["y1_column"]).strip()
-            item["y2_column"] = str(overlay["y2_column"]).strip()
-        for key in ("color", "alpha", "label", "zorder"):
-            if key in overlay:
-                item[key] = overlay[key]
-        item.setdefault("alpha", 0.2)
-        normalized.append(item)
-    return tuple(normalized)
-
-
-def _fill_between_required_columns(
-    fill_between: tuple[dict[str, Any], ...],
-    *,
-    existing: tuple[str, ...] = (),
-) -> list[str]:
-    seen = {str(column).strip() for column in existing if str(column or "").strip()}
-    columns: list[str] = []
-    for overlay in fill_between:
-        for key in ("x_column", "y1_column", "y2_column"):
-            column = str(overlay.get(key) or "").strip()
-            if column and column not in seen:
-                seen.add(column)
-                columns.append(column)
-    return columns
-
-
-def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
-    if value in (None, (), []):
-        return ()
-    if not isinstance(value, (list, tuple)):
-        raise ValueError("annotations must be an array of objects.")
-    normalized: list[dict[str, Any]] = []
-    for index, annotation in enumerate(value):
-        if not isinstance(annotation, dict):
-            raise ValueError(f"annotations[{index}] must be an object.")
-        if annotation.get("region") is not None:
-            _reject_non_point_callout_args(annotation, index)
-            region = annotation["region"]
-            if not isinstance(region, dict) or any(key not in region for key in ("xmin", "xmax", "ymin", "ymax")):
-                raise ValueError(f"annotations[{index}].region must contain xmin, xmax, ymin, ymax.")
-            region_item: dict[str, Any] = {"region": {key: region[key] for key in ("xmin", "xmax", "ymin", "ymax")}}
-            if annotation.get("text"):
-                region_item["text"] = str(annotation["text"]).strip()
-            if "color" in annotation:
-                region_item["color"] = str(annotation.get("color") or "black")
-            if "alpha" in annotation:
-                region_item["alpha"] = annotation["alpha"]
-            normalized.append(region_item)
-            continue
-        if annotation.get("hspan") is not None:
-            _reject_non_point_callout_args(annotation, index)
-            normalized.append(
-                _normalized_span_annotation_arg(annotation, index, field="hspan", bounds=("ymin", "ymax"))
-            )
-            continue
-        if annotation.get("vspan") is not None:
-            _reject_non_point_callout_args(annotation, index)
-            normalized.append(
-                _normalized_span_annotation_arg(annotation, index, field="vspan", bounds=("xmin", "xmax"))
-            )
-            continue
-        missing = [key for key in ("x", "y") if key not in annotation]
-        if missing:
-            raise ValueError(f"annotations[{index}] missing required field(s): {', '.join(missing)}.")
-        item = {
-            "x": annotation["x"],
-            "y": annotation["y"],
-            "text": str(annotation.get("text") or "").strip(),
-        }
-        arrow_to = annotation.get("arrow_to")
-        if not item["text"] and arrow_to is None:
-            raise ValueError(f"annotations[{index}] text must be non-empty unless arrow_to is provided.")
-        if "color" in annotation:
-            item["color"] = str(annotation.get("color") or "black")
-        if arrow_to is not None:
-            if not isinstance(arrow_to, dict) or "x" not in arrow_to or "y" not in arrow_to:
-                raise ValueError(f"annotations[{index}].arrow_to must contain x and y.")
-            item["arrow_to"] = {"x": arrow_to["x"], "y": arrow_to["y"]}
-        if "arrowstyle" in annotation:
-            item["arrowstyle"] = str(annotation.get("arrowstyle") or "->").strip() or "->"
-        if annotation.get("connectionstyle"):
-            item["connectionstyle"] = str(annotation["connectionstyle"]).strip()
-        if annotation.get("xytext_offset") is not None:
-            offset = annotation["xytext_offset"]
-            if not isinstance(offset, dict) or "dx" not in offset or "dy" not in offset:
-                raise ValueError(f"annotations[{index}].xytext_offset must contain dx and dy.")
-            item["xytext_offset"] = {"dx": offset["dx"], "dy": offset["dy"]}
-        if annotation.get("placement_preset"):
-            preset = str(annotation["placement_preset"]).strip().lower().replace("-", "_")
-            allowed_presets = {
-                "above",
-                "below",
-                "left",
-                "right",
-                "upper_left",
-                "upper_right",
-                "lower_left",
-                "lower_right",
-            }
-            if preset not in allowed_presets:
-                raise ValueError(f"annotations[{index}].placement_preset has unsupported value {preset!r}.")
-            item["placement_preset"] = preset
-        if "avoid_overlap" in annotation:
-            if not isinstance(annotation["avoid_overlap"], bool):
-                raise ValueError(f"annotations[{index}].avoid_overlap must be a boolean.")
-            item["avoid_overlap"] = annotation["avoid_overlap"]
-        normalized.append(item)
-    return tuple(normalized)
-
-
-def _reject_non_point_callout_args(annotation: dict[str, Any], index: int) -> None:
-    unsupported = [
-        key
-        for key in ("xytext_offset", "placement_preset", "avoid_overlap")
-        if key in annotation and annotation.get(key) is not None
-    ]
-    if unsupported:
-        joined = ", ".join(unsupported)
-        raise ValueError(f"annotations[{index}] {joined} only apply to point annotations.")
-
 
 
 class McpRenderCsvMixin(McpRenderToolSupportMixin):
@@ -654,66 +149,25 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     "Provide valid ordering, facet sizing, axis-scale, annotation, and series style arguments."
                 ),
             )
-        annotate_values = raw_annotate_values
-        bar_error_column = ""
-        yerr_column = ""
-        yerr_minus_column = ""
-        yerr_cap_width = 3.0
-        render_arg_errors: list[str] = []
-        if not isinstance(annotate_values, bool):
-            render_arg_errors.append("annotate_values must be a boolean.")
-            annotate_values = False
-        elif annotate_values and plot_type != "heatmap":
-            render_arg_errors.append("annotate_values is only supported for plot_type 'heatmap'.")
-        if raw_bar_error_column is not None and raw_bar_error_column != "":
-            if not isinstance(raw_bar_error_column, str):
-                render_arg_errors.append("bar_error_column must be a string.")
-            else:
-                bar_error_column = raw_bar_error_column.strip()
-                if not bar_error_column:
-                    render_arg_errors.append("bar_error_column must be a non-empty string when provided.")
-                elif plot_type != "bar":
-                    render_arg_errors.append("bar_error_column is only supported for plot_type 'bar'.")
-        for raw_error_column, field_name in (
-            (raw_yerr_column, "yerr_column"),
-            (raw_yerr_minus_column, "yerr_minus_column"),
-        ):
-            if raw_error_column is None or raw_error_column == "":
-                continue
-            if not isinstance(raw_error_column, str):
-                render_arg_errors.append(f"{field_name} must be a string.")
-                continue
-            stripped_error_column = raw_error_column.strip()
-            if not stripped_error_column:
-                render_arg_errors.append(f"{field_name} must be a non-empty string when provided.")
-                continue
-            if plot_type not in {"line", "scatter", "xy"}:
-                render_arg_errors.append(f"{field_name} is only supported for plot_type 'line', 'scatter', or 'xy'.")
-                continue
-            if field_name == "yerr_column":
-                yerr_column = stripped_error_column
-            else:
-                yerr_minus_column = stripped_error_column
-        if raw_yerr_cap_width is not None:
-            try:
-                yerr_cap_width = float(raw_yerr_cap_width)
-            except (TypeError, ValueError):
-                render_arg_errors.append("yerr_cap_width must be numeric.")
-            else:
-                if yerr_cap_width < 0:
-                    render_arg_errors.append("yerr_cap_width must be non-negative.")
-        if yerr_column and bar_error_column:
-            render_arg_errors.append("Use yerr_column for line/scatter/xy or bar_error_column for bar, not both.")
-        if series_column and plot_type not in {"line", "scatter", "xy"}:
-            render_arg_errors.append("series_column is only supported for plot_type 'line', 'scatter', or 'xy'.")
-        if label_column and plot_type not in {"line", "scatter", "xy", "bar"}:
-            render_arg_errors.append("label_column is only supported for plot_type 'line', 'scatter', 'xy', or 'bar'.")
-        if point_label_options and not label_column:
-            render_arg_errors.append("point_label_options requires label_column.")
-        if (guide_curves or fill_between) and plot_type not in {"line", "scatter", "xy"}:
-            render_arg_errors.append(
-                "guide_curves and fill_between are only supported for plot_type 'line', 'scatter', or 'xy'."
-            )
+        compatibility = _validated_plot_argument_compatibility(
+            plot_type=plot_type,
+            raw_annotate_values=raw_annotate_values,
+            raw_bar_error_column=raw_bar_error_column,
+            raw_yerr_column=raw_yerr_column,
+            raw_yerr_minus_column=raw_yerr_minus_column,
+            raw_yerr_cap_width=raw_yerr_cap_width,
+            series_column=series_column,
+            label_column=label_column,
+            point_label_options=point_label_options,
+            guide_curves=guide_curves,
+            fill_between=fill_between,
+        )
+        annotate_values = compatibility["annotate_values"]
+        bar_error_column = compatibility["bar_error_column"]
+        yerr_column = compatibility["yerr_column"]
+        yerr_minus_column = compatibility["yerr_minus_column"]
+        yerr_cap_width = compatibility["yerr_cap_width"]
+        render_arg_errors = compatibility["errors"]
         if render_arg_errors:
             return self._csv_render_error(
                 arguments,
@@ -970,6 +424,18 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 resolution_hint="Set overwrite=true to replace the existing MCP render job.",
             )
         if job_root.exists() and overwrite:
+            symlink = render_helpers._first_symlink_component(job_root)
+            if symlink is not None:
+                return self._csv_render_error(
+                    arguments,
+                    summary="Render job path is not safe to overwrite.",
+                    errors=[f"Runtime job path includes a symlinked component: {symlink}"],
+                    is_dry_run=False,
+                    job_id=job_id,
+                    job_root=str(job_root),
+                    failure_stage="EXPORT",
+                    resolution_hint="Choose a new job_id or remove the symlinked runtime path manually.",
+                )
             shutil.rmtree(job_root)
         job_data_path = job_root / "data" / "input.csv"
         output_path = job_root / "results" / "figures" / f"graph.{output_format}"
@@ -978,6 +444,21 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
         status_path = job_root / "status.json"
         latest_dir = self.runtime_root / "_latest" / "mcp_render"
         created_paths: list[str] = []
+        unsafe_path = (
+            render_helpers._first_symlink_component(job_root)
+            or render_helpers._first_symlink_component(latest_dir)
+        )
+        if unsafe_path is not None:
+            return self._csv_render_error(
+                arguments,
+                summary="Render runtime path is not safe to write.",
+                errors=[f"Runtime write path includes a symlinked component: {unsafe_path}"],
+                is_dry_run=False,
+                job_id=job_id,
+                job_root=str(job_root),
+                failure_stage="EXPORT",
+                resolution_hint="Choose a different job_id/runtime root or remove the symlinked runtime path manually.",
+            )
         try:
             job_data_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1184,19 +665,9 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
         output_format = str(arguments.get("output_format") or "png").strip().lower().lstrip(".")
         panels_arg = arguments.get("panels")
         try:
-            rows = int(arguments.get("rows") or 1)
-            cols = int(arguments.get("cols") or (len(panels_arg) if isinstance(panels_arg, list) else 1))
-            panel_height_mm = float(arguments.get("panel_height_mm") or 65.0)
-            font_scale = float(arguments.get("font_scale") or 1.0)
-            layout_options = _normalized_multipanel_layout_options_arg(
-                arguments.get("layout_options"), rows=rows, cols=cols, field_name="layout_options"
-            )
-            raw_shared_legend = arguments.get("shared_legend", False)
-            if not isinstance(raw_shared_legend, bool):
-                raise ValueError("shared_legend must be a boolean.")
-            shared_legend = raw_shared_legend
-            shared_legend_options = _normalized_shared_legend_options_arg(
-                arguments.get("shared_legend_options"), field_name="shared_legend_options"
+            settings = _normalized_multipanel_render_settings(
+                arguments,
+                panel_count=len(panels_arg) if isinstance(panels_arg, list) else 0,
             )
         except (TypeError, ValueError) as exc:
             return self._csv_render_error(
@@ -1208,6 +679,13 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 resolution_hint="Provide numeric multipanel layout settings.",
                 tool_name="figops.render_csv_multipanel",
             )
+        rows = settings["rows"]
+        cols = settings["cols"]
+        panel_height_mm = settings["panel_height_mm"]
+        font_scale = settings["font_scale"]
+        layout_options = settings["layout_options"]
+        shared_legend = settings["shared_legend"]
+        shared_legend_options = settings["shared_legend_options"]
 
         if shared_legend_options and not shared_legend:
             return self._csv_render_error(
@@ -1271,197 +749,16 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 tool_name="figops.render_csv_multipanel",
             )
 
-        source_paths = []
-        panel_specs = []
-        contract_errors: list[str] = []
-        calculation_checks = {"checks": [], "quality_passed": True, "manual_review_needed": False}
-        for index, panel in enumerate(panels_arg):
-            if not isinstance(panel, dict):
-                contract_errors.append(f"panels[{index}] must be an object.")
-                continue
-            try:
-                data_path = self._input_file_path(panel.get("data_path"))
-                x_column = self._required_string(panel, "x_column")
-                y_column = self._required_string(panel, "y_column")
-                plot_type = str(panel.get("plot_type") or "scatter").strip().lower()
-                x_scale = _normalized_axis_scale_arg(panel.get("x_scale"), field_name=f"panels[{index}].x_scale")
-                y_scale = _normalized_axis_scale_arg(panel.get("y_scale"), field_name=f"panels[{index}].y_scale")
-                legend_layout = _normalized_legend_layout_arg(
-                    panel.get("legend_layout"), field_name=f"panels[{index}].legend_layout"
-                )
-                legend_options = _normalized_legend_options_arg(
-                    panel.get("legend_options"), field_name=f"panels[{index}].legend_options"
-                )
-                axis_limits = _normalized_axis_limits_arg(
-                    panel.get("axis_limits"),
-                    field_name=f"panels[{index}].axis_limits",
-                    x_scale=x_scale,
-                    y_scale=y_scale,
-                )
-                tick_style = _normalized_tick_style_arg(
-                    panel.get("tick_style"), field_name=f"panels[{index}].tick_style"
-                )
-                annotations = _normalized_annotation_args(panel.get("annotations"))
-                series_styles = _normalized_series_style_args(panel.get("series_styles"))
-                fit_options = _normalized_fit_options_arg(panel.get("fit_options"))
-                guide_curves = _normalized_guide_curve_args(panel.get("guide_curves"))
-                fill_between = _normalized_fill_between_args(panel.get("fill_between"))
-                facet_column = str(panel.get("facet_column") or "").strip()
-                series_column = str(panel.get("series_column") or "").strip()
-                label_column = str(panel.get("label_column") or "").strip()
-                point_label_options = _normalized_point_label_options_arg(
-                    panel.get("point_label_options"), field_name=f"panels[{index}].point_label_options"
-                )
-                yerr_column = str(panel.get("yerr_column") or "").strip()
-                yerr_minus_column = str(panel.get("yerr_minus_column") or "").strip()
-                yerr_cap_width = float(panel.get("yerr_cap_width", 3.0))
-                fit_line = panel.get("fit_line", False)
-                ci_band = panel.get("ci_band", False)
-                significance_markers = panel.get("significance_markers", ())
-            except (TypeError, ValueError) as exc:
-                contract_errors.append(f"panels[{index}]: {exc}")
-                continue
-            if plot_type not in PLOT_TYPES:
-                contract_errors.append(f"panels[{index}].plot_type {plot_type!r} is not supported.")
-                continue
-            if plot_type == "facet" and not facet_column:
-                contract_errors.append(f"panels[{index}] plot_type 'facet' requires facet_column.")
-                continue
-            if plot_type == "heatmap" and not str(panel.get("z_column") or "").strip():
-                contract_errors.append(f"panels[{index}] plot_type 'heatmap' requires z_column.")
-                continue
-            if series_column and plot_type not in {"line", "scatter", "xy"}:
-                contract_errors.append(
-                    f"panels[{index}].series_column is only supported for plot_type 'line', 'scatter', or 'xy'."
-                )
-                continue
-            if label_column and plot_type not in {"line", "scatter", "xy", "bar"}:
-                contract_errors.append(
-                    f"panels[{index}].label_column is only supported for plot_type 'line', 'scatter', 'xy', or 'bar'."
-                )
-                continue
-            if point_label_options and not label_column:
-                contract_errors.append(f"panels[{index}].point_label_options requires label_column.")
-                continue
-            if (yerr_column or yerr_minus_column) and plot_type not in {"line", "scatter", "xy"}:
-                contract_errors.append(
-                    f"panels[{index}] yerr columns are only supported for plot_type 'line', 'scatter', or 'xy'."
-                )
-                continue
-            if (guide_curves or fill_between) and plot_type not in {"line", "scatter", "xy"}:
-                contract_errors.append(
-                    f"panels[{index}] guide_curves and fill_between are only supported for plot_type "
-                    "'line', 'scatter', or 'xy'."
-                )
-                continue
-            overlay_errors = self._statistical_overlay_arg_errors(
-                plot_type=plot_type,
-                fit_line=fit_line,
-                ci_band=ci_band,
-                fit_options=fit_options,
-                significance_markers=significance_markers,
-            )
-            if overlay_errors:
-                contract_errors.extend(f"panels[{index}]: {error}" for error in overlay_errors)
-                continue
-            if yerr_cap_width < 0:
-                contract_errors.append(f"panels[{index}].yerr_cap_width must be non-negative.")
-                continue
-
-            semantic_checks = {}
-            if yerr_column:
-                semantic_checks = self._semantic_checks_with_bar_error_column(
-                    semantic_checks,
-                    y_column=y_column,
-                    bar_error_column=yerr_column,
-                )
-            required_columns = [
-                x_column,
-                y_column,
-                *([str(panel.get("z_column") or "").strip()] if plot_type == "heatmap" else []),
-                *([facet_column] if facet_column else []),
-                *([series_column] if series_column else []),
-                *([label_column] if label_column else []),
-                *(
-                    [str(point_label_options.get("priority_column"))]
-                    if point_label_options.get("priority_column")
-                    else []
-                ),
-                *([str(point_label_options.get("skip_column"))] if point_label_options.get("skip_column") else []),
-                *([yerr_column] if yerr_column else []),
-                *([yerr_minus_column] if yerr_minus_column else []),
-                *_fill_between_required_columns(
-                    fill_between,
-                    existing=tuple(
-                        column
-                        for column in (
-                            x_column,
-                            y_column,
-                            str(panel.get("z_column") or "").strip() if plot_type == "heatmap" else "",
-                            facet_column,
-                            series_column,
-                            label_column,
-                            str(point_label_options.get("priority_column") or ""),
-                            str(point_label_options.get("skip_column") or ""),
-                            yerr_column,
-                            yerr_minus_column,
-                        )
-                        if column
-                    ),
-                ),
-            ]
-            contract = self._validate_render_data_contract(
-                data_path,
-                required_columns=required_columns,
-                semantic_checks=semantic_checks,
-                axis_scales={x_column: x_scale, y_column: y_scale},
-            )
-            if contract["errors"]:
-                contract_errors.extend(f"panels[{index}]: {error}" for error in contract["errors"])
-            calculation_checks["checks"].extend(contract["calculation_checks"].get("checks", []))
-            calculation_checks["quality_passed"] = (
-                calculation_checks["quality_passed"] and contract["calculation_checks"].get("quality_passed", True)
-            )
-            calculation_checks["manual_review_needed"] = (
-                calculation_checks["manual_review_needed"]
-                or contract["calculation_checks"].get("manual_review_needed", False)
-            )
-            source_paths.append(data_path)
-            panel_specs.append(
-                {
-                    "source_data_path": data_path,
-                    "plot_type": plot_type,
-                    "x_column": x_column,
-                    "y_column": y_column,
-                    "z_column": str(panel.get("z_column") or "").strip(),
-                    "facet_column": facet_column,
-                    "series_column": series_column,
-                    "label_column": label_column,
-                    "point_label_options": point_label_options,
-                    "series_styles": series_styles,
-                    "x_scale": x_scale,
-                    "y_scale": y_scale,
-                    "legend_layout": legend_layout,
-                    "legend_options": legend_options,
-                    "axis_limits": axis_limits,
-                    "tick_style": tick_style,
-                    "annotations": annotations,
-                    "guide_curves": guide_curves,
-                    "fill_between": fill_between,
-                    "yerr_column": yerr_column,
-                    "yerr_minus_column": yerr_minus_column,
-                    "yerr_cap_width": yerr_cap_width,
-                    "fit_line": fit_line,
-                    "ci_band": ci_band,
-                    "fit_options": fit_options,
-                    "significance_markers": significance_markers,
-                    "title": str(panel.get("title") or ""),
-                    "x_axis_label": str(panel.get("x_axis_label") or x_column),
-                    "y_axis_label": str(panel.get("y_axis_label") or y_column),
-                    "target_format": target_format,
-                    "profile_name": profile,
-                }
-            )
+        panel_validation = validate_multipanel_panel_specs(
+            renderer=self,
+            panels_arg=panels_arg,
+            target_format=target_format,
+            profile=profile,
+        )
+        source_paths = panel_validation["source_paths"]
+        panel_specs = panel_validation["panel_specs"]
+        contract_errors = panel_validation["contract_errors"]
+        calculation_checks = panel_validation["calculation_checks"]
         if contract_errors:
             return self._csv_render_error(
                 arguments,
@@ -1493,6 +790,26 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 resolution_hint="Use a unique job_id or set overwrite=true.",
                 tool_name="figops.render_csv_multipanel",
             )
+        rows = settings["rows"]
+        cols = settings["cols"]
+        panel_height_mm = settings["panel_height_mm"]
+        font_scale = settings["font_scale"]
+        layout_options = settings["layout_options"]
+        shared_legend = settings["shared_legend"]
+        shared_legend_options = settings["shared_legend_options"]
+        if job_root.exists() and overwrite:
+            symlink = render_helpers._first_symlink_component(job_root)
+            if symlink is not None:
+                return self._csv_render_error(
+                    arguments,
+                    summary="Render job path is not safe to overwrite.",
+                    errors=[f"Runtime job path includes a symlinked component: {symlink}"],
+                    is_dry_run=False,
+                    failure_stage="EXPORT",
+                    resolution_hint="Choose a new job_id or remove the symlinked runtime path manually.",
+                    tool_name="figops.render_csv_multipanel",
+                )
+            shutil.rmtree(job_root)
 
         output_path = job_root / "outputs" / f"multipanel.{output_format}"
         config_path = job_root / "config" / "multipanel.yaml"
@@ -1500,6 +817,20 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
         status_path = job_root / "status.json"
         latest_dir = self.runtime_root / "_latest" / "mcp_render"
         created_paths: list[str] = []
+        unsafe_path = (
+            render_helpers._first_symlink_component(job_root)
+            or render_helpers._first_symlink_component(latest_dir)
+        )
+        if unsafe_path is not None:
+            return self._csv_render_error(
+                arguments,
+                summary="Multipanel render runtime path is not safe to write.",
+                errors=[f"Runtime write path includes a symlinked component: {unsafe_path}"],
+                is_dry_run=False,
+                failure_stage="EXPORT",
+                resolution_hint="Choose a different job_id/runtime root or remove the symlinked runtime path manually.",
+                tool_name="figops.render_csv_multipanel",
+            )
         try:
             job_root.mkdir(parents=True, exist_ok=True)
             (job_root / "data").mkdir(parents=True, exist_ok=True)
@@ -1519,48 +850,26 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             with redirect_stdout(sys.stderr):
                 select_adapters(prefetch_config).prefetcher.ensure_local([str(path) for path in source_paths])
 
-            render_panels = []
-            copied_data_paths = []
-            for index, panel in enumerate(panel_specs):
-                copied_path = job_root / "data" / f"panel_{index + 1}.csv"
-                shutil.copy2(panel.pop("source_data_path"), copied_path)
-                copied_data_paths.append(str(copied_path))
-                created_paths.append(str(copied_path))
-                render_panels.append({"csv_path": str(copied_path), "output_path": "", **panel})
-            render_payload = {
-                "panels": render_panels,
-                "output_path": str(output_path),
-                "rows": rows,
-                "cols": cols,
-                "target_format": target_format,
-                "column_width": str(arguments.get("column_width") or "double"),
-                "panel_height_mm": panel_height_mm,
-                "panel_labels": bool(arguments.get("panel_labels", True)),
-                "font_scale": font_scale,
-                "profile_name": profile,
-                "compose_mode": str(arguments.get("compose_mode") or "draft"),
-                "shared_legend": shared_legend,
-                "shared_legend_options": shared_legend_options,
-                **layout_options,
-            }
-            config_path.write_text(
-                yaml.safe_dump(
-                    {
-                        "tool": "figops.render_csv_multipanel",
-                        "target_format": target_format,
-                        "profile": profile,
-                        "output_format": output_format,
-                        "layout_options": layout_options,
-                        "shared_legend": shared_legend,
-                        "shared_legend_options": shared_legend_options,
-                        "render_payload": render_payload,
-                        "panels": render_panels,
-                    },
-                    sort_keys=False,
-                ),
-                encoding="utf-8",
+            prepared = prepare_multipanel_render_payload(
+                panel_specs=panel_specs,
+                job_root=job_root,
+                output_path=output_path,
+                config_path=config_path,
+                arguments=arguments,
+                rows=rows,
+                cols=cols,
+                target_format=target_format,
+                profile=profile,
+                output_format=output_format,
+                panel_height_mm=panel_height_mm,
+                font_scale=font_scale,
+                layout_options=layout_options,
+                shared_legend=shared_legend,
+                shared_legend_options=shared_legend_options,
             )
-            created_paths.append(str(config_path))
+            render_payload = prepared["render_payload"]
+            copied_data_paths = prepared["copied_data_paths"]
+            created_paths.extend(prepared["created_paths"])
             with self._geometry_diagnostics_env(job_root):
                 self._run_render_multipanel_figure(render_payload)
             geometry_diagnostics = render_helpers._read_geometry_sidecar(job_root)

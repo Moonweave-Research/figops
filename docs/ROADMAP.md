@@ -4,9 +4,11 @@
 > publication-quality plotting, self-describing MCP tools, and honest
 > operational guardrails.
 >
-> Status baseline: v0.17.9+ after polish-layer PRs #196-#198. M1 through M5 have shipped across
-> the 0.5.0+ release line. The remaining roadmap is maintenance, scoped debt
-> reduction, and bounded polish-layer waves that preserve journal constraints.
+> Status baseline: source checkout `0.17.10` after polish-layer PRs #196-#198;
+> `0.17.9` remains the latest locally documented public release. M1 through M5
+> have shipped across the 0.5.0+ release line. The remaining roadmap is
+> maintenance, scoped debt reduction, and bounded polish-layer waves that
+> preserve journal constraints.
 
 ## How to read this
 
@@ -26,13 +28,13 @@
 - Actions are not part of local verification and should not be triggered for
   docs-only work.
 
-## Current-state scorecard (v0.17.9, 2026-06-28)
+## Current-state scorecard (0.17.10 source line, 2026-06-29)
 
 | Dimension | Score | Read |
 |---|---:|---|
 | Vision and feature breadth | 9/10 | Data contracts, provenance, regression checks, geometry QA, semantic checks, journal styles, and domain helpers are deep for a lab tool. |
 | Fundamentals and security | 9/10 | Audit-fix issues #153-158 are resolved; MCP root/runtime trust, duplicate-key YAML loading, symlink guards, and runtime-root isolation are in place. |
-| Code maintainability | 7/10 | The MCP monolith is decomposed and data-contract IO/orchestration has been split. Remaining debt is concentrated in large modules such as `plotting/bridge_renderer.py`, `hub_core/data_contract_semantics.py`, and `hub_core/config_parser.py`. |
+| Code maintainability | 8/10 | The MCP monolith is decomposed, data-contract IO/semantics are split, and the 2026-06-29 decomposition wave brought the prior primary hotspots below 1000 lines with compatibility shims intact. Remaining size debt is narrower and tracked as maintenance, not a blocking milestone. |
 | Generality / portability | 7/10 | Prefetch, Athena, and conventions adapters are opt-in with generic defaults; project status and schema versioning are explicit. |
 | DX / docs / discoverability | 8/10 | Registry-backed `figops.describe`, generated `docs/tools.md`, `docs/mcp_errors.md`, and `figops.doctor` have shipped. |
 
@@ -62,7 +64,8 @@ hub_core/
   domain_analysis.py          # registered domain analysis helpers
   data_contract.py            # data-contract orchestration and compatibility surface
   data_contract_io.py         # table loading, supported formats, path collection
-  data_contract_semantics.py  # semantic validators and calculation checks
+  data_contract_semantics.py  # compatibility surface for semantic validators
+  data_contract_semantic_*    # focused semantic validator families
   process_runner.py           # pipeline execution helpers
 themes/                       # journal styles, palettes, font tokens
 docs/                         # quickstart, generated tool refs, specs, roadmap
@@ -87,8 +90,9 @@ What is true now:
 - `GraphHubMCPServer`, `run_stdio_server`, and `list_tool_definitions` are
   exported from the decomposed MCP package.
 - Ruff debt has been cleared; `ruff check .` is expected to pass with 0 errors.
-- The module-size budget remains aspirational, not CI-enforced. Current
-  over-budget files are listed in `docs/architecture.md`.
+- The module-size budget remains a split signal rather than a hard threshold.
+  Inventory freshness is pytest-checked through `tests/test_architecture_inventory.py`;
+  import layering remains policy-only.
 
 ### M2 - Fundamentals
 
@@ -184,26 +188,37 @@ calculation sidecar helpers, statistical quality checks, unit helpers, and
 ordering helpers live in focused semantic modules. `hub_core.data_contract`
 keeps compatibility shims for existing private imports and monkeypatch surfaces.
 
-The next safe decomposition track should target the current hotspots:
+The 2026-06-29 decomposition wave completed the active primary-hotspot track:
 
-- `plotting/bridge_renderer.py` (first wave complete: box/violin distribution renderers moved to `plotting/renderers/distribution.py`, heatmap moved to `plotting/renderers/heatmap.py`, bar renderer and aggregate helpers moved to `plotting/renderers/bar.py`, shared renderer helpers moved to `plotting/renderers/common.py`, XY renderer moved to `plotting/renderers/xy.py`, broken-axis renderer moved to `plotting/renderers/broken_axis.py`, facet renderer moved to `plotting/renderers/facet.py`)
-- `hub_core/config_parser.py`
-- `hub_core/data_contract_semantics.py`
-- `hub_core/geometry_diagnostics.py`
-- `hub_core/mcp/tools/render_csv.py`
+- `plotting/bridge_renderer.py` is below 1000 lines after plot-type renderer,
+  overlay, shared-legend, manuscript-layout, and figure-style helper
+  extraction.
+- `hub_core/config_parser.py` is below 1000 lines after style/schema,
+  research-metadata, semantic-check, project-registry, sweep/comparison, and
+  visual-output validation extraction.
+- `hub_core/data_contract_semantics.py` is below 600 lines after registry,
+  unit, ordering, grouped, statistical, scalar, quality, and calculation-check
+  helper extraction.
+- `hub_core/geometry_diagnostics.py`, `hub_core/mcp/tools/render_csv.py`, and
+  `hub_core/mcp/schemas.py` have also been reduced through focused helper
+  modules while preserving compatibility aliases.
 
-Each extraction should be behavior-preserving, keep public imports compatible,
-and add a witness test for the behavior being moved.
+Remaining over-budget files are listed in `docs/architecture.md`. Future
+extractions should be selected from that live inventory, remain
+behavior-preserving, keep public imports compatible, and add a witness test for
+the behavior being moved.
 
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 
 ### R2 - Architecture guardrails
 
-The 800-line module budget and downward-layering rule are not currently
-CI-enforced. If this becomes a recurring regression, add a small architecture
-check or import-linter contract as its own PR. Do not imply the guard exists
-until it does.
+The large-module inventory is now pytest-checked for freshness through
+`tests/test_architecture_inventory.py`, which keeps `docs/architecture.md`
+aligned with live source. The 800-line budget remains a split signal rather than
+a hard failure threshold, and downward import layering is still policy-only. If
+layering regressions become recurring, add an import-linter contract as its own
+PR. Do not imply that import-layer enforcement exists until it does.
 
 ### R3 - Release and docs hygiene
 

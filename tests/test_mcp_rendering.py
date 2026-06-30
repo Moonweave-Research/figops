@@ -112,7 +112,7 @@ data_contract:
   csv_checks:
     - path: results/data/summary.csv
       required_columns: ["x", "y"]
-      dtypes: {x: float, y: float}
+      dtypes: {x: number, y: number}
 figures:
   - id: Fig1
     script: hub_scripts/plot.py
@@ -173,7 +173,7 @@ data_contract:
   csv_checks:
     - path: results/data/summary.csv
       required_columns: ["x", "y"]
-      dtypes: {x: float, y: float}
+      dtypes: {x: number, y: number}
 figures:
   - id: Fig1
     script: hub_scripts/plot.py
@@ -227,7 +227,7 @@ data_contract:
   csv_checks:
     - path: results/data/summary.csv
       required_columns: ["x", "y"]
-      dtypes: {x: float, y: float}
+      dtypes: {x: number, y: number}
 figures:
   - id: Fig1
     script: hub_scripts/plot.py
@@ -566,6 +566,35 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(len(collected["provenance"]["config_sha256"]), 64)
             self.assertEqual(len(collected["provenance"]["environment_sha256"]), 64)
 
+    def test_render_csv_graph_refuses_symlinked_latest_destination(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = _write_csv(tmp_root / "input" / "data.csv")
+            runtime_root = tmp_root / "runtime"
+            outside_latest = tmp_root / "outside_latest"
+            outside_latest.mkdir()
+            latest_parent = runtime_root / "_latest"
+            latest_parent.mkdir(parents=True)
+            symlink_or_skip(latest_parent / "mcp_render", outside_latest, target_is_directory=True)
+            server = GraphHubMCPServer(research_root=tmp_root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "job_id": "latest-symlink",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "EXPORT")
+            self.assertIn("symlinked", result["errors"][0])
+            self.assertFalse((outside_latest / "manifest.json").exists())
+            self.assertFalse((outside_latest / "status.json").exists())
+
     def test_render_project_figure_dry_run_does_not_create_runtime_job(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
@@ -851,6 +880,33 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn("Data contract preflight failed", result["errors"][0])
             self.assertFalse((runtime_root / "mcp_project_jobs" / "missing-input").exists())
 
+    def test_render_project_figure_semantic_failure_fails_full_data_contract_without_writing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["data_contract"]["csv_checks"][0]["semantic_checks"] = {"y": {"range": [0, 1]}}
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+            sidecar = project / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar.parent.mkdir(parents=True, exist_ok=True)
+            sidecar.write_text('{"keep": true}', encoding="utf-8")
+            runtime_root = Path(tmpdir) / "runtime"
+            before = _snapshot_tree(project)
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "semantic-fails", "dry_run": True},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "VALIDATE")
+            self.assertIn("Data contract validation failed", result["errors"][0])
+            self.assertEqual(_snapshot_tree(project), before)
+            self.assertFalse((runtime_root / "mcp_project_jobs" / "semantic-fails").exists())
+
     def test_render_project_figure_refuses_symlinked_snapshot_inputs(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
@@ -871,6 +927,18 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "EXPORT")
             self.assertIn("symlink", result["errors"][0])
+
+    def test_safe_preflight_preserves_supported_non_nature_targets(self):
+        server = GraphHubMCPServer(research_root=Path.cwd(), runtime_root=Path.cwd() / ".tmp-mcp-runtime")
+        with patch(
+            "hub_core.mcp.tools.render_support.validate_figure_preflight",
+            return_value={"passed": True},
+        ) as preflight:
+            for target in ("wiley", "cell", INTERNAL_STYLE_TARGET_FORMAT):
+                with self.subTest(target=target):
+                    server._safe_preflight(Path("figure.jpg"), target)
+                    args, _kwargs = preflight.call_args
+                    self.assertEqual(args[1], target)
 
     def test_render_project_figure_script_failure_error_does_not_leak_absolute_paths(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -1883,6 +1951,44 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["panels"][1]["fit_options"]["ci_alpha"], 0.15)
             self.assertEqual(captured["panels"][1]["significance_markers"][0]["label"], "p<0.05")
             self.assertEqual(result["provenance"]["renderer_surface"], "figops.render_csv_multipanel")
+
+    def test_render_csv_multipanel_overwrite_removes_existing_job_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = _write_csv(tmp_root / "input" / "data.csv")
+            runtime_root = tmp_root / "runtime"
+            job_root = runtime_root / "mcp_jobs" / "multipanel-overwrite"
+            stale = job_root / "stale.txt"
+            stale.parent.mkdir(parents=True)
+            stale.write_text("old", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=tmp_root, runtime_root=runtime_root)
+
+            def capture_render(spec_payload):
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_multipanel_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_multipanel",
+                    {
+                        "panels": [{"data_path": str(data_path), "x_column": "x", "y_column": "y"}],
+                        "rows": 1,
+                        "cols": 1,
+                        "job_id": "multipanel-overwrite",
+                        "overwrite": True,
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertFalse(stale.exists())
+            self.assertTrue((job_root / "outputs" / "multipanel.png").exists())
 
     def test_render_csv_multipanel_forwards_layout_options(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:

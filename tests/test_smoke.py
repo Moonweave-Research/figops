@@ -5,8 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-
-import pytest
+from unittest import mock
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
 ORCHESTRATOR = HUB_ROOT / "orchestrator.py"
@@ -30,9 +29,9 @@ def _r_packages_available() -> bool:
 
 
 class HubSmokeTest(unittest.TestCase):
-    @pytest.mark.skipif(
-        not _r_packages_available(),
-        reason="R runtime + readr package required for full scaffold analysis step",
+    @unittest.skipUnless(
+        _r_packages_available(),
+        "R runtime + readr package required for full scaffold analysis step",
     )
     def test_scaffold_all_and_cache(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_smoke_") as tmpdir:
@@ -112,7 +111,7 @@ class HubSmokeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_smoke_env_") as tmpdir:
             tmp_path = Path(tmpdir)
             with (
-                unittest.mock.patch.dict(
+                mock.patch.dict(
                     os.environ,
                     {
                         "RESEARCH_HUB_RUNTIME_ROOT": "/ambient/runtime/root",
@@ -120,7 +119,7 @@ class HubSmokeTest(unittest.TestCase):
                     },
                     clear=False,
                 ),
-                unittest.mock.patch("subprocess.run") as run_mock,
+                mock.patch("subprocess.run") as run_mock,
             ):
                 run_mock.return_value = subprocess.CompletedProcess(["demo"], 0, "", "")
 

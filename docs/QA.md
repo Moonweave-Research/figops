@@ -87,6 +87,10 @@ python orchestrator.py --docker --docker-build --project "12. ionoelastomer" --s
 3. **파일 품질 게이트**
 - 0 byte 파일 생성 금지.
 - PDF/PNG 포맷 헤더 유효성 검사 통과.
+- SVG는 `width`/`height` 물리 단위(`mm`, `cm`, `in`, `pt`, `px`)가 있으면
+  journal max width preflight를 적용한다.
+- PDF/EPS는 현재 파일 크기와 PDF font safety를 검사하되, 물리 폭 추출은
+  렌더러 의존성이 커서 명시적으로 dimension check를 skip한다.
 
 4. **수학적 최적화 및 물리적 한계선(Boundary) 교차 검증 (QA Logic)**
 - 물리적 하한선(예: $y \ge 0$)과 데이터의 노이즈 밴드가 충돌하는 경우, 맹목적으로 하한선을 강제(Bounded Fitting)하여 발생하는 '계통적 오차(Systematic Error)'를 허용하지 않음.
@@ -94,7 +98,65 @@ python orchestrator.py --docker --docker-build --project "12. ionoelastomer" --s
 
 ---
 
-## 3) 운영 권고
+## 3) Publication-Ready Figure Quality Rubric
+
+Full rubric: `docs/specs/2026-06-30-figure-quality-rubric.md`
+
+Use this rubric after render/preflight outputs exist. It is a review layer over
+the existing FigOps checks, not a replacement for data contracts, geometry
+diagnostics, visual regression, or provenance.
+
+Review outcomes:
+- `publishable`: all hard gates pass, and advisory issues do not obscure the
+  result.
+- `revise`: hard gates pass, but advisory polish should be improved before
+  release/submission.
+- `blocked`: any hard gate fails, or a hard-gate diagnostic is skipped without a
+  format/runtime reason.
+
+Hard gates:
+- `FQ-H1` Artifact integrity: figure exists, is non-empty, format/header and
+  `validate_figure_preflight` error-enforced checks pass.
+- `FQ-H2` Journal-safe geometry: no clipped required artists; `journal_compliance`
+  and `font_size_token_drift` are acceptable for the selected target format.
+- `FQ-H3` Readability collisions: tick, title, legend, colorbar, annotation, and
+  data-artist overlap checks do not block interpretation.
+- `FQ-H4` Data visibility: plotted data remain visible in the intended axes, with
+  severe overplotting handled and semantic/data-contract checks still valid.
+- `FQ-H5` Traceability: output maps to project config, script, inputs, style
+  target/profile, provenance hash, and declared baseline when configured.
+
+Advisory polish:
+- `FQ-A1` Visual hierarchy: the primary result is visually dominant without
+  hiding uncertainty or comparisons.
+- `FQ-A2` Label density: labels are sparse enough to scan and dense labels are
+  abbreviated, rotated, faceted, or moved out of the plot.
+- `FQ-A3` Contrast and accessibility: series, overlays, reference lines, and text
+  remain distinguishable in grayscale and CVD-safe review.
+- `FQ-A4` Panel balance: multipanel figures have consistent scale, margins,
+  labels, and legend strategy unless an asymmetry is intentional.
+- `FQ-A5` Narrative clarity: measured quantity, units, groups, uncertainty, and
+  takeaway are understandable without reading the plotting script.
+
+Future geometry, preflight, or visual-regression diagnostics should map to one
+of these rubric IDs, or be explicitly marked informational, before becoming a
+generated warning.
+
+Diagnostic name mapping for current render outputs:
+
+| Surface | Names | Rubric use |
+| --- | --- | --- |
+| `validate_figure_preflight` | `format`, `dpi`, `dimensions`, `font_settings`, `file_size`, `color_mode` | `FQ-H1` artifact integrity. |
+| `geometry_diagnostics/1` | `artists_outside_figure`, `journal_compliance`, `font_size_token_drift` | `FQ-H2` journal-safe geometry; `font_size_token_drift` can also inform `FQ-A1`. |
+| `geometry_diagnostics/1` | `tick_label_overlaps`, `axis_label_title_overlap`, `figure_title_panel_title_overlap`, `colorbar_overlap`, `legend_internal_overlaps`, `artist_overlaps`, `point_annotation_overlaps` | `FQ-H3` readability collisions. |
+| `geometry_diagnostics/1` | `artists_outside_axes`, `marker_marker_overlaps`, `blank_area_ratio` | `FQ-H4` data visibility; `blank_area_ratio` can also inform `FQ-A4`. |
+| `geometry_diagnostics/1` | `legend_marker_consistency`, `tick_label_crowding`, `point_label_skips`, `text_axis_edge_proximity`, `annotation_overlay_contrast`, `label_offset_consistency` | `FQ-A1` through `FQ-A4` advisory polish unless the finding blocks interpretation. |
+| `geometry_diagnostics/1` | `legend_data_collision` | Informational only in the current implementation. |
+| Data/provenance outputs | `data_contract semantic checks`, project config figure declaration, `provenance`, `figure_traceability_matrix`, visual-regression baseline state | `FQ-H5` traceability. |
+
+---
+
+## 4) 운영 권고
 
 - **허브 모듈 수정 시**: `hub_core/` 내부 로직 변경 시 반드시 2개 이상의 서로 다른 프로젝트(`ionoelastomer`, `Sulfur_polymer`)에 대해 테스트를 수행.
 - **Runtime 상태 분리**: 데이터 결과값, 회귀 baseline, 실행 로그, 자격증명은 repo 밖 runtime/cache 경로에 둔다. DVC/data registry는 현재 운영 표면에서 retired 상태다.

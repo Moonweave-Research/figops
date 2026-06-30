@@ -1,0 +1,228 @@
+{
+  "schema_version": "0.5",
+  "plan_id": "figure-quality-rubric-2026-06-30",
+  "created_by": "codex",
+  "lane": "lane-d-figure-quality-rubric",
+  "status": "active",
+  "objective": "Define a compact publication-ready figure quality rubric that separates hard gates from advisory polish and maps to existing FigOps diagnostics where possible.",
+  "scope": [
+    "Documentation-only rubric for human and agent review.",
+    "Hard gates for artifact integrity, journal-safe geometry, readability collisions, data visibility, and traceability.",
+    "Advisory polish prompts for visual hierarchy, label density, contrast, panel balance, and narrative clarity.",
+    "Compact mapping between rubric IDs and current validate_figure_preflight plus geometry_diagnostics/1 names.",
+    "Deterministic markdown and JSON sanity checks."
+  ],
+  "non_goals": [
+    "No code changes.",
+    "No new diagnostics implementation.",
+    "No automated aesthetic scoring.",
+    "No release publication."
+  ],
+  "review_outcomes": [
+    "publishable",
+    "revise",
+    "blocked"
+  ],
+  "hard_gates": [
+    {
+      "id": "FQ-H1",
+      "name": "Artifact integrity",
+      "existing_mappings": [
+        "validate_figure_preflight.format",
+        "validate_figure_preflight.dpi",
+        "validate_figure_preflight.dimensions",
+        "validate_figure_preflight.font_settings",
+        "validate_figure_preflight.file_size",
+        "validate_figure_preflight.color_mode",
+        "docs/QA.md file-quality gates"
+      ]
+    },
+    {
+      "id": "FQ-H2",
+      "name": "Journal-safe geometry",
+      "existing_mappings": [
+        "geometry_diagnostics.artists_outside_figure",
+        "geometry_diagnostics.journal_compliance",
+        "geometry_diagnostics.font_size_token_drift",
+        "visual_preflight_status"
+      ]
+    },
+    {
+      "id": "FQ-H3",
+      "name": "Readability collisions",
+      "existing_mappings": [
+        "geometry_diagnostics.tick_label_overlaps",
+        "geometry_diagnostics.axis_label_title_overlap",
+        "geometry_diagnostics.figure_title_panel_title_overlap",
+        "geometry_diagnostics.colorbar_overlap",
+        "geometry_diagnostics.legend_internal_overlaps",
+        "geometry_diagnostics.artist_overlaps",
+        "geometry_diagnostics.point_annotation_overlaps"
+      ]
+    },
+    {
+      "id": "FQ-H4",
+      "name": "Data visibility",
+      "existing_mappings": [
+        "geometry_diagnostics.artists_outside_axes",
+        "geometry_diagnostics.marker_marker_overlaps",
+        "geometry_diagnostics.blank_area_ratio",
+        "data_contract semantic checks"
+      ]
+    },
+    {
+      "id": "FQ-H5",
+      "name": "Traceability",
+      "existing_mappings": [
+        "provenance fingerprint",
+        "project_config figure declaration",
+        "figure_traceability_matrix",
+        "visual_regression baseline state when configured"
+      ]
+    }
+  ],
+  "advisory_polish": [
+    {
+      "id": "FQ-A1",
+      "name": "Visual hierarchy",
+      "existing_mappings": [
+        "style profile",
+        "series styles",
+        "geometry_diagnostics.legend_marker_consistency",
+        "geometry_diagnostics.font_size_token_drift"
+      ]
+    },
+    {
+      "id": "FQ-A2",
+      "name": "Label density",
+      "existing_mappings": [
+        "geometry_diagnostics.tick_label_crowding",
+        "geometry_diagnostics.point_label_skips",
+        "geometry_diagnostics.text_axis_edge_proximity"
+      ]
+    },
+    {
+      "id": "FQ-A3",
+      "name": "Contrast and accessibility",
+      "existing_mappings": [
+        "geometry_diagnostics.annotation_overlay_contrast",
+        "style palette/profile checks where available"
+      ]
+    },
+    {
+      "id": "FQ-A4",
+      "name": "Panel balance",
+      "existing_mappings": [
+        "multipanel layout options",
+        "geometry_diagnostics.blank_area_ratio",
+        "geometry_diagnostics.label_offset_consistency",
+        "shared_legend output",
+        "panel labels"
+      ]
+    },
+    {
+      "id": "FQ-A5",
+      "name": "Narrative clarity",
+      "existing_mappings": [
+        "project figure metadata",
+        "axis titles",
+        "legend labels",
+        "callouts",
+        "captions"
+      ]
+    }
+  ],
+  "diagnostic_mapping": [
+    {
+      "surface": "validate_figure_preflight",
+      "names": [
+        "format",
+        "dpi",
+        "dimensions",
+        "font_settings",
+        "file_size",
+        "color_mode"
+      ],
+      "rubric": "FQ-H1"
+    },
+    {
+      "surface": "geometry_diagnostics/1",
+      "names": [
+        "artists_outside_figure",
+        "journal_compliance",
+        "font_size_token_drift"
+      ],
+      "rubric": "FQ-H2"
+    },
+    {
+      "surface": "geometry_diagnostics/1",
+      "names": [
+        "tick_label_overlaps",
+        "axis_label_title_overlap",
+        "figure_title_panel_title_overlap",
+        "colorbar_overlap",
+        "legend_internal_overlaps",
+        "artist_overlaps",
+        "point_annotation_overlaps"
+      ],
+      "rubric": "FQ-H3"
+    },
+    {
+      "surface": "geometry_diagnostics/1",
+      "names": [
+        "artists_outside_axes",
+        "marker_marker_overlaps",
+        "blank_area_ratio"
+      ],
+      "rubric": "FQ-H4"
+    },
+    {
+      "surface": "data/provenance",
+      "names": [
+        "data_contract semantic checks",
+        "provenance",
+        "project config figure declaration",
+        "figure_traceability_matrix",
+        "visual-regression baseline state"
+      ],
+      "rubric": "FQ-H5"
+    },
+    {
+      "surface": "geometry_diagnostics/1",
+      "names": [
+        "legend_marker_consistency",
+        "tick_label_crowding",
+        "point_label_skips",
+        "text_axis_edge_proximity",
+        "annotation_overlay_contrast",
+        "label_offset_consistency"
+      ],
+      "rubric": "FQ-A1 through FQ-A4"
+    },
+    {
+      "surface": "geometry_diagnostics/1",
+      "names": [
+        "legend_data_collision"
+      ],
+      "rubric": "informational"
+    }
+  ],
+  "acceptance": [
+    "Rubric markdown defines hard gates and advisory polish separately.",
+    "Every hard gate maps to an existing FigOps check or documented QA/provenance surface.",
+    "Rubric markdown includes a compact diagnostic-name mapping for current preflight and geometry diagnostics.",
+    "Advisory polish covers visual hierarchy, contrast, label density, panel balance, narrative clarity, and traceability context.",
+    "The matching plan JSON parses and lists the same rubric IDs.",
+    "docs/QA.md links this rubric and summarizes how to use it in release or figure review."
+  ],
+  "verification": [
+    "python3 -m json.tool docs/specs/2026-06-30-figure-quality-rubric.plan.json >/dev/null",
+    "python3 - <<'PY'\nfrom pathlib import Path\nmd = Path('docs/specs/2026-06-30-figure-quality-rubric.md').read_text(encoding='utf-8')\nrequired = ['FQ-H1', 'FQ-H2', 'FQ-H3', 'FQ-H4', 'FQ-H5', 'FQ-A1', 'FQ-A2', 'FQ-A3', 'FQ-A4', 'FQ-A5']\nmissing = [item for item in required if item not in md]\nif missing:\n    raise SystemExit(f'missing rubric ids: {missing}')\nfor name in ['legend_data_collision', 'label_offset_consistency', 'geometry_diagnostics/1']:\n    if name not in md:\n        raise SystemExit(f'missing diagnostic mapping: {name}')\nPY",
+    "python3 - <<'PY'\nfrom pathlib import Path\nqa = Path('docs/QA.md').read_text(encoding='utf-8')\nif '2026-06-30-figure-quality-rubric.md' not in qa:\n    raise SystemExit('QA guide does not link the figure quality rubric')\nPY"
+  ],
+  "residual_risks": [
+    "Subjective review remains necessary for narrative quality and panel emphasis.",
+    "Some mapped diagnostics may be skipped for format or runtime reasons and require reviewer notes.",
+    "This slice documents future diagnostic mapping policy but does not enforce it in code."
+  ]
+}

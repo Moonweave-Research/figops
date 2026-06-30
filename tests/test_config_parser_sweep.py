@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hub_core import config_parser, config_schema
+from hub_core import config_parser, config_research_metadata, config_schema, config_top_level_keys
 from hub_core.config_parser import (
     CURRENT_CONFIG_SCHEMA_VERSION,
     SUPPORTED_CONFIG_SCHEMA_VERSIONS,
@@ -28,6 +28,31 @@ def test_config_parser_keeps_schema_compatibility_exports():
     assert config_parser._load_yaml_with_unique_keys is config_schema.load_yaml_with_unique_keys
     assert config_parser.load_yaml_with_unique_keys is config_schema.load_yaml_with_unique_keys
     assert config_parser.migrate_config is config_schema.migrate_config
+
+
+def test_config_parser_keeps_top_level_key_compatibility_exports():
+    assert config_parser.KNOWN_TOP_LEVEL_CONFIG_KEYS is config_top_level_keys.KNOWN_TOP_LEVEL_CONFIG_KEYS
+    assert config_parser._top_level_key_fingerprint is config_top_level_keys.top_level_key_fingerprint
+    assert config_parser._levenshtein_distance is config_top_level_keys.levenshtein_distance
+    assert config_parser._top_level_key_suggestion is config_top_level_keys.top_level_key_suggestion
+    assert config_parser._validate_top_level_key_near_misses is config_top_level_keys.validate_top_level_key_near_misses
+
+
+def test_config_parser_keeps_research_metadata_compatibility_exports():
+    assert config_parser._validate_experimental_conditions is config_research_metadata.validate_experimental_conditions
+    assert config_parser._validate_sample_registry is config_research_metadata.validate_sample_registry
+    assert config_parser._condition_sample_references is config_research_metadata.condition_sample_references
+    assert config_parser._validate_relative_path_value is config_research_metadata.validate_relative_path_value
+    assert config_parser._validate_canonical_docs is config_research_metadata.validate_canonical_docs
+    assert config_parser._experimental_condition_ids is config_research_metadata.experimental_condition_ids
+
+
+def test_config_parser_raw_integrity_wrapper_preserves_allowed_modes():
+    errors: list[str] = []
+
+    config_parser._validate_raw_integrity_config(errors, {"mode": "audit"})
+
+    assert errors == ["data_contract.raw_integrity.mode must be one of: strict, warn."]
 
 
 class TestUniqueKeyConfigLoader(unittest.TestCase):

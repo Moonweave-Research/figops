@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pandas as pd
 
+from hub_core import data_contract, data_contract_semantic_scalar, data_contract_semantics
 from hub_core.config_parser import load_config, validate_config
 from hub_core.data_contract import (
     _dtype_matches,
@@ -288,6 +289,23 @@ class TestSemanticMonotonicContract(unittest.TestCase):
 
 
 class TestSemanticRangeAndUniqueContracts(unittest.TestCase):
+    def test_scalar_check_compatibility_exports_are_preserved(self):
+        self.assertIs(
+            data_contract_semantics._check_allow_null_constraint,
+            data_contract_semantic_scalar.check_allow_null_constraint,
+        )
+        self.assertIs(
+            data_contract_semantics._check_range_constraint,
+            data_contract_semantic_scalar.check_range_constraint,
+        )
+        self.assertIs(
+            data_contract_semantics._check_unique_constraint,
+            data_contract_semantic_scalar.check_unique_constraint,
+        )
+        self.assertIs(data_contract._check_allow_null_constraint, data_contract_semantics._check_allow_null_constraint)
+        self.assertIs(data_contract._check_range_constraint, data_contract_semantics._check_range_constraint)
+        self.assertIs(data_contract._check_unique_constraint, data_contract_semantics._check_unique_constraint)
+
     def test_range_violation_reports_non_range_index_rows(self):
         df = pd.DataFrame({"value": [1, 8, 5]}, index=[10, 13, 14])
 

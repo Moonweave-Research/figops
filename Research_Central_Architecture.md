@@ -1,15 +1,21 @@
-# Graph Hub Architecture
+# FigOps / Graph Hub Architecture
 
 > Purpose: provide a reproducible, project-agnostic analysis and plotting hub for research projects.
 > Principle: data contracts define the API; visual style and quality gates are centralized here.
-> Current status: independent repository, separated from the ResearchOS root.
+> Current status: historical architecture blueprint for the independent FigOps repository.
+
+This document preserves the earlier Graph Hub architecture language. For current
+module inventory, release-state reading, and maintenance priorities, prefer
+`docs/architecture.md` and `docs/ROADMAP.md`. Public package and command names
+are now FigOps (`figops`, `figops-mcp`), while Graph Hub names remain as
+compatibility aliases.
 
 ## 1. Repository Boundary
 
-Graph Hub lives as its own Git repository:
+FigOps, formerly documented as Graph Hub, lives as its own Git repository:
 
 ```text
-/Users/choemun-yeong/workspace/graph-making-hub
+C:/dev/workspace/figops
 ```
 
 Research projects remain outside this repository. The Hub discovers project folders through `project_config.yaml` and executes only the configured analysis, plot, diagram, and validation steps.
@@ -18,7 +24,7 @@ Expected sibling layout on the local machine:
 
 ```text
 workspace/
-  graph-making-hub/       # this repository
+  figops/                 # this repository
   ResearchOS/             # workspace control plane and research project links
 ```
 
