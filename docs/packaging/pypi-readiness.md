@@ -52,7 +52,7 @@ The locally documented GitHub Release asset remains available when an exact
 attached artifact is needed:
 
 ```bash
-APPROVED_VERSION=0.17.9  # replace with the approved release version
+APPROVED_VERSION=0.17.10  # replace with the approved GitHub Release version
 gh release download "v$APPROVED_VERSION" --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
 python -m pip install "dist-release/figops-$APPROVED_VERSION-py3-none-any.whl"
 figops-mcp --smoke
@@ -61,14 +61,15 @@ figops-mcp --smoke
 Maintainers should attach both built artifacts to each release and verify them:
 
 ```bash
-APPROVED_VERSION=0.17.9  # replace with the approved release version
+APPROVED_VERSION=0.17.10  # replace with the approved GitHub Release version
 gh release upload "v$APPROVED_VERSION" "dist/figops-$APPROVED_VERSION-py3-none-any.whl" "dist/figops-$APPROVED_VERSION.tar.gz"
 python scripts/github_release_asset_smoke.py
 ```
 
-The `0.17.9` examples above are local documentation anchors, not a live latest
-release assertion. Update them only after explicit release-maintainer approval
-and public index/release-asset verification.
+The examples above are local documentation anchors: PyPI remains pinned to
+`0.17.9`, while the GitHub Release asset is pinned to `0.17.10`. Update either
+only after explicit release-maintainer approval and public index/release-asset
+verification.
 
 ## Current distribution boundary
 

@@ -45,18 +45,18 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 
 | Item | Status |
 | --- | --- |
-| Source checkout | `0.17.10` development line (`pyproject.toml`) |
+| Source checkout | `0.17.10` release line (`pyproject.toml`) |
 | Published package | [`figops==0.17.9`](https://pypi.org/project/figops/0.17.9/) is the latest locally documented PyPI release |
 | Python | 3.12+ |
 | License | Apache-2.0 for public package distribution |
 | Commands | `figops`, `figops-mcp` |
 | Compatibility aliases | `graphhub`, `graphhub-mcp` |
-| GitHub Release | [`v0.17.9`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.9) is the latest locally documented release asset |
+| GitHub Release | [`v0.17.10`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.10) is the latest locally documented release asset |
 
-The repository may be ahead of the published package. Treat `pyproject.toml` as
-the source version and the pinned install snippets below as the locally
-documented public install path until a release maintainer publishes and verifies
-a newer version.
+The GitHub Release may be ahead of the published PyPI package. Treat
+`pyproject.toml` and the GitHub Release asset as the source/build version, and
+the pinned PyPI snippets below as the locally documented public-index install
+path until a release maintainer publishes and verifies a newer PyPI version.
 
 ## Install
 
@@ -75,8 +75,8 @@ python -m pip install figops==0.17.9
 If you need the exact GitHub Release asset:
 
 ```bash
-gh release download v0.17.9 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.9-py3-none-any.whl
+gh release download v0.17.10 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.10-py3-none-any.whl
 figops-mcp --smoke
 ```
 
