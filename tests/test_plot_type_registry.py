@@ -4,6 +4,7 @@ from pathlib import Path
 from matplotlib.axes import Axes
 
 from hub_core.mcp.schemas import describe_figops_surface, list_tool_definitions
+from hub_core.mcp.tools.render_csv_args import _validated_plot_argument_compatibility
 from hub_core.mcp.transport import _validate_tool_arguments
 from hub_core.rendering import PLOT_TYPES, PlotType
 from plotting.bridge_renderer import BridgeFigureSpec
@@ -14,6 +15,35 @@ FACET_ORDER_SCHEMA = {"type": "array", "items": {"type": "string"}}
 
 def _noop_render(ax: Axes, points: list[dict], spec: BridgeFigureSpec) -> None:
     ax.set_title(spec.title)
+
+
+def test_render_csv_plot_argument_compatibility_preserves_error_contracts():
+    result = _validated_plot_argument_compatibility(
+        plot_type="bar",
+        raw_annotate_values="yes",
+        raw_bar_error_column="sem",
+        raw_yerr_column="sem",
+        raw_yerr_minus_column=123,
+        raw_yerr_cap_width=-1,
+        series_column="condition",
+        label_column="label",
+        point_label_options={},
+        guide_curves=[{"label": "guide"}],
+        fill_between=[],
+    )
+
+    assert result["annotate_values"] is False
+    assert result["bar_error_column"] == "sem"
+    assert result["yerr_column"] == ""
+    assert result["yerr_cap_width"] == -1.0
+    assert result["errors"] == [
+        "annotate_values must be a boolean.",
+        "yerr_column is only supported for plot_type 'line', 'scatter', or 'xy'.",
+        "yerr_minus_column must be a string.",
+        "yerr_cap_width must be non-negative.",
+        "series_column is only supported for plot_type 'line', 'scatter', or 'xy'.",
+        "guide_curves and fill_between are only supported for plot_type 'line', 'scatter', or 'xy'.",
+    ]
 
 
 def test_registered_plot_type_updates_mcp_schema_and_validator():

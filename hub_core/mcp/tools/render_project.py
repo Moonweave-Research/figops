@@ -5,7 +5,7 @@ from typing import Any
 
 from hub_core.adapters import select_adapters
 from hub_core.config_parser import master_execution_error, project_role, project_status, validate_config
-from hub_core.data_contract import validate_data_contract_preflight
+from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.research_ops_enforcement import validate_research_ops_contract
 
@@ -88,6 +88,22 @@ class McpRenderProjectMixin:
                     errors=["Data contract preflight failed for project render."],
                     failure_stage="VALIDATE",
                     resolution_hint="Fix declared data_contract inputs before rendering this project figure.",
+                )
+            if not validate_data_contract(
+                project_path,
+                config,
+                prefetcher=adapters.prefetcher,
+                write_sidecar=False,
+            ):
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project data contract failed before rendering.",
+                    errors=["Data contract validation failed for project render."],
+                    failure_stage="VALIDATE",
+                    resolution_hint="Fix declared data_contract checks before rendering this project figure.",
                 )
             figures = self._project_figure_entries(config)
             selected, selection_errors = self._select_project_figure(
@@ -202,7 +218,46 @@ class McpRenderProjectMixin:
                 config_path=str(config_path),
             )
         if job_root.exists() and overwrite:
+            symlink = render_helpers._first_symlink_component(job_root)
+            if symlink is not None:
+                return self._project_render_error(
+                    arguments,
+                    dry_run=False,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project render job path is not safe to overwrite.",
+                    errors=[f"Runtime job path includes a symlinked component: {symlink}"],
+                    failure_stage="EXPORT",
+                    resolution_hint="Choose a new job_id or remove the symlinked runtime path manually.",
+                    project_id=project_id,
+                    source_project_path=source_project_path,
+                    snapshot_project_path=str(snapshot_project_path),
+                    selected_figure=selected_public,
+                    output_path=str(output_path),
+                    config_path=str(config_path),
+                )
             shutil.rmtree(job_root)
+        unsafe_path = (
+            render_helpers._first_symlink_component(job_root)
+            or render_helpers._first_symlink_component(latest_dir)
+        )
+        if unsafe_path is not None:
+            return self._project_render_error(
+                arguments,
+                dry_run=False,
+                job_id=job_id,
+                job_root=job_root,
+                summary="Project render runtime path is not safe to write.",
+                errors=[f"Runtime write path includes a symlinked component: {unsafe_path}"],
+                failure_stage="EXPORT",
+                resolution_hint="Choose a different job_id/runtime root or remove the symlinked runtime path manually.",
+                project_id=project_id,
+                source_project_path=source_project_path,
+                snapshot_project_path=str(snapshot_project_path),
+                selected_figure=selected_public,
+                output_path=str(output_path),
+                config_path=str(config_path),
+            )
         created_paths: list[str] = []
         try:
             created_paths = self._copy_project_snapshot(

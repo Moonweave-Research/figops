@@ -9,8 +9,14 @@
 
 - Main protocol: `AGENTS.md` (this file)
 - Sub-agent responsibilities: `SUB_AGENTS.md`
-- Architecture blueprint: `Research_Central_Architecture.md` (Modular Phoenix)
-- Execution backlog and handover memory: `task.md`
+- Current architecture inventory: `docs/architecture.md`
+- Current roadmap and release-state reading guide: `docs/ROADMAP.md`
+- Historical architecture blueprint: `Research_Central_Architecture.md` (Modular Phoenix / Graph Hub terminology)
+- Historical execution backlog and handover memory: `task.md`
+
+Use `docs/architecture.md` and `docs/ROADMAP.md` for current implementation
+state. Use `Research_Central_Architecture.md` and `task.md` as historical
+context unless a current document explicitly points back to them.
 
 ---
 

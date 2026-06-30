@@ -9,25 +9,34 @@ Python 3.12 and `uv`.
 ```bash
 git clone https://github.com/Moonweave-Research/figops.git
 cd figops
-uv sync
+python hub_uv.py sync
 ```
 
 If you are already in a clone, start with:
 
 ```bash
-uv sync
+python hub_uv.py sync
 ```
+
+`hub_uv.py` is the preferred source-checkout entry point. It delegates to `uv`
+while keeping the virtual environment and cache outside the repository. If this
+fails because `uv` is not on `PATH`, install `uv` outside this checkout or use a
+prepared Python 3.12+ environment with FigOps runtime dependencies installed.
 
 ## 2. Check the Environment
 
 ```bash
-uv run python figops_mcp_server.py doctor
-uv run python figops_mcp_server.py --smoke
+python hub_uv.py run python figops_mcp_server.py doctor
+python hub_uv.py run python figops_mcp_server.py --smoke
+python hub_uv.py run python -m pytest tests/test_doctor.py -q
 ```
 
-`doctor` may report warnings for optional `[io]` dependencies or disabled write tools. That is
-normal for a first local run. The quickstart script below enables write tools only inside the
-local `GraphHubMCPServer` instance it creates.
+`doctor` may report warnings for optional `[io]` dependencies, missing `pytest`, missing
+`Rscript`, or disabled write tools. Optional I/O warnings are normal until you need
+Parquet/Feather or HDF5. Missing `pytest` blocks source-checkout test verification; rerun
+`python hub_uv.py sync --group dev` before claiming tests passed. Missing `Rscript` only blocks
+projects that run R analysis steps. The quickstart script below enables write tools only inside
+the local `GraphHubMCPServer` instance it creates.
 
 ## 3. Scaffold and Render a CSV Figure
 
@@ -115,7 +124,7 @@ PY
 Run it:
 
 ```bash
-uv run python .graphhub-quickstart/quickstart_render.py
+python hub_uv.py run python .graphhub-quickstart/quickstart_render.py
 ```
 
 Expected result:

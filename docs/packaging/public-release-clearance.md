@@ -1,6 +1,9 @@
 # Public release clearance checklist
 
-FigOps is published publicly as `figops` on PyPI and can also be shared as a GitHub Release wheel/sdist. Public package distribution uses Apache-2.0, and future PyPI/TestPyPI uploads go through the guarded technical checklist plus the manual Trusted Publishing workflow.
+The local release docs record `figops` as the public PyPI package name and
+`0.17.9` as the pinned GitHub Release wheel/sdist example. Public package
+distribution uses Apache-2.0, and future PyPI/TestPyPI uploads go through the
+guarded technical checklist plus the manual Trusted Publishing workflow.
 
 This checklist is intentionally conservative. It is not legal advice; it is the
 release gate that keeps the project safe while ownership and publication rights
@@ -69,7 +72,8 @@ python -m pip install "figops==$APPROVED_VERSION"
 figops-mcp --smoke
 ```
 
-Use GitHub Release assets when you need the exact attached artifact:
+Use the locally documented GitHub Release asset when you need the exact attached
+artifact:
 
 ```bash
 APPROVED_VERSION=0.17.9  # replace with the approved release version
@@ -77,6 +81,10 @@ gh release download "v$APPROVED_VERSION" --repo Moonweave-Research/figops --patt
 python -m pip install "dist-release/figops-$APPROVED_VERSION-py3-none-any.whl"
 figops-mcp --smoke
 ```
+
+The pinned `0.17.9` examples are local documentation anchors, not a live latest
+release assertion. Update them only after explicit release-maintainer approval
+and public index/release-asset verification.
 
 ## Future public-release PRs
 

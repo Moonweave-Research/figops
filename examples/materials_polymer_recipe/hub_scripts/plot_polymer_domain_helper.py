@@ -3,19 +3,12 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from themes.journal_theme import apply_journal_theme, save_journal_fig
+
 
 def main() -> None:
     data = pd.read_csv("results/data/polymer_material_properties.csv")
-    plt.rcParams.update(
-        {
-            "font.size": 7,
-            "axes.labelsize": 7,
-            "axes.titlesize": 8,
-            "xtick.labelsize": 6,
-            "ytick.labelsize": 6,
-            "figure.dpi": 300,
-        }
-    )
+    apply_journal_theme("nature", profile_name="baseline")
 
     fig, ax1 = plt.subplots(figsize=(3.35, 2.2))
     ax1.plot(
@@ -51,7 +44,7 @@ def main() -> None:
     output = Path("results/figures/polymer_domain_helper.png")
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
-    fig.savefig(output, dpi=300)
+    save_journal_fig(fig, output)
     plt.close(fig)
 
 

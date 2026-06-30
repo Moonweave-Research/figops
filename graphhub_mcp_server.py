@@ -6,10 +6,12 @@ import json
 
 from hub_core.doctor import format_doctor_report, run_doctor
 from hub_core.logging import configure_logging
-from hub_core.mcp import FigOpsMCPServer, McpServerConfig, run_stdio_server
+from hub_core.mcp.config import McpServerConfig
 
 
 def _run_smoke(config: McpServerConfig) -> int:
+    from hub_core.mcp import FigOpsMCPServer
+
     server = FigOpsMCPServer(config=config)
     health = server.call_tool("figops.health", {})["structuredContent"]
     styles = server.call_tool("figops.list_styles", {})["structuredContent"]
@@ -54,6 +56,8 @@ def main() -> int:
         else:
             print(format_doctor_report(report))
         return 0 if report["ready"] else 1
+    from hub_core.mcp import FigOpsMCPServer, run_stdio_server
+
     return run_stdio_server(FigOpsMCPServer(config=config, require_initialize=True))
 
 

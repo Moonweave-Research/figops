@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
 UV_RUNTIME_PATH = HUB_ROOT / "hub_core" / "uv_runtime.py"
+LAUNCHER_PATH = HUB_ROOT / "graphhub_mcp_launcher.py"
 
 
 def _load_uv_runtime():
@@ -23,7 +24,17 @@ def _load_uv_runtime():
     return module
 
 
+def _load_launcher():
+    spec = importlib.util.spec_from_file_location("_figops_graphhub_launcher_test", LAUNCHER_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load launcher: {LAUNCHER_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 uv_runtime = _load_uv_runtime()
+launcher = _load_launcher()
 build_uv_environment = uv_runtime.build_uv_environment
 resolve_uv_project_environment = uv_runtime.resolve_uv_project_environment
 run_uv = uv_runtime.run_uv
@@ -98,6 +109,19 @@ class UvRuntimeTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("UV_PROJECT_ENVIRONMENT=", completed.stdout)
 
+    def test_hub_uv_help_uses_current_python_executable_name(self):
+        completed = subprocess.run(
+            [sys.executable, "hub_uv.py", "--help"],
+            cwd=HUB_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn(f"Usage: {Path(sys.executable).name} hub_uv.py", completed.stdout)
+        self.assertIn(f"Example: {Path(sys.executable).name} hub_uv.py run python", completed.stdout)
+
     def test_run_uv_missing_executable_fails_with_actionable_message(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
             runtime_root = (Path(tmpdir) / "runtime").resolve()
@@ -129,6 +153,41 @@ class UvRuntimeTest(unittest.TestCase):
 
         self.assertEqual(result, 3)
         call.assert_called_once()
+
+    def test_graphhub_launcher_uses_figops_uv_environment_name(self):
+        runtime_root = Path("runtime-root")
+
+        venv_python = launcher._venv_python(runtime_root)
+
+        self.assertEqual(venv_python.parent.parent.name, "figops")
+        if os.name == "nt":
+            self.assertEqual(venv_python.name, "python.exe")
+            self.assertEqual(venv_python.parent.name, "Scripts")
+        else:
+            self.assertEqual(venv_python.name, "python")
+            self.assertEqual(venv_python.parent.name, "bin")
+
+    def test_graphhub_launcher_fallback_execs_hub_uv_with_current_python(self):
+        exec_calls = []
+
+        def fake_execv(executable, args):
+            exec_calls.append((executable, args))
+            raise SystemExit(0)
+
+        with tempfile.TemporaryDirectory(prefix="graph_hub_launcher_") as tmpdir:
+            runtime_root = Path(tmpdir) / "runtime"
+            with (
+                patch.object(launcher, "_runtime_root", return_value=runtime_root),
+                patch.object(launcher.os, "execv", side_effect=fake_execv),
+                patch.object(launcher.sys, "argv", ["graphhub_mcp_launcher.py", "--smoke"]),
+            ):
+                with self.assertRaises(SystemExit):
+                    launcher.main()
+
+        self.assertEqual(exec_calls[0][0], sys.executable)
+        self.assertEqual(exec_calls[0][1][0], sys.executable)
+        self.assertIn("hub_uv.py", exec_calls[0][1][1])
+        self.assertEqual(exec_calls[0][1][2:4], ["run", "python"])
 
 
 if __name__ == "__main__":

@@ -15,7 +15,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.font_manager import FontProperties
 
 from hub_core.rendering import PLOT_TYPES, render_plot
 from plotting.axis_break import _draw_break_marks
@@ -67,8 +66,12 @@ from plotting.renderers.facet import group_facet_points as _group_facet_points_i
 from plotting.renderers.facet import optional_positive_int as _optional_positive_int_impl
 from plotting.renderers.facet import render_facet_plot as _render_facet_plot_impl
 from plotting.renderers.facet import resolve_facet_grid as _resolve_facet_grid_impl
+from plotting.renderers.figure_style import apply_marker_axis_margin as _apply_marker_axis_margin
+from plotting.renderers.figure_style import column_width_mm as _column_width_mm
+from plotting.renderers.figure_style import figsize_for_format as _figsize_for_format
+from plotting.renderers.figure_style import marker_tokens as _marker_tokens
+from plotting.renderers.figure_style import scatter_marker_area as _scatter_marker_area
 from plotting.renderers.heatmap import render_heatmap_plot as _render_heatmap_plot  # noqa: F401
-from plotting.renderers.labels import AVOID_OVERLAP_OFFSETS as _AVOID_OVERLAP_OFFSETS
 from plotting.renderers.labels import annotate_points as _annotate_points  # noqa: F401
 from plotting.renderers.labels import display_label as _display_label  # noqa: F401
 from plotting.renderers.labels import draw_point_label as _draw_point_label  # noqa: F401
@@ -87,26 +90,55 @@ from plotting.renderers.legend import normalized_legend_options as _normalized_l
 from plotting.renderers.legend import replace_legend as _replace_legend  # noqa: F401
 from plotting.renderers.legend import resolved_legend_layout as _resolved_legend_layout
 from plotting.renderers.legend import separate_top_legend_title as _separate_top_legend_title
+from plotting.renderers.multipanel_layout import distributed_lengths_mm as _distributed_lengths_mm
+from plotting.renderers.multipanel_layout import manuscript_axis_rect as _manuscript_axis_rect_impl
+from plotting.renderers.multipanel_layout import panel_geometry_mm as _panel_geometry_mm_impl
+from plotting.renderers.multipanel_layout import split_bias as _split_bias  # noqa: F401
+from plotting.renderers.multipanel_layout import validated_layout_ratios as _validated_layout_ratios
+from plotting.renderers.overlays import annotation_font_size as _annotation_font_size  # noqa: F401
+from plotting.renderers.overlays import draw_annotations as _draw_annotations
+from plotting.renderers.overlays import draw_annotations_on_visible_axes as _draw_annotations_on_visible_axes
+from plotting.renderers.overlays import draw_linear_fit_overlay as _draw_linear_fit_overlay  # noqa: F401
+from plotting.renderers.overlays import draw_manual_overlays as _draw_manual_overlays
+from plotting.renderers.overlays import draw_statistical_overlays as _draw_statistical_overlays
+from plotting.renderers.overlays import fill_between_arrays as _fill_between_arrays  # noqa: F401
+from plotting.renderers.overlays import finite_float as _finite_float  # noqa: F401
+from plotting.renderers.overlays import normalized_annotations as _normalized_annotations
+from plotting.renderers.overlays import normalized_callout_offset as _normalized_callout_offset  # noqa: F401
+from plotting.renderers.overlays import (
+    normalized_significance_markers as _normalized_significance_markers,  # noqa: F401
+)
+from plotting.renderers.overlays import normalized_span_annotation as _normalized_span_annotation  # noqa: F401
+from plotting.renderers.overlays import numeric_xy_arrays as _numeric_xy_arrays  # noqa: F401
+from plotting.renderers.overlays import overlay_line_kwargs as _overlay_line_kwargs  # noqa: F401
+from plotting.renderers.overlays import overlay_xy_arrays as _overlay_xy_arrays  # noqa: F401
+from plotting.renderers.overlays import (
+    reject_non_point_callout_fields as _reject_non_point_callout_fields,  # noqa: F401
+)
+from plotting.renderers.overlays import span_midpoint as _span_midpoint  # noqa: F401
+from plotting.renderers.overlays import t_critical_95 as _t_critical_95  # noqa: F401
+from plotting.renderers.overlays import tag_annotation_text as _tag_annotation_text  # noqa: F401
+from plotting.renderers.overlays import tag_overlay_artist as _tag_overlay_artist  # noqa: F401
+from plotting.renderers.overlays import validate_manual_overlays as _validate_manual_overlays
+from plotting.renderers.overlays import validate_statistical_overlays as _validate_statistical_overlays
+from plotting.renderers.shared_legend import apply_shared_legend as _apply_shared_legend
+from plotting.renderers.shared_legend import normalized_shared_legend_options as _normalized_shared_legend_options
 from plotting.renderers.xy import XYRendererContext
 from plotting.renderers.xy import line_marker_color_kwargs as _line_marker_color_kwargs  # noqa: F401
 from plotting.renderers.xy import marker_color_kwargs as _marker_color_kwargs  # noqa: F401
 from plotting.renderers.xy import render_xy_plot as _render_xy_plot_impl
 from plotting.utils import (
-    annotate_significance,
     apply_density_alpha,
     auto_panel_tag,
 )
 from themes.journal_theme import (
-    DOUBLE_COLUMN,
     PUBLICATION_LAYOUT_SPECS_MM,
-    SINGLE_COLUMN,
     apply_journal_theme,
     apply_publication_layout,
     mm_to_inch,
     save_journal_fig,
-    set_figure_size,
 )
-from themes.style_profiles import get_render_style_tokens, get_series_style
+from themes.style_profiles import get_series_style
 
 from .smart_layout import find_empty_quadrant
 
@@ -130,59 +162,6 @@ def _deterministic_timestamp() -> str:
     if epoch is not None:
         return datetime.fromtimestamp(int(epoch), tz=timezone.utc).isoformat()
     return datetime.now(tz=timezone.utc).isoformat()
-
-
-# Journal column widths in mm; height derived at ratio 0.80.
-_FORMAT_FIGSIZE_MM: dict[str, tuple[float, float]] = {
-    "nature": (89, 71),
-    "science": (89, 71),
-    "default": (89, 71),
-    "ppt": (152, 114),
-}
-
-
-def _figsize_for_format(target_format: str) -> tuple[float, float]:
-    tokens, _meta = get_render_style_tokens(target_format, "baseline")
-    if "figure_width_mm" in tokens:
-        w_mm = float(tokens["figure_width_mm"])
-        h_mm = float(tokens.get("figure_height_mm", w_mm * 0.8))
-        return set_figure_size(w_mm, h_mm)
-    w_mm, h_mm = _FORMAT_FIGSIZE_MM.get(target_format, (89, 71))
-    return set_figure_size(w_mm, h_mm)
-
-
-def _column_width_mm(target_format: str, column_width: str, profile_name: str = "baseline") -> float:
-    width_key = str(column_width or "double").strip().lower()
-    tokens, _meta = get_render_style_tokens(target_format, profile_name)
-    column_widths = tokens.get("figure_column_widths_mm")
-    if isinstance(column_widths, dict) and width_key in column_widths:
-        return float(column_widths[width_key])
-    return float(DOUBLE_COLUMN if width_key == "double" else SINGLE_COLUMN)
-
-
-def _marker_tokens(spec: BridgeFigureSpec, *, small_panel: bool = False) -> tuple[float, float, float | None]:
-    tokens, _meta = get_render_style_tokens(spec.target_format, spec.profile_name)
-    marker_size = float(tokens.get("main_marker_size", plt.rcParams["lines.markersize"]))
-    if small_panel:
-        marker_size = float(tokens.get("facet_marker_size", marker_size))
-    marker_edge_width = float(tokens.get("main_marker_edge_width", plt.rcParams["lines.markeredgewidth"]))
-    margin_key = "facet_axis_marker_margin_fraction" if small_panel else "axis_marker_margin_fraction"
-    marker_margin = tokens.get(margin_key)
-    if marker_margin is None and small_panel:
-        marker_margin = tokens.get("axis_marker_margin_fraction")
-    return marker_size, marker_edge_width, float(marker_margin) if marker_margin is not None else None
-
-
-def _scatter_marker_area(marker_size_pt: float) -> float:
-    return math.pi * (marker_size_pt / 2.0) ** 2
-
-
-def _apply_marker_axis_margin(ax, spec: BridgeFigureSpec, *, small_panel: bool = False) -> None:
-    _marker_size, _marker_edge_width, margin = _marker_tokens(spec, small_panel=small_panel)
-    if margin is None:
-        return
-    current_x, current_y = ax.margins()
-    ax.margins(x=max(float(current_x), margin), y=max(float(current_y), margin))
 
 
 def draw_zenith_plot(ax, x, y, label=None, kind="scatter", palette="Nature Energy", series_index=0, **kwargs):
@@ -588,120 +567,6 @@ def _render_multipanel_manuscript(spec: MultiPanelSpec):
     return fig
 
 
-def _validated_layout_ratios(values: tuple[float, ...], *, expected_len: int, field_name: str) -> None:
-    if not values:
-        return
-    if len(values) != expected_len:
-        raise ValueError(f"{field_name} must contain exactly {expected_len} value(s)")
-    for value in values:
-        if not math.isfinite(float(value)) or value <= 0:
-            raise ValueError(f"{field_name} values must be positive finite numbers")
-
-
-def _normalized_shared_legend_options(spec: MultiPanelSpec) -> dict[str, object]:
-    raw_options = spec.shared_legend_options
-    if raw_options in (None, {}, ()):
-        return {}
-    if not isinstance(raw_options, dict):
-        raise ValueError("shared_legend_options must be an object")
-    allowed = {"title", "order", "ncol", "position"}
-    unsupported = sorted(set(raw_options) - allowed)
-    if unsupported:
-        raise ValueError(f"shared_legend_options has unsupported key(s): {', '.join(unsupported)}")
-    normalized: dict[str, object] = {}
-    if raw_options.get("title") is not None:
-        normalized["title"] = str(raw_options["title"])
-    if raw_options.get("order") is not None:
-        order = raw_options["order"]
-        if not isinstance(order, (list, tuple)):
-            raise ValueError("shared_legend_options.order must be an array of labels")
-        labels = tuple(str(label) for label in order if str(label).strip())
-        if len(labels) != len(set(labels)):
-            raise ValueError("shared_legend_options.order must not contain duplicate labels")
-        normalized["order"] = labels
-    if raw_options.get("ncol") is not None:
-        if isinstance(raw_options["ncol"], bool) or not isinstance(raw_options["ncol"], int):
-            raise ValueError("shared_legend_options.ncol must be an integer")
-        ncol = raw_options["ncol"]
-        if ncol < 1 or ncol > 8:
-            raise ValueError("shared_legend_options.ncol must be between 1 and 8")
-        normalized["ncol"] = ncol
-    position = str(raw_options.get("position") or "top").strip().lower()
-    if position not in {"top", "bottom", "right"}:
-        raise ValueError("shared_legend_options.position must be top, bottom, or right")
-    normalized["position"] = position
-    return normalized
-
-
-def _apply_shared_legend(fig, spec: MultiPanelSpec) -> None:
-    if not spec.shared_legend:
-        return
-    options = _normalized_shared_legend_options(spec)
-    position = str(options.get("position") or "top")
-    raw_entries: dict[str, tuple[object, str]] = {}
-    label_entries: dict[str, tuple[object, str]] = {}
-    for ax in fig.axes:
-        if not ax.get_visible():
-            continue
-        handles, labels = ax.get_legend_handles_labels()
-        label_to_handle = {label: handle for handle, label in zip(handles, labels) if label and label != "_nolegend_"}
-        for raw, label in getattr(ax, "_graph_hub_legend_entries", ()):
-            if label in label_to_handle and raw not in raw_entries:
-                raw_entries[str(raw)] = (label_to_handle[label], str(label))
-        for label, handle in label_to_handle.items():
-            label_entries.setdefault(str(label), (handle, str(label)))
-        legend = ax.get_legend()
-        if legend is not None:
-            legend.remove()
-
-    entries = raw_entries or label_entries
-    if not entries:
-        return
-    ordered_keys = tuple(options.get("order") or ())
-    missing = [key for key in ordered_keys if key not in entries]
-    if missing:
-        raise ValueError(f"shared_legend_options.order contains unknown legend key(s): {', '.join(missing)}")
-    ordered = [entries[key] for key in ordered_keys]
-    seen = set(ordered_keys)
-    ordered.extend(entry for key, entry in entries.items() if key not in seen)
-    handles, labels = zip(*ordered, strict=True)
-    kwargs: dict[str, object] = {
-        "handles": list(handles),
-        "labels": list(labels),
-        "frameon": False,
-        "fontsize": plt.rcParams.get("legend.fontsize", 7.0),
-        "ncol": int(options.get("ncol") or min(max(len(labels), 1), 4)),
-    }
-    if options.get("title") is not None:
-        kwargs["title"] = options["title"]
-    layout_lock = getattr(fig, "_graph_hub_layout_lock", {})
-    is_manuscript = isinstance(layout_lock, dict) and layout_lock.get("compose_mode") == "manuscript"
-    if position == "bottom":
-        bottom_anchor = max(float(layout_lock.get("panel_area_bottom", 0.04)) - 0.02, 0.02) if is_manuscript else 0.02
-        kwargs.update({"loc": "upper center", "bbox_to_anchor": (0.5, bottom_anchor)})
-        if not is_manuscript:
-            fig.subplots_adjust(bottom=max(float(fig.subplotpars.bottom), 0.18))
-    elif position == "right":
-        kwargs["ncol"] = int(options["ncol"]) if "ncol" in options else 1
-        right_anchor = float(layout_lock.get("panel_area_right", 0.84)) + 0.02 if is_manuscript else 0.99
-        kwargs.update({"loc": "center left", "bbox_to_anchor": (right_anchor, 0.5)})
-        if not is_manuscript:
-            fig.subplots_adjust(right=min(float(fig.subplotpars.right), 0.82))
-    else:
-        top_anchor = min(float(layout_lock.get("panel_area_top", 0.96)) + 0.02, 0.98) if is_manuscript else 0.98
-        kwargs.update({"loc": "lower center", "bbox_to_anchor": (0.5, top_anchor)})
-        if not is_manuscript:
-            fig.subplots_adjust(top=min(float(fig.subplotpars.top), 0.86))
-    legend = fig.legend(**kwargs)
-    setattr(legend, "_graph_hub_legend_placement", f"shared_{position}")
-
-
-def _distributed_lengths_mm(total_mm: float, count: int, ratios: tuple[float, ...]) -> tuple[float, ...]:
-    effective_ratios = ratios or tuple(1.0 for _ in range(count))
-    ratio_sum = sum(effective_ratios)
-    return tuple(total_mm * (ratio / ratio_sum) for ratio in effective_ratios)
-
-
 def _manuscript_axis_rect(
     panel: BridgeFigureSpec | PanelImageSpec,
     *,
@@ -712,56 +577,27 @@ def _manuscript_axis_rect(
     cell_w_mm: float,
     cell_h_mm: float,
 ) -> list[float]:
-    box_width_mm, box_height_mm, margins_mm = _panel_geometry_mm(panel)
-    if box_width_mm > cell_w_mm or box_height_mm > cell_h_mm:
-        raise ValueError(
-            "manuscript compose requires panel box to fit within its slot: "
-            f"box=({box_width_mm:.1f}mm,{box_height_mm:.1f}mm), "
-            f"slot=({cell_w_mm:.1f}mm,{cell_h_mm:.1f}mm)"
-        )
-
-    extra_w_mm = cell_w_mm - box_width_mm
-    extra_h_mm = cell_h_mm - box_height_mm
-    left_extra_mm, _ = _split_bias(extra_w_mm, margins_mm["left"], margins_mm["right"])
-    bottom_extra_mm, _ = _split_bias(extra_h_mm, margins_mm["bottom"], margins_mm["top"])
-
-    ax_left_mm = cell_left_mm + left_extra_mm
-    ax_bottom_mm = cell_bottom_mm + bottom_extra_mm
-    ax_width = box_width_mm / fig_w_mm
-    ax_height = box_height_mm / fig_h_mm
-    ax_left = ax_left_mm / fig_w_mm
-    ax_bottom = ax_bottom_mm / fig_h_mm
-
-    return [ax_left, ax_bottom, ax_width, ax_height]
+    return _manuscript_axis_rect_impl(
+        panel,
+        fig_w_mm=fig_w_mm,
+        fig_h_mm=fig_h_mm,
+        cell_left_mm=cell_left_mm,
+        cell_bottom_mm=cell_bottom_mm,
+        cell_w_mm=cell_w_mm,
+        cell_h_mm=cell_h_mm,
+        panel_image_type=PanelImageSpec,
+        publication_layout_specs_mm=PUBLICATION_LAYOUT_SPECS_MM,
+        resolved_legend_layout=_resolved_legend_layout,
+    )
 
 
 def _panel_geometry_mm(panel: BridgeFigureSpec | PanelImageSpec) -> tuple[float, float, dict[str, float]]:
-    if isinstance(panel, PanelImageSpec):
-        layout_key = "standard"
-    else:
-        if str(panel.target_format or "").lower() == "ppt":
-            raise ValueError("manuscript compose does not support PPT panel geometry")
-        layout_key = _resolved_legend_layout(panel)
-        if layout_key not in PUBLICATION_LAYOUT_SPECS_MM:
-            raise ValueError(
-                "manuscript compose requires fixed-layout panels; "
-                f"got legend_layout={layout_key!r}. Use standard, top_outside, or right_outside."
-            )
-
-    spec = PUBLICATION_LAYOUT_SPECS_MM[layout_key]
-    margins = {key: float(value) for key, value in spec["margins_mm"].items()}
-    return float(spec["box_width_mm"]), float(spec["box_height_mm"]), margins
-
-
-def _split_bias(total_mm: float, primary_mm: float, secondary_mm: float) -> tuple[float, float]:
-    if total_mm <= 0:
-        return 0.0, 0.0
-    weight_sum = float(primary_mm + secondary_mm)
-    if weight_sum <= 0:
-        half = total_mm / 2.0
-        return half, half
-    primary = total_mm * (float(primary_mm) / weight_sum)
-    return primary, total_mm - primary
+    return _panel_geometry_mm_impl(
+        panel,
+        panel_image_type=PanelImageSpec,
+        publication_layout_specs_mm=PUBLICATION_LAYOUT_SPECS_MM,
+        resolved_legend_layout=_resolved_legend_layout,
+    )
 
 
 def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
@@ -953,692 +789,8 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
     _render_xy_plot_impl(ax, points, spec, line=line, small_panel=small_panel, context=context)
 
 
-def _has_statistical_overlays(spec: BridgeFigureSpec) -> bool:
-    return bool(spec.fit_line or spec.ci_band or spec.fit_options or spec.significance_markers)
-
-
-def _has_manual_overlays(spec: BridgeFigureSpec) -> bool:
-    return bool(spec.guide_curves or spec.fill_between)
-
-
-def _validate_manual_overlays(spec: BridgeFigureSpec) -> None:
-    if not _has_manual_overlays(spec):
-        return
-    plot_type = str(spec.plot_type or "").strip().lower()
-    if plot_type not in {"line", "scatter", "xy"}:
-        raise ValueError(
-            f"manual overlays are only supported for plot_type 'line', 'scatter', or 'xy'; got {spec.plot_type!r}"
-        )
-    if spec.y_break_range is not None:
-        raise ValueError("manual overlays do not support y_break_range")
-
-
-def _validate_statistical_overlays(points: list[dict], spec: BridgeFigureSpec) -> None:
-    if not _has_statistical_overlays(spec):
-        return
-    _normalized_fit_options(spec.fit_options)
-    if spec.fit_options and not (spec.fit_line or spec.ci_band):
-        raise ValueError("fit_options requires fit_line or ci_band")
-    plot_type = str(spec.plot_type or "").strip().lower()
-    if plot_type not in {"line", "scatter", "xy"}:
-        raise ValueError(
-            f"statistical overlays are only supported for plot_type 'line', 'scatter', or 'xy'; got {spec.plot_type!r}"
-        )
-    if spec.y_break_range is not None:
-        raise ValueError("statistical overlays do not support y_break_range")
-    if spec.fit_line or spec.ci_band:
-        min_points = 3 if spec.ci_band else 2
-        _numeric_xy_arrays(points, min_points=min_points, context="fit_line/ci_band")
-    _normalized_significance_markers(spec.significance_markers)
-
-
-def _numeric_xy_arrays(points: list[dict], *, min_points: int, context: str) -> tuple[np.ndarray, np.ndarray]:
-    xs: list[float] = []
-    ys: list[float] = []
-    for point in points:
-        try:
-            x_val = float(point["x"])
-            y_val = float(point["y"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{context} requires numeric x and y values") from exc
-        if not math.isfinite(x_val) or not math.isfinite(y_val):
-            raise ValueError(f"{context} requires finite x and y values")
-        xs.append(x_val)
-        ys.append(y_val)
-
-    if len(xs) < min_points:
-        raise ValueError(f"{context} requires at least {min_points} valid points")
-    if len(set(xs)) < 2:
-        raise ValueError(f"{context} requires at least two distinct x values")
-    return np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)
-
-
-def _finite_float(value: object, *, context: str) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{context} must be numeric") from exc
-    if not math.isfinite(number):
-        raise ValueError(f"{context} must be finite")
-    return number
-
-
-def _normalized_fit_options(value: object) -> dict[str, object]:
-    if value in (None, {}, ()):
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError("fit_options must be an object")
-    allowed_keys = {"model", "label", "color", "linestyle", "linewidth", "zorder", "ci_alpha", "ci_label"}
-    unsupported = sorted(str(key) for key in value if key not in allowed_keys)
-    if unsupported:
-        raise ValueError(f"fit_options has unsupported key(s): {', '.join(unsupported)}")
-    model = str(value.get("model") or "linear").strip().lower()
-    if model != "linear":
-        raise ValueError("fit_options.model must be 'linear'")
-    normalized: dict[str, object] = {"model": "linear"}
-    for key in ("label", "color", "linestyle", "ci_label"):
-        if key not in value or value.get(key) is None:
-            continue
-        text = str(value[key]).strip()
-        if text:
-            normalized[key] = text
-    if "linewidth" in value and value.get("linewidth") is not None:
-        linewidth = _finite_float(value["linewidth"], context="fit_options.linewidth")
-        if linewidth <= 0:
-            raise ValueError("fit_options.linewidth must be positive")
-        normalized["linewidth"] = linewidth
-    if "zorder" in value and value.get("zorder") is not None:
-        normalized["zorder"] = _finite_float(value["zorder"], context="fit_options.zorder")
-    if "ci_alpha" in value and value.get("ci_alpha") is not None:
-        ci_alpha = _finite_float(value["ci_alpha"], context="fit_options.ci_alpha")
-        if ci_alpha < 0 or ci_alpha > 1:
-            raise ValueError("fit_options.ci_alpha must be between 0 and 1")
-        normalized["ci_alpha"] = ci_alpha
-    return normalized
-
-
-def _overlay_xy_arrays(overlay: dict, *, field_name: str) -> tuple[list[float], list[float]]:
-    if not isinstance(overlay, dict):
-        raise ValueError(f"{field_name} entries must be objects")
-    points = overlay.get("points")
-    if points is not None:
-        if not isinstance(points, (list, tuple)):
-            raise ValueError(f"{field_name}.points must be an array")
-        xs: list[float] = []
-        ys: list[float] = []
-        if len(points) < 2:
-            raise ValueError(f"{field_name}.points must contain at least two points")
-        for index, point in enumerate(points):
-            if not isinstance(point, dict):
-                raise ValueError(f"{field_name}.points[{index}] must be an object")
-            missing = [key for key in ("x", "y") if key not in point]
-            if missing:
-                raise ValueError(f"{field_name}.points[{index}] missing required field(s): {', '.join(missing)}")
-            xs.append(_finite_float(point["x"], context=f"{field_name}.points[{index}].x"))
-            ys.append(_finite_float(point["y"], context=f"{field_name}.points[{index}].y"))
-        return xs, ys
-
-    x_values = overlay.get("x")
-    y_values = overlay.get("y")
-    if not isinstance(x_values, (list, tuple)) or not isinstance(y_values, (list, tuple)):
-        raise ValueError(f"{field_name} requires points or x/y arrays")
-    if len(x_values) != len(y_values):
-        raise ValueError(f"{field_name}.x and {field_name}.y must have the same length")
-    if len(x_values) < 2:
-        raise ValueError(f"{field_name}.x and {field_name}.y must contain at least two points")
-    return (
-        [_finite_float(value, context=f"{field_name}.x[{index}]") for index, value in enumerate(x_values)],
-        [_finite_float(value, context=f"{field_name}.y[{index}]") for index, value in enumerate(y_values)],
-    )
-
-
-def _fill_between_arrays(
-    csv_path: Path,
-    overlay: dict,
-    *,
-    field_name: str,
-) -> tuple[list[float], list[float], list[float]]:
-    if not isinstance(overlay, dict):
-        raise ValueError(f"{field_name} entries must be objects")
-    points = overlay.get("points")
-    if points is not None:
-        if not isinstance(points, (list, tuple)):
-            raise ValueError(f"{field_name}.points must be an array")
-        xs: list[float] = []
-        y1s: list[float] = []
-        y2s: list[float] = []
-        if len(points) < 2:
-            raise ValueError(f"{field_name}.points must contain at least two points")
-        for index, point in enumerate(points):
-            if not isinstance(point, dict):
-                raise ValueError(f"{field_name}.points[{index}] must be an object")
-            missing = [key for key in ("x", "y1", "y2") if key not in point]
-            if missing:
-                raise ValueError(f"{field_name}.points[{index}] missing required field(s): {', '.join(missing)}")
-            xs.append(_finite_float(point["x"], context=f"{field_name}.points[{index}].x"))
-            y1s.append(_finite_float(point["y1"], context=f"{field_name}.points[{index}].y1"))
-            y2s.append(_finite_float(point["y2"], context=f"{field_name}.points[{index}].y2"))
-        return xs, y1s, y2s
-
-    x_column = str(overlay.get("x_column") or "").strip()
-    y1_column = str(overlay.get("y1_column") or "").strip()
-    y2_column = str(overlay.get("y2_column") or "").strip()
-    if not x_column or not y1_column or not y2_column:
-        raise ValueError(f"{field_name} requires points or x_column, y1_column, and y2_column")
-    xs: list[float] = []
-    y1s: list[float] = []
-    y2s: list[float] = []
-    with csv_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        headers = reader.fieldnames or []
-        missing = [column for column in (x_column, y1_column, y2_column) if column not in headers]
-        if missing:
-            raise ValueError(f"{field_name} CSV column(s) missing: {', '.join(missing)}")
-        for row_index, row in enumerate(reader, start=2):
-            xs.append(_finite_float(row[x_column], context=f"{field_name}.{x_column} row {row_index}"))
-            y1s.append(_finite_float(row[y1_column], context=f"{field_name}.{y1_column} row {row_index}"))
-            y2s.append(_finite_float(row[y2_column], context=f"{field_name}.{y2_column} row {row_index}"))
-    if len(xs) < 2:
-        raise ValueError(f"{field_name} requires at least two rows")
-    return xs, y1s, y2s
-
-
-def _overlay_line_kwargs(overlay: dict) -> dict[str, object]:
-    kwargs: dict[str, object] = {
-        "color": str(overlay.get("color") or "black"),
-        "linewidth": float(overlay.get("linewidth", 1.0)),
-        "linestyle": str(overlay.get("linestyle") or "-"),
-        "zorder": float(overlay.get("zorder", 4)),
-    }
-    if overlay.get("label"):
-        kwargs["label"] = str(overlay["label"])
-    return kwargs
-
-
-def _draw_manual_overlays(ax, csv_path: Path, spec: BridgeFigureSpec) -> None:
-    for index, overlay in enumerate(spec.fill_between or ()):
-        region = dict(overlay)
-        if not region.get("points") and not str(region.get("x_column") or "").strip():
-            region["x_column"] = spec.x_column
-        xs, y1s, y2s = _fill_between_arrays(csv_path, region, field_name=f"fill_between[{index}]")
-        kwargs: dict[str, object] = {
-            "color": str(region.get("color") or "black"),
-            "alpha": float(region.get("alpha", 0.15)),
-            "linewidth": 0,
-            "zorder": float(region.get("zorder", 1)),
-        }
-        if region.get("label"):
-            kwargs["label"] = str(region["label"])
-        artist = ax.fill_between(xs, y1s, y2s, **kwargs)
-        _tag_overlay_artist(artist, role="fill_between", label=str(region.get("label") or f"fill_between[{index}]"))
-
-    for index, overlay in enumerate(spec.guide_curves or ()):
-        xs, ys = _overlay_xy_arrays(overlay, field_name=f"guide_curves[{index}]")
-        ax.plot(xs, ys, **_overlay_line_kwargs(overlay))
-
-    if any(isinstance(overlay, dict) and overlay.get("label") for overlay in (*spec.fill_between, *spec.guide_curves)):
-        _apply_legend(ax, spec, n_series=1)
-
-
-def _tag_overlay_artist(artist, *, role: str, label: str) -> None:
-    artist._graph_hub_overlay_role = role
-    artist._graph_hub_overlay_label = label
-
-
-def _tag_annotation_text(artist, *, role: str) -> None:
-    artist._graph_hub_annotation_text_role = role
-
-
 def _normalized_point_label_options(spec: BridgeFigureSpec) -> dict[str, object]:
     return _normalized_point_label_options_dict(spec.point_label_options)
-
-
-_CALLOUT_OFFSET_PRESETS: dict[str, tuple[float, float]] = {
-    "above": (0.0, 10.0),
-    "below": (0.0, -10.0),
-    "left": (-10.0, 0.0),
-    "right": (10.0, 0.0),
-    "upper_left": (-8.0, 8.0),
-    "upper_right": (8.0, 8.0),
-    "lower_left": (-8.0, -8.0),
-    "lower_right": (8.0, -8.0),
-}
-
-def _reject_non_point_callout_fields(annotation: dict[str, object], index: int) -> None:
-    unsupported = [
-        key
-        for key in ("xytext_offset", "placement_preset", "avoid_overlap")
-        if key in annotation and annotation.get(key) is not None
-    ]
-    if unsupported:
-        joined = ", ".join(unsupported)
-        raise ValueError(f"annotations[{index}] {joined} only apply to point annotations")
-
-
-def _normalized_callout_offset(annotation: dict[str, object], index: int) -> tuple[float, float] | None:
-    raw_offset = annotation.get("xytext_offset")
-    if raw_offset is not None:
-        if not isinstance(raw_offset, dict):
-            raise ValueError(f"annotations[{index}].xytext_offset must be an object")
-        try:
-            dx = float(raw_offset["dx"])
-            dy = float(raw_offset["dy"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(f"annotations[{index}].xytext_offset requires numeric dx and dy") from exc
-        if not math.isfinite(dx) or not math.isfinite(dy):
-            raise ValueError(f"annotations[{index}].xytext_offset dx and dy must be finite")
-        return (dx, dy)
-    preset = str(annotation.get("placement_preset") or "").strip().lower().replace("-", "_")
-    if preset:
-        if preset not in _CALLOUT_OFFSET_PRESETS:
-            allowed = ", ".join(sorted(_CALLOUT_OFFSET_PRESETS))
-            raise ValueError(f"annotations[{index}].placement_preset must be one of: {allowed}")
-        return _CALLOUT_OFFSET_PRESETS[preset]
-    raw_avoid_overlap = annotation.get("avoid_overlap", False)
-    if not isinstance(raw_avoid_overlap, bool):
-        raise ValueError(f"annotations[{index}].avoid_overlap must be a boolean")
-    if raw_avoid_overlap:
-        return _AVOID_OVERLAP_OFFSETS[index % len(_AVOID_OVERLAP_OFFSETS)]
-    return None
-
-
-def _normalized_span_annotation(
-    annotation: dict[str, object],
-    index: int,
-    *,
-    field: str,
-    bounds: tuple[str, str],
-) -> dict[str, object]:
-    span = annotation[field]
-    if not isinstance(span, dict):
-        raise ValueError(f"annotations[{index}].{field} must be an object")
-    lower_key, upper_key = bounds
-    try:
-        lower = float(span[lower_key])
-        upper = float(span[upper_key])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError(f"annotations[{index}].{field} requires numeric {lower_key} and {upper_key}") from exc
-    if not math.isfinite(lower) or not math.isfinite(upper):
-        raise ValueError(f"annotations[{index}].{field} bounds must be finite")
-    try:
-        alpha = float(annotation.get("alpha", 0.12))
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"annotations[{index}].alpha must be numeric") from exc
-    return {
-        "kind": field,
-        lower_key: lower,
-        upper_key: upper,
-        "text": str(annotation.get("text") or "").strip(),
-        "color": str(annotation.get("color") or "black"),
-        "alpha": alpha,
-    }
-
-
-def _normalized_annotations(annotations: object) -> tuple[dict[str, object], ...]:
-    if annotations in (None, (), []):
-        return ()
-    if not isinstance(annotations, (list, tuple)):
-        raise ValueError("annotations must be an array of objects")
-    normalized: list[dict[str, object]] = []
-    for index, annotation in enumerate(annotations):
-        if not isinstance(annotation, dict):
-            raise ValueError(f"annotations[{index}] must be an object")
-        region = annotation.get("region")
-        if region is not None:
-            _reject_non_point_callout_fields(annotation, index)
-            if not isinstance(region, dict):
-                raise ValueError(f"annotations[{index}].region must be an object")
-            try:
-                xmin = float(region["xmin"])
-                xmax = float(region["xmax"])
-                ymin = float(region["ymin"])
-                ymax = float(region["ymax"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ValueError(f"annotations[{index}].region requires numeric xmin, xmax, ymin, ymax") from exc
-            if not all(math.isfinite(value) for value in (xmin, xmax, ymin, ymax)):
-                raise ValueError(f"annotations[{index}].region bounds must be finite")
-            try:
-                alpha = float(annotation.get("alpha", 0.12))
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"annotations[{index}].alpha must be numeric") from exc
-            normalized.append(
-                {
-                    "kind": "region",
-                    "xmin": xmin,
-                    "xmax": xmax,
-                    "ymin": ymin,
-                    "ymax": ymax,
-                    "text": str(annotation.get("text") or "").strip(),
-                    "color": str(annotation.get("color") or "black"),
-                    "alpha": alpha,
-                }
-            )
-            continue
-        if annotation.get("hspan") is not None:
-            _reject_non_point_callout_fields(annotation, index)
-            normalized.append(
-                _normalized_span_annotation(annotation, index, field="hspan", bounds=("ymin", "ymax"))
-            )
-            continue
-        if annotation.get("vspan") is not None:
-            _reject_non_point_callout_fields(annotation, index)
-            normalized.append(
-                _normalized_span_annotation(annotation, index, field="vspan", bounds=("xmin", "xmax"))
-            )
-            continue
-        missing = [key for key in ("x", "y") if key not in annotation]
-        if missing:
-            raise ValueError(f"annotations[{index}] missing required field(s): {', '.join(missing)}")
-        try:
-            x = float(annotation["x"])
-            y = float(annotation["y"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"annotations[{index}] x and y must be numeric") from exc
-        if not math.isfinite(x) or not math.isfinite(y):
-            raise ValueError(f"annotations[{index}] x and y must be finite")
-        text = str(annotation.get("text") or "").strip()
-        arrow_to = annotation.get("arrow_to")
-        if not text and arrow_to is None:
-            raise ValueError(f"annotations[{index}] text must be non-empty unless arrow_to is provided")
-        normalized_arrow = None
-        if arrow_to is not None:
-            if not isinstance(arrow_to, dict):
-                raise ValueError(f"annotations[{index}].arrow_to must be an object")
-            try:
-                arrow_x = float(arrow_to["x"])
-                arrow_y = float(arrow_to["y"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ValueError(f"annotations[{index}].arrow_to requires numeric x and y") from exc
-            if not math.isfinite(arrow_x) or not math.isfinite(arrow_y):
-                raise ValueError(f"annotations[{index}].arrow_to x and y must be finite")
-            normalized_arrow = {"x": arrow_x, "y": arrow_y}
-        arrowstyle = str(annotation.get("arrowstyle") or "->").strip() or "->"
-        connectionstyle = str(annotation.get("connectionstyle") or "").strip()
-        item = {
-            "kind": "point",
-            "x": x,
-            "y": y,
-            "text": text,
-            "arrow_to": normalized_arrow,
-            "color": str(annotation.get("color") or "black"),
-            "arrowstyle": arrowstyle,
-        }
-        callout_offset = _normalized_callout_offset(annotation, index)
-        if callout_offset is not None:
-            item["xytext_offset"] = callout_offset
-        if connectionstyle:
-            item["connectionstyle"] = connectionstyle
-        normalized.append(item)
-    return tuple(normalized)
-
-
-def _annotation_font_size() -> float:
-    """Resolve the active style's small-text size in points.
-
-    Annotations previously inherited matplotlib's default ``font.size`` (10 pt),
-    which is off the style-token scale and trips the ``font_size_token_drift``
-    geometry check. Reuse the active tick-label size so annotation text matches
-    the rest of the figure.
-    """
-    for key in ("xtick.labelsize", "legend.fontsize"):
-        try:
-            return float(FontProperties(size=plt.rcParams[key]).get_size_in_points())
-        except (KeyError, ValueError, TypeError):
-            continue
-    return 6.5
-
-
-def _span_midpoint(lower: float, upper: float) -> float:
-    return math.sqrt(lower * upper) if lower > 0 and upper > 0 else 0.5 * (lower + upper)
-
-
-def _draw_annotations(ax, spec: BridgeFigureSpec) -> None:
-    font_size = _annotation_font_size()
-    for annotation in _normalized_annotations(spec.annotations):
-        color = str(annotation["color"])
-        if annotation.get("kind") == "region":
-            xmin = float(annotation["xmin"])
-            xmax = float(annotation["xmax"])
-            ymin = float(annotation["ymin"])
-            ymax = float(annotation["ymax"])
-            region_text = str(annotation["text"])
-            artist = ax.fill_between(
-                [xmin, xmax],
-                ymin,
-                ymax,
-                color=color,
-                alpha=float(annotation["alpha"]),
-                linewidth=0,
-                zorder=0,
-            )
-            _tag_overlay_artist(artist, role="annotation_region", label=region_text or "region")
-            if region_text:
-                text_artist = ax.text(
-                    _span_midpoint(xmin, xmax),
-                    _span_midpoint(ymin, ymax),
-                    region_text,
-                    color=color,
-                    fontsize=font_size,
-                    ha="center",
-                    va="center",
-                    zorder=1,
-                    clip_on=True,
-                )
-                _tag_annotation_text(text_artist, role="annotation_region")
-            continue
-        if annotation.get("kind") == "hspan":
-            ymin = float(annotation["ymin"])
-            ymax = float(annotation["ymax"])
-            artist = ax.axhspan(
-                ymin,
-                ymax,
-                color=color,
-                alpha=float(annotation["alpha"]),
-                linewidth=0,
-                zorder=0,
-            )
-            span_text = str(annotation["text"])
-            _tag_overlay_artist(artist, role="annotation_hspan", label=span_text or "hspan")
-            if span_text:
-                text_artist = ax.text(
-                    0.5,
-                    _span_midpoint(ymin, ymax),
-                    span_text,
-                    transform=ax.get_yaxis_transform(),
-                    color=color,
-                    fontsize=font_size,
-                    ha="center",
-                    va="center",
-                    zorder=1,
-                    clip_on=True,
-                )
-                _tag_annotation_text(text_artist, role="annotation_hspan")
-            continue
-        if annotation.get("kind") == "vspan":
-            xmin = float(annotation["xmin"])
-            xmax = float(annotation["xmax"])
-            artist = ax.axvspan(
-                xmin,
-                xmax,
-                color=color,
-                alpha=float(annotation["alpha"]),
-                linewidth=0,
-                zorder=0,
-            )
-            span_text = str(annotation["text"])
-            _tag_overlay_artist(artist, role="annotation_vspan", label=span_text or "vspan")
-            if span_text:
-                text_artist = ax.text(
-                    _span_midpoint(xmin, xmax),
-                    0.5,
-                    span_text,
-                    transform=ax.get_xaxis_transform(),
-                    color=color,
-                    fontsize=font_size,
-                    ha="center",
-                    va="center",
-                    zorder=1,
-                    clip_on=True,
-                )
-                _tag_annotation_text(text_artist, role="annotation_vspan")
-            continue
-        x = float(annotation["x"])
-        y = float(annotation["y"])
-        text = str(annotation["text"])
-        arrow_to = annotation.get("arrow_to")
-        xytext_offset = annotation.get("xytext_offset")
-        use_offset = isinstance(xytext_offset, tuple)
-        if isinstance(arrow_to, dict) or use_offset:
-            arrowprops = None
-            if isinstance(arrow_to, dict):
-                arrowprops = {
-                    "arrowstyle": str(annotation.get("arrowstyle") or "->"),
-                    "color": color,
-                    "linewidth": 0.8,
-                }
-                if annotation.get("connectionstyle"):
-                    arrowprops["connectionstyle"] = str(annotation["connectionstyle"])
-                xy = (float(arrow_to["x"]), float(arrow_to["y"]))
-            else:
-                xy = (x, y)
-            annotate_kwargs = {
-                "xy": xy,
-                "xytext": xytext_offset if use_offset else (x, y),
-                "color": color,
-                "fontsize": font_size,
-                "ha": "left",
-                "va": "bottom",
-                "zorder": 6,
-                "annotation_clip": True,
-                "clip_on": True,
-            }
-            if arrowprops is not None:
-                annotate_kwargs["arrowprops"] = arrowprops
-            if use_offset:
-                annotate_kwargs["textcoords"] = "offset points"
-            text_artist = ax.annotate(text, **annotate_kwargs)
-            _tag_annotation_text(text_artist, role="annotation_point")
-        else:
-            text_artist = ax.text(
-                x,
-                y,
-                text,
-                color=color,
-                fontsize=font_size,
-                ha="left",
-                va="bottom",
-                zorder=6,
-                clip_on=True,
-            )
-            _tag_annotation_text(text_artist, role="annotation_point")
-
-
-def _draw_annotations_on_visible_axes(fig, fallback_ax, spec: BridgeFigureSpec) -> None:
-    if not spec.annotations:
-        return
-    axes = _visible_plot_axes(fig, fallback_ax)
-    if spec.plot_type == "facet":
-        axes = axes[:1]
-    for axis in axes:
-        _draw_annotations(axis, spec)
-
-
-def _normalized_significance_markers(markers: object) -> tuple[dict[str, float | str | None], ...]:
-    if markers in (None, (), []):
-        return ()
-    if not isinstance(markers, (list, tuple)):
-        raise ValueError("significance_markers must be an array of objects")
-
-    normalized = []
-    for idx, marker in enumerate(markers):
-        if not isinstance(marker, dict):
-            raise ValueError(f"significance_markers[{idx}] must be an object")
-        missing = [key for key in ("x1", "x2", "y") if key not in marker]
-        if missing:
-            raise ValueError(f"significance_markers[{idx}] missing required field(s): {', '.join(missing)}")
-        try:
-            x1 = float(marker["x1"])
-            x2 = float(marker["x2"])
-            y = float(marker["y"])
-            h = float(marker["h"]) if marker.get("h") is not None else None
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"significance_markers[{idx}] x1, x2, y, and h must be numeric") from exc
-        if not all(math.isfinite(value) for value in (x1, x2, y)) or (h is not None and not math.isfinite(h)):
-            raise ValueError(f"significance_markers[{idx}] x1, x2, y, and h must be finite")
-        label = str(marker.get("label") or marker.get("text") or "*")
-        color = str(marker.get("color") or "black")
-        normalized.append({"x1": x1, "x2": x2, "y": y, "h": h, "label": label, "color": color})
-    return tuple(normalized)
-
-
-def _draw_statistical_overlays(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
-    if not _has_statistical_overlays(spec):
-        return
-    if spec.fit_line or spec.ci_band:
-        _draw_linear_fit_overlay(ax, points, spec)
-    for marker in _normalized_significance_markers(spec.significance_markers):
-        annotate_significance(
-            ax,
-            marker["x1"],
-            marker["x2"],
-            marker["y"],
-            str(marker["label"]),
-            h=marker["h"],
-            color=str(marker["color"]),
-        )
-
-
-def _draw_linear_fit_overlay(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
-    options = _normalized_fit_options(spec.fit_options)
-    xs, ys = _numeric_xy_arrays(points, min_points=3 if spec.ci_band else 2, context="fit_line/ci_band")
-    slope, intercept = np.polyfit(xs, ys, 1)
-    x_grid = np.linspace(float(xs.min()), float(xs.max()), 200)
-    y_grid = slope * x_grid + intercept
-    fit_color = str(options.get("color") or "black")
-    ax.plot(
-        x_grid,
-        y_grid,
-        color=fit_color,
-        linewidth=float(options.get("linewidth") or 1.0),
-        linestyle=str(options.get("linestyle") or "-"),
-        label=str(options.get("label") or "Linear fit"),
-        zorder=float(options.get("zorder") if "zorder" in options else 4),
-    )
-
-    if not spec.ci_band:
-        return
-
-    dof = len(xs) - 2
-    if dof <= 0:
-        raise ValueError("ci_band requires at least 3 valid points")
-    residuals = ys - (slope * xs + intercept)
-    sxx = float(np.sum((xs - float(xs.mean())) ** 2))
-    if sxx <= 0:
-        raise ValueError("ci_band requires at least two distinct x values")
-    residual_std = math.sqrt(float(np.sum(residuals**2)) / dof)
-    se_mean = residual_std * np.sqrt((1 / len(xs)) + ((x_grid - float(xs.mean())) ** 2 / sxx))
-    t_crit = _t_critical_95(dof)
-    ax.fill_between(
-        x_grid,
-        y_grid - t_crit * se_mean,
-        y_grid + t_crit * se_mean,
-        color=fit_color,
-        alpha=float(options.get("ci_alpha") if "ci_alpha" in options else 0.12),
-        linewidth=0,
-        label=str(options.get("ci_label") or "95% CI"),
-        zorder=1,
-    )
-
-
-def _t_critical_95(dof: int) -> float:
-    try:
-        from scipy.stats import t
-
-        return float(t.ppf(0.975, dof))
-    except Exception:
-        return 1.96
-
-
 def _render_broken_axis_plot(fig, points: list[dict], spec: BridgeFigureSpec) -> None:
     if not points:
         warnings.warn(

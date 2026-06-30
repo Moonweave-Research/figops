@@ -1,0 +1,244 @@
+{
+  "schema_version": "0.5",
+  "plan_id": "figops-productization-loop-2026-06-30",
+  "created_by": "codex",
+  "objective": "Run FigOps through a repeatable spec-review-implementation-verification loop focused on productization, operability, maintainability, release alignment, and publication-quality figure review.",
+  "status": "active",
+  "loop": {
+    "pattern": "spec -> review -> implementation -> verification receipt",
+    "iteration_rule": "Do not implement a slice until acceptance criteria and verification commands are documented.",
+    "fan_in_rule": "Every iteration must end with confirmed, refuted, unverified, and residual-risk notes."
+  },
+  "lanes": [
+    {
+      "id": "lane-a-environment-install-readiness",
+      "priority": 1,
+      "goal": "Make first-run and source-checkout environment failures obvious and actionable.",
+      "surfaces": [
+        "README.md",
+        "docs/quickstart.md",
+        "hub_core/doctor.py",
+        "hub_core/uv_runtime.py",
+        "tests/test_doctor.py",
+        "tests/test_uv_runtime.py"
+      ],
+      "acceptance": [
+        "Installed-package and source-checkout quickstarts are clearly separated.",
+        "Missing uv, pytest, pandas, matplotlib, or Rscript is reported as an environment blocker, not a product pass.",
+        "Doctor hints remain actionable on Windows, WSL/Linux, and macOS."
+      ]
+    },
+    {
+      "id": "lane-b-architecture-debt-guardrails",
+      "priority": 2,
+      "goal": "Keep large-module debt visible and reduce it through behavior-preserving slices.",
+      "surfaces": [
+        "docs/architecture.md",
+        "docs/ROADMAP.md",
+        "scripts/architecture_inventory.py",
+        "tests/test_architecture_inventory.py",
+        "hub_core",
+        "plotting",
+        "themes"
+      ],
+      "acceptance": [
+        "Architecture docs distinguish pytest-checked inventory freshness from policy-only import layering.",
+        "Any extraction preserves compatibility imports unless explicitly deprecated.",
+        "Moved behavior has a witness test."
+      ]
+    },
+    {
+      "id": "lane-c-public-release-version-alignment",
+      "priority": 3,
+      "goal": "Keep public release claims true when source and published package state differ.",
+      "surfaces": [
+        "README.md",
+        "CHANGELOG.md",
+        "pyproject.toml",
+        "docs/packaging",
+        "scripts/check_public_release.py"
+      ],
+      "acceptance": [
+        "Source version and locally documented published release are not conflated.",
+        "Network-verified latest release claims are only made after explicit verification.",
+        "Release publishing remains human-gated."
+      ]
+    },
+    {
+      "id": "lane-d-figure-quality-rubric",
+      "priority": 4,
+      "goal": "Define publication-ready figure quality beyond hard geometry and journal checks.",
+      "surfaces": [
+        "docs/QA.md",
+        "docs/specs",
+        "hub_core/geometry_diagnostics.py",
+        "tests/test_geometry_diagnostics.py"
+      ],
+      "acceptance": [
+        "A compact review rubric separates hard gates from advisory polish.",
+        "Future diagnostics can map to rubric items.",
+        "Rubric examples cover visual hierarchy, contrast, label density, panel balance, and traceability."
+      ]
+    }
+  ],
+  "iterations": [
+    {
+      "id": "2026-06-30.A",
+      "name": "Productization loop and architecture truth alignment",
+      "type": "documentation-truth-alignment",
+      "scope": [
+        "Create productization loop spec and plan.",
+        "Correct architecture and roadmap language around module-size inventory CI coverage."
+      ],
+      "non_goals": [
+        "No dependency installation.",
+        "No release publication.",
+        "No import-linter implementation.",
+        "No broad module decomposition."
+      ],
+      "verification": [
+        "python3 -m py_compile scripts/architecture_inventory.py",
+        "python3 -m pytest tests/test_architecture_inventory.py -q",
+        "python3 hub_uv.py run python -m pytest tests/test_architecture_inventory.py -q"
+      ],
+      "environment_policy": "If pytest or uv is unavailable, record the blocker and run the dependency-light py_compile command."
+    },
+    {
+      "id": "2026-06-30.B",
+      "name": "Environment and install readiness",
+      "type": "docs-and-doctor-polish",
+      "lane": "lane-a-environment-install-readiness",
+      "scope": [
+        "Improve first-run guidance for installed-package and source-checkout users.",
+        "Keep doctor output actionable when uv, pytest, runtime dependencies, or Rscript are unavailable."
+      ],
+      "non_goals": [
+        "No dependency installation.",
+        "No shell PATH mutation.",
+        "No removal of R-dependent coverage."
+      ],
+      "verification": [
+        "python3 -m py_compile hub_core/doctor.py",
+        "python3 -m pytest tests/test_doctor.py -q"
+      ],
+      "environment_policy": "If pytest is unavailable, record the blocker and run py_compile for touched Python files."
+    },
+    {
+      "id": "2026-06-30.C",
+      "name": "Release and version truth alignment",
+      "type": "documentation-truth-alignment",
+      "lane": "lane-c-public-release-version-alignment",
+      "scope": [
+        "Check public-facing release claims for consistency between source 0.17.10 and locally documented public release 0.17.9.",
+        "Avoid network-latest claims unless explicitly verified."
+      ],
+      "non_goals": [
+        "No package publication.",
+        "No release tagging.",
+        "No network verification without explicit approval."
+      ],
+      "verification": [
+        "rg -n \"0\\\\.17\\\\.9|0\\\\.17\\\\.10|latest|published|PyPI|GitHub Release\" README.md CHANGELOG.md docs/packaging docs/ROADMAP.md",
+        "python3 scripts/check_public_release.py --root ."
+      ],
+      "environment_policy": "If release scripts require unavailable dependencies, record the blocker and use text inspection as the minimum check."
+    },
+    {
+      "id": "2026-06-30.D",
+      "name": "Publication-ready figure quality rubric",
+      "type": "documentation-rubric",
+      "lane": "lane-d-figure-quality-rubric",
+      "scope": [
+        "Define hard gates versus advisory polish for rendered figure review.",
+        "Map rubric items to existing FigOps checks where possible."
+      ],
+      "non_goals": [
+        "No renderer behavior changes.",
+        "No new aesthetic scoring code.",
+        "No replacement for journal preflight."
+      ],
+      "verification": [
+        "python3 -m json.tool docs/specs/2026-06-30-figure-quality-rubric.plan.json >/dev/null",
+        "rg -n \"Hard gates|Advisory polish|Traceability|Visual hierarchy\" docs/QA.md docs/specs/2026-06-30-figure-quality-rubric.md"
+      ],
+      "environment_policy": "This slice should remain dependency-light and documentation-only."
+    },
+    {
+      "id": "2026-06-30.E",
+      "name": "Lazy facade and doctor lightweight regression lock",
+      "type": "test-and-import-contract",
+      "lane": "lane-a-environment-install-readiness",
+      "scope": [
+        "Lock the `hub_core` and `hub_core.mcp` lazy facade behavior with dependency-light import hygiene tests.",
+        "Prove `figops_mcp_server.py doctor --json` can report missing runtime dependencies without importing heavy MCP schema/theme modules first."
+      ],
+      "non_goals": [
+        "No dependency installation.",
+        "No full MCP render smoke in a dependency-light shell.",
+        "No change to public tool names or compatibility aliases."
+      ],
+      "verification": [
+        "python3 -m unittest tests.test_public_api_import_hygiene -q",
+        "python3 -m py_compile tests/test_doctor.py tests/test_public_api_import_hygiene.py hub_core/__init__.py hub_core/mcp/__init__.py hub_core/doctor.py graphhub_mcp_server.py figops_mcp_server.py",
+        "python3 -m pytest tests/test_doctor.py tests/test_public_api_import_hygiene.py -q"
+      ],
+      "environment_policy": "Use unittest/py_compile and a guarded subprocess scenario when pytest or uv is unavailable."
+    },
+    {
+      "id": "2026-06-30.F",
+      "name": "Dependency-light source checkout minimum gate",
+      "type": "test-and-dx-polish",
+      "lane": "lane-a-environment-install-readiness",
+      "scope": [
+        "Define and exercise the stdlib-only source-checkout checks that can run before uv and pytest are available.",
+        "Keep `hub_uv.py --help` truthful on machines where the executable is `python3` rather than `python`."
+      ],
+      "non_goals": [
+        "No dependency installation.",
+        "No replacement for pytest or full regression.",
+        "No change to uv-managed runtime layout."
+      ],
+      "verification": [
+        "python3 -m unittest tests.test_uv_runtime tests.test_public_api_import_hygiene -q",
+        "python3 -m py_compile hub_core/uv_runtime.py tests/test_uv_runtime.py",
+        "python3 hub_uv.py --help",
+        "python3 -m pytest tests/test_uv_runtime.py tests/test_public_api_import_hygiene.py -q"
+      ],
+      "environment_policy": "Treat pytest failure as an environment blocker when `pytest` is not installed; unittest remains the minimum dependency-light gate."
+    },
+    {
+      "id": "2026-06-30.G",
+      "name": "uv-backed gitflow verification pass",
+      "type": "environment-setup-and-verification",
+      "lane": "lane-a-environment-install-readiness",
+      "scope": [
+        "Install uv into the user-local tool path after explicit user approval.",
+        "Run focused pytest, MCP smoke, public release checks, ruff, and full pytest through `hub_uv.py`.",
+        "Move the dirty worktree off `main` onto a productization verification branch without committing or reverting unrelated changes."
+      ],
+      "non_goals": [
+        "No package publication.",
+        "No release tagging.",
+        "No automatic baseline image regeneration.",
+        "No broad lint cleanup across unrelated decomposition work."
+      ],
+      "verification": [
+        "PATH=\"$HOME/.local/bin:$PATH\" uv --version",
+        "PATH=\"$HOME/.local/bin:$PATH\" python3 hub_uv.py run python -m pytest tests/test_doctor.py tests/test_public_api_import_hygiene.py tests/test_uv_runtime.py -q",
+        "PATH=\"$HOME/.local/bin:$PATH\" python3 hub_uv.py run python -m pytest tests/test_mcp_read_only.py tests/test_mcp_rendering.py tests/test_mcp_batch_quality.py -q",
+        "PATH=\"$HOME/.local/bin:$PATH\" python3 hub_uv.py run python scripts/check_public_release.py --root .",
+        "PATH=\"$HOME/.local/bin:$PATH\" python3 hub_uv.py run python -m pytest -q",
+        "PATH=\"$HOME/.local/bin:$PATH\" uvx ruff check ."
+      ],
+      "environment_policy": "User-local uv installation is allowed by this explicit user request; shell profile PATH persistence remains untouched."
+    }
+  ],
+  "human_gates": [
+    "dependency installation",
+    "network claims about latest public release",
+    "package publishing",
+    "release tagging",
+    "destructive cleanup outside isolated tempdirs",
+    "removal of compatibility aliases"
+  ]
+}

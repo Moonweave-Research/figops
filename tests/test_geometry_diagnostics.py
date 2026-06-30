@@ -13,7 +13,18 @@ import numpy as np  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.transforms import Bbox  # noqa: E402
 
-from hub_core import geometry_diagnostics, geometry_marker_styles, geometry_primitives  # noqa: E402
+from hub_core import (  # noqa: E402
+    geometry_artist_overlaps,
+    geometry_bounds_checks,
+    geometry_diagnostics,
+    geometry_label_offsets,
+    geometry_layout_checks,
+    geometry_marker_styles,
+    geometry_overlay_contrast,
+    geometry_primitives,
+    geometry_style_checks,
+    geometry_tick_labels,
+)
 from hub_core.geometry_diagnostics import (  # noqa: E402
     GEOM_EPS_PX,
     MAX_TEXT_ARTISTS,
@@ -56,6 +67,16 @@ def _find_non_native(value, path="root"):
     return None
 
 
+def _candidate_signature(candidates):
+    return [(label, tuple(round(float(value), 6) for value in box.bounds)) for label, box in candidates]
+
+
+def _bbox_signature(box):
+    if box is None:
+        return None
+    return tuple(round(float(value), 6) for value in box.bounds)
+
+
 class GeometryDiagnosticsUnitTest(unittest.TestCase):
     def tearDown(self):
         plt.close("all")
@@ -78,6 +99,231 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertIs(geometry_diagnostics._collection_marker_style, geometry_marker_styles._collection_marker_style)
         self.assertIs(geometry_diagnostics._marker_style, geometry_marker_styles._marker_style)
         self.assertIs(geometry_diagnostics._style_diff, geometry_marker_styles._style_diff)
+
+    def test_geometry_diagnostics_keeps_style_check_compatibility_exports(self):
+        self.assertIs(geometry_diagnostics._default_font_token_sizes, geometry_style_checks._default_font_token_sizes)
+        self.assertIs(geometry_diagnostics._font_size_matches_token, geometry_style_checks._font_size_matches_token)
+        self.assertIs(geometry_diagnostics._font_size_token_drift, geometry_style_checks._font_size_token_drift)
+        self.assertIs(geometry_diagnostics._journal_compliance, geometry_style_checks._journal_compliance)
+        self.assertIs(geometry_diagnostics._journal_font_offenders, geometry_style_checks._journal_font_offenders)
+        self.assertIs(geometry_diagnostics._journal_line_offenders, geometry_style_checks._journal_line_offenders)
+        self.assertIs(geometry_diagnostics._line_width_values, geometry_style_checks._line_width_values)
+        self.assertIs(geometry_diagnostics._append_linewidth_offender, geometry_style_checks._append_linewidth_offender)
+
+    def test_geometry_diagnostics_keeps_overlay_contrast_compatibility_exports(self):
+        self.assertIs(
+            geometry_diagnostics._annotation_overlay_contrast,
+            geometry_overlay_contrast._annotation_overlay_contrast,
+        )
+        self.assertIs(geometry_diagnostics._overlay_contrast_items, geometry_overlay_contrast._overlay_contrast_items)
+        self.assertIs(geometry_diagnostics._overlay_artist_rgb, geometry_overlay_contrast._overlay_artist_rgb)
+        self.assertIs(geometry_diagnostics._artist_rgb, geometry_overlay_contrast._artist_rgb)
+        self.assertIs(geometry_diagnostics._composite_rgb, geometry_overlay_contrast._composite_rgb)
+        self.assertIs(geometry_diagnostics._relative_luminance, geometry_overlay_contrast._relative_luminance)
+        self.assertIs(geometry_diagnostics._contrast_ratio, geometry_overlay_contrast._contrast_ratio)
+
+    def test_geometry_diagnostics_keeps_label_offset_compatibility_exports(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.scatter([0.5], [0.5], s=80)
+        text = ax.text(0.62, 0.5, "PDMS", ha="left", va="center")
+        _drawn(fig)
+
+        self.assertEqual(geometry_diagnostics._nearest_marker_direction(ax, text, fig.canvas.get_renderer()), "right")
+        direct = geometry_label_offsets._label_offset_consistency(
+            fig,
+            [ax],
+            fig.canvas.get_renderer(),
+            marker_footprint_box_entries=geometry_diagnostics._marker_footprint_box_entries,
+            is_paintable=geometry_diagnostics._is_paintable,
+            max_reported_pairs=50,
+        )
+        compat = geometry_diagnostics._label_offset_consistency(fig, [ax], fig.canvas.get_renderer())
+        self.assertEqual(compat, direct)
+        self.assertIs(geometry_diagnostics._point_label_skips, geometry_label_offsets._point_label_skips)
+        edge_direct = geometry_label_offsets._text_axis_edge_proximity(
+            ax,
+            fig.canvas.get_renderer(),
+            0,
+            is_paintable=geometry_diagnostics._is_paintable,
+            threshold_px=geometry_diagnostics.TEXT_AXIS_EDGE_WARN_PX,
+            max_reported_pairs=50,
+        )
+        edge_compat = geometry_diagnostics._text_axis_edge_proximity(ax, fig.canvas.get_renderer(), 0)
+        self.assertEqual(edge_compat, edge_direct)
+
+    def test_geometry_diagnostics_keeps_layout_check_compatibility_exports(self):
+        fig, ax = plt.subplots(figsize=(3, 2))
+        ax.set_title("Panel")
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        fig.suptitle("Figure")
+        _drawn(fig)
+        renderer = fig.canvas.get_renderer()
+
+        axis_direct = geometry_layout_checks._axis_label_title_overlap(
+            ax,
+            renderer,
+            0,
+            is_paintable=geometry_diagnostics._is_paintable,
+        )
+        self.assertEqual(geometry_diagnostics._axis_label_title_overlap(ax, renderer, 0), axis_direct)
+        figure_direct = geometry_layout_checks._figure_title_panel_title_overlap(
+            fig,
+            [ax],
+            renderer,
+            is_paintable=geometry_diagnostics._is_paintable,
+        )
+        self.assertEqual(geometry_diagnostics._figure_title_panel_title_overlap(fig, [ax], renderer), figure_direct)
+
+    def test_geometry_diagnostics_keeps_artist_overlap_compatibility_exports(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.plot([0.2, 0.8], [0.5, 0.5], linewidth=2)
+        ax.scatter([0.5], [0.5], s=80)
+        ax.text(0.5, 0.5, "PDMS", ha="center", va="center")
+        _drawn(fig)
+        renderer = fig.canvas.get_renderer()
+
+        self.assertIs(geometry_diagnostics._artist_label, geometry_artist_overlaps._artist_label)
+        self.assertIs(geometry_diagnostics._line_overlap_boxes, geometry_artist_overlaps._line_overlap_boxes)
+        self.assertIs(geometry_diagnostics._artist_candidate_kind, geometry_artist_overlaps._artist_candidate_kind)
+        self.assertIs(
+            geometry_diagnostics._is_reportable_artist_overlap,
+            geometry_artist_overlaps._is_reportable_artist_overlap,
+        )
+        direct = geometry_artist_overlaps._artist_overlaps(
+            ax,
+            renderer,
+            0,
+            is_paintable=geometry_diagnostics._is_paintable,
+            marker_footprint_box_entries=geometry_diagnostics._marker_footprint_box_entries,
+            max_text_artists=geometry_diagnostics.MAX_TEXT_ARTISTS,
+            artist_overlap_warn=geometry_diagnostics.ARTIST_OVERLAP_WARN,
+            max_reported_pairs=50,
+        )
+        self.assertEqual(geometry_diagnostics._artist_overlaps(ax, renderer, 0), direct)
+        candidate_direct = geometry_artist_overlaps._artist_overlap_candidates(
+            ax,
+            renderer,
+            is_paintable=geometry_diagnostics._is_paintable,
+            marker_footprint_box_entries=geometry_diagnostics._marker_footprint_box_entries,
+        )
+        self.assertEqual(
+            _candidate_signature(geometry_diagnostics._artist_overlap_candidates(ax, renderer)),
+            _candidate_signature(candidate_direct),
+        )
+
+    def test_geometry_diagnostics_keeps_tick_label_compatibility_exports(self):
+        fig, ax = plt.subplots(figsize=(2.5, 2.5))
+        labels = [f"long-label-{index}" for index in range(6)]
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(labels, rotation=0)
+        ax.set_yticks([0, 1])
+        ax.set_yticklabels(["low", "high"])
+        _drawn(fig)
+        renderer = fig.canvas.get_renderer()
+        visible_x = geometry_tick_labels._visible_tick_labels(
+            list(ax.get_xticklabels()),
+            is_paintable=geometry_diagnostics._is_paintable,
+        )
+
+        self.assertEqual(geometry_diagnostics._visible_tick_labels(list(ax.get_xticklabels())), visible_x)
+        self.assertEqual(geometry_diagnostics._truncate_pairs([[0, 1]]), ([[0, 1]], False))
+        self.assertEqual(
+            geometry_diagnostics._axis_tick_overlaps(visible_x, renderer, "x"),
+            geometry_tick_labels._axis_tick_overlaps(
+                visible_x,
+                renderer,
+                "x",
+                max_text_artists=geometry_diagnostics.MAX_TEXT_ARTISTS,
+            ),
+        )
+        self.assertEqual(
+            geometry_diagnostics._axis_crowding(visible_x, ax, renderer, "x"),
+            geometry_tick_labels._axis_crowding(
+                visible_x,
+                ax,
+                renderer,
+                "x",
+                max_text_artists=geometry_diagnostics.MAX_TEXT_ARTISTS,
+            ),
+        )
+        direct_overlaps = geometry_tick_labels._tick_label_overlaps(
+            ax,
+            renderer,
+            0,
+            is_paintable=geometry_diagnostics._is_paintable,
+            max_text_artists=geometry_diagnostics.MAX_TEXT_ARTISTS,
+            max_reported_pairs=50,
+        )
+        self.assertEqual(geometry_diagnostics._tick_label_overlaps(ax, renderer, 0), direct_overlaps)
+        direct_crowding = geometry_tick_labels._tick_label_crowding(
+            ax,
+            renderer,
+            0,
+            is_paintable=geometry_diagnostics._is_paintable,
+            max_text_artists=geometry_diagnostics.MAX_TEXT_ARTISTS,
+            tick_crowding_warn=geometry_diagnostics.TICK_CROWDING_WARN,
+            crowding_near_low=geometry_diagnostics._CROWDING_NEAR_LOW,
+            crowding_near_high=geometry_diagnostics._CROWDING_NEAR_HIGH,
+        )
+        self.assertEqual(geometry_diagnostics._tick_label_crowding(ax, renderer, 0), direct_crowding)
+
+    def test_geometry_diagnostics_keeps_bounds_check_compatibility_exports(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.plot([0.0, 2.0], [0.0, 2.0])
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_title("Panel")
+        ax.set_xlabel("X")
+        _drawn(fig)
+        renderer = fig.canvas.get_renderer()
+
+        self.assertIs(geometry_diagnostics._overlap_fraction_1d, geometry_bounds_checks._overlap_fraction_1d)
+        self.assertIs(
+            geometry_diagnostics._degenerate_outside_fraction,
+            geometry_bounds_checks._degenerate_outside_fraction,
+        )
+        self.assertEqual(
+            len(geometry_diagnostics._visible_data_artists(ax)),
+            len(geometry_bounds_checks._visible_data_artists(ax, is_paintable=geometry_diagnostics._is_paintable)),
+        )
+        self.assertEqual(
+            _bbox_signature(geometry_diagnostics._visible_data_lim(ax)),
+            _bbox_signature(
+                geometry_bounds_checks._visible_data_lim(
+                    ax,
+                    is_paintable=geometry_diagnostics._is_paintable,
+                )
+            ),
+        )
+        outside_axes_direct = geometry_bounds_checks._artists_outside_axes(
+            ax,
+            renderer,
+            0,
+            is_paintable=geometry_diagnostics._is_paintable,
+            data_outside_axes_warn=geometry_diagnostics.DATA_OUTSIDE_AXES_WARN,
+        )
+        self.assertEqual(geometry_diagnostics._artists_outside_axes(ax, renderer, 0), outside_axes_direct)
+        self.assertEqual(
+            len(geometry_diagnostics._chrome_artists(ax)),
+            len(geometry_bounds_checks._chrome_artists(ax, is_paintable=geometry_diagnostics._is_paintable)),
+        )
+        outside_figure_direct = geometry_bounds_checks._artists_outside_figure(
+            ax,
+            fig,
+            renderer,
+            0,
+            True,
+            is_paintable=geometry_diagnostics._is_paintable,
+        )
+        self.assertEqual(
+            geometry_diagnostics._artists_outside_figure(ax, fig, renderer, 0, True),
+            outside_figure_direct,
+        )
 
     def test_contract_shape_and_version(self):
         fig, ax = plt.subplots()

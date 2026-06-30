@@ -542,9 +542,8 @@ class McpRenderToolSupportMixin:
 
     @staticmethod
     def _safe_preflight(output_path: Path, target_format: str) -> dict[str, Any]:
-        journal = target_format if target_format in {"nature", "science", "acs", "rsc", "elsevier"} else "nature"
         try:
-            return validate_figure_preflight(output_path, journal)
+            return validate_figure_preflight(output_path, str(target_format or "nature").strip().lower() or "nature")
         except Exception as exc:
             return {
                 "passed": False,

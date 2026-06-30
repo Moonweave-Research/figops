@@ -100,6 +100,9 @@ _check_monotonic_within_group_constraint = _data_contract_semantics._check_monot
 _check_min_replicates_constraint = _data_contract_semantics._check_min_replicates_constraint
 _check_expected_sample_count_constraint = _data_contract_semantics._check_expected_sample_count_constraint
 _check_grouped_cv_constraint = _data_contract_semantics._check_grouped_cv_constraint
+_check_allow_null_constraint = _data_contract_semantics._check_allow_null_constraint
+_check_range_constraint = _data_contract_semantics._check_range_constraint
+_check_unique_constraint = _data_contract_semantics._check_unique_constraint
 _numeric_series_or_error = _data_contract_semantics._numeric_series_or_error
 _check_log_scale_positive_constraint = _data_contract_semantics._check_log_scale_positive_constraint
 _check_error_bar_source_constraint = _data_contract_semantics._check_error_bar_source_constraint
@@ -132,12 +135,13 @@ def _check_axis_unit_constraint(
 
 
 _check_monotonic_constraint = _data_contract_semantics._check_monotonic_constraint
-def _check_statistical_quality(df, csv_rel_path, cv_threshold, project_dir):
+def _check_statistical_quality(df, csv_rel_path, cv_threshold, project_dir, *, write_diagnostics: bool = True):
     return _data_contract_semantics._check_statistical_quality(
         df,
         csv_rel_path,
         cv_threshold,
         project_dir,
+        write_diagnostics=write_diagnostics,
         log_func=_log,
     )
 
@@ -210,13 +214,14 @@ def validate_data_contract_preflight(project_dir, config, require_existing: bool
     return True
 
 
-def validate_data_contract(project_dir, config, prefetcher=None):
+def validate_data_contract(project_dir, config, prefetcher=None, *, write_sidecar: bool = True):
     prefetcher = _resolve_prefetcher(config, prefetcher)
     contract = config.get("data_contract", {})
     checks = contract.get("csv_checks", []) if isinstance(contract, dict) else []
 
     if not checks:
-        _write_calculation_checks_sidecar(project_dir, [])
+        if write_sidecar:
+            _write_calculation_checks_sidecar(project_dir, [])
         return True
 
     try:
@@ -226,7 +231,8 @@ def validate_data_contract(project_dir, config, prefetcher=None):
         return False
 
     _log("\n🔍 [Data Contract Step]")
-    _write_calculation_checks_sidecar(project_dir, [])
+    if write_sidecar:
+        _write_calculation_checks_sidecar(project_dir, [])
     calculation_checks = []
     contract_failed = False
     for i, check in enumerate(checks, 1):
@@ -301,12 +307,13 @@ def validate_data_contract(project_dir, config, prefetcher=None):
                 source_config_path="project_config.yaml",
             )
             if semantic_errors:
-                _write_calculation_checks_sidecar(project_dir, calculation_checks)
+                if write_sidecar:
+                    _write_calculation_checks_sidecar(project_dir, calculation_checks)
                 _log(f"      ❌ Semantic validation failed for '{check['path']}':")
                 for s_err in semantic_errors:
                     _log(f"         - {s_err}")
                 # Generate Markdown diagnostic report
-                if row_violations:
+                if write_sidecar and row_violations:
                     try:
                         from .error_dumper import dump_contract_report
 
@@ -324,13 +331,20 @@ def validate_data_contract(project_dir, config, prefetcher=None):
 
         # --- Statistical Quality Score ---
         cv_threshold = contract.get("cv_threshold", 0.10)
-        quality_result = _check_statistical_quality(df, check["path"], cv_threshold, project_dir)
+        quality_result = _check_statistical_quality(
+            df,
+            check["path"],
+            cv_threshold,
+            project_dir,
+            write_diagnostics=write_sidecar,
+        )
         if not quality_result["quality_passed"]:
             _log(f"      🟠 quality_passed=False for '{check['path']}' (CV threshold: {cv_threshold:.0%})")
 
         _log(f"      ✅ Passed ({len(df)} rows)")
 
-    _write_calculation_checks_sidecar(project_dir, calculation_checks)
+    if write_sidecar:
+        _write_calculation_checks_sidecar(project_dir, calculation_checks)
     if contract_failed:
         return False
     _log("   ✅ Data contract checks completed.")

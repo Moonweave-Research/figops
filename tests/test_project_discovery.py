@@ -1,8 +1,12 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+import hub_core.config_parser as config_parser
+import hub_core.config_project_registry as config_project_registry
 from hub_core.adapters import SurfurConventions
+from hub_core.config_parser import list_projects
 from hub_core.project_discovery import ProjectDiscoveryService, get_discoverable_projects
 from tests._symlink import symlink_or_skip
 from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
@@ -78,6 +82,39 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
             self.assertEqual(project.classification, "official")
             self.assertTrue(project.project_id)
             self.assertEqual(project.target_format, INTERNAL_STYLE_TARGET_FORMAT)
+
+    def test_legacy_list_projects_non_recursive_caps_scan_depth(self):
+        calls = []
+
+        def fake_discover(_root, *, max_depth):
+            calls.append(max_depth)
+            return []
+
+        with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:
+            with patch("hub_core.config_parser.discover_projects_with_status", side_effect=fake_discover):
+                list_projects(tmpdir, recursive=False, max_depth=4)
+                list_projects(tmpdir, recursive=True, max_depth=4)
+
+        self.assertEqual(calls, [1, 4])
+
+    def test_config_parser_keeps_project_registry_compatibility_exports(self):
+        self.assertIs(
+            config_parser._load_registry_operational_states,
+            config_project_registry.load_registry_operational_states,
+        )
+        self.assertIs(config_parser._normalize_registry_path, config_project_registry.normalize_registry_path)
+        self.assertIs(config_parser._resolve_operational_state, config_project_registry.resolve_operational_state)
+        states = {
+            config_project_registry.normalize_registry_path("Study"): "active",
+            config_project_registry.normalize_registry_path(str(Path("Study") / "modules")): "module-active",
+        }
+
+        self.assertEqual(
+            config_parser._resolve_operational_state(states, str(Path("Study") / "modules" / "A")),
+            "module-active",
+        )
+        self.assertEqual(config_parser._resolve_operational_state(states, str(Path("Study") / "docs")), "active")
+        self.assertEqual(config_parser._resolve_operational_state(states, "Other"), "-")
 
     def test_invalid_configs_are_visible_with_errors(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:

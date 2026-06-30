@@ -128,6 +128,22 @@ def test_over_width_raster_fails(tmp_path: Path):
     assert any("exceeds journal max" in warning for warning in result["warnings"])
 
 
+def test_over_width_svg_with_physical_units_fails(tmp_path: Path):
+    svg = tmp_path / "wide.svg"
+    svg.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="80mm">'
+        '<rect width="200mm" height="80mm" fill="white"/></svg>',
+        encoding="utf-8",
+    )
+
+    result = validate_figure_preflight(svg, "nature")
+
+    assert result["passed"] is False
+    dims_check = next(c for c in result["checks"] if c["name"] == "dimensions")
+    assert dims_check["passed"] is False
+    assert "200.0mm" in dims_check["detail"]
+
+
 def test_cmyk_raster_fails(tmp_path: Path):
     tiff = tmp_path / "fig_cmyk.tiff"
     img = Image.new("CMYK", (800, 600), color=(0, 0, 0, 0))

@@ -1,6 +1,9 @@
 # PyPI packaging readiness
 
-FigOps is published on PyPI as `figops`. It also has enough Python packaging metadata to build a wheel and source distribution for the current distribution name:
+The local release docs record `figops` as the public PyPI package name.
+The current source checkout may be ahead of that public package. This repository
+also has enough Python packaging metadata to build a wheel and source
+distribution for the current distribution name:
 
 ```bash
 python -m build
@@ -37,7 +40,7 @@ wheel gets working `figops` and `figops-mcp` commands.
 
 ## Public and GitHub release distribution
 
-The primary public install path is PyPI:
+For the locally documented public release, the primary install path is PyPI:
 
 ```bash
 APPROVED_VERSION=0.17.9  # replace with the approved release version
@@ -45,7 +48,8 @@ python -m pip install "figops==$APPROVED_VERSION"
 figops-mcp --smoke
 ```
 
-The GitHub release asset remains available when an exact attached artifact is needed:
+The locally documented GitHub Release asset remains available when an exact
+attached artifact is needed:
 
 ```bash
 APPROVED_VERSION=0.17.9  # replace with the approved release version
@@ -61,6 +65,10 @@ APPROVED_VERSION=0.17.9  # replace with the approved release version
 gh release upload "v$APPROVED_VERSION" "dist/figops-$APPROVED_VERSION-py3-none-any.whl" "dist/figops-$APPROVED_VERSION.tar.gz"
 python scripts/github_release_asset_smoke.py
 ```
+
+The `0.17.9` examples above are local documentation anchors, not a live latest
+release assertion. Update them only after explicit release-maintainer approval
+and public index/release-asset verification.
 
 ## Current distribution boundary
 

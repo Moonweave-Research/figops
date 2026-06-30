@@ -1,0 +1,700 @@
+{
+  "schema_version": "0.5",
+  "plan_id": "figops-review-remediation-2026-06-29",
+  "created_by": "keelplane",
+  "source_prompt": "Design and execute a workflow plan for remediating the FigOps repository review findings.",
+  "activation": {
+    "decision": "activate",
+    "matched_thresholds": [
+      "multi-surface-fanout",
+      "resumable-handoffs",
+      "planned-fanout",
+      "adversarial-verification",
+      "human-gates"
+    ],
+    "downgrade_target": null,
+    "reason": "The remediation spans CLI runtime, MCP security, data-contract enforcement, plotting preflight, documentation, and release metadata, with separable implementation slices and shared verification gates."
+  },
+  "objective": "Bring FigOps review findings into a staged, verifiable remediation run that prioritizes correctness and safety before documentation and maintenance polish.",
+  "surfaces": [
+    {
+      "id": "repo",
+      "kind": "repo",
+      "locator": "C:/dev/workspace/figops",
+      "access_mode": "write-proposed"
+    },
+    {
+      "id": "mcp",
+      "kind": "api",
+      "locator": "hub_core/mcp, graphhub_mcp_server.py, figops_mcp_server.py, graphhub_mcp_launcher.py",
+      "access_mode": "write-proposed"
+    },
+    {
+      "id": "runtime-cli",
+      "kind": "package",
+      "locator": "orchestrator.py, hub_uv.py, hub_core/uv_runtime.py, tests/test_smoke.py",
+      "access_mode": "write-proposed"
+    },
+    {
+      "id": "plot-contract",
+      "kind": "package",
+      "locator": "hub_core/data_contract*.py, hub_core/figure_preflight.py, plotting/, themes/",
+      "access_mode": "write-proposed"
+    },
+    {
+      "id": "docs-release",
+      "kind": "document",
+      "locator": "README.md, AGENTS.md, Research_Central_Architecture.md, docs/ROADMAP.md, docs/architecture.md, CHANGELOG.md",
+      "access_mode": "write-proposed"
+    }
+  ],
+  "assumptions": [
+    {
+      "claim": "Correctness gaps in MCP render paths are higher priority than documentation drift.",
+      "verify": "Confirm MCP project render and CSV render tests cover the same validation contract as CLI plot execution before starting docs-only edits."
+    },
+    {
+      "claim": "The preferred local verification path is hub_uv.py, but this machine currently lacks uv on PATH.",
+      "verify": "Run python hub_uv.py --print-env, then either install or locate uv only after user approval; otherwise use the existing external FigOps environment directly for smoke tests."
+    },
+    {
+      "claim": "Release metadata drift is intentional if 0.17.10 is unreleased, but it must be explicit.",
+      "verify": "Check README, CHANGELOG, docs/packaging, and git tags before deciding whether to point public docs at 0.17.9 or mark 0.17.10 as development."
+    }
+  ],
+  "patterns": [
+    "Parallel Fan-Out / Fan-In",
+    "Adversarial Verify",
+    "Pipeline",
+    "Human Gate",
+    "Resume And Cache"
+  ],
+  "phases": [
+    {
+      "id": "phase-0-baseline",
+      "name": "Baseline And Scope Lock",
+      "entry_criteria": "Review findings are available and worktree status is known.",
+      "exit_criteria": "A baseline receipt records runnable commands, blocked commands, dependency state, and files in scope."
+    },
+    {
+      "id": "phase-1-correctness",
+      "name": "P1 Correctness Remediation",
+      "entry_criteria": "Baseline receipt exists.",
+      "exit_criteria": "MCP project render data-contract parity and MCP preflight target parity are implemented with focused tests."
+    },
+    {
+      "id": "phase-2-safety-runtime",
+      "name": "P2 Safety And Runtime Remediation",
+      "entry_criteria": "P1 tests pass or failures are isolated to unavailable local dependencies.",
+      "exit_criteria": "Runtime destination symlink handling, launcher drift, smoke command health, and list-root-only behavior are resolved or converted to explicit tracked decisions."
+    },
+    {
+      "id": "phase-3-docs-examples",
+      "name": "Docs, Examples, And Policy Alignment",
+      "entry_criteria": "Code behavior changes have verification receipts.",
+      "exit_criteria": "README/version state, canonical document hierarchy, example plotting defaults, and vector preflight policy are aligned with live code."
+    },
+    {
+      "id": "phase-4-adversarial-verify",
+      "name": "Independent Verification And Fan-In",
+      "entry_criteria": "All implementation slices have receipts.",
+      "exit_criteria": "Verifier fails to refute the fixes, no forbidden edits occurred, and final residual risks are documented."
+    }
+  ],
+  "workers": [
+    {
+      "id": "commander",
+      "role": "fan-in coordinator and code owner",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": [
+          "dependency installation",
+          "publishing",
+          "history rewrite",
+          "secret access"
+        ]
+      },
+      "forbidden_actions": [
+        "Do not revert unrelated user changes.",
+        "Do not publish packages or create releases.",
+        "Do not install dependencies without a human gate.",
+        "Do not weaken tests to pass the run."
+      ],
+      "context_budget": {
+        "max_files": 40,
+        "max_tokens": 50000,
+        "must_include": [
+          "review findings",
+          "git status",
+          "pyproject.toml",
+          "tests touched by slices"
+        ],
+        "must_exclude": [
+          "private external project data",
+          "secrets"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "review findings",
+          "workflow plan",
+          "repository path"
+        ],
+        "required_output_schema": "markdown summary with changed files, commands, results, and residual risks",
+        "stop_conditions": [
+          "P1 code behavior is implemented and tested",
+          "a human gate blocks dependency installation",
+          "a verifier refutes a claimed fix"
+        ]
+      },
+      "ownership": [
+        "workflow orchestration",
+        "fan-in report",
+        "final integration"
+      ]
+    },
+    {
+      "id": "worker-mcp-contract",
+      "role": "MCP data-contract and preflight parity implementer",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": [
+          "dependency installation"
+        ]
+      },
+      "forbidden_actions": [
+        "Do not edit docs except test-facing comments.",
+        "Do not change public tool names.",
+        "Do not bypass write-tool guards."
+      ],
+      "context_budget": {
+        "max_files": 18,
+        "max_tokens": 30000,
+        "must_include": [
+          "hub_core/mcp/tools/render_project.py",
+          "hub_core/mcp/tools/render_support.py",
+          "hub_core/data_contract.py",
+          "hub_core/figure_preflight.py",
+          "tests/test_mcp_rendering.py"
+        ],
+        "must_exclude": [
+          "packaging release docs"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "P1 findings",
+          "current MCP render tests"
+        ],
+        "required_output_schema": "patch plus test receipt",
+        "stop_conditions": [
+          "full data-contract validation parity is tested",
+          "supported target formats no longer map unexpectedly to nature",
+          "tests expose an unresolved design conflict"
+        ]
+      },
+      "ownership": [
+        "hub_core/mcp/tools/render_project.py",
+        "hub_core/mcp/tools/render_support.py",
+        "tests/test_mcp_rendering.py",
+        "tests/test_journal_theme_layout.py"
+      ]
+    },
+    {
+      "id": "worker-runtime-dx",
+      "role": "CLI runtime and smoke health implementer",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": [
+          "dependency installation",
+          "PATH modification"
+        ]
+      },
+      "forbidden_actions": [
+        "Do not install uv automatically.",
+        "Do not modify user shell profile.",
+        "Do not remove R-dependent coverage."
+      ],
+      "context_budget": {
+        "max_files": 16,
+        "max_tokens": 24000,
+        "must_include": [
+          "hub_core/uv_runtime.py",
+          "orchestrator.py",
+          "hub_core/config_parser.py",
+          "tests/test_smoke.py",
+          "tests/test_uv_runtime.py"
+        ],
+        "must_exclude": [
+          "MCP render implementation internals"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "runtime findings",
+          "current documented commands"
+        ],
+        "required_output_schema": "patch plus command receipt",
+        "stop_conditions": [
+          "smoke command path is fixed or docs are corrected",
+          "list-root-only behavior is implemented or removed from CLI docs",
+          "uv missing state reports an actionable doctor path"
+        ]
+      },
+      "ownership": [
+        "orchestrator.py",
+        "hub_core/config_parser.py",
+        "hub_core/uv_runtime.py",
+        "tests/test_smoke.py",
+        "tests/test_uv_runtime.py"
+      ]
+    },
+    {
+      "id": "worker-mcp-safety",
+      "role": "MCP runtime destination safety implementer",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": [
+          "destructive filesystem operations outside runtime test tempdirs"
+        ]
+      },
+      "forbidden_actions": [
+        "Do not delete user runtime directories.",
+        "Do not relax allowed-root or symlink guards.",
+        "Do not change write tools to default enabled."
+      ],
+      "context_budget": {
+        "max_files": 18,
+        "max_tokens": 30000,
+        "must_include": [
+          "hub_core/mcp/render_orchestration.py",
+          "hub_core/mcp/tools/render_csv.py",
+          "hub_core/mcp/security.py",
+          "tests/test_mcp_rendering.py",
+          "tests/test_mcp_read_only.py"
+        ],
+        "must_exclude": [
+          "public release docs"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "MCP safety findings",
+          "runtime root policy"
+        ],
+        "required_output_schema": "patch plus symlink-focused test receipt",
+        "stop_conditions": [
+          "pre-existing runtime symlink destination is refused or safely replaced",
+          "multipanel overwrite parity with single CSV/project render is tested",
+          "test fixture cannot be written safely on the host"
+        ]
+      },
+      "ownership": [
+        "hub_core/mcp/render_orchestration.py",
+        "hub_core/mcp/tools/render_csv.py",
+        "tests/test_mcp_rendering.py",
+        "tests/test_mcp_read_only.py"
+      ]
+    },
+    {
+      "id": "worker-docs-release",
+      "role": "documentation and release-state alignment implementer",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": [
+          "network release verification",
+          "publishing"
+        ]
+      },
+      "forbidden_actions": [
+        "Do not tag releases.",
+        "Do not claim a version is published without evidence.",
+        "Do not remove compatibility aliases from docs without code changes."
+      ],
+      "context_budget": {
+        "max_files": 20,
+        "max_tokens": 26000,
+        "must_include": [
+          "README.md",
+          "AGENTS.md",
+          "Research_Central_Architecture.md",
+          "docs/ROADMAP.md",
+          "docs/architecture.md",
+          "CHANGELOG.md"
+        ],
+        "must_exclude": [
+          "private project data"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "docs drift findings",
+          "release metadata state"
+        ],
+        "required_output_schema": "patch plus docs consistency checklist",
+        "stop_conditions": [
+          "README and changelog version statements are explicitly reconciled",
+          "canonical document hierarchy is unambiguous",
+          "architecture drift is either corrected or marked legacy"
+        ]
+      },
+      "ownership": [
+        "README.md",
+        "AGENTS.md",
+        "Research_Central_Architecture.md",
+        "docs/ROADMAP.md",
+        "docs/architecture.md",
+        "docs/packaging"
+      ]
+    },
+    {
+      "id": "worker-verifier",
+      "role": "independent adversarial verifier",
+      "tool_permissions": {
+        "read": true,
+        "write": false,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": [
+          "dependency installation"
+        ]
+      },
+      "forbidden_actions": [
+        "Do not edit files.",
+        "Do not accept producer claims without checking source.",
+        "Do not ignore failing tests as environmental without evidence."
+      ],
+      "context_budget": {
+        "max_files": 30,
+        "max_tokens": 32000,
+        "must_include": [
+          "all changed files",
+          "test receipts",
+          "review findings"
+        ],
+        "must_exclude": [
+          "unrelated historical docs"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "patch summary",
+          "test logs",
+          "workflow plan"
+        ],
+        "required_output_schema": "confirmed/refuted/unverified findings table",
+        "stop_conditions": [
+          "all claims are confirmed or refuted",
+          "missing evidence blocks fan-in",
+          "forbidden action is detected"
+        ]
+      },
+      "ownership": [
+        "verification report",
+        "falsification checks"
+      ]
+    }
+  ],
+  "handoffs": [
+    {
+      "from_phase": "phase-0-baseline",
+      "to_phase": "phase-1-correctness",
+      "artifact": "baseline.receipt.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "git_status",
+          "available_python_env",
+          "blocked_commands",
+          "r_runtime_status",
+          "initial_test_slice"
+        ],
+        "validation_command": "python -c \"from pathlib import Path; p=Path('baseline.receipt.md'); assert p.exists() and all(k in p.read_text() for k in ['git_status','blocked_commands','initial_test_slice'])\""
+      }
+    },
+    {
+      "from_phase": "phase-1-correctness",
+      "to_phase": "phase-2-safety-runtime",
+      "artifact": "p1-correctness.patch-and-tests.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "changed_files",
+          "data_contract_parity_test",
+          "preflight_target_parity_test",
+          "command_results"
+        ],
+        "validation_command": "python -m pytest tests/test_mcp_rendering.py tests/test_journal_theme_layout.py -q"
+      }
+    },
+    {
+      "from_phase": "phase-2-safety-runtime",
+      "to_phase": "phase-3-docs-examples",
+      "artifact": "p2-safety-runtime.patch-and-tests.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "changed_files",
+          "symlink_destination_test",
+          "smoke_command_test",
+          "list_root_only_test",
+          "command_results"
+        ],
+        "validation_command": "python -m pytest tests/test_mcp_rendering.py tests/test_mcp_read_only.py tests/test_smoke.py tests/test_uv_runtime.py -q"
+      }
+    },
+    {
+      "from_phase": "phase-3-docs-examples",
+      "to_phase": "phase-4-adversarial-verify",
+      "artifact": "docs-release-alignment.receipt.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "version_policy",
+          "canonical_doc_policy",
+          "example_policy",
+          "docs_changed"
+        ],
+        "validation_command": "python scripts/check_public_release.py --root ."
+      }
+    },
+    {
+      "from_phase": "phase-4-adversarial-verify",
+      "to_phase": "final",
+      "artifact": "verification.report.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "confirmed",
+          "refuted",
+          "unverified",
+          "final_commands",
+          "residual_risk"
+        ],
+        "validation_command": "python -c \"from pathlib import Path; p=Path('verification.report.md'); assert p.exists() and all(k in p.read_text().lower() for k in ['confirmed','refuted','unverified','residual'])\""
+      }
+    }
+  ],
+  "parallelism": {
+    "shape": "parallel fan-out/fan-in with gated waves",
+    "concurrency_cap": 3,
+    "fan_in_rule": "Fan in after each wave only when every slice produces changed-file lists, test receipts, and explicit residual risks.",
+    "barriers": [
+      "phase-0 baseline before implementation",
+      "P1 correctness exit gate before P2/P3 auto-progression",
+      "independent verifier before final status"
+    ]
+  },
+  "verification": [
+    {
+      "claim_or_output": "MCP project render enforces the same data-contract semantics as CLI plotting.",
+      "falsifier": "Construct a project with an existing CSV that violates semantic constraints and show MCP render proceeds while CLI validation fails.",
+      "evidence_required": "Failing regression test before fix or equivalent source proof, passing test after fix, and command output."
+    },
+    {
+      "claim_or_output": "MCP visual preflight uses the requested supported target instead of silently mapping to nature.",
+      "falsifier": "Render or call preflight with wiley/cell/internal target and observe nature policy metadata or incompatible pass/fail.",
+      "evidence_required": "Target-specific test covering at least wiley or cell plus one existing nature/science case."
+    },
+    {
+      "claim_or_output": "Runtime writes cannot escape or follow pre-existing symlink destinations under job_root or _latest.",
+      "falsifier": "Create a temp runtime root containing a symlinked job/latest destination to an outside temp directory and show render artifacts written outside runtime root.",
+      "evidence_required": "Symlink-focused test that fails before fix or source-level proof, then passes after fix."
+    },
+    {
+      "claim_or_output": "Documented smoke/list commands match real behavior.",
+      "falsifier": "Run the documented commands and show failure unrelated to missing optional R runtime.",
+      "evidence_required": "Command log with pass, skip, or corrected documentation."
+    },
+    {
+      "claim_or_output": "Release docs clearly distinguish published version from development version.",
+      "falsifier": "Find conflicting current-version claims between README, pyproject, changelog, roadmap, or packaging docs.",
+      "evidence_required": "rg output or consistency checklist after docs edits."
+    }
+  ],
+  "risk_gates": [
+    {
+      "trigger": "Installing uv, pytest, R, readr, or any other dependency on the user's machine.",
+      "safe_default": "Do not install; use existing environment if available and report blocked commands.",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "Publishing, tagging, uploading to PyPI/TestPyPI, or changing release assets.",
+      "safe_default": "Do not publish or tag; documentation may describe the required release state only.",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "Deleting runtime directories, job roots, or symlinks outside isolated test tempdirs.",
+      "safe_default": "Do not delete; create isolated temp fixtures and fail closed.",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "Changing public MCP tool names, CLI aliases, or compatibility aliases.",
+      "safe_default": "Preserve aliases; deprecations require explicit design approval.",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "Network lookup to confirm PyPI/GitHub latest state.",
+      "safe_default": "Use local metadata and mark public-state claims unverified unless user approves browsing.",
+      "requires_user_approval": true
+    }
+  ],
+  "budget": {
+    "agent_limit": 6,
+    "round_limit": 5,
+    "retry_limit_per_slice": 2,
+    "time_limit_minutes": 180,
+    "file_touch_limit": 35,
+    "preferred_test_budget_minutes": 20,
+    "stop_when": [
+      "P1 correctness cannot be verified due to missing dependencies and no approved fallback exists",
+      "worktree contains conflicting user edits in owned files",
+      "a required human gate is reached"
+    ]
+  },
+  "resume": {
+    "cacheable_artifacts": [
+      "baseline.receipt.md",
+      "p1-correctness.patch-and-tests.md",
+      "p2-safety-runtime.patch-and-tests.md",
+      "docs-release-alignment.receipt.md",
+      "verification.report.md"
+    ],
+    "invalidation_rules": [
+      "Rerun a phase when any owned source file or test file for that phase changes.",
+      "Rerun baseline when Python environment, uv availability, R availability, or git branch changes.",
+      "Rerun docs alignment when pyproject version, changelog, README, or release docs change."
+    ],
+    "restart_points": [
+      "phase-0-baseline",
+      "phase-1-correctness",
+      "phase-2-safety-runtime",
+      "phase-3-docs-examples",
+      "phase-4-adversarial-verify"
+    ],
+    "skip_rules": [
+      "Skip docs-release wave until P1 correctness receipts exist unless only producing a planning artifact.",
+      "Skip dependency-install attempts unless a human gate approves them."
+    ]
+  },
+  "execution_path": {
+    "mode": "direct-codex-with-optional-subagents",
+    "consumer": "Codex and human maintainer",
+    "first_slice": {
+      "instruction": "Create the baseline receipt for C:/dev/workspace/figops, confirm git status, identify the usable Python environment, rerun the smallest available smoke/list commands, and record blocked commands without installing dependencies.",
+      "inputs": [
+        "repository path: C:/dev/workspace/figops",
+        "review findings from 2026-06-29",
+        "pyproject.toml",
+        "AGENTS.md",
+        "hub_uv.py"
+      ],
+      "expected_output": "baseline.receipt.md with git_status, available_python_env, blocked_commands, r_runtime_status, and initial_test_slice.",
+      "completion_check": "The receipt exists and cites exact commands and exit results; no dependencies were installed.",
+      "forbidden_actions": [
+        "Do not install uv or Python packages.",
+        "Do not modify source files in the baseline slice.",
+        "Do not run destructive filesystem commands."
+      ]
+    },
+    "first_wave": {
+      "id": "wave-0-baseline",
+      "concurrency_cap": 1,
+      "slices": [
+        {
+          "id": "slice-baseline",
+          "instruction": "Create the baseline receipt for C:/dev/workspace/figops, confirm git status, identify the usable Python environment, rerun the smallest available smoke/list commands, and record blocked commands without installing dependencies.",
+          "inputs": [
+            "repository path: C:/dev/workspace/figops",
+            "review findings from 2026-06-29"
+          ],
+          "expected_output": "baseline.receipt.md",
+          "completion_check": "Receipt includes git status, Python/env status, uv status, R status, and at least one attempted command result.",
+          "forbidden_actions": [
+            "Do not install dependencies.",
+            "Do not edit implementation files.",
+            "Do not delete runtime directories."
+          ]
+        }
+      ],
+      "entry_gate": "Worktree is readable and no user edit conflict blocks read-only baseline commands.",
+      "exit_gate": "Baseline receipt exists and no forbidden actions occurred.",
+      "fan_in": "Commander reviews the receipt and chooses implementation slices for wave-1."
+    },
+    "waves": [
+      {
+        "id": "wave-1-p1-correctness",
+        "depends_on": [
+          "wave-0-baseline"
+        ],
+        "concurrency_cap": 2,
+        "slices": [
+          "worker-mcp-contract:data-contract-parity",
+          "worker-mcp-contract:preflight-target-parity"
+        ],
+        "entry_gate": "wave-0-baseline exit gate passed and a Python test environment is available or a no-install fallback is documented.",
+        "exit_gate": "Focused MCP render/preflight tests pass or failures are classified as environmental with evidence."
+      },
+      {
+        "id": "wave-2-p2-runtime-safety",
+        "depends_on": [
+          "wave-1-p1-correctness"
+        ],
+        "concurrency_cap": 3,
+        "slices": [
+          "worker-mcp-safety:runtime-destination-symlink",
+          "worker-runtime-dx:smoke-and-list-root-only",
+          "worker-runtime-dx:launcher-drift"
+        ],
+        "entry_gate": "wave-1-p1-correctness receipt exists and P1 claims are not refuted.",
+        "exit_gate": "Safety/runtime tests pass or unresolved issues are split into explicit follow-up blockers."
+      },
+      {
+        "id": "wave-3-docs-examples",
+        "depends_on": [
+          "wave-2-p2-runtime-safety"
+        ],
+        "concurrency_cap": 2,
+        "slices": [
+          "worker-docs-release:version-and-canonical-docs",
+          "worker-docs-release:examples-and-vector-policy"
+        ],
+        "entry_gate": "Code behavior receipts exist so docs can describe actual behavior.",
+        "exit_gate": "Docs consistency checklist passes and public release claims avoid unverified latest-state assertions."
+      },
+      {
+        "id": "wave-4-verify",
+        "depends_on": [
+          "wave-3-docs-examples"
+        ],
+        "concurrency_cap": 1,
+        "slices": [
+          "worker-verifier:adversarial-fan-in"
+        ],
+        "entry_gate": "All prior wave receipts and changed-file lists are available.",
+        "exit_gate": "Verifier report separates confirmed, refuted, and unverified items and final commands are recorded."
+      }
+    ]
+  }
+}
