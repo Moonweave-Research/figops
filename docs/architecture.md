@@ -70,8 +70,8 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | File | Lines |
 |---|---:|
 | `themes/journal_theme.py` | 1178 |
+| `plotting/bridge_renderer.py` | 1088 |
 | `hub_core/process_runner.py` | 1086 |
-| `plotting/bridge_renderer.py` | 1086 |
 | `hub_core/mcp/tools/render_csv.py` | 991 |
 | `hub_core/mcp/render_orchestration.py` | 958 |
 | `hub_core/visual_regression.py` | 902 |
