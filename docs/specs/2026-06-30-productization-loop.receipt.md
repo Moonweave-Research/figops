@@ -5,7 +5,7 @@ Plan: `docs/specs/2026-06-30-figops-productization-loop.plan.json`
 
 ## Confirmed
 
-Latest slice: `2026-06-30.H` uv-backed gitflow verification and lint closure.
+Latest slice: `2026-06-30.I` PR packaging verification and CI billing triage.
 
 | Claim | Evidence |
 | --- | --- |
@@ -35,6 +35,9 @@ Latest slice: `2026-06-30.H` uv-backed gitflow verification and lint closure.
 | Visual regression baselines were refreshed for the current renderer output. | The six failing bridge-renderer visual baseline PNGs under `tests/fixtures/visual_regression/` were regenerated from the current renders, restoring deterministic visual-regression coverage instead of weakening the gate. |
 | Full pytest is green under uv. | `PATH="$HOME/.local/bin:$PATH" python3 hub_uv.py run python -m pytest -q` returned `1117 passed, 3 skipped, 18 warnings, 56 subtests passed in 61.72s`. |
 | Final smoke gates remain green after lint/test cleanup. | `scripts/check_public_release.py --root .` returned `public_release_check: ok`; `figops_mcp_server.py --smoke` returned `{"health_status": "ok", "status": "ok", "style_format_count": 10, "tool_surface": "figops_mcp"}`. |
+| Productization checkpoint was pushed to GitHub. | Commit `0e3c438` was pushed to `origin/productization/verification-2026-06-30`, and draft PR `#208` was opened against `main`. |
+| GitHub Actions failures are external to the code under review. | PR `#208` check annotations say each job was not started because recent account payments failed or the spending limit needs to be increased; no runner logs were produced. |
+| Local package/release substitute gates pass while hosted CI is blocked. | `uv build`, `scripts/package_metadata_smoke.py`, `scripts/public_package_surface.py`, `scripts/consumer_install_smoke.py`, and `twine check dist/*` all returned exit 0. |
 
 ## Refuted
 
@@ -49,6 +52,7 @@ Latest slice: `2026-06-30.H` uv-backed gitflow verification and lint closure.
 | Item | Reason |
 | --- | --- |
 | Live PyPI/GitHub latest release state. | Network verification was not requested; docs avoid live latest claims. |
+| Hosted GitHub Actions execution. | PR `#208` CI jobs fail before runner startup due account billing/spending-limit annotations. Local equivalents are recorded above. |
 
 ## Final Commands
 
@@ -80,6 +84,14 @@ PATH="$HOME/.local/bin:$PATH" python3 hub_uv.py run python -m pytest -q
 PATH="$HOME/.local/bin:$PATH" uvx ruff check .
 PATH="$HOME/.local/bin:$PATH" uvx ruff check . --fix
 git diff --check
+git push -u origin productization/verification-2026-06-30
+gh pr create --draft --base main --head productization/verification-2026-06-30 --title "Checkpoint productization verification loop"
+gh api repos/Moonweave-Research/figops/check-runs/84209634092/annotations
+PATH="$HOME/.local/bin:$PATH" uv build
+PATH="$HOME/.local/bin:$PATH" python3 hub_uv.py run python scripts/package_metadata_smoke.py
+PATH="$HOME/.local/bin:$PATH" python3 hub_uv.py run python scripts/public_package_surface.py
+PATH="$HOME/.local/bin:$PATH" python3 hub_uv.py run python scripts/consumer_install_smoke.py
+PATH="$HOME/.local/bin:$PATH" uv run --with twine python -m twine check dist/*
 python3 - <<'PY'
 from pathlib import Path
 from scripts.architecture_inventory import architecture_inventory, render_architecture_inventory_markdown
