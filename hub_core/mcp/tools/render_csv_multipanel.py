@@ -17,6 +17,7 @@ from hub_core.mcp.tools.render_csv_args import (
     _normalized_legend_layout_arg,
     _normalized_legend_options_arg,
     _normalized_point_label_options_arg,
+    _normalized_secondary_y_arg,
     _normalized_series_style_args,
     _normalized_tick_style_arg,
 )
@@ -45,6 +46,7 @@ def validate_multipanel_panel_specs(
             plot_type = str(panel.get("plot_type") or "scatter").strip().lower()
             x_scale = _normalized_axis_scale_arg(panel.get("x_scale"), field_name=f"panels[{index}].x_scale")
             y_scale = _normalized_axis_scale_arg(panel.get("y_scale"), field_name=f"panels[{index}].y_scale")
+            secondary_y = _normalized_secondary_y_arg(panel.get("secondary_y"))
             legend_layout = _normalized_legend_layout_arg(
                 panel.get("legend_layout"), field_name=f"panels[{index}].legend_layout"
             )
@@ -90,6 +92,11 @@ def validate_multipanel_panel_specs(
         if series_column and plot_type not in {"line", "scatter", "xy"}:
             contract_errors.append(
                 f"panels[{index}].series_column is only supported for plot_type 'line', 'scatter', or 'xy'."
+            )
+            continue
+        if secondary_y and plot_type not in {"line", "scatter", "xy"}:
+            contract_errors.append(
+                f"panels[{index}].secondary_y is only supported for plot_type 'line', 'scatter', or 'xy'."
             )
             continue
         if label_column and plot_type not in {"line", "scatter", "xy", "bar"}:
@@ -143,6 +150,7 @@ def validate_multipanel_panel_specs(
             *([str(point_label_options.get("skip_column"))] if point_label_options.get("skip_column") else []),
             *([yerr_column] if yerr_column else []),
             *([yerr_minus_column] if yerr_minus_column else []),
+            *([secondary_y["column"]] if secondary_y else []),
             *_fill_between_required_columns(
                 fill_between,
                 existing=tuple(
@@ -158,6 +166,7 @@ def validate_multipanel_panel_specs(
                         str(point_label_options.get("skip_column") or ""),
                         yerr_column,
                         yerr_minus_column,
+                        secondary_y["column"] if secondary_y else "",
                     )
                     if column
                 ),
@@ -167,7 +176,11 @@ def validate_multipanel_panel_specs(
             data_path,
             required_columns=required_columns,
             semantic_checks=semantic_checks,
-            axis_scales={x_column: x_scale, y_column: y_scale},
+            axis_scales={
+                x_column: x_scale,
+                y_column: y_scale,
+                **({secondary_y["column"]: secondary_y["scale"]} if secondary_y else {}),
+            },
         )
         if contract["errors"]:
             contract_errors.extend(f"panels[{index}]: {error}" for error in contract["errors"])
@@ -186,6 +199,7 @@ def validate_multipanel_panel_specs(
                 "plot_type": plot_type,
                 "x_column": x_column,
                 "y_column": y_column,
+                "secondary_y": secondary_y,
                 "z_column": str(panel.get("z_column") or "").strip(),
                 "facet_column": facet_column,
                 "series_column": series_column,

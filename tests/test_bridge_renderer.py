@@ -28,6 +28,7 @@ from plotting.bridge_renderer import (
     _draw_manual_overlays,
     _figsize_for_format,
     _render_bar_plot,
+    _render_csv_panel,
     _render_heatmap_plot,
     _render_multipanel_draft,
     _render_plot,
@@ -2137,6 +2138,46 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertEqual([text.get_text() for text in legend.get_texts()], ["B", "A", "C"])
             self.assertTrue(all(ax.get_legend() is None for ax in fig.axes if ax.get_visible()))
 
+    def test_multipanel_shared_legend_keeps_secondary_y_single_series_labels(self):
+        with tempfile.TemporaryDirectory(prefix="bridge_multi_shared_secondary_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            csv_path = tmpdir_path / "dielectric.csv"
+            csv_path.write_text("freq,eps_real,eps_loss\n1,10,0.5\n10,8,0.8\n", encoding="utf-8")
+            spec = MultiPanelSpec(
+                panels=(
+                    BridgeFigureSpec(
+                        csv_path=str(csv_path),
+                        output_path=str(tmpdir_path / "panel.png"),
+                        plot_type="line",
+                        x_column="freq",
+                        y_column="eps_real",
+                        title="",
+                        y_axis_label="epsilon prime",
+                        secondary_y={
+                            "column": "eps_loss",
+                            "axis_label": "epsilon double-prime",
+                            "series_label": "loss",
+                        },
+                    ),
+                ),
+                output_path=str(tmpdir_path / "multi.png"),
+                rows=1,
+                cols=1,
+                shared_legend=True,
+                shared_legend_options={"order": ("epsilon prime", "loss"), "position": "top"},
+            )
+
+            with patch("plotting.bridge_renderer.save_journal_fig") as mock_save:
+                from plotting.bridge_renderer import render_multipanel_figure
+
+                render_multipanel_figure(spec)
+
+            fig = mock_save.call_args.args[0]
+            self.assertEqual(len(fig.legends), 1)
+            self.assertEqual([text.get_text() for text in fig.legends[0].get_texts()], ["epsilon prime", "loss"])
+            self.assertTrue(any(getattr(ax, "_graph_hub_role", "") == "secondary_y" for ax in fig.axes))
+            self.assertTrue(all(ax.get_legend() is None for ax in fig.axes if ax.get_visible()))
+
     def test_multipanel_shared_legend_options_require_shared_legend(self):
         with tempfile.TemporaryDirectory(prefix="bridge_multi_shared_legend_guard_") as tmpdir:
             tmpdir_path = Path(tmpdir)
@@ -2854,6 +2895,41 @@ class SeriesStyleOverrideTest(unittest.TestCase):
             self.assertEqual([text.get_text() for text in legend.get_texts()], ["epsilon prime", "loss"])
         finally:
             plt.close(fig)
+
+    def test_render_csv_panel_uses_secondary_y_renderer(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_bridge_") as tmpdir:
+            csv_path = Path(tmpdir) / "dielectric.csv"
+            csv_path.write_text("freq,eps_real,eps_loss\n1,10,0.5\n10,8,0.8\n", encoding="utf-8")
+            spec = BridgeFigureSpec(
+                csv_path=str(csv_path),
+                output_path=str(Path(tmpdir) / "out.png"),
+                plot_type="line",
+                x_column="freq",
+                y_column="eps_real",
+                title="",
+                y_axis_label="epsilon prime",
+                secondary_y={
+                    "column": "eps_loss",
+                    "axis_label": "epsilon double-prime",
+                    "scale": "log",
+                    "series_label": "loss",
+                },
+            )
+            fig, ax = plt.subplots()
+            try:
+                _render_csv_panel(fig, ax, spec)
+
+                self.assertEqual(len(fig.axes), 2)
+                secondary_ax = fig.axes[1]
+                self.assertEqual(getattr(secondary_ax, "_graph_hub_role", ""), "secondary_y")
+                self.assertEqual(secondary_ax.get_ylabel(), "epsilon double-prime")
+                self.assertEqual(secondary_ax.get_yscale(), "log")
+                self.assertEqual(ax.get_title(), "")
+                legend = ax.get_legend()
+                self.assertIsNotNone(legend)
+                self.assertEqual([text.get_text() for text in legend.get_texts()], ["epsilon prime", "loss"])
+            finally:
+                plt.close(fig)
 
     def test_render_xy_plot_applies_series_marker_fill_and_edge_overrides(self):
         spec = BridgeFigureSpec(
