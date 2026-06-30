@@ -18,6 +18,7 @@ from hub_core.mcp.render_input_schemas import LEGEND_LAYOUT_SCHEMA as _LEGEND_LA
 from hub_core.mcp.render_input_schemas import LEGEND_OPTIONS_SCHEMA as _LEGEND_OPTIONS_SCHEMA
 from hub_core.mcp.render_input_schemas import MULTIPANEL_LAYOUT_OPTIONS_SCHEMA as _MULTIPANEL_LAYOUT_OPTIONS_SCHEMA
 from hub_core.mcp.render_input_schemas import POINT_LABEL_OPTIONS_SCHEMA as _POINT_LABEL_OPTIONS_SCHEMA
+from hub_core.mcp.render_input_schemas import SECONDARY_Y_SCHEMA as _SECONDARY_Y_SCHEMA
 from hub_core.mcp.render_input_schemas import SERIES_STYLES_SCHEMA as _SERIES_STYLES_SCHEMA
 from hub_core.mcp.render_input_schemas import SHARED_LEGEND_OPTIONS_SCHEMA as _SHARED_LEGEND_OPTIONS_SCHEMA
 from hub_core.mcp.render_input_schemas import TICK_STYLE_SCHEMA as _TICK_STYLE_SCHEMA
@@ -432,6 +433,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "label_column": {"type": "string"},
                     "point_label_options": _POINT_LABEL_OPTIONS_SCHEMA,
                     "series_styles": _SERIES_STYLES_SCHEMA,
+                    "secondary_y": _SECONDARY_Y_SCHEMA,
                     "x_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
                     "y_scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
                     "legend_layout": _LEGEND_LAYOUT_SCHEMA,

@@ -1910,6 +1910,51 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       ],
       "type": "string"
     },
+    "secondary_y": {
+      "additionalProperties": false,
+      "properties": {
+        "axis_label": {
+          "type": "string"
+        },
+        "column": {
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "limits": {
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "type": [
+                "number",
+                "string"
+              ]
+            },
+            "min": {
+              "type": [
+                "number",
+                "string"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "scale": {
+          "default": "linear",
+          "enum": [
+            "linear",
+            "log"
+          ],
+          "type": "string"
+        },
+        "series_label": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "semantic_checks": {
       "description": "Optional per-column semantic constraints keyed by CSV column name.",
       "type": "object"

@@ -17,14 +17,20 @@ def normalized_axis_scale(value: str, *, field_name: str) -> str:
 def validate_axis_scales(points: list[dict], spec: Any) -> None:
     x_scale = normalized_axis_scale(spec.x_scale, field_name="x_scale")
     y_scale = normalized_axis_scale(spec.y_scale, field_name="y_scale")
-    if x_scale == "linear" and y_scale == "linear":
+    secondary_y = getattr(spec, "secondary_y", None) or {}
+    secondary_y_scale = (
+        normalized_axis_scale(secondary_y.get("scale"), field_name="secondary_y.scale")
+        if secondary_y
+        else "linear"
+    )
+    if x_scale == "linear" and y_scale == "linear" and secondary_y_scale == "linear":
         return
-    for axis_name, scale in (("x", x_scale), ("y", y_scale)):
+    for axis_name, scale in (("x", x_scale), ("y", y_scale), ("secondary_y", secondary_y_scale)):
         if scale != "log":
             continue
         bad_values = []
         for point in points:
-            value = point[axis_name]
+            value = point.get(axis_name)
             try:
                 numeric = float(value)
             except (TypeError, ValueError):
@@ -44,6 +50,8 @@ def validate_axis_limits(points: list[dict], spec: Any) -> None:
 
 
 def apply_axis_scales(ax: Any, spec: Any) -> None:
+    if getattr(ax, "_graph_hub_role", "") == "secondary_y":
+        return
     x_scale = normalized_axis_scale(spec.x_scale, field_name="x_scale")
     y_scale = normalized_axis_scale(spec.y_scale, field_name="y_scale")
     if x_scale != "linear":
@@ -113,6 +121,8 @@ def normalized_axis_limits(spec: Any) -> dict[str, tuple[float | None, float | N
 
 
 def apply_axis_limits(ax: Any, spec: Any) -> None:
+    if getattr(ax, "_graph_hub_role", "") == "secondary_y":
+        return
     limits = normalized_axis_limits(spec)
     if "x" in limits:
         ax.set_xlim(*limits["x"])
@@ -170,6 +180,8 @@ def axis_is_numeric(ax: Any, axis_name: str) -> bool:
 
 
 def apply_tick_style(ax: Any, spec: Any) -> None:
+    if getattr(ax, "_graph_hub_role", "") == "secondary_y":
+        return
     style = normalized_tick_style(spec)
     if not style:
         return

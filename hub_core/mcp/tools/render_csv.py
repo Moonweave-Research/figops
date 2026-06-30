@@ -23,6 +23,7 @@ from hub_core.mcp.tools.render_csv_args import (
     _normalized_legend_options_arg,
     _normalized_multipanel_render_settings,
     _normalized_point_label_options_arg,
+    _normalized_secondary_y_arg,
     _normalized_series_style_args,
     _normalized_span_annotation_arg,  # noqa: F401
     _normalized_tick_style_arg,
@@ -122,6 +123,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             facet_nrows = _optional_positive_int_arg(raw_facet_nrows, "facet_nrows")
             x_scale = _normalized_axis_scale_arg(arguments.get("x_scale"), field_name="x_scale")
             y_scale = _normalized_axis_scale_arg(arguments.get("y_scale"), field_name="y_scale")
+            secondary_y = _normalized_secondary_y_arg(arguments.get("secondary_y"))
             legend_layout = _normalized_legend_layout_arg(arguments.get("legend_layout"), field_name="legend_layout")
             legend_options = _normalized_legend_options_arg(
                 arguments.get("legend_options"), field_name="legend_options"
@@ -168,6 +170,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
         yerr_minus_column = compatibility["yerr_minus_column"]
         yerr_cap_width = compatibility["yerr_cap_width"]
         render_arg_errors = compatibility["errors"]
+        if secondary_y and plot_type not in {"line", "scatter", "xy"}:
+            render_arg_errors.append("secondary_y is only supported for plot_type 'line', 'scatter', or 'xy'.")
         if render_arg_errors:
             return self._csv_render_error(
                 arguments,
@@ -306,6 +310,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         z_column,
                         facet_column,
                         series_column,
+                        secondary_y["column"] if secondary_y else "",
                         label_column,
                         str(point_label_options.get("priority_column") or ""),
                         str(point_label_options.get("skip_column") or ""),
@@ -335,6 +340,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 *([z_column] if z_column else []),
                 *([facet_column] if facet_column else []),
                 *([series_column] if series_column else []),
+                *([secondary_y["column"]] if secondary_y else []),
                 *([label_column] if label_column else []),
                 *(
                     [str(point_label_options.get("priority_column"))]
@@ -354,6 +360,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                             z_column,
                             facet_column,
                             series_column,
+                            secondary_y["column"] if secondary_y else "",
                             label_column,
                             yerr_column,
                             yerr_minus_column,
@@ -366,7 +373,11 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 *[str(key) for key in semantic_checks],
             ],
             semantic_checks=semantic_checks,
-            axis_scales={x_column: x_scale, y_column: y_scale},
+            axis_scales={
+                x_column: x_scale,
+                y_column: y_scale,
+                **({secondary_y["column"]: secondary_y["scale"]} if secondary_y else {}),
+            },
         )
         contract_errors = contract_result["errors"]
         calculation_checks = contract_result["calculation_checks"]
@@ -480,6 +491,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "label_column": label_column,
                         "point_label_options": point_label_options,
                         "series_styles": series_styles,
+                        "secondary_y": secondary_y,
                         "x_scale": x_scale,
                         "y_scale": y_scale,
                         "legend_layout": legend_layout,
@@ -503,7 +515,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "ci_band": ci_band,
                         "fit_options": fit_options,
                         "significance_markers": significance_markers,
-                        "title": str(arguments.get("title") or "FigOps MCP render"),
+                        "title": str(arguments.get("title") or ""),
                         "x_axis_label": str(arguments.get("x_axis_label") or x_column),
                         "y_axis_label": str(arguments.get("y_axis_label") or y_column),
                         "target_format": target_format,

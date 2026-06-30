@@ -103,6 +103,17 @@ SERIES_STYLES_SCHEMA = {
     "description": "Per-series style overrides keyed by exact series label.",
 }
 
+SECONDARY_Y_SCHEMA = object_schema(
+    {
+        "enabled": {"type": "boolean", "default": True},
+        "column": {"type": "string"},
+        "axis_label": {"type": "string"},
+        "scale": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
+        "series_label": {"type": "string"},
+        "limits": object_schema({"min": NUMBER_OR_STRING_SCHEMA, "max": NUMBER_OR_STRING_SCHEMA}),
+    }
+)
+
 CALLOUT_OFFSET_SCHEMA = open_object_schema(
     {"dx": NUMBER_OR_STRING_SCHEMA, "dy": NUMBER_OR_STRING_SCHEMA},
     required=["dx", "dy"],
