@@ -214,6 +214,7 @@ class BridgeFigureSpec:
     z_column: str = ""
     x_axis_label: str = ""
     y_axis_label: str = ""
+    secondary_y: dict | None = None
     label_column: str = ""
     series_column: str = ""
     x_scale: str = "linear"
@@ -277,6 +278,8 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
         try:
             if spec.y_break_range is not None:
+                if spec.secondary_y:
+                    raise ValueError("secondary_y is not supported with y_break_range")
                 ax.set_visible(False)
                 _render_broken_axis_plot(fig, points, spec)
                 _apply_axis_scales_to_visible_axes(fig, ax, spec)
@@ -284,12 +287,16 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
                 _apply_tick_style_to_visible_axes(fig, ax, spec)
                 _draw_annotations_on_visible_axes(fig, ax, spec)
             else:
-                _render_plot(ax, points, spec)
+                if spec.secondary_y:
+                    _render_secondary_y_plot(ax, points, spec)
+                else:
+                    _render_plot(ax, points, spec)
                 _draw_manual_overlays(ax, csv_path, spec)
                 _draw_statistical_overlays(ax, points, spec)
                 _draw_overlay_baselines(ax, spec.overlay_baselines)
                 _apply_axes_metadata(ax, spec)
-                ax.set_title(spec.title)
+                if spec.title:
+                    ax.set_title(spec.title)
                 _apply_axis_scales_to_visible_axes(fig, ax, spec)
                 _apply_axis_limits_to_visible_axes(fig, ax, spec)
                 _apply_tick_style_to_visible_axes(fig, ax, spec)
@@ -645,6 +652,10 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
         reader = csv.DictReader(handle)
         headers = reader.fieldnames or []
         required = [spec.x_column, spec.y_column]
+        secondary_y = spec.secondary_y or {}
+        secondary_y_column = str(secondary_y.get("column") or "").strip()
+        if secondary_y_column:
+            required.append(secondary_y_column)
         for col_attr in ("label_column", "series_column", "yerr_column", "yerr_minus_column", "facet_column"):
             col = getattr(spec, col_attr)
             if col:
@@ -669,13 +680,18 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
         for row_num, row in enumerate(reader, start=2):
             try:
                 y_val = float(row[spec.y_column])
+                secondary_y_val = float(row[secondary_y_column]) if secondary_y_column else None
                 yerr_val = float(row[spec.yerr_column]) if spec.yerr_column else None
                 yerr_minus_val = float(row[spec.yerr_minus_column]) if spec.yerr_minus_column else None
                 z_val = float(row[spec.z_column]) if spec.z_column else None
             except (ValueError, TypeError):
                 skipped += 1
                 continue
-            if not math.isfinite(y_val) or (yerr_val is not None and not math.isfinite(yerr_val)):
+            if (
+                not math.isfinite(y_val)
+                or (secondary_y_val is not None and not math.isfinite(secondary_y_val))
+                or (yerr_val is not None and not math.isfinite(yerr_val))
+            ):
                 skipped += 1
                 continue
             if yerr_minus_val is not None and not math.isfinite(yerr_minus_val):
@@ -688,6 +704,7 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
                 {
                     "x": _parse_x_value(row[spec.x_column]),
                     "y": y_val,
+                    "secondary_y": secondary_y_val,
                     "z": z_val,
                     "label": row[spec.label_column] if spec.label_column else "",
                     "series": row[spec.series_column] if spec.series_column else "",
@@ -741,6 +758,7 @@ def _series_style(spec: BridgeFigureSpec, series_index: int, series_name: object
         marker = str(override.get("marker") or "").strip()
         if marker:
             style["marker"] = marker
+            style["_marker_overridden"] = True
     if "linestyle" in override:
         style["linestyle"] = str(override.get("linestyle") or style.get("linestyle") or "-")
     if "hatch" in override:
@@ -787,6 +805,84 @@ def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: boo
         apply_tick_style=_apply_tick_style,
     )
     _render_xy_plot_impl(ax, points, spec, line=line, small_panel=small_panel, context=context)
+
+
+def _secondary_y_label(spec: BridgeFigureSpec) -> str:
+    secondary_y = spec.secondary_y or {}
+    return str(
+        secondary_y.get("series_label")
+        or secondary_y.get("axis_label")
+        or secondary_y.get("column")
+        or "secondary y"
+    )
+
+
+def _plot_secondary_axis_series(ax, points: list[dict], spec: BridgeFigureSpec, *, line: bool) -> None:
+    secondary_y = spec.secondary_y or {}
+    xs = [point["x"] for point in points]
+    ys = [point["secondary_y"] for point in points]
+    sty = _series_style(spec, 1, "__secondary_y__")
+    sty.setdefault("_marker_overridden", bool(sty.get("_marker_overridden")))
+    marker_size, marker_edge_width, _marker_margin = _marker_tokens(spec)
+    line_marker = str(sty.get("marker") if sty.get("_marker_overridden") else "none")
+    label = _secondary_y_label(spec)
+    if line:
+        ax.plot(
+            xs,
+            ys,
+            marker=line_marker,
+            linestyle=sty["linestyle"],
+            linewidth=float(sty.get("linewidth", 1.2)),
+            markersize=float(sty.get("size", marker_size)),
+            markeredgewidth=marker_edge_width,
+            **_line_marker_color_kwargs(sty),
+            label=label,
+        )
+    else:
+        ax.scatter(
+            xs,
+            ys,
+            s=float(sty.get("size", _scatter_marker_area(marker_size))),
+            marker=sty["marker"],
+            linewidths=marker_edge_width,
+            **_marker_color_kwargs(sty),
+            label=label,
+        )
+    scale = str(secondary_y.get("scale") or "linear")
+    if scale != "linear":
+        ax.set_yscale(scale)
+    limits = secondary_y.get("limits")
+    if isinstance(limits, dict):
+        ax.set_ylim(limits.get("min"), limits.get("max"))
+    ax.set_ylabel(str(secondary_y.get("axis_label") or secondary_y.get("column") or ""))
+
+
+def _render_secondary_y_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
+    plot_type = str(spec.plot_type or "line").strip().lower()
+    line = plot_type != "scatter"
+    primary_spec = BridgeFigureSpec(**{**spec.__dict__, "secondary_y": None})
+    _render_xy_plot(ax, points, primary_spec, line=line)
+    ax2 = ax.twinx()
+    setattr(ax2, "_graph_hub_role", "secondary_y")
+    _plot_secondary_axis_series(ax2, points, spec, line=line)
+    primary_handles, primary_labels = ax.get_legend_handles_labels()
+    secondary_handles, secondary_labels = ax2.get_legend_handles_labels()
+    handles = list(primary_handles) + list(secondary_handles)
+    labels = list(primary_labels) + list(secondary_labels)
+    if not primary_labels:
+        primary_label = str(spec.y_axis_label or spec.y_column)
+        primary_lines = list(ax.lines) + list(ax.collections)
+        if primary_lines:
+            handles.insert(0, primary_lines[0])
+            labels.insert(0, primary_label)
+    if handles:
+        kwargs = _legend_kwargs(ax, spec, n_series=len(handles))
+        options = _normalized_legend_options(spec)
+        if "title" in options:
+            kwargs["title"] = options["title"]
+        if "ncol" in options:
+            kwargs["ncol"] = options["ncol"]
+        ax.legend(handles, labels, **kwargs)
 
 
 def _normalized_point_label_options(spec: BridgeFigureSpec) -> dict[str, object]:

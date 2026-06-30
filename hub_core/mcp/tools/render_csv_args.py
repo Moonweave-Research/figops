@@ -103,6 +103,38 @@ def _normalized_axis_scale_arg(value: Any, *, field_name: str) -> str:
     return scale
 
 
+def _normalized_secondary_y_arg(value: Any) -> dict[str, Any] | None:
+    if value in (None, {}, []):
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("secondary_y must be an object.")
+    unsupported = sorted(set(value) - {"enabled", "column", "axis_label", "scale", "series_label", "limits"})
+    if unsupported:
+        raise ValueError(f"secondary_y has unsupported key(s): {', '.join(unsupported)}.")
+    if value.get("enabled") is False:
+        return None
+    column = str(value.get("column") or "").strip()
+    if not column:
+        raise ValueError("secondary_y.column is required when secondary_y is enabled.")
+    scale = _normalized_axis_scale_arg(value.get("scale"), field_name="secondary_y.scale")
+    item: dict[str, Any] = {"column": column, "scale": scale}
+    axis_label = str(value.get("axis_label") or "").strip()
+    if axis_label:
+        item["axis_label"] = axis_label
+    series_label = str(value.get("series_label") or "").strip()
+    if series_label:
+        item["series_label"] = series_label
+    raw_limits = value.get("limits")
+    if raw_limits not in (None, {}, []):
+        item["limits"] = _normalized_axis_limits_arg(
+            {"y": raw_limits},
+            field_name="secondary_y.limits",
+            x_scale="linear",
+            y_scale=scale,
+        )["y"]
+    return item
+
+
 def _normalized_axis_limits_arg(
     value: Any, *, field_name: str, x_scale: str, y_scale: str
 ) -> dict[str, dict[str, float]]:

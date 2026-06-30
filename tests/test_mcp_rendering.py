@@ -323,6 +323,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         self.assertEqual(set(properties["tick_style"]["properties"]), {"rotation", "format", "max_label_chars"})
         self.assertGreaterEqual(properties["tick_style"]["properties"]["max_label_chars"].get("minimum", 0), 4)
         self.assertIn("plain", properties["tick_style"]["properties"]["format"]["enum"])
+        self.assertEqual(
+            set(properties["secondary_y"]["properties"]),
+            {"enabled", "column", "axis_label", "scale", "series_label", "limits"},
+        )
+        self.assertEqual(properties["secondary_y"]["properties"]["scale"]["enum"], ["linear", "log"])
         self.assertIn("scientific", properties["tick_style"]["properties"]["format"]["enum"])
         self.assertIn("compact", properties["tick_style"]["properties"]["format"]["enum"])
 
@@ -1215,6 +1220,168 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["legend_options"], {"title": "Treatment", "order": ("Alpha", "Beta"), "ncol": 2})
             self.assertEqual(captured["axis_limits"], {"x": {"min": 0.0, "max": 1.0}, "y": {"min": 0.0, "max": 5.0}})
             self.assertEqual(captured["tick_style"], {"rotation": 45.0, "format": "plain", "max_label_chars": 10})
+
+    def test_render_csv_graph_forwards_secondary_y_and_empty_title(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "dielectric.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("freq,eps_real,eps_loss\n1,10,0.5\n10,8,0.8\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "freq",
+                        "y_column": "eps_real",
+                        "plot_type": "line",
+                        "secondary_y": {
+                            "column": "eps_loss",
+                            "axis_label": "epsilon double-prime",
+                            "scale": "log",
+                            "series_label": "loss",
+                            "limits": {"min": 0.1, "max": 10},
+                        },
+                        "job_id": "render-secondary-y",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["title"], "")
+            self.assertEqual(
+                captured["secondary_y"],
+                {
+                    "column": "eps_loss",
+                    "axis_label": "epsilon double-prime",
+                    "scale": "log",
+                    "series_label": "loss",
+                    "limits": {"min": 0.1, "max": 10.0},
+                },
+            )
+
+    def test_render_csv_graph_honors_explicit_title(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "series.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+            captured = {}
+
+            def capture_render(spec_payload):
+                captured.update(spec_payload)
+                Path(spec_payload["output_path"]).write_bytes(b"png")
+
+            with (
+                patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
+                patch.object(
+                    GraphHubMCPServer,
+                    "_visual_preflight_with_geometry_overlaps",
+                    return_value={"passed": True, "checks": [], "warnings": []},
+                ),
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_csv_graph",
+                    {
+                        "data_path": str(data_path),
+                        "x_column": "x",
+                        "y_column": "y",
+                        "title": "Custom title",
+                        "job_id": "render-explicit-title",
+                    },
+                )
+
+            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertEqual(captured["title"], "Custom title")
+
+    def test_render_csv_graph_rejects_secondary_y_for_heatmap(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "heatmap.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y,z,loss\n0,0,1,0.5\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "z_column": "z",
+                    "plot_type": "heatmap",
+                    "secondary_y": {"column": "loss"},
+                    "job_id": "secondary-y-heatmap",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertTrue(any("secondary_y is only supported" in error for error in result["errors"]))
+
+    def test_render_csv_graph_rejects_missing_secondary_y_column(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "series.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "line",
+                    "secondary_y": {"column": "loss"},
+                    "job_id": "secondary-y-missing-column",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertTrue(any("Missing required columns" in error and "loss" in error for error in result["errors"]))
+
+    def test_render_csv_graph_rejects_nonpositive_log_secondary_y(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            data_path = tmp_root / "input" / "series.csv"
+            data_path.parent.mkdir(parents=True, exist_ok=True)
+            data_path.write_text("x,y,loss\n0,1,0\n1,2,0.5\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=tmp_root / "runtime")
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {
+                    "data_path": str(data_path),
+                    "x_column": "x",
+                    "y_column": "y",
+                    "plot_type": "line",
+                    "secondary_y": {"column": "loss", "scale": "log"},
+                    "job_id": "secondary-y-log-invalid",
+                },
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertTrue(any("Column 'loss'" in error and "log scale" in error for error in result["errors"]))
 
     def test_render_csv_graph_forwards_dense_point_label_controls(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:

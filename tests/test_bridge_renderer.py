@@ -31,6 +31,7 @@ from plotting.bridge_renderer import (
     _render_heatmap_plot,
     _render_multipanel_draft,
     _render_plot,
+    _render_secondary_y_plot,
     _render_xy_plot,
     _resolved_legend_layout,
     render_bridge_figure,
@@ -1077,7 +1078,6 @@ class BridgeRendererUnitTest(unittest.TestCase):
             y_limits = {tuple(round(value, 10) for value in facet_ax.get_ylim()) for facet_ax in axes}
             self.assertEqual(len(x_limits), 1)
             self.assertEqual(len(y_limits), 1)
-            _assert_marker_footprints_inside_axes(self, fig, axes)
         finally:
             plt.close(fig)
 
@@ -1135,13 +1135,13 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 try:
                     _render_xy_plot(ax, points, spec, line=line)
                     if line:
-                        self.assertEqual({artist.get_markersize() for artist in ax.lines}, {3.2})
+                        self.assertEqual({artist.get_marker() for artist in ax.lines}, {"none"})
                     else:
                         scatter_sizes = {
                             round(float(size), 4) for collection in ax.collections for size in collection.get_sizes()
                         }
                         self.assertEqual(scatter_sizes, {8.0425})
-                    _assert_marker_footprints_inside_axes(self, fig, [ax])
+                        _assert_marker_footprints_inside_axes(self, fig, [ax])
                 finally:
                     plt.close(fig)
 
@@ -1354,13 +1354,12 @@ class BridgeRendererUnitTest(unittest.TestCase):
         fig, axes = self._render_facet_grid(points, spec)
         try:
             self.assertEqual(len(axes), 9)
-            line_marker_sizes = {line.get_markersize() for facet_ax in axes for line in facet_ax.lines}
-            self.assertEqual(line_marker_sizes, {2.4})
+            line_markers = {line.get_marker() for facet_ax in axes for line in facet_ax.lines}
+            self.assertEqual(line_markers, {"none"})
             x_limits = {tuple(round(value, 10) for value in facet_ax.get_xlim()) for facet_ax in axes}
             y_limits = {tuple(round(value, 10) for value in facet_ax.get_ylim()) for facet_ax in axes}
             self.assertEqual(len(x_limits), 1)
             self.assertEqual(len(y_limits), 1)
-            _assert_marker_footprints_inside_axes(self, fig, axes)
         finally:
             plt.close(fig)
 
@@ -1384,7 +1383,6 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 fig, axes = self._render_facet_grid(points, spec)
                 try:
                     self.assertEqual(_subplot_grid_shape(axes), (expected_rows, requested_cols))
-                    _assert_marker_footprints_inside_axes(self, fig, axes)
                 finally:
                     plt.close(fig)
 
@@ -1406,7 +1404,6 @@ class BridgeRendererUnitTest(unittest.TestCase):
         fig, axes = self._render_facet_grid(points, spec)
         try:
             self.assertEqual(_subplot_grid_shape(axes), (2, 4))
-            _assert_marker_footprints_inside_axes(self, fig, axes)
         finally:
             plt.close(fig)
 
@@ -1454,7 +1451,6 @@ class BridgeRendererUnitTest(unittest.TestCase):
         fig, axes = self._render_facet_grid(points, spec)
         try:
             self.assertEqual(_subplot_grid_shape(axes), (4, 4))
-            _assert_marker_footprints_inside_axes(self, fig, axes)
         finally:
             plt.close(fig)
 
@@ -2780,6 +2776,85 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
 
 class SeriesStyleOverrideTest(unittest.TestCase):
+    def test_render_xy_plot_line_defaults_to_no_markers(self):
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="line",
+            x_column="x",
+            y_column="y",
+            title="t",
+        )
+        points = [
+            {"x": 1.0, "y": 2.0, "series": "", "label": ""},
+            {"x": 2.0, "y": 3.0, "series": "", "label": ""},
+        ]
+        ax = MagicMock()
+        ax.margins.return_value = (0.05, 0.05)
+
+        _render_xy_plot(ax, points, spec, line=True)
+
+        ax.plot.assert_called_once()
+        self.assertEqual(ax.plot.call_args.kwargs["marker"], "none")
+
+    def test_render_xy_plot_line_keeps_opt_in_marker(self):
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="line",
+            x_column="x",
+            y_column="y",
+            title="t",
+            series_column="series",
+            series_styles={"Reference": {"marker": "D"}},
+        )
+        points = [
+            {"x": 1.0, "y": 2.0, "series": "Reference", "label": ""},
+            {"x": 2.0, "y": 3.0, "series": "Reference", "label": ""},
+        ]
+        ax = MagicMock()
+        ax.margins.return_value = (0.05, 0.05)
+
+        _render_xy_plot(ax, points, spec, line=True)
+
+        ax.plot.assert_called_once()
+        self.assertEqual(ax.plot.call_args.kwargs["marker"], "D")
+
+    def test_secondary_y_plot_creates_right_axis_and_merged_legend(self):
+        spec = BridgeFigureSpec(
+            csv_path="x.csv",
+            output_path="out.png",
+            plot_type="line",
+            x_column="frequency",
+            y_column="eps_real",
+            title="",
+            y_axis_label="epsilon prime",
+            secondary_y={
+                "column": "eps_loss",
+                "axis_label": "epsilon double-prime",
+                "scale": "log",
+                "series_label": "loss",
+            },
+        )
+        points = [
+            {"x": 1.0, "y": 10.0, "secondary_y": 0.5, "series": "", "label": ""},
+            {"x": 10.0, "y": 8.0, "secondary_y": 0.8, "series": "", "label": ""},
+        ]
+        fig, ax = plt.subplots()
+        try:
+            _render_secondary_y_plot(ax, points, spec)
+
+            self.assertEqual(len(fig.axes), 2)
+            secondary_ax = fig.axes[1]
+            self.assertEqual(getattr(secondary_ax, "_graph_hub_role", ""), "secondary_y")
+            self.assertEqual(secondary_ax.get_ylabel(), "epsilon double-prime")
+            self.assertEqual(secondary_ax.get_yscale(), "log")
+            legend = ax.get_legend()
+            self.assertIsNotNone(legend)
+            self.assertEqual([text.get_text() for text in legend.get_texts()], ["epsilon prime", "loss"])
+        finally:
+            plt.close(fig)
+
     def test_render_xy_plot_applies_series_marker_fill_and_edge_overrides(self):
         spec = BridgeFigureSpec(
             csv_path="x.csv",

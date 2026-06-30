@@ -110,13 +110,14 @@ def draw_broken_xy_series(
     series_marker_size = float(sty.get("size", marker_size))
     series_scatter_size = float(sty.get("size", context.scatter_marker_area(marker_size)))
     series_linewidth = float(sty.get("linewidth", 1.2))
+    line_marker = str(sty.get("marker") if sty.get("_marker_overridden") else "none")
     if line:
         if yerr is not None:
             ax.errorbar(
                 xs,
                 ys,
                 yerr=yerr,
-                fmt=sty["marker"],
+                fmt=line_marker,
                 linestyle=sty["linestyle"],
                 linewidth=series_linewidth,
                 markersize=series_marker_size,
@@ -130,7 +131,7 @@ def draw_broken_xy_series(
             ax.plot(
                 xs,
                 ys,
-                marker=sty["marker"],
+                marker=line_marker,
                 linestyle=sty["linestyle"],
                 linewidth=series_linewidth,
                 markersize=series_marker_size,
