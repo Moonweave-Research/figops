@@ -43,7 +43,7 @@ wheel gets working `figops` and `figops-mcp` commands.
 For the locally documented public release, the primary install path is PyPI:
 
 ```bash
-APPROVED_VERSION=0.17.9  # replace with the approved release version
+APPROVED_VERSION=0.17.11  # replace with the approved release version
 python -m pip install "figops==$APPROVED_VERSION"
 figops-mcp --smoke
 ```
@@ -66,8 +66,8 @@ gh release upload "v$APPROVED_VERSION" "dist/figops-$APPROVED_VERSION-py3-none-a
 python scripts/github_release_asset_smoke.py
 ```
 
-The examples above are local documentation anchors: PyPI remains pinned to
-`0.17.9`, while the GitHub Release asset is pinned to `0.17.10`. Update either
+The examples above are local documentation anchors: PyPI is pinned to
+`0.17.11`, while the GitHub Release asset is pinned to `0.17.10`. Update either
 only after explicit release-maintainer approval and public index/release-asset
 verification.
 
@@ -128,7 +128,7 @@ python scripts/consumer_install_smoke.py
 python scripts/github_release_asset_smoke.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 gh workflow run publish.yml --repo Moonweave-Research/figops --ref main -f repository=testpypi
-APPROVED_VERSION=0.17.9  # replace with the approved release version
+APPROVED_VERSION=0.17.11  # replace with the approved release version
 python -m pip download --no-deps --index-url https://test.pypi.org/simple/ "figops==$APPROVED_VERSION" -d /tmp/figops-testpypi-dist
 python -m pip install "/tmp/figops-testpypi-dist/figops-$APPROVED_VERSION-py3-none-any.whl"
 python scripts/guarded_pypi_upload.py --repository pypi

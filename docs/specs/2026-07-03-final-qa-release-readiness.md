@@ -8,9 +8,9 @@ Team artifact root: `.omo/teams/team-e58a2c43/artifacts/`
 
 ## Objective
 
-Record the final team QA result and the follow-on `0.17.11` TestPyPI dry run.
-This is a readiness and claim-boundary receipt, not a GitHub Release or PyPI
-publication record.
+Record the final team QA result, the follow-on `0.17.11` TestPyPI dry run, and
+the public PyPI promotion. This is a readiness and claim-boundary receipt, not a
+GitHub Release record.
 
 ## Team Slices
 
@@ -26,18 +26,18 @@ publication record.
 - Source metadata is now `0.17.11` in `pyproject.toml`.
 - `CHANGELOG.md` has a top `0.17.11` entry dated `2026-07-03`.
 - README and roadmap source-state references now point at `0.17.11`.
-- Latest documented PyPI package remains `0.17.9`.
+- Latest documented PyPI package is `figops==0.17.11`, published by the manual
+  `pypi` workflow promotion and install-smoke verified.
 - TestPyPI has `figops==0.17.11`, published by the manual `testpypi` workflow
   dry run and install-smoke verified.
 - Latest documented GitHub Release asset remains `v0.17.10`.
-- No tag, GitHub Release, or PyPI upload was created during this QA pass.
+- No tag or GitHub Release was created during this QA pass.
 
 Release decision:
 
 - Source readiness: ready for maintainer review.
-- Public PyPI release action: hold until an operator explicitly approves
-  promoting the TestPyPI-verified `0.17.11` artifacts through the manual PyPI
-  path.
+- Public PyPI release action: completed for `0.17.11`; future promotions remain
+  operator-controlled.
 - Repository-public decision: still separate from package distribution and must
   remain owner-controlled.
 
@@ -72,6 +72,10 @@ Hosted evidence:
   <https://github.com/Moonweave-Research/figops/actions/runs/28660384625>
 - Workflow jobs `Verify release ref`, `Build and verify distributions`, and
   `Publish to TestPyPI` succeeded; `Publish to PyPI` was skipped.
+- Manual PyPI publish workflow for commit `6fd9fb5` succeeded:
+  <https://github.com/Moonweave-Research/figops/actions/runs/28662615485>
+- Workflow jobs `Verify release ref`, `Build and verify distributions`, and
+  `Publish to PyPI` succeeded; `Publish to TestPyPI` was skipped.
 
 TestPyPI install evidence:
 
@@ -82,6 +86,15 @@ C:\dev\figops-testpypi-smoke\Scripts\python.exe -m pip install \
   --extra-index-url https://test.pypi.org/simple \
   figops==0.17.11
 C:\dev\figops-testpypi-smoke\Scripts\figops-mcp.exe --smoke
+# {"health_status": "ok", "status": "ok", ...}
+```
+
+PyPI install evidence:
+
+```bash
+python -m venv C:\dev\figops-pypi-smoke
+C:\dev\figops-pypi-smoke\Scripts\python.exe -m pip install figops==0.17.11
+C:\dev\figops-pypi-smoke\Scripts\figops-mcp.exe --smoke
 # {"health_status": "ok", "status": "ok", ...}
 ```
 
@@ -162,11 +175,10 @@ P3 - Optional external publisher matrix:
 
 ## Final QA Verdict
 
-The current source checkout is ready for maintainer review as `0.17.11`
-metadata, with local package artifacts verified and a TestPyPI dry run
-completed. It is not yet a GitHub Release or public PyPI release. No tag,
-GitHub Release, or PyPI upload should be performed without explicit operator
-approval.
+The current source checkout is released to public PyPI as `figops==0.17.11`,
+with local package artifacts, TestPyPI, and public PyPI install smoke verified.
+It is not yet a GitHub Release. No tag or GitHub Release should be performed
+without explicit operator approval.
 
 Graph tooling is qualified as publication-oriented with diagnostics and manual
 review escalation. It is not qualified for unconditional publication-ready,

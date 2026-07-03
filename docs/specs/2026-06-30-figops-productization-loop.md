@@ -89,9 +89,10 @@ Goal: keep public claims true when source and published package differ.
 Current evidence:
 
 - Source checkout is `0.17.11`.
-- Locally documented PyPI package state is `0.17.9`.
+- Locally documented PyPI package state is `0.17.11`.
 - Locally documented GitHub Release asset state is `v0.17.10`.
-- Network verification of latest PyPI/GitHub state is not assumed.
+- Network verification confirmed PyPI `0.17.11` on 2026-07-03; the GitHub
+  Release asset remains `v0.17.10`.
 
 Acceptance examples:
 

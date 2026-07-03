@@ -45,7 +45,7 @@ environment. The extra PyPI index lets normal dependencies resolve from PyPI
 while the FigOps artifact comes from TestPyPI:
 
 ```bash
-APPROVED_VERSION=0.17.9  # replace with the approved release version
+APPROVED_VERSION=0.17.11  # replace with the approved release version
 python -m venv /tmp/figops-testpypi-venv
 /tmp/figops-testpypi-venv/bin/python -m pip install --upgrade pip
 /tmp/figops-testpypi-venv/bin/python -m pip download --no-deps \
@@ -68,7 +68,7 @@ gh run list --repo Moonweave-Research/figops --workflow publish.yml --limit 1
 Then verify the public install path:
 
 ```bash
-APPROVED_VERSION=0.17.9  # replace with the approved release version
+APPROVED_VERSION=0.17.11  # replace with the approved release version
 python -m venv /tmp/figops-pypi-venv
 /tmp/figops-pypi-venv/bin/python -m pip install --upgrade pip
 /tmp/figops-pypi-venv/bin/python -m pip install "figops==$APPROVED_VERSION"

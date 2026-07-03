@@ -46,7 +46,7 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 | Item | Status |
 | --- | --- |
 | Source checkout | `0.17.11` release metadata (`pyproject.toml`) |
-| Published package | [`figops==0.17.9`](https://pypi.org/project/figops/0.17.9/) is the latest locally documented PyPI release |
+| Published package | [`figops==0.17.11`](https://pypi.org/project/figops/0.17.11/) is the latest locally documented PyPI release |
 | TestPyPI dry run | [`figops==0.17.11`](https://test.pypi.org/project/figops/0.17.11/) was published and install-smoke verified |
 | Python | 3.12+ |
 | License | Apache-2.0 for public package distribution |
@@ -54,11 +54,10 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 | Compatibility aliases | `graphhub`, `graphhub-mcp` |
 | GitHub Release | [`v0.17.10`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.10) is the latest locally documented release asset |
 
-The source checkout and TestPyPI dry run may be ahead of the public PyPI package
-and GitHub Release asset. Treat `pyproject.toml` as the current source version,
-the GitHub Release asset as the latest locally documented attached artifact, and
-the pinned PyPI snippets below as the locally documented public-index install
-path until a release maintainer publishes and verifies a newer PyPI version.
+The source checkout and public PyPI package are aligned at `0.17.11`. The
+GitHub Release asset is still the latest locally documented attached artifact
+from `v0.17.10`, so use that path only when an exact GitHub Release wheel is
+needed.
 
 ## Install
 
@@ -71,7 +70,7 @@ python -m pip install figops
 For a pinned, reproducible install:
 
 ```bash
-python -m pip install figops==0.17.9
+python -m pip install figops==0.17.11
 ```
 
 If you need the exact GitHub Release asset:
@@ -259,7 +258,7 @@ install path:
 
 ```bash
 python scripts/github_release_asset_smoke.py
-python -m pip install figops==0.17.9
+python -m pip install figops==0.17.11
 figops-mcp --smoke
 ```
 
