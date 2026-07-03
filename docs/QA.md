@@ -102,17 +102,20 @@ python orchestrator.py --docker --docker-build --project "12. ionoelastomer" --s
 
 Full rubric: `docs/specs/2026-06-30-figure-quality-rubric.md`
 
+Graph tool qualification review for agents:
+`docs/specs/2026-07-03-graph-tool-qa-review.md`
+
 Use this rubric after render/preflight outputs exist. It is a review layer over
 the existing FigOps checks, not a replacement for data contracts, geometry
 diagnostics, visual regression, or provenance.
 
 Review outcomes:
-- `publishable`: all hard gates pass, and advisory issues do not obscure the
-  result.
+- `publishable`: cited hard gates pass, `manual_review_needed` is not true, and
+  advisory issues do not obscure the result.
 - `revise`: hard gates pass, but advisory polish should be improved before
   release/submission.
-- `blocked`: any hard gate fails, or a hard-gate diagnostic is skipped without a
-  format/runtime reason.
+- `blocked`: any hard gate fails, a hard-gate diagnostic is unmeasured/skipped
+  without a format/runtime reason, or `manual_review_needed=true` is unresolved.
 
 Hard gates:
 - `FQ-H1` Artifact integrity: figure exists, is non-empty, format/header and
@@ -150,15 +153,45 @@ Diagnostic name mapping for current render outputs:
 | `geometry_diagnostics/1` | `artists_outside_figure`, `journal_compliance`, `font_size_token_drift` | `FQ-H2` journal-safe geometry; `font_size_token_drift` can also inform `FQ-A1`. |
 | `geometry_diagnostics/1` | `tick_label_overlaps`, `axis_label_title_overlap`, `figure_title_panel_title_overlap`, `colorbar_overlap`, `legend_internal_overlaps`, `artist_overlaps`, `point_annotation_overlaps` | `FQ-H3` readability collisions. |
 | `geometry_diagnostics/1` | `artists_outside_axes`, `marker_marker_overlaps`, `blank_area_ratio` | `FQ-H4` data visibility; `blank_area_ratio` can also inform `FQ-A4`. |
-| `geometry_diagnostics/1` | `legend_marker_consistency`, `tick_label_crowding`, `point_label_skips`, `text_axis_edge_proximity`, `annotation_overlay_contrast`, `label_offset_consistency` | `FQ-A1` through `FQ-A4` advisory polish unless the finding blocks interpretation. |
-| `geometry_diagnostics/1` | `legend_data_collision` | Informational only in the current implementation. |
 | Data/provenance outputs | `data_contract semantic checks`, project config figure declaration, `provenance`, `figure_traceability_matrix`, visual-regression baseline state | `FQ-H5` traceability. |
+| Render envelope | `manual_review_needed` | Claim boundary: when `true`, the graph is not publication-ready until resolved. |
+| Render envelope | `visual_preflight_status`, `layout_report/1` | Summary surfaces; map contained findings back to `FQ-H1` through `FQ-H4` or `FQ-A1` through `FQ-A4`. |
+| `geometry_diagnostics/1` | `legend_marker_consistency`, `font_size_token_drift` | `FQ-A1` advisory polish unless it also violates `FQ-H2`. |
+| `geometry_diagnostics/1` | `tick_label_crowding`, `point_label_skips`, `text_axis_edge_proximity` | `FQ-A2` advisory polish unless density or edge proximity blocks readability enough to trigger `FQ-H3`. |
+| `geometry_diagnostics/1` | `annotation_overlay_contrast` | `FQ-A3` advisory polish unless contrast prevents reading required text or data. |
+| `geometry_diagnostics/1` | `blank_area_ratio`, `label_offset_consistency` | `FQ-A4` advisory polish unless data visibility is impaired. |
+| Metadata/caption surfaces | project figure metadata, axis titles, legend labels, callouts, captions | `FQ-A5` advisory narrative review; no current hard diagnostic name. |
+| `geometry_diagnostics/1` | `legend_data_collision` | Informational only in the current implementation. |
 
 ---
 
-## 4) 운영 권고
+## 4) Agent Claim Boundaries
+
+Agents must not describe a graph as publication-ready when
+`manual_review_needed=true`. In that case, the correct wording is that FigOps
+created an artifact and surfaced QA findings for revision.
+
+Agents may claim journal compliance only for the encoded FigOps token set
+(selected `target_format`, style profile, minimum font size, minimum line
+width, maximum encoded figure height, and preflight checks). Claims about the
+latest external publisher instructions require a dated source matrix outside
+this QA guide.
+
+Current renderer wording should stay precise:
+
+- Safe: "publication-oriented rendering with style tokens, preflight, geometry
+  diagnostics, visual regression support, and manual-review escalation."
+- Unsafe: "all labels are optimally placed" or "every rendered graph is
+  automatically publication-ready."
+
+For the full agent playbook, see
+`docs/specs/2026-07-03-graph-tool-qa-review.md`.
+
+---
+
+## 5) 운영 권고
 
 - **허브 모듈 수정 시**: `hub_core/` 내부 로직 변경 시 반드시 2개 이상의 서로 다른 프로젝트(`ionoelastomer`, `Sulfur_polymer`)에 대해 테스트를 수행.
 - **Runtime 상태 분리**: 데이터 결과값, 회귀 baseline, 실행 로그, 자격증명은 repo 밖 runtime/cache 경로에 둔다. DVC/data registry는 현재 운영 표면에서 retired 상태다.
 
-**Last Update**: 2026-06-07 (independent repo cleanup and uv lock alignment)
+**Last Update**: 2026-07-03 (graph tool QA qualification and agent claim boundaries)

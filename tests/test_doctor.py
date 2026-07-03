@@ -171,6 +171,84 @@ importlib.util.find_spec = _guarded_find_spec
     assert "blocked heavy doctor import" not in completed.stderr
 
 
+def test_smoke_reports_missing_deps_without_importing_heavy_mcp_modules(tmp_path):
+    import_guard = tmp_path / "sitecustomize.py"
+    import_guard.write_text(
+        """
+import builtins
+import importlib.util
+
+_blocked_imports = {
+    "hub_core.mcp.schemas",
+    "hub_core.mcp.server",
+    "hub_core.mcp.resources",
+    "hub_core.mcp.tools.render_support",
+    "themes.journal_theme",
+    "themes.style_packs",
+    "themes.style_profiles",
+}
+_missing_specs = {"yaml"}
+_real_import = builtins.__import__
+_real_find_spec = importlib.util.find_spec
+
+
+def _is_blocked(name):
+    return any(name == blocked or name.startswith(blocked + ".") for blocked in _blocked_imports)
+
+
+def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if _is_blocked(name):
+        raise ImportError(f"blocked heavy smoke import: {name}")
+    return _real_import(name, globals, locals, fromlist, level)
+
+
+def _guarded_find_spec(name, package=None):
+    if name in _missing_specs:
+        return None
+    return _real_find_spec(name, package)
+
+
+builtins.__import__ = _guarded_import
+importlib.util.find_spec = _guarded_find_spec
+""".lstrip(),
+        encoding="utf-8",
+    )
+    runtime_root = tmp_path / "runtime"
+    runtime_root.mkdir()
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(tmp_path), str(HUB_ROOT), env["PYTHONPATH"]] if env.get("PYTHONPATH") else [str(tmp_path), str(HUB_ROOT)]
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "figops_mcp_server.py",
+            "--hub-path",
+            str(HUB_ROOT),
+            "--research-root",
+            str(tmp_path),
+            "--runtime-root",
+            str(runtime_root),
+            "--smoke",
+        ],
+        cwd=HUB_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "error"
+    assert payload["ready"] is False
+    assert payload["check"]["name"] == "runtime_dependencies"
+    assert payload["check"]["details"]["missing"] == ["yaml"]
+    assert "python hub_uv.py sync" in payload["check"]["hint"]
+    assert "blocked heavy smoke import" not in completed.stderr
+
+
 def test_doctor_reports_invalid_adapter_without_silent_fallback(monkeypatch, tmp_path):
     monkeypatch.setenv("GRAPH_HUB_PREFETCH_ADAPTER", "invalid")
 

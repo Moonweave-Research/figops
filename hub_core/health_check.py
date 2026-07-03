@@ -71,7 +71,8 @@ def run_preflight_check(exit_on_failure=True):
         if not r_ok:
             msg += (
                 f"❌ [yellow]{r_msg}[/yellow]\n"
-                "   └─ Guide: Install R from https://cran.r-project.org/ or 'brew install r'.\n\n"
+                "   └─ Guide: Install R for projects that declare `lang: R`, ensure Rscript is on PATH, "
+                "then rerun the check.\n\n"
             )
         if is_env_warning:
             msg += (

@@ -10,6 +10,21 @@ from hub_core.mcp.config import McpServerConfig
 
 
 def _run_smoke(config: McpServerConfig) -> int:
+    doctor_report = run_doctor(config)
+    runtime_dependency_check = next(
+        (check for check in doctor_report.get("checks", []) if check.get("name") == "runtime_dependencies"),
+        None,
+    )
+    if runtime_dependency_check and runtime_dependency_check.get("status") == "error":
+        payload = {
+            "status": "error",
+            "ready": False,
+            "tool_surface": "figops_mcp",
+            "check": runtime_dependency_check,
+        }
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        return 1
+
     from hub_core.mcp import FigOpsMCPServer
 
     server = FigOpsMCPServer(config=config)
