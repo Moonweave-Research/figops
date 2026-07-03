@@ -4,12 +4,11 @@
 > publication-quality plotting, self-describing MCP tools, and honest
 > operational guardrails.
 >
-> Status baseline: source checkout `0.17.11` after graph QA hardening and release
-> metadata alignment;
-> `0.17.11` remains the latest locally documented public PyPI release. M1 through M5
-> have shipped across the 0.5.0+ release line. The remaining roadmap is
-> maintenance, scoped debt reduction, and bounded polish-layer waves that
-> preserve journal constraints.
+> Status baseline: source checkout `0.17.11` after graph QA hardening, release
+> metadata alignment, public PyPI publication, and matching `v0.17.11` GitHub
+> Release assets. M1 through M5 have shipped across the 0.5.0+ release line. The
+> remaining roadmap is maintenance, scoped debt reduction, and bounded
+> polish-layer waves that preserve journal constraints.
 
 ## How to read this
 
@@ -29,7 +28,7 @@
 - Actions are not part of local verification and should not be triggered for
   docs-only work.
 
-## Current-state scorecard (0.17.11 source line, 2026-07-03)
+## Current-state scorecard (0.17.11 source line, 2026-07-04)
 
 | Dimension | Score | Read |
 |---|---:|---|
@@ -41,6 +40,25 @@
 
 Roadmap goal: keep fundamentals and DX >=8 while paying down concentrated module
 size debt without reintroducing broad refactors.
+
+Post-release total QA checkpoint:
+
+- Current checkpoint: `docs/specs/2026-07-04-post-release-total-qa-plan.md`.
+- Journal tracks are implemented as encoded token differences, not only labels:
+  Nature, Science, ACS, RSC, Elsevier, Wiley, and Cell resolve distinct width,
+  font, line, marker, errorbar, height, and distribution-rendering tokens.
+- MCP agent surface is complete for the current contract: 13 canonical
+  `figops.*` tools, 13 legacy `graphhub.*` aliases, generated schemas, and
+  handler mappings are present.
+- Operational release controls are in place: latest checked `main` CI passed,
+  publish is manual-only and main-branch guarded, and PyPI/TestPyPI/GitHub
+  Release install-smoke evidence is documented.
+- Public claim wording remains publication-oriented; `manual_review_needed=false`
+  is not by itself a publishable verdict.
+- Remaining work is quality hardening rather than release repair: journal-track
+  fixture qualification, MCP agent-consumability guards, local operator
+  readiness around `uv`, diagnostic-to-rubric mapping, and maintenance
+  decomposition.
 
 ---
 
@@ -175,9 +193,24 @@ lives in:
 - `docs/specs/polish-layer-legend-axis-wave.md`
 - `docs/specs/polish-fixture-manifest.json`
 
-Next implementation priority: architecture/data-contract debt as a separate
-maintenance track. Do not reclassify shipped polish controls as open gaps unless
-a regression is proven.
+Next implementation priority: graph QA fixture qualification and
+agent-consumability guards before broader architecture/data-contract debt. Do
+not reclassify shipped polish controls as open gaps unless a regression is
+proven.
+
+Immediate next slices:
+
+1. Add representative journal-track fixtures for Nature, Science, ACS, RSC,
+   Elsevier, Wiley, and Cell, with expected `style_summary`, token floors,
+   `geometry_diagnostics`, and `layout_report` summaries.
+2. Add a guard that keeps `TOOL_NAMES`, legacy aliases,
+   `list_tool_definitions()`, generated `docs/tools.md`, and internal agent
+   playbooks aligned when MCP tools change.
+3. Add or document a lightweight local operator-readiness check for `uv`,
+   external runtime root, and active Python environment before release QA.
+4. Add a generated/checkable diagnostic-to-rubric map so every
+   `geometry_diagnostics/1` name resolves to `FQ-H*`, `FQ-A*`, or explicit
+   informational status.
 
 ### R1 - Large-module decomposition
 
