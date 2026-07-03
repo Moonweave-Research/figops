@@ -8,9 +8,8 @@ Team artifact root: `.omo/teams/team-e58a2c43/artifacts/`
 
 ## Objective
 
-Record the final team QA result, the follow-on `0.17.11` TestPyPI dry run, and
-the public PyPI promotion. This is a readiness and claim-boundary receipt, not a
-GitHub Release record.
+Record the final team QA result, the follow-on `0.17.11` TestPyPI dry run, the
+public PyPI promotion, and the GitHub Release asset publication.
 
 ## Team Slices
 
@@ -30,8 +29,9 @@ GitHub Release record.
   `pypi` workflow promotion and install-smoke verified.
 - TestPyPI has `figops==0.17.11`, published by the manual `testpypi` workflow
   dry run and install-smoke verified.
-- Latest documented GitHub Release asset remains `v0.17.10`.
-- No tag or GitHub Release was created during this QA pass.
+- Latest documented GitHub Release asset is `v0.17.11`.
+- Git tag `v0.17.11` and GitHub Release `FigOps 0.17.11` were created for this
+  source state.
 
 Release decision:
 
@@ -95,6 +95,15 @@ PyPI install evidence:
 python -m venv C:\dev\figops-pypi-smoke
 C:\dev\figops-pypi-smoke\Scripts\python.exe -m pip install figops==0.17.11
 C:\dev\figops-pypi-smoke\Scripts\figops-mcp.exe --smoke
+# {"health_status": "ok", "status": "ok", ...}
+```
+
+GitHub Release asset evidence:
+
+```bash
+gh release download v0.17.11 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.11-py3-none-any.whl
+figops-mcp --smoke
 # {"health_status": "ok", "status": "ok", ...}
 ```
 
@@ -175,10 +184,9 @@ P3 - Optional external publisher matrix:
 
 ## Final QA Verdict
 
-The current source checkout is released to public PyPI as `figops==0.17.11`,
-with local package artifacts, TestPyPI, and public PyPI install smoke verified.
-It is not yet a GitHub Release. No tag or GitHub Release should be performed
-without explicit operator approval.
+The current source checkout is released to public PyPI as `figops==0.17.11` and
+has a matching `v0.17.11` GitHub Release asset. Local package artifacts,
+TestPyPI, public PyPI, and GitHub Release install smoke were verified.
 
 Graph tooling is qualified as publication-oriented with diagnostics and manual
 review escalation. It is not qualified for unconditional publication-ready,

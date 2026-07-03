@@ -24,12 +24,13 @@
     "GitHub Actions publish.yml with repository=testpypi",
     "fresh venv install smoke for figops==0.17.11 from TestPyPI",
     "GitHub Actions publish.yml with repository=pypi",
-    "fresh venv install smoke for figops==0.17.11 from PyPI"
+    "fresh venv install smoke for figops==0.17.11 from PyPI",
+    "GitHub Release v0.17.11 asset smoke"
   ],
   "release_decision": {
     "source_metadata_ready": true,
-    "tag_created": false,
-    "github_release_created": false,
+    "tag_created": true,
+    "github_release_created": true,
     "testpypi_published": true,
     "pypi_published": true,
     "operator_approval_required_for_publication": true

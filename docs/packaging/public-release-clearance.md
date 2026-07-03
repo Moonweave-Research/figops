@@ -1,7 +1,7 @@
 # Public release clearance checklist
 
 The local release docs record `figops` as the public PyPI package name,
-`0.17.11` as the pinned PyPI install example, and `0.17.10` as the pinned
+`0.17.11` as the pinned PyPI install example, and `0.17.11` as the pinned
 GitHub Release wheel/sdist example. Public package
 distribution uses Apache-2.0, and future PyPI/TestPyPI uploads go through the
 guarded technical checklist plus the manual Trusted Publishing workflow.
@@ -77,14 +77,14 @@ Use the locally documented GitHub Release asset when you need the exact attached
 artifact:
 
 ```bash
-APPROVED_VERSION=0.17.10  # replace with the approved GitHub Release version
+APPROVED_VERSION=0.17.11  # replace with the approved GitHub Release version
 gh release download "v$APPROVED_VERSION" --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
 python -m pip install "dist-release/figops-$APPROVED_VERSION-py3-none-any.whl"
 figops-mcp --smoke
 ```
 
 The pinned examples are local documentation anchors: PyPI remains pinned to
-`0.17.11`, while the GitHub Release asset is pinned to `0.17.10`. Update either
+`0.17.11`, and the GitHub Release asset is also pinned to `0.17.11`. Update either
 only after explicit release-maintainer approval and public index/release-asset
 verification.
 

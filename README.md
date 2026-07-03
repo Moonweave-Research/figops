@@ -52,12 +52,10 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 | License | Apache-2.0 for public package distribution |
 | Commands | `figops`, `figops-mcp` |
 | Compatibility aliases | `graphhub`, `graphhub-mcp` |
-| GitHub Release | [`v0.17.10`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.10) is the latest locally documented release asset |
+| GitHub Release | [`v0.17.11`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.11) is the latest locally documented release asset |
 
-The source checkout and public PyPI package are aligned at `0.17.11`. The
-GitHub Release asset is still the latest locally documented attached artifact
-from `v0.17.10`, so use that path only when an exact GitHub Release wheel is
-needed.
+The source checkout, public PyPI package, and GitHub Release asset are aligned
+at `0.17.11`.
 
 ## Install
 
@@ -76,8 +74,8 @@ python -m pip install figops==0.17.11
 If you need the exact GitHub Release asset:
 
 ```bash
-gh release download v0.17.10 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.10-py3-none-any.whl
+gh release download v0.17.11 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.17.11-py3-none-any.whl
 figops-mcp --smoke
 ```
 
