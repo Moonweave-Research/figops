@@ -8,9 +8,9 @@ Team artifact root: `.omo/teams/team-e58a2c43/artifacts/`
 
 ## Objective
 
-Record the final team QA result before any new FigOps public release action.
-This is a readiness and claim-boundary receipt, not a tag, GitHub Release, or
-PyPI/TestPyPI publication record.
+Record the final team QA result and the follow-on `0.17.11` TestPyPI dry run.
+This is a readiness and claim-boundary receipt, not a GitHub Release or PyPI
+publication record.
 
 ## Team Slices
 
@@ -26,16 +26,18 @@ PyPI/TestPyPI publication record.
 - Source metadata is now `0.17.11` in `pyproject.toml`.
 - `CHANGELOG.md` has a top `0.17.11` entry dated `2026-07-03`.
 - README and roadmap source-state references now point at `0.17.11`.
-- Latest documented PyPI/TestPyPI package remains `0.17.9`.
+- Latest documented PyPI package remains `0.17.9`.
+- TestPyPI has `figops==0.17.11`, published by the manual `testpypi` workflow
+  dry run and install-smoke verified.
 - Latest documented GitHub Release asset remains `v0.17.10`.
-- No tag, GitHub Release, TestPyPI upload, or PyPI upload was created during
-  this QA pass.
+- No tag, GitHub Release, or PyPI upload was created during this QA pass.
 
 Release decision:
 
 - Source readiness: ready for maintainer review.
-- Public release action: hold until an operator explicitly approves `0.17.11`
-  artifacts and runs the manual TestPyPI -> PyPI path.
+- Public PyPI release action: hold until an operator explicitly approves
+  promoting the TestPyPI-verified `0.17.11` artifacts through the manual PyPI
+  path.
 - Repository-public decision: still separate from package distribution and must
   remain owner-controlled.
 
@@ -62,10 +64,26 @@ python -m pytest tests/test_bridge_renderer.py tests/test_bridge_renderer_robust
 
 Hosted evidence:
 
-- Latest `main` CI for commit `18a13f6` succeeded:
-  <https://github.com/Moonweave-Research/figops/actions/runs/28650202440>
+- Latest `main` CI for commit `70a64c3` succeeded:
+  <https://github.com/Moonweave-Research/figops/actions/runs/28658580567>
 - Jobs `Test (gating)`, `Ruff (advisory)`, and
   `Dependency audit (advisory)` all succeeded.
+- Manual TestPyPI publish workflow for commit `70a64c3` succeeded:
+  <https://github.com/Moonweave-Research/figops/actions/runs/28660384625>
+- Workflow jobs `Verify release ref`, `Build and verify distributions`, and
+  `Publish to TestPyPI` succeeded; `Publish to PyPI` was skipped.
+
+TestPyPI install evidence:
+
+```bash
+python -m venv C:\dev\figops-testpypi-smoke
+C:\dev\figops-testpypi-smoke\Scripts\python.exe -m pip install \
+  --index-url https://pypi.org/simple \
+  --extra-index-url https://test.pypi.org/simple \
+  figops==0.17.11
+C:\dev\figops-testpypi-smoke\Scripts\figops-mcp.exe --smoke
+# {"health_status": "ok", "status": "ok", ...}
+```
 
 Environment caveats:
 
@@ -105,8 +123,8 @@ P0 - Claim and release truth reconciliation:
   render receives a rubric-backed `publishable` verdict.
 - Keep source version, changelog, README, roadmap, and packaging docs aligned
   whenever post-tag commits exist.
-- Treat GitHub Release and PyPI/TestPyPI publication as explicit operator
-  actions, not automatic consequences of metadata readiness.
+- Treat GitHub Release, PyPI, and future TestPyPI publication as explicit
+  operator actions, not automatic consequences of metadata readiness.
 
 P1 - Graph QA fixture qualification pack:
 
@@ -145,9 +163,10 @@ P3 - Optional external publisher matrix:
 ## Final QA Verdict
 
 The current source checkout is ready for maintainer review as `0.17.11`
-metadata, with local package artifacts verified. It is not yet a published
-release. No tag, GitHub Release, TestPyPI upload, or PyPI upload should be
-performed without explicit operator approval.
+metadata, with local package artifacts verified and a TestPyPI dry run
+completed. It is not yet a GitHub Release or public PyPI release. No tag,
+GitHub Release, or PyPI upload should be performed without explicit operator
+approval.
 
 Graph tooling is qualified as publication-oriented with diagnostics and manual
 review escalation. It is not qualified for unconditional publication-ready,

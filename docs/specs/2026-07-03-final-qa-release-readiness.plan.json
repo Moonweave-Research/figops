@@ -20,13 +20,15 @@
     "python -m build",
     "python scripts/package_metadata_smoke.py",
     "python scripts/public_package_surface.py",
-    "python -m pytest tests/test_bridge_renderer.py tests/test_bridge_renderer_robustness.py -q"
+    "python -m pytest tests/test_bridge_renderer.py tests/test_bridge_renderer_robustness.py -q",
+    "GitHub Actions publish.yml with repository=testpypi",
+    "fresh venv install smoke for figops==0.17.11 from TestPyPI"
   ],
   "release_decision": {
     "source_metadata_ready": true,
     "tag_created": false,
     "github_release_created": false,
-    "testpypi_published": false,
+    "testpypi_published": true,
     "pypi_published": false,
     "operator_approval_required_for_publication": true
   },
