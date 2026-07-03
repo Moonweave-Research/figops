@@ -4,8 +4,9 @@
 > publication-quality plotting, self-describing MCP tools, and honest
 > operational guardrails.
 >
-> Status baseline: source checkout `0.17.10` after polish-layer PRs #196-#198;
-> `0.17.9` remains the latest locally documented public release. M1 through M5
+> Status baseline: source checkout `0.17.11` after graph QA hardening and release
+> metadata alignment;
+> `0.17.9` remains the latest locally documented public PyPI release. M1 through M5
 > have shipped across the 0.5.0+ release line. The remaining roadmap is
 > maintenance, scoped debt reduction, and bounded polish-layer waves that
 > preserve journal constraints.
@@ -28,7 +29,7 @@
 - Actions are not part of local verification and should not be triggered for
   docs-only work.
 
-## Current-state scorecard (0.17.10 source line, 2026-06-29)
+## Current-state scorecard (0.17.11 source line, 2026-07-03)
 
 | Dimension | Score | Read |
 |---|---:|---|

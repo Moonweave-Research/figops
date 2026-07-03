@@ -7,7 +7,7 @@ Source of truth: `docs/specs/2026-06-30-figops-productization-loop.plan.json`
 Run FigOps through a repeating spec -> review -> implementation -> verification
 loop until the tool is stable as a shareable lab figure-operations package.
 
-The loop starts from the current v0.17.10 source-line state: core research-ops,
+The loop starts from the current v0.17.11 source-line state: core research-ops,
 MCP, plotting, provenance, and release-readiness surfaces already exist. The
 remaining work should improve operability, trust, and maintainability without
 reopening shipped milestone scope.
@@ -88,8 +88,9 @@ Goal: keep public claims true when source and published package differ.
 
 Current evidence:
 
-- Source checkout is `0.17.10`.
-- Locally documented public package/release state is `0.17.9`.
+- Source checkout is `0.17.11`.
+- Locally documented PyPI package state is `0.17.9`.
+- Locally documented GitHub Release asset state is `v0.17.10`.
 - Network verification of latest PyPI/GitHub state is not assumed.
 
 Acceptance examples:

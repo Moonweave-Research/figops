@@ -1,6 +1,6 @@
 # Repository surface audit
 
-Last checked: 2026-06-28
+Last checked: 2026-07-03
 
 This note records the current public/private boundary for the FigOps repository.
 It is separate from the PyPI package gate: the package artifacts are public, and
@@ -40,7 +40,7 @@ Completed blocker families:
   release-check fixtures;
 - workflow protocol docs moved from the legacy private path to
   `docs/internal/protocols/`;
-- post-tag metadata bumped to `0.17.10`.
+- post-tag metadata bumped through `0.17.11`.
 
 Current structured status:
 

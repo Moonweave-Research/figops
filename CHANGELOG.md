@@ -15,6 +15,27 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.17.11] - 2026-07-03
+
+### Added
+
+- Add dielectric-comparison render affordances, multipanel secondary-y parity,
+  multipanel statistical overlays, and graph QA hardening for publication-oriented
+  figure review workflows.
+
+### Changed
+
+- Continue decomposition work by extracting journal publication layout helpers
+  and process-runner command helpers while preserving compatibility behavior.
+- Harden graph QA documentation, release checks, and GitHub Actions behavior,
+  including cancellation of superseded CI runs.
+
+### Fixed
+
+- Clear stale post-tag release metadata after the eight commits that followed
+  `v0.17.10` so the read-only public release gate can evaluate the current
+  source checkout.
+
 ## [0.17.10] - 2026-06-28
 
 ### Changed

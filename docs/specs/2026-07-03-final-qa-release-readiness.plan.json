@@ -1,0 +1,41 @@
+{
+  "schema_version": "figops_plan/1",
+  "title": "Final QA Release Readiness and Next Roadmap",
+  "date": "2026-07-03",
+  "status": "verified",
+  "scope": [
+    "release metadata readiness",
+    "graph qualification claim boundary",
+    "agent documentation contract alignment",
+    "next improvement queue"
+  ],
+  "inputs": [
+    ".omo/teams/team-e58a2c43/artifacts/release-gates-report.md",
+    ".omo/teams/team-e58a2c43/artifacts/graph-qualification-report.md",
+    ".omo/teams/team-e58a2c43/artifacts/agent-doc-contracts-report.md",
+    ".omo/teams/team-e58a2c43/artifacts/member-D-improvement-roadmap.md"
+  ],
+  "verification": [
+    "python scripts/check_public_release.py",
+    "python -m build",
+    "python scripts/package_metadata_smoke.py",
+    "python scripts/public_package_surface.py",
+    "python -m pytest tests/test_bridge_renderer.py tests/test_bridge_renderer_robustness.py -q"
+  ],
+  "release_decision": {
+    "source_metadata_ready": true,
+    "tag_created": false,
+    "github_release_created": false,
+    "testpypi_published": false,
+    "pypi_published": false,
+    "operator_approval_required_for_publication": true
+  },
+  "claim_boundary": {
+    "approved": "publication-oriented",
+    "disallowed_without_specific_evidence": [
+      "publication-ready",
+      "all labels are optimally placed",
+      "current official publisher compliance"
+    ]
+  }
+}
