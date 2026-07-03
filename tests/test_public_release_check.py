@@ -1,7 +1,9 @@
+import shutil
 import subprocess
 import unicodedata
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from hub_core.provenance import embed_provenance_fingerprint
@@ -73,7 +75,10 @@ def test_public_release_check_ignores_gitignored_local_outputs(tmp_path: Path) -
 
 
 def test_public_release_check_uses_git_exclude_standard_when_available(tmp_path: Path) -> None:
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    git = shutil.which("git")
+    if not git:
+        pytest.skip("git executable is not available on PATH")
+    subprocess.run([git, "init", "-q", str(tmp_path)], check=True)
     (tmp_path / "LICENSE").write_text("Apache-2.0\n", encoding="utf-8")
     (tmp_path / "NOTICE").write_text("Open source release candidate.\n", encoding="utf-8")
     (tmp_path / ".gitignore").write_text("results/\n", encoding="utf-8")

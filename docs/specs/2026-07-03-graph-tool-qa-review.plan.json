@@ -1,0 +1,100 @@
+{
+  "objective": "Document the current FigOps graph tool QA qualification boundary for agents before publication-facing documentation makes stronger claims.",
+  "surface": [
+    "plotting/",
+    "themes/",
+    "hub_core/geometry_diagnostics.py",
+    "hub_core/geometry_style_checks.py",
+    "hub_core/figure_preflight.py",
+    "hub_core/mcp/",
+    "docs/QA.md",
+    "docs/internal/protocols/"
+  ],
+  "assumptions": [
+    {
+      "claim": "The review is repository-internal and does not freshly verify external publisher pages.",
+      "verification": "Any external compliance claim must add a dated publisher-guideline matrix."
+    },
+    {
+      "claim": "Aesthetic quality remains advisory unless measured by deterministic diagnostics.",
+      "verification": "Map every warning or diagnostic to FQ-H*, FQ-A*, or informational before using it as a gate."
+    }
+  ],
+  "phases": [
+    {
+      "id": "inspect",
+      "entry": "Local source tree is available.",
+      "exit": "Renderer, style, diagnostics, preflight, and docs evidence are identified."
+    },
+    {
+      "id": "qualify",
+      "entry": "Evidence has been collected from source files.",
+      "exit": "Capabilities are classified as guaranteed, conditional, best-effort, diagnostic, unsupported, or manual."
+    },
+    {
+      "id": "document",
+      "entry": "Qualification matrix exists.",
+      "exit": "Agent-facing documentation states allowed and disallowed claims."
+    },
+    {
+      "id": "verify",
+      "entry": "Markdown and JSON have been written.",
+      "exit": "JSON parses and required documentation anchors exist."
+    }
+  ],
+  "workers": [
+    {
+      "role": "contract_reviewer",
+      "owns": "data contract, provenance, and preflight result interpretation"
+    },
+    {
+      "role": "layout_reviewer",
+      "owns": "labels, legends, annotations, geometry diagnostics, and layout_report"
+    },
+    {
+      "role": "style_reviewer",
+      "owns": "target_format, style profile, font tokens, line-width floors, and journal token checks"
+    },
+    {
+      "role": "regression_reviewer",
+      "owns": "visual baselines, runtime/dependency drift, and fixture coverage"
+    },
+    {
+      "role": "documentation_reviewer",
+      "owns": "claim boundaries and user-facing wording"
+    }
+  ],
+  "handoffs": [
+    "Current Qualification Matrix",
+    "Execution Model",
+    "Safety and Verification Gates",
+    "Agent Response Template"
+  ],
+  "parallelism": {
+    "pattern": "parallel fan-out / fan-in",
+    "concurrency_cap": 5,
+    "fan_in_rule": "One final verdict must reconcile all hard gates and advisory findings."
+  },
+  "verification": [
+    "Parse docs/specs/2026-07-03-graph-tool-qa-review.plan.json as JSON.",
+    "Check that docs/specs/2026-07-03-graph-tool-qa-review.md contains the qualification matrix and manual_review_needed claim boundary.",
+    "Check that docs/QA.md links the new qualification review.",
+    "Check that docs/internal/protocols/04_quality_gate_contract.md states the agent rule for manual_review_needed and journal-token claims."
+  ],
+  "risk_gates": [
+    {
+      "risk": "Overclaiming publication readiness",
+      "safe_default": "Use publication-oriented wording and require rubric verdict plus manual review state."
+    },
+    {
+      "risk": "Overclaiming latest journal compliance",
+      "safe_default": "Say encoded FigOps token compliance unless dated external source verification is cited."
+    }
+  ],
+  "budget": {
+    "file_touch_limit": 4,
+    "test_scope": "docs JSON/anchor verification only"
+  },
+  "resume_plan": "The markdown spec and JSON plan are deterministic. If interrupted, rerun the verification commands and continue from the first missing link.",
+  "execution_path": "direct Codex documentation update"
+}

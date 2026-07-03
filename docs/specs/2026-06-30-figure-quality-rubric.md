@@ -29,12 +29,13 @@ turning subjective taste into pipeline failure.
 
 Use three review outcomes:
 
-- `publishable`: all hard gates pass, no advisory issue materially obscures the
-  result.
+- `publishable`: cited hard gates pass, `manual_review_needed` is not true, and
+  no advisory issue materially obscures the result.
 - `revise`: hard gates pass, but advisory issues should be polished before
   submission or public release.
-- `blocked`: at least one hard gate fails or is unverified where the output
-  format should support it.
+- `blocked`: at least one hard gate fails, is unverified where the output
+  format should support it, or unresolved `manual_review_needed=true` prevents a
+  publication-readiness claim.
 
 Skipped diagnostics are not automatic failures, but reviewers must record why
 the skip is acceptable. A skipped hard-gate check with no format/runtime reason
