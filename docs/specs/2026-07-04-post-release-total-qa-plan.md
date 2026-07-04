@@ -23,10 +23,11 @@ publishable verdicts still require cited hard-gate evidence.
 
 ### Journal Track Implementation
 
-FigOps has ten target formats in the live enum:
+FigOps has ten target formats in the live enum, including seven public journal
+tracks, `default`, `ppt`, and one internal private track:
 
 ```text
-acs, cell, default, elsevier, nature, nature_surfur, ppt, rsc, science, wiley
+acs, cell, default, elsevier, nature, ppt, rsc, science, wiley, <internal-private-track>
 ```
 
 Seven public journal tracks have distinct encoded baseline tokens:

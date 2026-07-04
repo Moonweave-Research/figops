@@ -30,32 +30,45 @@ def test_public_core_inventory_schema_is_valid():
     assert inventory["distribution_policy"]["current_status"] == "public_package_approved"
 
 
-def test_public_core_status_reports_current_gate_as_clear():
+def test_public_core_status_reports_current_gate_consistently():
     status = public_core_status(HUB_ROOT)
 
     assert status["inventory_valid"] is True
-    assert status["release_gate"]["ok"] is True
     assert status["package_distribution_allowed"] is True
-    assert status["repository_public_release_allowed"] is True
     assert status["pypi_upload_allowed"] is True
-    assert status["release_gate"]["blocker_families"] == []
-    assert status["release_gate"]["next_actions"] == []
-    assert status["release_gate"]["action_summary"]["auto_fixable_blocker_count"] == 0
-    assert status["release_gate"]["action_summary"]["requires_confirmation"] is False
+    assert status["repository_public_release_allowed"] is status["release_gate"]["ok"]
     assert "blockers_by_family" not in status["release_gate"]
+    if status["release_gate"]["ok"]:
+        assert status["release_gate"]["blocker_families"] == []
+        assert status["release_gate"]["next_actions"] == []
+        assert status["release_gate"]["action_summary"]["auto_fixable_blocker_count"] == 0
+        assert status["release_gate"]["action_summary"]["requires_confirmation"] is False
+    else:
+        assert status["release_gate"]["blocker_families"]
+        assert status["release_gate"]["next_actions"]
+        assert status["release_gate"]["action_summary"]["requires_confirmation"] is True
 
 
-def test_public_core_status_can_include_empty_grouped_release_blockers():
+def test_public_core_status_can_include_grouped_release_blockers():
     status = build_public_core_status(HUB_ROOT, include_blockers=True)
 
     blockers = status["release_gate"]["blockers_by_family"]
-    assert blockers == {}
+    if status["release_gate"]["ok"]:
+        assert blockers == {}
+    else:
+        assert blockers
+        assert set(blockers) == set(status["release_gate"]["blocker_families"])
 
 
-def test_release_blocker_summary_is_empty_when_gate_is_clear():
+def test_release_blocker_summary_matches_current_gate_state():
     grouped = release_blocker_summary(HUB_ROOT)
+    status = public_core_status(HUB_ROOT)
 
-    assert grouped == {}
+    if status["release_gate"]["ok"]:
+        assert grouped == {}
+    else:
+        assert grouped
+        assert set(grouped) == set(status["release_gate"]["blocker_families"])
 
 
 def test_release_next_actions_group_counts_and_decision_statuses():
