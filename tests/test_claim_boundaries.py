@@ -4,7 +4,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Final
 
-
 _ROOT_INIT_MODULE: Final = "__init__"
 _ROOT_INIT_PATH: Final = Path(__file__).resolve().parents[1] / "__init__.py"
 if _ROOT_INIT_MODULE not in sys.modules:

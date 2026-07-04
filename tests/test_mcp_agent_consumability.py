@@ -8,8 +8,14 @@ from typing import Mapping
 import pytest
 
 from hub_core.mcp import GraphHubMCPServer
-from hub_core.mcp.schemas import LEGACY_TOOL_NAMES, TOOL_HANDLER_NAMES, TOOL_NAMES, get_tool_handlers
-from hub_core.mcp.schemas import list_prompt_definitions, list_tool_definitions
+from hub_core.mcp.schemas import (
+    LEGACY_TOOL_NAMES,
+    TOOL_HANDLER_NAMES,
+    TOOL_NAMES,
+    get_tool_handlers,
+    list_prompt_definitions,
+    list_tool_definitions,
+)
 from hub_core.mcp.transport import _handle_json_rpc
 from scripts.gen_tool_reference import render_tool_reference
 

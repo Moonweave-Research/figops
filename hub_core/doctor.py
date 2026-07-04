@@ -171,7 +171,9 @@ def _check_source_checkout_runtime(server: _DoctorSecurityState) -> DoctorCheck:
     runtime_root_exists = runtime_root.exists()
     runtime_root_is_dir = runtime_root.is_dir() if runtime_root_exists else False
     runtime_root_ready = runtime_root_is_dir and os.access(runtime_root, os.W_OK | os.X_OK)
-    uv_environment_outside_hub = uv_project_environment != hub_path / ".venv" and hub_path not in uv_project_environment.parents
+    uv_environment_outside_hub = (
+        uv_project_environment != hub_path / ".venv" and hub_path not in uv_project_environment.parents
+    )
     details = {
         "python_executable": sys.executable,
         "python_version": _python_version(),
