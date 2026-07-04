@@ -633,7 +633,8 @@ def get_render_style_tokens(target_format="nature", profile_name=None):
     target_tokens = TARGET_FORMAT_PROFILE_TOKENS.get(target_key, {})
     tokens.update(target_tokens.get(DEFAULT_PROFILE, {}))
     tokens.update(target_tokens.get(profile_key, {}))
-    return tokens, {"target_format": target_key, "profile": profile_key}
+    metadata = {"target_format": target_key, "profile": profile_key}
+    return tokens, metadata
 
 
 def get_profile_rc_overrides(profile_name=None):
