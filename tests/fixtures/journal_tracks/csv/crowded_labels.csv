@@ -1,0 +1,16 @@
+condition,response,series,point_label,priority
+very-long-control-baseline-day-00,0.82,control,C0,1
+very-long-control-baseline-day-07,1.04,control,C7,2
+very-long-control-baseline-day-14,1.18,control,C14,3
+very-long-control-baseline-day-21,1.21,control,C21,4
+very-long-control-baseline-day-28,1.26,control,C28,5
+very-long-treatment-alpha-day-00,0.91,treatment,T0,6
+very-long-treatment-alpha-day-07,1.27,treatment,T7,7
+very-long-treatment-alpha-day-14,1.62,treatment,T14,8
+very-long-treatment-alpha-day-21,1.88,treatment,T21,9
+very-long-treatment-alpha-day-28,2.04,treatment,T28,10
+very-long-treatment-beta-day-00,0.87,reference,R0,11
+very-long-treatment-beta-day-07,1.11,reference,R7,12
+very-long-treatment-beta-day-14,1.36,reference,R14,13
+very-long-treatment-beta-day-21,1.51,reference,R21,14
+very-long-treatment-beta-day-28,1.73,reference,R28,15

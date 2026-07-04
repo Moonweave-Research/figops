@@ -1,0 +1,11 @@
+time_h,signal,series
+0,1.00,control
+1,1.18,control
+2,1.31,control
+3,1.46,control
+4,1.58,control
+0,1.02,treatment
+1,1.32,treatment
+2,1.61,treatment
+3,1.93,treatment
+4,2.18,treatment

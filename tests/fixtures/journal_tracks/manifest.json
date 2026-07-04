@@ -1,0 +1,72 @@
+{
+  "schema_version": "journal_track_fixtures/1",
+  "profile": "baseline",
+  "public_tracks": [
+    "nature",
+    "science",
+    "acs",
+    "rsc",
+    "elsevier",
+    "wiley",
+    "cell"
+  ],
+  "fixture_classes": [
+    {
+      "id": "basic_series",
+      "description": "Readable two-series line fixture for baseline journal-track qualification.",
+      "csv_path": "csv/basic_series.csv",
+      "expected_summary_pattern": "expected/{track}_basic_series.json",
+      "render_arguments": {
+        "x_column": "time_h",
+        "y_column": "signal",
+        "series_column": "series",
+        "plot_type": "line",
+        "title": "Basic response series",
+        "x_axis_label": "Time (h)",
+        "y_axis_label": "Normalized signal"
+      }
+    },
+    {
+      "id": "crowded_labels",
+      "description": "Long categorical tick labels and point labels for geometry-diagnostic stress.",
+      "csv_path": "csv/crowded_labels.csv",
+      "expected_summary_pattern": "expected/{track}_crowded_labels.json",
+      "render_arguments": {
+        "x_column": "condition",
+        "y_column": "response",
+        "series_column": "series",
+        "label_column": "point_label",
+        "plot_type": "scatter",
+        "title": "Crowded label stress",
+        "x_axis_label": "Condition",
+        "y_axis_label": "Response",
+        "tick_style": {
+          "rotation": 45
+        },
+        "point_label_options": {
+          "max_labels": 12,
+          "priority_column": "priority"
+        }
+      }
+    },
+    {
+      "id": "dense_legend",
+      "description": "Many visible series for legend layout and hierarchy stress.",
+      "csv_path": "csv/dense_legend.csv",
+      "expected_summary_pattern": "expected/{track}_dense_legend.json",
+      "render_arguments": {
+        "x_column": "cycle",
+        "y_column": "measurement",
+        "series_column": "series",
+        "plot_type": "line",
+        "title": "Dense legend stress",
+        "x_axis_label": "Cycle",
+        "y_axis_label": "Measurement",
+        "legend_options": {
+          "title": "Cohort",
+          "ncol": 2
+        }
+      }
+    }
+  ]
+}

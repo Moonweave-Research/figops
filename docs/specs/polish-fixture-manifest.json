@@ -72,6 +72,15 @@
       "desired_polish_behavior": "Shared multipanel legends can be controlled without bespoke matplotlib; future work should preserve this contract while reducing renderer/MCP duplication.",
       "automation_level": "automated",
       "acceptance_command": "python hub_uv.py run python -m pytest tests/test_geometry_diagnostics.py tests/test_bridge_renderer.py -q"
+    },
+    {
+      "id": "journal-track-fixture-pack",
+      "plot_type": "line/scatter",
+      "data_recipe": "Use tests/fixtures/journal_tracks manifest, CSVs, and expected summaries for basic series, crowded labels, and dense legends across seven public journal tracks.",
+      "current_expected_weakness": "Task 1 registers the fixture contract only; Tasks 2-4 render and inspect the journal-track artifacts without changing style tokens.",
+      "desired_polish_behavior": "Nature, Science, ACS, RSC, Elsevier, Wiley, and Cell tracks are covered by manifest-backed fixture data and expected style-summary/token-floor schemas.",
+      "automation_level": "automated",
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_journal_track_fixtures.py::test_journal_track_fixture_manifest_is_complete tests/test_journal_track_fixtures.py::test_journal_track_expected_summaries_have_required_schema tests/test_journal_track_fixtures.py::test_missing_public_track_fixture_is_rejected -q"
     }
   ],
   "expected_failures": [],
