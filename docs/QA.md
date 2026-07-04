@@ -176,11 +176,28 @@ Agents must not describe a graph as publication-ready when
 `manual_review_needed=true`. In that case, the correct wording is that FigOps
 created an artifact and surfaced QA findings for revision.
 
-Agents may claim journal compliance only for the encoded FigOps token set
-(selected `target_format`, style profile, minimum font size, minimum line
-width, maximum encoded figure height, and preflight checks). Claims about the
-latest external publisher instructions require a dated source matrix outside
-this QA guide.
+Journal-style claims have three separate layers:
+
+1. Encoded minimum compliance: agents may claim only the FigOps token set and
+   measured checks that actually ran for the selected `target_format`, style
+   profile, dimensions, minimum font size, minimum line width, maximum encoded
+   figure height, preflight checks, and geometry diagnostics where measured.
+2. Authentic visual-language heuristics: agents may describe source-backed or
+   explicitly heuristic journal/track differences only through the dated
+   [journal visual-language matrix](specs/2026-07-04-journal-visual-language-matrix.md)
+   and the [journal style-delta report](specs/2026-07-04-journal-style-delta-report.md).
+   This layer does not claim latest publisher compliance beyond the matrix
+   source dates and limitations.
+3. Evidence-backed publishability review: `publishable` or `journal-ready`
+   wording requires cited hard-gate evidence, `manual_review_needed` not true,
+   and no unresolved hard-gate diagnostic. A clean style or style-delta result
+   alone is comparison evidence, not by itself a publishable verdict.
+
+The Todo 10 dogfood render-pack evidence for the current journal-style
+hardening wave is expected under
+`.omo/evidence/task-10-journal-style-real-use-hardening-final/render-pack/`.
+Use it as run evidence only; do not treat the directory's existence as a
+publisher acceptance signal.
 
 Current renderer wording should stay precise:
 
@@ -194,9 +211,83 @@ For the full agent playbook, see
 
 ---
 
-## 5) 운영 권고
+## 5) Journal Visual Evidence Gates
+
+Journal-track visual evidence is expensive enough to preserve deliberately, but
+not so expensive that failures should be ignored. Use three gates:
+
+### Quick Gate
+
+Use this gate for ordinary PRs and local pre-review checks. It verifies the
+fixture contracts, MCP examples, rubric mapping, and claim-boundary text without
+regenerating the full visual pack:
+
+```bash
+python hub_uv.py run python -m pytest tests/test_journal_track_fixtures.py tests/test_mcp_agent_consumability.py tests/test_geometry_rubric_map.py tests/test_claim_boundaries.py -q
+rg -n "publication-oriented|manual_review_needed|hard-gate" docs tests
+```
+
+The text scan is a review prompt, not an allowlist by itself. Keep
+`publication-oriented` wording for general product claims. A `publishable`
+verdict for a specific output requires cited hard-gate evidence and
+`manual_review_needed` not true.
+
+### Full Visual Dogfood
+
+Use this gate locally, in a maintainer-run job, or in an explicitly dispatched
+or path-filtered workflow when journal rendering behavior, style tokens,
+fixtures, MCP render contracts, or release evidence changes. Do not run it for
+every unrelated docs-only or dependency-only PR.
+
+```bash
+python hub_uv.py run python tests/fixture_tools/render_journal_track_pack.py --case all --output-dir .omo/evidence/task-10-journal-style-real-use-hardening-final/render-pack --contact-sheet .omo/evidence/task-10-journal-style-real-use-hardening-final/contact-sheet.html
+```
+
+Preserve these review artifacts together:
+
+- `.omo/evidence/task-10-journal-style-real-use-hardening-final/render-pack/summary.json`
+- `.omo/evidence/task-10-journal-style-real-use-hardening-final/render-pack/style_delta_summary.json`
+- `.omo/evidence/task-10-journal-style-real-use-hardening-final/contact-sheet.html`
+
+The pack must render all public journal tracks and stress fixtures through
+`figops.render_csv_graph`. Reviewers should inspect `render-pack/summary.json`,
+`render-pack/style_delta_summary.json`, and the contact sheet before accepting visual-output
+changes. This dogfood evidence demonstrates MCP render behavior and track
+differentiation; it does not certify publisher acceptance.
+
+### Release Gate
+
+Before a package release, combine package readiness with an operator review of
+current visual evidence:
+
+```bash
+python hub_uv.py run python -m pytest -q tests/test_guarded_pypi_upload.py tests/test_package_metadata_smoke.py tests/test_packaging_metadata.py tests/test_public_package_surface.py tests/test_release_discipline.py
+python hub_uv.py run python scripts/package_metadata_smoke.py
+python hub_uv.py run python scripts/public_package_surface.py
+python hub_uv.py run python scripts/consumer_install_smoke.py
+python hub_uv.py run --with twine python -m twine check dist/*
+```
+
+The GitHub Actions workflow named `Publish Python package`
+(`.github/workflows/publish.yml`) is manual-only through `workflow_dispatch`,
+requires `refs/heads/main`, and stores distribution artifacts. It is the release
+promotion path, not the routine place to regenerate journal visual evidence.
+Attach or link the preserved visual evidence in the release review record when
+journal rendering changed since the last release.
+
+The normal workflow named `CI` (`.github/workflows/ci.yml`) runs on push and
+pull request. Keep it focused on tests and lint/audit signals unless a future
+journal-evidence workflow is explicitly manual or path-filtered to files that
+can affect visual rendering, such as journal fixtures, render-pack tooling,
+style profiles, plotting renderers, MCP CSV rendering, or lockfile/runtime
+inputs. Large contact sheets and render packs should be uploaded only from that
+explicit path, with `if-no-files-found: error`, so missing evidence fails closed.
+
+---
+
+## 6) 운영 권고
 
 - **허브 모듈 수정 시**: `hub_core/` 내부 로직 변경 시 반드시 2개 이상의 서로 다른 프로젝트(`ionoelastomer`, `Sulfur_polymer`)에 대해 테스트를 수행.
 - **Runtime 상태 분리**: 데이터 결과값, 회귀 baseline, 실행 로그, 자격증명은 repo 밖 runtime/cache 경로에 둔다. DVC/data registry는 현재 운영 표면에서 retired 상태다.
 
-**Last Update**: 2026-07-03 (graph tool QA qualification and agent claim boundaries)
+**Last Update**: 2026-07-04 (journal visual evidence gate guidance)

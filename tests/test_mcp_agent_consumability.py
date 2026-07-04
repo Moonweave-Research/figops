@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,10 @@ WORKFLOW_PATH = HUB_ROOT / "docs" / "internal" / "protocols" / "00_agent_graph_w
 PLAYBOOK_PATH = HUB_ROOT / "docs" / "internal" / "protocols" / "05_mcp_tool_playbook.md"
 TOOL_REFERENCE_HEADER_RE = re.compile(r"^### `(?P<name>figops\.[a-z0-9_]+)`$", re.MULTILINE)
 TOOL_MENTION_RE = re.compile(r"\b(?:figops|graphhub)\.[a-z0-9_]+\b")
+JSON_BLOCK_RE = re.compile(r"```json\n(?P<body>.*?)\n```", re.DOTALL)
+PUBLIC_JOURNAL_TARGET_FORMATS = frozenset({"nature", "science", "acs", "rsc", "elsevier", "wiley", "cell"})
+STALE_RENDER_CSV_GRAPH_KEYS = frozenset({"x", "y", "chart_type"})
+REQUIRED_RENDER_CSV_GRAPH_KEYS = frozenset({"x_column", "y_column", "series_column", "plot_type"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +102,8 @@ def _assert_agent_consumability(surface: AgentConsumabilitySurface) -> None:
     assert not missing_guidance_tools, f"agent guidance missing canonical tools: {sorted(missing_guidance_tools)}"
 
     _assert_render_prompts_are_actionable(surface.docs.prompt_texts)
+    _assert_render_csv_graph_examples_use_current_contract(surface.docs.playbook_text)
+    _assert_playbook_has_same_dataset_all_journal_render_example(surface.docs.playbook_text)
 
 
 def _assert_docs_only_reference_live_tools(text_by_name: Mapping[str, str], live_tools: frozenset[str]) -> None:
@@ -114,6 +121,55 @@ def _assert_render_prompts_are_actionable(prompt_texts: Mapping[str, str]) -> No
         assert tool_name in project_prompt, f"project render prompt missing {tool_name}"
     for text in (csv_prompt, project_prompt):
         assert "manual_review_needed" in text, "render prompt must preserve manual_review_needed guidance"
+
+
+def _assert_render_csv_graph_examples_use_current_contract(playbook_text: str) -> None:
+    examples = _render_csv_graph_examples(playbook_text)
+    assert examples, "playbook must include at least one JSON figops.render_csv_graph example"
+    for example in examples:
+        keys = frozenset(example)
+        assert not (keys & STALE_RENDER_CSV_GRAPH_KEYS), (
+            f"stale figops.render_csv_graph example keys: {sorted(keys & STALE_RENDER_CSV_GRAPH_KEYS)}"
+        )
+        assert not (REQUIRED_RENDER_CSV_GRAPH_KEYS - keys), (
+            f"render_csv_graph example missing current keys: {sorted(REQUIRED_RENDER_CSV_GRAPH_KEYS - keys)}"
+        )
+
+
+def _assert_playbook_has_same_dataset_all_journal_render_example(playbook_text: str) -> None:
+    grouped_formats = {}
+    for example in _render_csv_graph_examples(playbook_text):
+        group_key = tuple(
+            example.get(key) for key in ("data_path", "x_column", "y_column", "series_column", "plot_type")
+        )
+        if isinstance(target_format := example.get("target_format"), str):
+            grouped_formats.setdefault(group_key, set()).add(target_format)
+
+    assert any(PUBLIC_JOURNAL_TARGET_FORMATS <= formats for formats in grouped_formats.values()), (
+        "playbook must include same-dataset figops.render_csv_graph examples for all public journal tracks"
+    )
+
+
+def _render_csv_graph_examples(playbook_text: str):
+    examples = []
+    for match in JSON_BLOCK_RE.finditer(playbook_text):
+        block = match.group("body")
+        if "figops.render_csv_graph" not in block:
+            continue
+        stack = [json.loads(block)]
+        while stack:
+            match stack.pop():
+                case list(items):
+                    stack.extend(items)
+                case dict(mapping):
+                    if mapping.get("tool") == "figops.render_csv_graph":
+                        arguments = mapping.get("arguments")
+                        assert isinstance(arguments, dict), "figops.render_csv_graph examples must include arguments"
+                        examples.append(arguments)
+                    stack.extend(mapping.values())
+                case _:
+                    continue
+    return tuple(examples)
 
 
 def _tool_mentions(text: str) -> frozenset[str]:
@@ -169,6 +225,13 @@ def _live_surface() -> AgentConsumabilitySurface:
 
 def test_live_mcp_surface_is_agent_consumable() -> None:
     _assert_agent_consumability(_live_surface())
+
+
+def test_guard_rejects_stale_render_csv_graph_example_keys() -> None:
+    with pytest.raises(AssertionError, match="stale figops.render_csv_graph example keys"):
+        _assert_render_csv_graph_examples_use_current_contract(
+            '```json\n{"tool":"figops.render_csv_graph","arguments":{"x":"a","y":"b","chart_type":"line"}}\n```'
+        )
 
 
 def test_guard_rejects_tool_without_agent_guidance() -> None:

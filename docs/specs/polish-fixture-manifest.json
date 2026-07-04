@@ -76,11 +76,18 @@
     {
       "id": "journal-track-fixture-pack",
       "plot_type": "line/scatter",
-      "data_recipe": "Use tests/fixtures/journal_tracks manifest, CSVs, and expected summaries for basic series, crowded labels, and dense legends across seven public journal tracks.",
-      "current_expected_weakness": "Task 1 registers the fixture contract only; Tasks 2-4 render and inspect the journal-track artifacts without changing style tokens.",
-      "desired_polish_behavior": "Nature, Science, ACS, RSC, Elsevier, Wiley, and Cell tracks are covered by manifest-backed fixture data and expected style-summary/token-floor schemas.",
+      "data_recipe": "Use tests/fixtures/journal_tracks manifest, shared CSVs, and expected summaries for basic_series, crowded_labels, dense_legend, and same_dataset_user_dogfood across seven public journal tracks.",
+      "current_expected_weakness": "The journal pack now validates manifest-backed fixtures, same-dataset dogfood coverage, style-delta evidence, render-pack CLI output, and contact-sheet captions; remaining weakness is human inspection of visual suitability.",
+      "desired_polish_behavior": "Nature, Science, ACS, RSC, Elsevier, Wiley, and Cell tracks are covered by manifest-backed fixture data, expected style-summary/token-floor schemas, style_delta_summary.json evidence, and contact-sheet/render-pack QA expectations without changing style tokens.",
       "automation_level": "automated",
-      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_journal_track_fixtures.py::test_journal_track_fixture_manifest_is_complete tests/test_journal_track_fixtures.py::test_journal_track_expected_summaries_have_required_schema tests/test_journal_track_fixtures.py::test_missing_public_track_fixture_is_rejected -q"
+      "qa_expectations": [
+        "same_dataset_user_dogfood uses one shared CSV rendered through every public journal track",
+        "style-delta evidence validates documented rationale categories and rejects unsupported rationale categories",
+        "render_journal_track_pack.py writes summary.json and style_delta_summary.json for the selected fixture scope",
+        "contact-sheet captions expose fixture_class, manual_review_needed, dimension_tokens, warnings, and unmeasured counts",
+        "focused acceptance covers journal fixture and style-delta contracts only; it is not a full CI substitute"
+      ],
+      "acceptance_command": "python hub_uv.py run python -m pytest tests/test_journal_style_delta.py tests/test_journal_track_fixtures.py -q"
     }
   ],
   "expected_failures": [],

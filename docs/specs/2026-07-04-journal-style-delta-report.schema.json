@@ -1,0 +1,369 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://figops.local/specs/2026-07-04-journal-style-delta-report.schema.json",
+  "title": "Journal Style Delta Report",
+  "description": "Contract for publication-oriented journal track comparison evidence. A style-delta report explains differences between rendered tracks; it is not a publishable verdict.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_kind",
+    "generated_at",
+    "comparison_scope",
+    "baseline_track",
+    "comparison_tracks",
+    "track_deltas",
+    "claim_boundary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "journal_style_delta_report/1"
+    },
+    "report_kind": {
+      "const": "style-delta"
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "ISO-8601 timestamp for the report generation run."
+    },
+    "comparison_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_id",
+        "input_dataset",
+        "renderer_surface",
+        "output_format",
+        "tracks"
+      ],
+      "properties": {
+        "fixture_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_dataset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "renderer_surface": {
+          "type": "string",
+          "enum": [
+            "figops.render_csv_graph"
+          ]
+        },
+        "output_format": {
+          "type": "string",
+          "enum": [
+            "png",
+            "pdf",
+            "svg"
+          ]
+        },
+        "tracks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "baseline_track": {
+      "type": "string",
+      "minLength": 1
+    },
+    "comparison_tracks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "track_deltas": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/track_delta"
+      }
+    },
+    "claim_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_role",
+        "publishable_verdict",
+        "quality_threshold_policy",
+        "review_requirement"
+      ],
+      "properties": {
+        "evidence_role": {
+          "type": "string",
+          "const": "comparison_evidence_only"
+        },
+        "publishable_verdict": {
+          "type": "string",
+          "const": "not_a_publishable_verdict"
+        },
+        "quality_threshold_policy": {
+          "type": "string",
+          "const": "no_arbitrary_pixel_difference_thresholds"
+        },
+        "review_requirement": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "track_delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "track",
+        "reference_track",
+        "token_delta",
+        "render_delta",
+        "diagnostic_delta",
+        "visual_language_rationale"
+      ],
+      "properties": {
+        "track": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reference_track": {
+          "type": "string",
+          "minLength": 1
+        },
+        "token_delta": {
+          "$ref": "#/$defs/token_delta"
+        },
+        "render_delta": {
+          "$ref": "#/$defs/render_delta"
+        },
+        "diagnostic_delta": {
+          "$ref": "#/$defs/diagnostic_delta"
+        },
+        "visual_language_rationale": {
+          "$ref": "#/$defs/visual_language_rationale"
+        }
+      }
+    },
+    "token_delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimension_tokens",
+        "font_floor_tokens",
+        "line_floor_tokens",
+        "marker_grammar_tokens",
+        "palette_tokens",
+        "legend_tokens"
+      ],
+      "properties": {
+        "dimension_tokens": {
+          "$ref": "#/$defs/named_delta_map"
+        },
+        "font_floor_tokens": {
+          "$ref": "#/$defs/named_delta_map"
+        },
+        "line_floor_tokens": {
+          "$ref": "#/$defs/named_delta_map"
+        },
+        "marker_grammar_tokens": {
+          "$ref": "#/$defs/named_delta_map"
+        },
+        "palette_tokens": {
+          "$ref": "#/$defs/named_delta_map"
+        },
+        "legend_tokens": {
+          "$ref": "#/$defs/named_delta_map"
+        }
+      }
+    },
+    "render_delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "output_dimensions",
+        "layout_density",
+        "legend_behavior",
+        "rendered_output_metrics",
+        "artifact_paths"
+      ],
+      "properties": {
+        "output_dimensions": {
+          "$ref": "#/$defs/named_delta_map"
+        },
+        "layout_density": {
+          "$ref": "#/$defs/named_delta_map"
+        },
+        "legend_behavior": {
+          "$ref": "#/$defs/named_delta_map"
+        },
+        "rendered_output_metrics": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "width_px",
+            "height_px",
+            "file_size_bytes",
+            "pixel_threshold_policy"
+          ],
+          "properties": {
+            "width_px": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "height_px": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "file_size_bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "pixel_threshold_policy": {
+              "type": "string",
+              "const": "not_used_as_quality_proof"
+            }
+          }
+        },
+        "artifact_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "diagnostic_delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status_delta",
+        "manual_review_delta",
+        "geometry_diagnostics",
+        "layout_report"
+      ],
+      "properties": {
+        "status_delta": {
+          "$ref": "#/$defs/named_delta"
+        },
+        "manual_review_delta": {
+          "$ref": "#/$defs/named_delta"
+        },
+        "geometry_diagnostics": {
+          "$ref": "#/$defs/diagnostic_summary"
+        },
+        "layout_report": {
+          "$ref": "#/$defs/diagnostic_summary"
+        }
+      }
+    },
+    "visual_language_rationale": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "rationale_category",
+        "evidence_basis",
+        "unsupported_or_deferred",
+        "claim_boundary"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale_category": {
+          "type": "string",
+          "description": "Known evidence-basis category for the visual-language rationale. Validators must reject empty or undocumented category values.",
+          "enum": [
+            "official_submission_constraint",
+            "encoded_figops_token",
+            "observed_visual_language",
+            "heuristic_publication_convention",
+            "unsupported_or_deferred"
+          ]
+        },
+        "evidence_basis": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "unsupported_or_deferred": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "claim_boundary": {
+          "type": "string",
+          "const": "publication-oriented comparison evidence, not a publishable verdict"
+        }
+      }
+    },
+    "diagnostic_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passed_count_delta",
+        "failed_count_delta",
+        "unmeasured_count_delta",
+        "notable_checks"
+      ],
+      "properties": {
+        "passed_count_delta": {
+          "type": "integer"
+        },
+        "failed_count_delta": {
+          "type": "integer"
+        },
+        "unmeasured_count_delta": {
+          "type": "integer"
+        },
+        "notable_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "named_delta_map": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/named_delta"
+      }
+    },
+    "named_delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference",
+        "candidate",
+        "delta",
+        "interpretation"
+      ],
+      "properties": {
+        "reference": {},
+        "candidate": {},
+        "delta": {},
+        "interpretation": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -27,6 +27,13 @@
   and `ruff check .` unless the change explicitly justifies a narrower gate.
 - Actions are not part of local verification and should not be triggered for
   docs-only work.
+- Journal visual evidence uses a three-gate policy: quick pytest/text checks for
+  normal PRs; full MCP visual dogfood only locally, manually, or through an
+  explicitly dispatched/path-filtered evidence workflow; and release review that
+  combines package readiness with preserved `render-pack/summary.json`,
+  `render-pack/style_delta_summary.json`, and contact-sheet inspection. The existing `CI`
+  workflow is not the place to regenerate large render packs for unrelated
+  changes.
 
 ## Current-state scorecard (0.17.11 source line, 2026-07-04)
 
@@ -44,9 +51,16 @@ size debt without reintroducing broad refactors.
 Post-release total QA checkpoint:
 
 - Current checkpoint: `docs/specs/2026-07-04-post-release-total-qa-plan.md`.
-- Journal tracks are implemented as encoded token differences, not only labels:
+- Journal tracks are implemented as encoded minimum-compliance token
+  differences, not only labels:
   Nature, Science, ACS, RSC, Elsevier, Wiley, and Cell resolve distinct width,
   font, line, marker, errorbar, height, and distribution-rendering tokens.
+- Authentic visual-language differences are bounded by the dated
+  `docs/specs/2026-07-04-journal-visual-language-matrix.md` and comparison
+  evidence from `docs/specs/2026-07-04-journal-style-delta-report.md`; they are
+  source-backed where possible and explicitly heuristic where the matrix says
+  so. These documents do not claim current publisher compliance beyond their
+  source dates and recorded limitations.
 - MCP agent surface is complete for the current contract: 13 canonical
   `figops.*` tools, 13 legacy `graphhub.*` aliases, generated schemas, and
   handler mappings are present.
@@ -54,7 +68,12 @@ Post-release total QA checkpoint:
   publish is manual-only and main-branch guarded, and PyPI/TestPyPI/GitHub
   Release install-smoke evidence is documented.
 - Public claim wording remains publication-oriented; `manual_review_needed=false`
-  is not by itself a publishable verdict.
+  is not by itself a publishable verdict. `publishable` or `journal-ready`
+  wording requires cited hard-gate evidence and `manual_review_needed` not true.
+- Current journal-style dogfood evidence for Todo 10 is recorded at
+  `.omo/evidence/task-10-journal-style-real-use-hardening-final/render-pack/`;
+  it supports review of rendered differences but is not a publisher acceptance
+  signal.
 - Remaining work is quality hardening rather than release repair: journal-track
   fixture qualification, MCP agent-consumability guards, local operator
   readiness around `uv`, diagnostic-to-rubric mapping, and maintenance
