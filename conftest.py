@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+collect_ignore = ["__init__.py"]
+
 # Guarantee the hub root is on sys.path regardless of how pytest is invoked.
 _HUB_ROOT = Path(__file__).resolve().parent
 if str(_HUB_ROOT) not in sys.path:
