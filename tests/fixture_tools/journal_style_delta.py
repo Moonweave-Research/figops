@@ -3,11 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 import struct
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Mapping, Sequence
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from themes.authentic_style_language import get_authentic_style_candidate_deltas
 from tests.fixture_tools.journal_style_delta_validation import (
     PUBLIC_TRACKS,
     JsonObject,
@@ -89,15 +93,12 @@ def render_markdown_summary(report: Mapping[str, JsonValue]) -> str:
             raise JournalStyleDeltaError("track_delta must be an object")
         token = require_object(raw_delta, "token_delta")
         diagnostic = require_object(raw_delta, "diagnostic_delta")
-        rationale = require_object(raw_delta, "visual_language_rationale")
-        status = require_object(diagnostic, "status_delta")
-        manual = require_object(diagnostic, "manual_review_delta")
         lines.extend([
             f"## {require_text(raw_delta, 'track')}",
             f"- token_floors: {_floors(token)}",
-            f"- status: {status.get('candidate')} (reference: {status.get('reference')})",
-            f"- manual_review_needed: {manual.get('candidate')} (reference: {manual.get('reference')})",
-            f"- rationale: {require_text(rationale, 'summary')}",
+            f"- status: {require_object(diagnostic, 'status_delta').get('candidate')} (reference: {require_object(diagnostic, 'status_delta').get('reference')})",
+            f"- manual_review_needed: {require_object(diagnostic, 'manual_review_delta').get('candidate')} (reference: {require_object(diagnostic, 'manual_review_delta').get('reference')})",
+            f"- rationale: {require_text(require_object(raw_delta, 'visual_language_rationale'), 'summary')}",
             "",
         ])
     return "\n".join(lines).rstrip() + "\n"
@@ -123,8 +124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         manifest_path=Path(args.manifest) if args.manifest else None,
     )
     report = build_style_delta_report(request)
-    output_json = Path(args.output_json)
-    output_md = Path(args.output_md)
+    output_json, output_md = Path(args.output_json), Path(args.output_md)
     output_json.parent.mkdir(parents=True, exist_ok=True)
     output_md.parent.mkdir(parents=True, exist_ok=True)
     output_json.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -152,6 +152,7 @@ def _delta(track: str, entry: Mapping[str, JsonValue], context: DeltaContext) ->
             "layout_report": diagnostic_delta(context.baseline_entry, entry, "layout_report"),
         },
         "visual_language_rationale": _rationale(context.matrix, track),
+        "authentic_style_candidates": get_authentic_style_candidate_deltas(track),
     }
 
 

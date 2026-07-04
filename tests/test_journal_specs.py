@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from hub_core.config_parser import ALLOWED_TARGET_FORMATS
 from hub_core.journal_specs import (
     JOURNAL_PREFLIGHT_SPECS,
@@ -12,6 +14,8 @@ from hub_core.journal_specs import (
 )
 from hub_core.style_report import build_style_report, format_style_report
 from themes.authentic_style_language import (
+    AuthenticStyleLanguageMetadataError,
+    get_authentic_style_candidate_deltas,
     get_authentic_style_language_metadata,
     validate_authentic_style_language_metadata,
 )
@@ -101,6 +105,37 @@ def test_public_journal_style_language_metadata_rejects_missing_rationale():
     malformed_metadata["rationale"] = ""
 
     assert not validate_authentic_style_language_metadata(malformed_metadata)
+
+
+def test_authentic_style_candidate_deltas_are_measurable_and_non_default():
+    matrix = _read_visual_language_matrix()
+
+    for target_format in PUBLIC_JOURNAL_TRACKS:
+        candidates = get_authentic_style_candidate_deltas(target_format.upper())
+
+        assert candidates["schema_version"] == "authentic_style_candidate_deltas/1"
+        assert candidates["target_format"] == target_format
+        assert candidates["official_claim"] is False
+        assert candidates["descriptive_observations"] == [
+            item["item"] for item in matrix["public_tracks"][target_format]["observed_visual_language"]
+        ]
+        assert isinstance(candidates["candidate_deltas"], list)
+        for delta in candidates["candidate_deltas"]:
+            assert delta["token"]
+            assert delta["current_value"] != delta["candidate_value"]
+            assert delta["delta_kind"]
+            assert delta["rationale_category"] in {
+                "observed_visual_language",
+                "heuristic_publication_convention",
+            }
+            assert delta["source_note"].startswith("2026-07-04")
+            assert "not an official publisher-compliance claim" in delta["claim_boundary"]
+            assert delta["apply_by_default"] is False
+
+
+def test_authentic_style_candidates_reject_unsupported_target_format():
+    with pytest.raises(AuthenticStyleLanguageMetadataError):
+        get_authentic_style_candidate_deltas("unknown-journal")
 
 
 def test_internal_and_policy_tokens_are_not_mislabeled_as_official():

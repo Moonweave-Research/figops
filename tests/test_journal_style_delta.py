@@ -142,6 +142,38 @@ def test_style_delta_report_accepts_documented_rationale_categories() -> None:
         )
 
 
+def test_style_delta_report_exposes_candidates_separately_from_observations() -> None:
+    # Given: a real style-delta report built from committed expected summaries.
+    report = _basic_series_style_delta_report()
+    raw_deltas = report["track_deltas"]
+    assert isinstance(raw_deltas, list)
+
+    # When / Then: every track exposes descriptive observations and measurable candidate deltas as distinct fields.
+    candidate_counts: dict[str, int] = {}
+    for raw_delta in raw_deltas:
+        assert isinstance(raw_delta, dict)
+        candidates = raw_delta["authentic_style_candidates"]
+        assert isinstance(candidates, dict)
+        assert candidates["schema_version"] == "authentic_style_candidate_deltas/1"
+        assert candidates["target_format"] == raw_delta["track"]
+        assert candidates["official_claim"] is False
+        observations = candidates["descriptive_observations"]
+        candidate_deltas = candidates["candidate_deltas"]
+        assert isinstance(observations, list)
+        assert isinstance(candidate_deltas, list)
+        assert observations and candidate_deltas is not observations
+        for candidate_delta in candidate_deltas:
+            assert isinstance(candidate_delta, dict)
+            assert candidate_delta["current_value"] != candidate_delta["candidate_value"]
+            assert candidate_delta["rationale_category"] in RATIONALE_CATEGORIES
+            assert candidate_delta["apply_by_default"] is False
+        candidate_counts[str(raw_delta["track"])] = len(candidate_deltas)
+
+    assert candidate_counts["rsc"] == 0
+    assert candidate_counts["wiley"] == 0
+    assert candidate_counts["science"] > 0
+
+
 def test_style_delta_report_rejects_stale_expected_token_floor() -> None:
     # Given: a real style-delta report and a stale expected token floor.
     report = _basic_series_style_delta_report()
@@ -206,16 +238,7 @@ def test_render_pack_cli_writes_style_delta_summary_and_caption_contract(tmp_pat
     evidence_dir = tmp_path / "evidence"
     output_dir = evidence_dir / "render-pack"
     contact_sheet = evidence_dir / "contact-sheet.html"
-    command = [
-        sys.executable,
-        str(HUB_ROOT / "tests" / "fixture_tools" / "render_journal_track_pack.py"),
-        "--case",
-        fixture_id,
-        "--output-dir",
-        str(output_dir),
-        "--contact-sheet",
-        str(contact_sheet),
-    ]
+    command = [sys.executable, str(HUB_ROOT / "tests" / "fixture_tools" / "render_journal_track_pack.py"), "--case", fixture_id, "--output-dir", str(output_dir), "--contact-sheet", str(contact_sheet)]
 
     # When: the render pack command completes.
     subprocess.run(command, cwd=HUB_ROOT, check=True)
@@ -224,6 +247,9 @@ def test_render_pack_cli_writes_style_delta_summary_and_caption_contract(tmp_pat
     summary = read_json_object(output_dir / "summary.json")
     style_delta_summary = read_json_object(output_dir / "style_delta_summary.json")
     validate_style_delta_report(style_delta_summary, expected_tracks=PUBLIC_TRACKS)
+    raw_deltas = style_delta_summary["track_deltas"]
+    assert isinstance(raw_deltas, list) and len(raw_deltas) == len(PUBLIC_TRACKS)
+    assert all(isinstance(delta, dict) and "authentic_style_candidates" in delta and "candidate_metadata" not in delta for delta in raw_deltas)
 
     entries = summary["entries"]
     assert isinstance(entries, list)

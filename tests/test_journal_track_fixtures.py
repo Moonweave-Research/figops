@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from hub_core.mcp import GraphHubMCPServer
+from themes.authentic_style_language import get_authentic_style_candidate_deltas
 from themes.style_profiles import get_render_style_tokens
 from tests.fixture_tools.journal_track_assertions import (
     EXPECTED_CROWDED_LABEL_FINDINGS,
@@ -279,3 +280,22 @@ def test_same_dataset_user_dogfood_renders_all_public_tracks(tmp_path: Path) -> 
         _assert_basic_render_matches_expected_summary(result, expected_summary)
         assert "manual_review_needed" in result
         assert isinstance(result["manual_review_needed"], bool)
+
+
+def test_same_dataset_candidate_metadata_does_not_force_render_style_drift() -> None:
+    manifest = load_manifest()
+    fixture = fixture_entry(manifest, SAME_DATASET_FIXTURE_CLASS)
+    assert_same_dataset_fixture_contract(fixture)
+
+    for track in PUBLIC_JOURNAL_TRACKS:
+        before_tokens, before_meta = get_render_style_tokens(track, "baseline")
+        candidates = get_authentic_style_candidate_deltas(track)
+        after_tokens, after_meta = get_render_style_tokens(track, "baseline")
+        expected_summary = read_json(expected_path(track, SAME_DATASET_FIXTURE_CLASS))
+
+        assert (before_tokens, before_meta) == (after_tokens, after_meta)
+        assert candidates["descriptive_observations"]
+        assert expected_summary["style_summary"]["target_format"] == track
+        assert expected_summary["selected_token_floors"] == {key: after_tokens[key] for key in TOKEN_FLOOR_KEYS}
+        if not candidates["candidate_deltas"]:
+            assert track in {"rsc", "wiley"}

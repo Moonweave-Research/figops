@@ -1,7 +1,9 @@
 """Unit tests for themes/style_profiles.py — multi-channel encoding and profile resolution."""
 
+from copy import deepcopy
 import unittest
 
+from themes.authentic_style_language import get_authentic_style_candidate_deltas
 from themes.style_profiles import (
     HATCH_CYCLE,
     INTERNAL_RESISTANCE_PROFILE,
@@ -13,6 +15,8 @@ from themes.style_profiles import (
     list_profiles,
     resolve_profile_name,
 )
+
+PUBLIC_JOURNAL_TRACKS = ("nature", "science", "acs", "rsc", "elsevier", "wiley", "cell")
 
 
 class TestSeriesStyle(unittest.TestCase):
@@ -193,6 +197,20 @@ class TestProfileResolution(unittest.TestCase):
         self.assertEqual(profile_meta["profile"], INTERNAL_RESISTANCE_PROFILE)
         for key in ("min_font_size_pt", "min_line_width_pt", "max_figure_height_mm"):
             self.assertEqual(profile_tokens[key], baseline_tokens[key])
+
+    def test_authentic_candidates_do_not_change_default_render_tokens(self):
+        for track in PUBLIC_JOURNAL_TRACKS:
+            with self.subTest(track=track):
+                before_tokens, before_meta = get_render_style_tokens(track, "baseline")
+                before_snapshot = (deepcopy(before_tokens), deepcopy(before_meta))
+
+                candidates = get_authentic_style_candidate_deltas(track)
+                after_tokens, after_meta = get_render_style_tokens(track, "baseline")
+
+                self.assertEqual(before_snapshot, (after_tokens, after_meta))
+                self.assertEqual(after_meta, {"target_format": track, "profile": "baseline"})
+                self.assertEqual(candidates["target_format"], track)
+                self.assertNotIn("authentic_style_candidates", after_meta)
 
 
 if __name__ == "__main__":
