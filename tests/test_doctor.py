@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from hub_core.doctor import run_doctor
@@ -16,6 +17,17 @@ def _config(tmp_path: Path) -> McpServerConfig:
     return McpServerConfig(hub_path=HUB_ROOT, research_root=tmp_path, runtime_root=runtime_root)
 
 
+def _fake_uv_completed(args: Sequence[str], **_kwargs):
+    assert args[-1] == "--version"
+    return subprocess.CompletedProcess(args, 0, stdout="uv 0.8.0\n", stderr="")
+
+
+def _fake_tool_path(name: str) -> str | None:
+    if name == "uv":
+        return str(Path("C:/tools/uv.exe"))
+    return None
+
+
 def test_doctor_reports_missing_tools_with_actionable_hints(monkeypatch, tmp_path):
     monkeypatch.setattr("hub_core.doctor.shutil.which", lambda _name: None)
 
@@ -26,6 +38,9 @@ def test_doctor_reports_missing_tools_with_actionable_hints(monkeypatch, tmp_pat
     assert report["ready"] is False
     assert checks["uv"]["status"] == "error"
     assert "Install uv" in checks["uv"]["hint"]
+    assert checks["source_checkout_runtime"]["status"] == "error"
+    assert checks["source_checkout_runtime"]["details"]["uv_available"] is False
+    assert "Install uv" in checks["source_checkout_runtime"]["hint"]
     assert checks["Rscript"]["status"] == "warning"
     assert "Install R" in checks["Rscript"]["hint"]
 
@@ -81,6 +96,7 @@ def test_doctor_json_reports_structured_readiness(tmp_path):
     assert {
         "python",
         "uv",
+        "source_checkout_runtime",
         "runtime_dependencies",
         "pytest",
         "pyarrow",
@@ -90,6 +106,88 @@ def test_doctor_json_reports_structured_readiness(tmp_path):
         "roots",
         "adapters",
     }.issubset(checks)
+    readiness = checks["source_checkout_runtime"]
+    assert readiness["status"] in {"ok", "warning"}
+    assert readiness["details"]["python_executable"] == sys.executable
+    assert readiness["details"]["UV_PROJECT_ENVIRONMENT"].endswith(os.path.join("uv_envs", "figops"))
+    assert readiness["details"]["uv_environment_outside_hub"] is True
+    assert "UV_CACHE_DIR" in readiness["details"]
+
+
+def test_doctor_reports_source_checkout_runtime_details(monkeypatch, tmp_path):
+    monkeypatch.setattr("hub_core.doctor.shutil.which", _fake_tool_path)
+    monkeypatch.setattr("hub_core.doctor.subprocess.run", _fake_uv_completed)
+    uv_runtime_root = tmp_path / "uv-runtime"
+    monkeypatch.setenv("RESEARCH_HUB_RUNTIME_ROOT", str(uv_runtime_root))
+
+    report = run_doctor(_config(tmp_path))
+    checks = {check["name"]: check for check in report["checks"]}
+    readiness = checks["source_checkout_runtime"]
+
+    assert readiness["status"] == "ok"
+    assert "source-checkout runtime is ready" in readiness["summary"].lower()
+    assert readiness["details"]["python_executable"] == sys.executable
+    assert readiness["details"]["python_version"].startswith(f"{sys.version_info.major}.{sys.version_info.minor}.")
+    assert readiness["details"]["uv_available"] is True
+    assert readiness["details"]["uv_path"] == str(Path("C:/tools/uv.exe"))
+    assert readiness["details"]["RESEARCH_HUB_RUNTIME_ROOT"] == str(uv_runtime_root.resolve())
+    assert readiness["details"]["UV_PROJECT_ENVIRONMENT"].endswith(os.path.join("uv_envs", "figops"))
+    assert readiness["details"]["UV_CACHE_DIR"].endswith("uv_cache")
+    assert readiness["details"]["mcp_runtime_root"] == str((tmp_path / "runtime").resolve())
+    assert readiness["details"]["uv_environment_outside_hub"] is True
+    assert readiness["details"]["runtime_root_explicit"] is True
+    assert readiness["details"]["runtime_root_exists"] is True
+    assert readiness["details"]["runtime_root_writable_executable"] is True
+
+
+def test_doctor_source_checkout_runtime_warns_when_explicit_runtime_root_is_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr("hub_core.doctor.shutil.which", _fake_tool_path)
+    monkeypatch.setattr("hub_core.doctor.subprocess.run", _fake_uv_completed)
+    monkeypatch.setenv("RESEARCH_HUB_RUNTIME_ROOT", str(tmp_path / "uv-runtime"))
+    config = McpServerConfig(hub_path=HUB_ROOT, research_root=tmp_path, runtime_root=tmp_path / "missing-runtime")
+
+    report = run_doctor(config)
+    checks = {check["name"]: check for check in report["checks"]}
+    readiness = checks["source_checkout_runtime"]
+
+    assert readiness["status"] == "warning"
+    assert readiness["details"]["runtime_root_explicit"] is True
+    assert readiness["details"]["runtime_root_exists"] is False
+    assert readiness["details"]["runtime_root_writable_executable"] is False
+    assert "Create the configured runtime root" in readiness["hint"]
+
+
+def test_doctor_source_checkout_runtime_errors_when_runtime_root_is_not_writable(monkeypatch, tmp_path):
+    monkeypatch.setattr("hub_core.doctor.shutil.which", _fake_tool_path)
+    monkeypatch.setattr("hub_core.doctor.subprocess.run", _fake_uv_completed)
+    monkeypatch.setenv("RESEARCH_HUB_RUNTIME_ROOT", str(tmp_path / "uv-runtime"))
+    monkeypatch.setattr("hub_core.doctor.os.access", lambda _path, _mode: False)
+
+    report = run_doctor(_config(tmp_path))
+    checks = {check["name"]: check for check in report["checks"]}
+    readiness = checks["source_checkout_runtime"]
+
+    assert readiness["status"] == "error"
+    assert readiness["details"]["runtime_root_exists"] is True
+    assert readiness["details"]["runtime_root_writable_executable"] is False
+    assert "writable and executable" in readiness["hint"]
+
+
+def test_doctor_source_checkout_runtime_errors_when_uv_is_present_off_path(monkeypatch, tmp_path):
+    off_path_uv = tmp_path / "uv-bin" / "uv"
+    off_path_uv.parent.mkdir()
+    off_path_uv.write_text("", encoding="utf-8")
+    monkeypatch.setattr("hub_core.doctor.shutil.which", lambda _name: None)
+
+    report = run_doctor(_config(tmp_path))
+    checks = {check["name"]: check for check in report["checks"]}
+    readiness = checks["source_checkout_runtime"]
+
+    assert readiness["status"] == "error"
+    assert readiness["details"]["uv_available"] is False
+    assert readiness["details"]["uv_path"] is None
+    assert "PATH" in readiness["hint"]
+
 
 
 def test_doctor_json_reports_missing_deps_without_importing_heavy_mcp_modules(tmp_path):

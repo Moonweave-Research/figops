@@ -4,10 +4,12 @@ Follow this sequence when you are new to FigOps.
 
 1. Start with the [quickstart](quickstart.md). It creates a local scaffold and renders a CSV-backed
    figure without bespoke environment variables.
-2. In a source checkout, run `python hub_uv.py run python figops_mcp_server.py doctor` and resolve
-   any blocking errors. For an installed package, run `figops-mcp doctor`. Optional I/O,
-   missing-`Rscript`, or disabled-write-tool warnings are normal until you need those capabilities.
-   Missing `pytest` means local source-checkout tests have not been verified.
+2. In a source checkout, run `python hub_uv.py --print-env`, then
+   `python hub_uv.py run python figops_mcp_server.py --hub-path . --research-root . --runtime-root .omo/evidence/task-6-runtime doctor --json`
+   and resolve any blocking errors. For an installed package, run `figops-mcp doctor`.
+   Optional I/O, missing-`Rscript`, or disabled-write-tool warnings are normal until
+   you need those capabilities. Missing `uv` on `PATH` blocks the source-checkout
+   wrapper; missing `pytest` means local source-checkout tests have not been verified.
 3. Work through the [synthetic project tutorial](../examples/synthetic_project/README.md), the
    [multipanel tutorial](../examples/multipanel_project/README.md), and the
    [materials/polymer domain helper recipe](../examples/materials_polymer_recipe/README.md).

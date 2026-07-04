@@ -94,6 +94,8 @@ environment stays outside the repository:
 
 ```bash
 python hub_uv.py sync
+python hub_uv.py --print-env
+python hub_uv.py run python figops_mcp_server.py --hub-path . --research-root . --runtime-root .omo/evidence/task-6-runtime doctor --json
 python hub_uv.py run python figops_mcp_server.py doctor
 python hub_uv.py run python -m pytest tests/test_doctor.py -q
 ```
@@ -101,7 +103,9 @@ python hub_uv.py run python -m pytest tests/test_doctor.py -q
 If `uv` is not installed, the source-checkout path cannot bootstrap itself. Use
 an already prepared Python 3.12+ environment with the FigOps runtime/dev
 dependencies, or install `uv` outside the repository and rerun the wrapper
-commands. R is only required for projects that declare `lang: R`.
+commands. The JSON doctor output reports the active Python, `uv` on `PATH`, the
+resolved runtime root, and the planned external uv environment/cache paths. R is
+only required for projects that declare `lang: R`.
 
 Create a new figure project:
 

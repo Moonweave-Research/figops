@@ -107,7 +107,9 @@ class UvRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("RESEARCH_HUB_RUNTIME_ROOT=", completed.stdout)
         self.assertIn("UV_PROJECT_ENVIRONMENT=", completed.stdout)
+        self.assertIn("UV_CACHE_DIR=", completed.stdout)
 
     def test_hub_uv_help_uses_current_python_executable_name(self):
         completed = subprocess.run(

@@ -22,6 +22,12 @@ python hub_uv.py sync
 while keeping the virtual environment and cache outside the repository. If this
 fails because `uv` is not on `PATH`, install `uv` outside this checkout or use a
 prepared Python 3.12+ environment with FigOps runtime dependencies installed.
+For release-QA readiness, capture the planned runtime paths before running tests:
+
+```bash
+python hub_uv.py --print-env
+python hub_uv.py run python figops_mcp_server.py --hub-path . --research-root . --runtime-root .omo/evidence/task-6-runtime doctor --json
+```
 
 ## 2. Check the Environment
 
@@ -36,7 +42,9 @@ python hub_uv.py run python -m pytest tests/test_doctor.py -q
 Parquet/Feather or HDF5. Missing `pytest` blocks source-checkout test verification; rerun
 `python hub_uv.py sync --group dev` before claiming tests passed. Missing `Rscript` only blocks
 projects that run R analysis steps. The quickstart script below enables write tools only inside
-the local `GraphHubMCPServer` instance it creates.
+the local `GraphHubMCPServer` instance it creates. The JSON doctor check named
+`source_checkout_runtime` reports active Python, `uv`, runtime root, and external
+uv environment/cache readiness for local operators.
 
 ## 3. Scaffold and Render a CSV Figure
 

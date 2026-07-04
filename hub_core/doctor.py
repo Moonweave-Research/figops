@@ -6,11 +6,13 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from hub_core.adapters.selection import AdapterSelectionError, select_adapters
 from hub_core.mcp.config import McpServerConfig
 from hub_core.mcp.security import McpSecurityMixin
+from hub_core.uv_runtime import build_uv_environment
 
 
 class _DoctorSecurityState(McpSecurityMixin):
@@ -50,6 +52,7 @@ def run_doctor(config: McpServerConfig) -> dict[str, Any]:
     checks = [
         _check_python(),
         _check_uv(),
+        _check_source_checkout_runtime(server),
         _check_runtime_dependencies(),
         _check_pytest(),
         _check_optional_io_dependency("pyarrow", "Parquet/Feather support", "python hub_uv.py sync --extra io"),
@@ -101,7 +104,7 @@ def _summary_for(status: str) -> str:
 
 
 def _check_python() -> DoctorCheck:
-    version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    version = _python_version()
     if sys.version_info < (3, 12):
         return DoctorCheck(
             "python",
@@ -111,6 +114,10 @@ def _check_python() -> DoctorCheck:
             {"executable": sys.executable, "version": version},
         )
     return DoctorCheck("python", "ok", f"Python {version} is supported.", details={"executable": sys.executable})
+
+
+def _python_version() -> str:
+    return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
 
 def _check_uv() -> DoctorCheck:
@@ -133,6 +140,92 @@ def _check_uv() -> DoctorCheck:
             {"path": uv_path, "stderr": completed.stderr.strip()},
         )
     return DoctorCheck("uv", "ok", completed.stdout.strip() or "uv is available.", details={"path": uv_path})
+
+
+def _check_source_checkout_runtime(server: _DoctorSecurityState) -> DoctorCheck:
+    runtime_root = server.runtime_root
+    runtime_root_explicit = bool(getattr(server, "_runtime_root_explicit", True))
+    uv_path = shutil.which("uv")
+    try:
+        uv_env = build_uv_environment(hub_root=server.hub_path)
+    except ValueError as exc:
+        return DoctorCheck(
+            "source_checkout_runtime",
+            "error",
+            "Source-checkout uv runtime paths are invalid.",
+            "Choose a runtime root outside the FigOps checkout before using `python hub_uv.py ...`.",
+            {
+                "python_executable": sys.executable,
+                "python_version": _python_version(),
+                "uv_available": uv_path is not None,
+                "uv_path": uv_path,
+                "mcp_runtime_root": str(runtime_root),
+                "runtime_root_explicit": runtime_root_explicit,
+                "error": str(exc),
+            },
+        )
+
+    uv_project_environment = Path(uv_env["UV_PROJECT_ENVIRONMENT"])
+    uv_cache_dir = Path(uv_env["UV_CACHE_DIR"])
+    hub_path = server.hub_path.resolve()
+    runtime_root_exists = runtime_root.exists()
+    runtime_root_is_dir = runtime_root.is_dir() if runtime_root_exists else False
+    runtime_root_ready = runtime_root_is_dir and os.access(runtime_root, os.W_OK | os.X_OK)
+    uv_environment_outside_hub = uv_project_environment != hub_path / ".venv" and hub_path not in uv_project_environment.parents
+    details = {
+        "python_executable": sys.executable,
+        "python_version": _python_version(),
+        "uv_available": uv_path is not None,
+        "uv_path": uv_path,
+        "RESEARCH_HUB_RUNTIME_ROOT": uv_env["RESEARCH_HUB_RUNTIME_ROOT"],
+        "UV_PROJECT_ENVIRONMENT": uv_env["UV_PROJECT_ENVIRONMENT"],
+        "UV_CACHE_DIR": uv_env["UV_CACHE_DIR"],
+        "mcp_runtime_root": str(runtime_root),
+        "uv_environment_outside_hub": uv_environment_outside_hub,
+        "runtime_root_explicit": runtime_root_explicit,
+        "runtime_root_exists": runtime_root_exists,
+        "runtime_root_is_dir": runtime_root_is_dir,
+        "runtime_root_writable_executable": runtime_root_ready,
+        "operator_command": "python hub_uv.py run python figops_mcp_server.py doctor --json",
+        "uv_cache_parent_exists": uv_cache_dir.parent.exists(),
+    }
+    errors: list[str] = []
+    warnings: list[str] = []
+    if sys.version_info < (3, 12):
+        errors.append(f"Python {_python_version()} is below the required 3.12 runtime.")
+    if uv_path is None:
+        errors.append("uv is not available on PATH.")
+    if not uv_environment_outside_hub:
+        errors.append(f"UV_PROJECT_ENVIRONMENT is inside the FigOps checkout: {uv_project_environment}")
+    if runtime_root_exists and not runtime_root_is_dir:
+        errors.append(f"runtime_root is not a directory: {runtime_root}")
+    elif runtime_root_exists and not runtime_root_ready:
+        errors.append(f"runtime_root is not writable and executable: {runtime_root}")
+    elif runtime_root_explicit and not runtime_root_exists:
+        warnings.append(f"runtime_root does not exist: {runtime_root}")
+
+    if errors:
+        return DoctorCheck(
+            "source_checkout_runtime",
+            "error",
+            "Source-checkout runtime readiness has blocking errors.",
+            "Install uv, ensure PATH includes it, and choose a runtime root that is writable and executable.",
+            {**details, "errors": errors, "warnings": warnings},
+        )
+    if warnings:
+        return DoctorCheck(
+            "source_checkout_runtime",
+            "warning",
+            "Source-checkout runtime readiness has filesystem warnings.",
+            "Create the configured runtime root or choose an existing writable runtime location.",
+            {**details, "warnings": warnings},
+        )
+    return DoctorCheck(
+        "source_checkout_runtime",
+        "ok",
+        "Source-checkout runtime is ready for `python hub_uv.py ...` commands.",
+        details=details,
+    )
 
 
 def _check_runtime_dependencies() -> DoctorCheck:
