@@ -74,6 +74,11 @@ future diagnostic only after they can be measured deterministically.
 
 ## Diagnostic Mapping Policy
 
+Machine-readable source of truth for current `geometry_diagnostics/1` names:
+`docs/specs/geometry-diagnostic-rubric-map.json`. Check it with
+`scripts/check_geometry_rubric_map.py` after adding or renaming a geometry
+metric.
+
 New geometry, preflight, or visual-regression diagnostics should declare one of:
 
 - a hard-gate mapping: `FQ-H1` through `FQ-H5`;

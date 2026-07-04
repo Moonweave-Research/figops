@@ -102,6 +102,11 @@ python orchestrator.py --docker --docker-build --project "12. ionoelastomer" --s
 
 Full rubric: `docs/specs/2026-06-30-figure-quality-rubric.md`
 
+Machine-readable geometry diagnostic map:
+`docs/specs/geometry-diagnostic-rubric-map.json`. Check it with
+`scripts/check_geometry_rubric_map.py` after adding or renaming any
+`geometry_diagnostics/1` metric.
+
 Graph tool qualification review for agents:
 `docs/specs/2026-07-03-graph-tool-qa-review.md`
 

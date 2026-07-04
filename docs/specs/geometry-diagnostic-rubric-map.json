@@ -1,0 +1,107 @@
+{
+  "schema_version": "geometry_diagnostic_rubric_map/1",
+  "source_schema_version": "geometry_diagnostics/1",
+  "description": "Machine-readable source of truth mapping every geometry_diagnostics/1 metric to the FigOps figure-quality rubric.",
+  "metrics": {
+    "tick_label_overlaps": {
+      "rubric_id": "FQ-H3",
+      "unmeasured_policy": "blocked",
+      "rationale": "Tick label collisions can prevent values or categories from being read."
+    },
+    "tick_label_crowding": {
+      "rubric_id": "FQ-A2",
+      "unmeasured_policy": "review",
+      "rationale": "Dense tick labels are an advisory label-density issue unless readability is blocked."
+    },
+    "artists_outside_axes": {
+      "rubric_id": "FQ-H4",
+      "unmeasured_policy": "blocked",
+      "rationale": "Data or required artists outside the intended axes can hide the plotted result."
+    },
+    "artists_outside_figure": {
+      "rubric_id": "FQ-H2",
+      "unmeasured_policy": "blocked",
+      "rationale": "Required artists outside the figure boundary violate journal-safe geometry."
+    },
+    "legend_data_collision": {
+      "rubric_id": "informational",
+      "unmeasured_policy": "non_blocking",
+      "non_blocking_reason": "Current implementation reports bbox-union overlap as context only; it is not an ink-accurate blocking gate."
+    },
+    "axis_label_title_overlap": {
+      "rubric_id": "FQ-H3",
+      "unmeasured_policy": "blocked",
+      "rationale": "Axis labels overlapping titles can block figure readability."
+    },
+    "figure_title_panel_title_overlap": {
+      "rubric_id": "FQ-H3",
+      "unmeasured_policy": "blocked",
+      "rationale": "Figure and panel title collisions can block title interpretation."
+    },
+    "colorbar_overlap": {
+      "rubric_id": "FQ-H3",
+      "unmeasured_policy": "blocked",
+      "rationale": "Colorbar overlap can obscure labels, marks, or scale interpretation."
+    },
+    "blank_area_ratio": {
+      "rubric_id": "FQ-H4",
+      "unmeasured_policy": "blocked",
+      "rationale": "Excessive blank area can indicate hidden data or a view that no longer shows the validated result."
+    },
+    "point_annotation_overlaps": {
+      "rubric_id": "FQ-H3",
+      "unmeasured_policy": "blocked",
+      "rationale": "Point annotation overlaps can prevent labels or associated marks from being read."
+    },
+    "artist_overlaps": {
+      "rubric_id": "FQ-H3",
+      "unmeasured_policy": "blocked",
+      "rationale": "General artist collisions can block interpretation of labels, marks, or annotations."
+    },
+    "legend_internal_overlaps": {
+      "rubric_id": "FQ-H3",
+      "unmeasured_policy": "blocked",
+      "rationale": "Legend item collisions can make series identity unreadable."
+    },
+    "marker_marker_overlaps": {
+      "rubric_id": "FQ-H4",
+      "unmeasured_policy": "blocked",
+      "rationale": "Severe marker pile-up can hide data visibility and distribution."
+    },
+    "text_axis_edge_proximity": {
+      "rubric_id": "FQ-A2",
+      "unmeasured_policy": "review",
+      "rationale": "Text near the axis edge is an advisory label placement issue unless it blocks readability."
+    },
+    "legend_marker_consistency": {
+      "rubric_id": "FQ-A1",
+      "unmeasured_policy": "review",
+      "rationale": "Legend marker/style mismatches affect visual hierarchy and series identification polish."
+    },
+    "label_offset_consistency": {
+      "rubric_id": "FQ-A4",
+      "unmeasured_policy": "review",
+      "rationale": "Inconsistent point-label offsets affect panel balance and placement consistency."
+    },
+    "point_label_skips": {
+      "rubric_id": "FQ-A2",
+      "unmeasured_policy": "review",
+      "rationale": "Skipped point labels are an advisory density/readability finding unless required labels disappear."
+    },
+    "annotation_overlay_contrast": {
+      "rubric_id": "FQ-A3",
+      "unmeasured_policy": "review",
+      "rationale": "Annotation contrast is an advisory accessibility finding unless required text becomes unreadable."
+    },
+    "font_size_token_drift": {
+      "rubric_id": "FQ-H2",
+      "unmeasured_policy": "blocked",
+      "rationale": "Font sizes below selected style or journal floors violate journal-safe geometry."
+    },
+    "journal_compliance": {
+      "rubric_id": "FQ-H2",
+      "unmeasured_policy": "blocked",
+      "rationale": "Selected journal/style token violations are hard-gate journal-safe geometry findings."
+    }
+  }
+}
