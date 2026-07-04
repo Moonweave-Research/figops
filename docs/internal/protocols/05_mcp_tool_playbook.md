@@ -2,6 +2,28 @@
 
 This playbook maps common user requests to FigOps MCP tools.
 
+## Tool Coverage Matrix
+
+Agents should prefer canonical `figops.*` tool names. Legacy `graphhub.*`
+aliases are handler-backed compatibility names, not the preferred guidance
+surface.
+
+| Tool | Agent guidance |
+| --- | --- |
+| `figops.health` | Check server readiness, roots, write-tool state, adapters, and discovery health. |
+| `figops.describe` | Inspect the registered FigOps surface when tool, plot-type, or semantic-check support is unknown. |
+| `figops.list_styles` | List supported target formats, output formats, profiles, aliases, and public style packs. |
+| `figops.list_projects` | Discover known projects before selecting a project ID or path. |
+| `figops.inspect_project` | Read project metadata, figures, style summary, and readiness context without executing scripts. |
+| `figops.validate_project` | Validate config, data contracts, lockfiles, and style compatibility before project renders. |
+| `figops.render_csv_graph` | Render an explicit single-panel CSV graph from structured columns. |
+| `figops.render_csv_multipanel` | Render explicit multi-panel CSV figures when the request supplies panel specs. |
+| `figops.render_project_figure` | Render configured `project_config.yaml` figures; use `dry_run=true` first. |
+| `figops.collect_artifacts` | Collect manifest, status, output, and related artifacts after a render job. |
+| `figops.scaffold_project` | Scaffold a new project only after the user asks for project creation; keep dry-run previews visible. |
+| `figops.normalize_project_structure` | Preview and then apply project folder normalization only after user approval. |
+| `figops.batch_check` | Review multiple active projects for graph readiness and quality-report generation. |
+
 ## Explicit CSV Render
 
 User request:
