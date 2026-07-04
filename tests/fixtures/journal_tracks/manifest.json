@@ -21,9 +21,9 @@
         "y_column": "signal",
         "series_column": "series",
         "plot_type": "line",
-        "title": "Basic response series",
-        "x_axis_label": "Time (h)",
-        "y_axis_label": "Normalized signal"
+        "title": "",
+        "x_axis_label": "Time",
+        "y_axis_label": "Signal"
       }
     },
     {
@@ -66,6 +66,21 @@
           "title": "Cohort",
           "ncol": 2
         }
+      }
+    },
+    {
+      "id": "same_dataset_user_dogfood",
+      "description": "One compact same-dataset user dogfood fixture rendered through every public journal track.",
+      "csv_path": "csv/same_dataset_user_dogfood.csv",
+      "expected_summary_pattern": "expected/{track}_same_dataset_user_dogfood.json",
+      "render_arguments": {
+        "x_column": "time",
+        "y_column": "signal",
+        "series_column": "series",
+        "plot_type": "line",
+        "title": "",
+        "x_axis_label": "Time",
+        "y_axis_label": "Signal"
       }
     }
   ]

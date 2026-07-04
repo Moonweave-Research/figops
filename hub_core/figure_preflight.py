@@ -118,10 +118,11 @@ def validate_figure_preflight(
     img: Image.Image | None = None
     dpi_tuple: tuple[float, float] | None = None
     if is_raster:
-        img = Image.open(figure_path)
-        raw_dpi = img.info.get("dpi")
-        if raw_dpi is not None and len(raw_dpi) == 2:
-            dpi_tuple = (float(raw_dpi[0]), float(raw_dpi[1]))
+        with Image.open(figure_path) as opened_img:
+            img = opened_img.copy()
+            raw_dpi = opened_img.info.get("dpi")
+            if raw_dpi is not None and len(raw_dpi) == 2:
+                dpi_tuple = (float(raw_dpi[0]), float(raw_dpi[1]))
 
     # 2. DPI check (raster only)
     if is_raster:

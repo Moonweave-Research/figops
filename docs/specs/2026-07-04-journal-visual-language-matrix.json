@@ -1,0 +1,444 @@
+{
+  "matrix_date": "2026-07-04",
+  "purpose": "Dated public-journal visual-language matrix for FigOps journal tracks.",
+  "claim_boundary": [
+    "This matrix records official public source anchors and FigOps encoded tokens as of the matrix date.",
+    "It does not claim latest publisher compliance, complete journal coverage, or automatic publishability.",
+    "Journal-specific visual feel is captured only where evidence supports it; tracks are not forced to look different."
+  ],
+  "public_tracks": {
+    "nature": {
+      "source_date": "2026-07-04",
+      "official_submission_constraints": [
+        {
+          "source_name": "Nature research figure guide: preparing figures - our specifications",
+          "source_url": "https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/",
+          "source_date": "2026-07-04",
+          "source_date_type": "accessed",
+          "official": true,
+          "constraints": [
+            "Graph axes should be labelled with units and include axis lines and tick marks.",
+            "Figure graph text has a minimum size of 5 pt.",
+            "Standard sans-serif fonts such as Arial or Helvetica are requested.",
+            "Nature asks authors to avoid background gridlines, decorative effects, overlapping text, hard-to-read backgrounds, and reliance on colored text alone.",
+            "Figure text should remain editable and not be outlined."
+          ]
+        },
+        {
+          "source_name": "Nature Communications how to submit",
+          "source_url": "https://www.nature.com/ncomms/submit/how-to-submit",
+          "source_date": "2026-07-04",
+          "source_date_type": "accessed",
+          "official": true,
+          "constraints": [
+            "One-column and two-column figure formats are required.",
+            "Nature Communications final image files use 88 mm single-column and 180 mm double-column width anchors.",
+            "Line art should be vector where possible; bitmapped line art fallback is 1200 dpi.",
+            "Photographic and bitmapped images should be TIFF at minimum 300 dpi and supplied close to page size."
+          ]
+        }
+      ],
+      "encoded_figops_tokens": {
+        "source_anchor": "themes/style_profiles.py TARGET_FORMAT_PROFILE_TOKENS['nature']['baseline']",
+        "figure_width_mm": 88.0,
+        "figure_height_mm": 71.0,
+        "figure_column_widths_mm": {
+          "single": 88.0,
+          "double": 180.0,
+          "full": 180.0
+        },
+        "min_font_size_pt": 5.0,
+        "min_line_width_pt": 0.25,
+        "max_figure_height_mm": 247.0,
+        "main_marker_size": 3.2,
+        "facet_marker_size": 2.4,
+        "main_line_width": 1.2,
+        "error_line_width": 0.8,
+        "violin_width": 0.52,
+        "official_claim": false,
+        "notes": "Encoded tokens combine official anchors and FigOps defaults; they are not a standalone publisher-compliance claim."
+      },
+      "observed_visual_language": [
+        {
+          "item": "Clean, sparse graph treatment with labelled axes, standard sans-serif text, no background gridlines, and no decorative effects.",
+          "official": false,
+          "basis": "Non-official visual-language interpretation of public Nature guidance."
+        },
+        {
+          "item": "Accessibility-conscious color use and avoidance of red/green-only encodings.",
+          "official": false,
+          "basis": "Non-official FigOps heuristic derived from public accessibility wording."
+        }
+      ],
+      "unsupported_or_deferred": [
+        "No claim that the nature track covers every Nature-family journal or the latest Nature-family production rule.",
+        "No automatic validation of editable text, font embedding, image layers, or final publisher production decisions."
+      ]
+    },
+    "science": {
+      "source_date": "2026-07-04",
+      "official_submission_constraints": [
+        {
+          "source_name": "Science AAAS instructions for preparing an initial manuscript",
+          "source_url": "https://www.science.org/content/page/instructions-preparing-initial-manuscript",
+          "source_date": "2026-07-04",
+          "source_date_type": "accessed",
+          "official": true,
+          "constraints": [
+            "Printed figure widths are usually 5.7 cm, 12.1 cm, or 18.4 cm.",
+            "Science references figure-preparation guidance for initial manuscript figures.",
+            "The encoded FigOps line and height floors are treated as local safety defaults unless independently confirmed in a current official source."
+          ]
+        }
+      ],
+      "encoded_figops_tokens": {
+        "source_anchor": "themes/style_profiles.py TARGET_FORMAT_PROFILE_TOKENS['science']['baseline']",
+        "figure_width_mm": 57.0,
+        "figure_height_mm": 45.6,
+        "figure_column_widths_mm": {
+          "single": 57.0,
+          "double": 121.0,
+          "full": 184.0,
+          "triple": 184.0
+        },
+        "min_font_size_pt": 5.0,
+        "min_line_width_pt": 0.5,
+        "max_figure_height_mm": 234.0,
+        "main_marker_size": 3.0,
+        "facet_marker_size": 2.2,
+        "main_marker_edge_width": 0.5,
+        "main_line_width": 0.9,
+        "timeseries_line_width": 0.75,
+        "error_line_width": 0.7,
+        "error_cap_size": 1.8,
+        "jitter_size": 10.0,
+        "violin_width": 0.48,
+        "default_colormap": "viridis",
+        "official_claim": false,
+        "notes": "Compact geometry is official-source anchored; several stroke and density values are FigOps visual defaults."
+      },
+      "observed_visual_language": [
+        {
+          "item": "Compact, high-density figure canvas driven primarily by the small 57 mm single-column width.",
+          "official": false,
+          "basis": "Non-official visual-language interpretation of official width constraints plus FigOps token scaling."
+        },
+        {
+          "item": "Reduced marker, error-cap, and jitter sizes to keep dense plots legible at small final width.",
+          "official": false,
+          "basis": "Non-official FigOps heuristic encoded in style tokens."
+        }
+      ],
+      "unsupported_or_deferred": [
+        "No claim of full AAAS production compliance or latest Science-family rule coverage.",
+        "No automatic manuscript-embedded figure review, resolution audit, or publisher upload validation."
+      ]
+    },
+    "acs": {
+      "source_date": "2026-07-04",
+      "official_submission_constraints": [
+        {
+          "source_name": "ACS author guidelines: Appendix 2, Preparing Graphics",
+          "source_url": "https://researcher-resources.acs.org/publish/author_guidelines?coden=cmatex",
+          "source_date": "2026-07-04",
+          "source_date_type": "accessed",
+          "official": true,
+          "constraints": [
+            "Single-column graphics can be up to 240 pt wide.",
+            "Double-column graphics are between 300 pt and 504 pt wide.",
+            "Maximum graphics depth is 660 pt including caption allowance.",
+            "Lettering should be no smaller than 4.5 pt.",
+            "Helvetica or Arial work well for lettering.",
+            "Lines should be no thinner than 0.5 pt.",
+            "ACS asks authors to avoid relying on color alone and to use symbols, labels, or patterns where needed for accessibility."
+          ]
+        }
+      ],
+      "encoded_figops_tokens": {
+        "source_anchor": "themes/style_profiles.py TARGET_FORMAT_PROFILE_TOKENS['acs']['baseline']",
+        "figure_width_mm": 84.67,
+        "figure_height_mm": 67.736,
+        "figure_column_widths_mm": {
+          "single": 84.67,
+          "double": 177.8,
+          "full": 177.8
+        },
+        "min_font_size_pt": 4.5,
+        "min_line_width_pt": 0.5,
+        "max_figure_height_mm": 233.0,
+        "main_marker_size": 3.4,
+        "facet_marker_size": 2.6,
+        "main_marker_edge_width": 0.55,
+        "main_line_width": 1.0,
+        "timeseries_line_width": 0.8,
+        "error_line_width": 0.75,
+        "error_cap_size": 2.0,
+        "jitter_size": 12.0,
+        "violin_width": 0.5,
+        "default_colormap": "viridis",
+        "official_claim": false,
+        "notes": "ACS hard constraints are official-source anchored; marker and density choices are FigOps heuristics."
+      },
+      "observed_visual_language": [
+        {
+          "item": "Chemistry-oriented, accessible graphics with clear sans-serif lettering and non-color-only encodings.",
+          "official": false,
+          "basis": "Non-official visual-language interpretation of ACS graphics and accessibility guidance."
+        },
+        {
+          "item": "Moderate line and marker scale for chemical, spectral, and materials plots near 85 mm width.",
+          "official": false,
+          "basis": "Non-official FigOps heuristic encoded in style tokens."
+        }
+      ],
+      "unsupported_or_deferred": [
+        "No automatic TOC graphic, cover art, image-manipulation, or journal-specific ACS title variant validation.",
+        "No claim that viridis is an ACS-mandated palette."
+      ]
+    },
+    "rsc": {
+      "source_date": "2026-07-04",
+      "official_submission_constraints": [
+        {
+          "source_name": "Royal Society of Chemistry author guidelines for RSC Advances",
+          "source_url": "https://www.rsc.org/publishing/publish-with-us/publish-a-journal-article/rsc-advances",
+          "source_date": "2026-07-04",
+          "source_date_type": "accessed",
+          "official": true,
+          "constraints": [
+            "Figures, schemes, and charts should be supplied as TIFF files at 600 dpi or greater; EPS or PDF can be supplied instead.",
+            "Images should fit within 8.3 cm single-column or 17.1 cm double-column width.",
+            "Images must be no longer than 23.3 cm and not larger than a single page.",
+            "Text, numerical data, and scale bars should be clearly legible.",
+            "Chemical structures use Arial/Helvetica 7 pt captions or atom labels and a 0.5 pt bond-width setting."
+          ]
+        }
+      ],
+      "encoded_figops_tokens": {
+        "source_anchor": "themes/style_profiles.py TARGET_FORMAT_PROFILE_TOKENS['rsc']['baseline']",
+        "figure_width_mm": 83.0,
+        "figure_height_mm": 66.4,
+        "figure_column_widths_mm": {
+          "single": 83.0,
+          "one_half": 171.0,
+          "double": 171.0,
+          "full": 171.0,
+          "triple": 171.0
+        },
+        "min_font_size_pt": 7.0,
+        "min_line_width_pt": 0.5,
+        "max_figure_height_mm": 233.0,
+        "main_marker_size": 3.3,
+        "facet_marker_size": 2.5,
+        "main_marker_edge_width": 0.55,
+        "main_line_width": 1.0,
+        "timeseries_line_width": 0.8,
+        "error_line_width": 0.75,
+        "error_cap_size": 2.0,
+        "jitter_size": 12.0,
+        "violin_width": 0.5,
+        "default_colormap": "viridis",
+        "official_claim": false,
+        "notes": "RSC width, height, and text anchors are official-source aligned; marker and distribution settings are FigOps heuristics."
+      },
+      "observed_visual_language": [
+        {
+          "item": "Chemistry-publishing visual language: clearly legible labels, scale bars, and compact column-aware artwork.",
+          "official": false,
+          "basis": "Non-official visual-language interpretation of RSC figure and chemical-structure guidance."
+        },
+        {
+          "item": "Higher tick/text floor than most other tracks, reflected by 7 pt minimum text and tick choices.",
+          "official": false,
+          "basis": "Non-official FigOps interpretation of official legibility and chemical-structure text anchors."
+        }
+      ],
+      "unsupported_or_deferred": [
+        "No automatic TOC graphic review, AI-figure licensing check, or RSC journal-specific exception handling.",
+        "No claim that general graph markers are official RSC chemical-structure settings."
+      ]
+    },
+    "elsevier": {
+      "source_date": "2026-07-04",
+      "official_submission_constraints": [
+        {
+          "source_name": "Elsevier artwork and media instructions: artwork sizing",
+          "source_url": "https://www.elsevier.com/about/policies-and-standards/author/artwork-and-media-instructions/artwork-sizing",
+          "source_date": "2026-07-04",
+          "source_date_type": "accessed",
+          "official": true,
+          "constraints": [
+            "Elsevier asks authors to check the journal-specific guide for authors because some publications have special instructions.",
+            "Normal text should generally finish at 7 pt and subscripts or superscripts no smaller than 6 pt; this is a rule of thumb rather than a strict rule.",
+            "Bitmap targets include 300 dpi halftone, 500 dpi combination art, and 1000 dpi line art.",
+            "Target sizes listed include 90 mm single column, 140 mm 1.5 column, and 190 mm double column."
+          ]
+        }
+      ],
+      "encoded_figops_tokens": {
+        "source_anchor": "themes/style_profiles.py TARGET_FORMAT_PROFILE_TOKENS['elsevier']['baseline']",
+        "figure_width_mm": 90.0,
+        "figure_height_mm": 72.0,
+        "figure_column_widths_mm": {
+          "single": 90.0,
+          "one_half": 140.0,
+          "double": 190.0,
+          "full": 190.0,
+          "triple": 190.0
+        },
+        "min_font_size_pt": 7.0,
+        "min_line_width_pt": 0.5,
+        "max_figure_height_mm": 234.0,
+        "main_marker_size": 3.6,
+        "facet_marker_size": 2.8,
+        "main_marker_edge_width": 0.6,
+        "main_line_width": 1.05,
+        "timeseries_line_width": 0.9,
+        "error_line_width": 0.8,
+        "error_cap_size": 2.2,
+        "jitter_size": 13.0,
+        "violin_width": 0.5,
+        "default_colormap": "viridis",
+        "official_claim": false,
+        "notes": "Elsevier width and normal-text size anchors are official-source aligned; line floor and max height are conservative FigOps defaults."
+      },
+      "observed_visual_language": [
+        {
+          "item": "Broad, uniform artwork style with larger single-column canvas and readable normal text.",
+          "official": false,
+          "basis": "Non-official visual-language interpretation of Elsevier artwork sizing guidance."
+        },
+        {
+          "item": "Slightly larger markers and caps than compact tracks to use the 90 mm single-column canvas.",
+          "official": false,
+          "basis": "Non-official FigOps heuristic encoded in style tokens."
+        }
+      ],
+      "unsupported_or_deferred": [
+        "No claim that one Elsevier track satisfies every Elsevier journal-specific guide for authors.",
+        "No automatic AQC, pixel-count, file-format, or upload validation."
+      ]
+    },
+    "wiley": {
+      "source_date": "2026-07-04",
+      "official_submission_constraints": [
+        {
+          "source_name": "Wiley author resources: guidelines for preparing figures",
+          "source_url": "https://authors.wiley.com/author-resources/Journal-Authors/Prepare/manuscript-preparation-guidelines.html/figure-preparation.html",
+          "source_date": "2026-07-04",
+          "source_date_type": "accessed",
+          "official": true,
+          "constraints": [
+            "Figures should use preferred file types and original files where possible.",
+            "All words and symbols should be large enough for easy reading.",
+            "Individual figure files should be less than 10 MB.",
+            "Figures should be created at a size between 80 mm and 180 mm in width and between 300 dpi and 600 dpi.",
+            "Line art is preferably PDF and 600 dpi; images are preferably PNG or TIFF and 300 dpi."
+          ]
+        }
+      ],
+      "encoded_figops_tokens": {
+        "source_anchor": "themes/style_profiles.py TARGET_FORMAT_PROFILE_TOKENS['wiley']['baseline']",
+        "figure_width_mm": 85.0,
+        "figure_height_mm": 68.0,
+        "figure_column_widths_mm": {
+          "single": 85.0,
+          "double": 178.0,
+          "full": 178.0
+        },
+        "min_font_size_pt": 5.0,
+        "min_line_width_pt": 0.5,
+        "max_figure_height_mm": 234.0,
+        "main_marker_size": 3.5,
+        "facet_marker_size": 2.7,
+        "main_marker_edge_width": 0.55,
+        "main_line_width": 1.0,
+        "timeseries_line_width": 0.85,
+        "error_line_width": 0.8,
+        "error_cap_size": 2.0,
+        "jitter_size": 12.5,
+        "violin_width": 0.5,
+        "default_colormap": "viridis",
+        "official_claim": false,
+        "notes": "Wiley official source gives broad size and resolution ranges; exact 85/178 mm tokens are FigOps track anchors, not a universal Wiley compliance claim."
+      },
+      "observed_visual_language": [
+        {
+          "item": "Quality-first figure handling with broad accepted width range and emphasis on readable words and symbols.",
+          "official": false,
+          "basis": "Non-official visual-language interpretation of Wiley figure-preparation guidance."
+        },
+        {
+          "item": "Near-default journal scale with slightly larger markers than ACS/RSC and compact error styling.",
+          "official": false,
+          "basis": "Non-official FigOps heuristic encoded in style tokens."
+        }
+      ],
+      "unsupported_or_deferred": [
+        "No claim that exact 85/178 mm geometry is an official global Wiley rule.",
+        "No automatic file-size, file-type, resolution, or journal-title-specific Wiley validation."
+      ]
+    },
+    "cell": {
+      "source_date": "2026-07-04",
+      "official_submission_constraints": [
+        {
+          "source_name": "Cell Press figure guidelines",
+          "source_url": "https://www.cell.com/figureguidelines",
+          "source_date": "2026-07-04",
+          "source_date_type": "accessed",
+          "official": true,
+          "access_note": "Generic fetch was challenged by Cloudflare on 2026-07-04; this matrix records the official publisher URL and the repository's existing source anchor without claiming latest revalidation.",
+          "constraints": [
+            "FigOps currently anchors Cell Press widths at 85 mm single column, 114 mm one-and-a-half column, and 174 mm full width.",
+            "FigOps currently anchors Cell Press minimum type size at 6 pt, minimum line weight at 0.5 pt, and maximum figure height at 200 mm.",
+            "Because the official URL was fetch-challenged in this session, these values are retained as encoded-source anchors rather than promoted to a latest-rule claim."
+          ]
+        }
+      ],
+      "encoded_figops_tokens": {
+        "source_anchor": "themes/style_profiles.py TARGET_FORMAT_PROFILE_TOKENS['cell']['baseline']",
+        "figure_width_mm": 85.0,
+        "figure_height_mm": 68.0,
+        "figure_column_widths_mm": {
+          "single": 85.0,
+          "one_half": 114.0,
+          "double": 174.0,
+          "full": 174.0,
+          "triple": 174.0
+        },
+        "min_font_size_pt": 6.0,
+        "min_line_width_pt": 0.5,
+        "max_figure_height_mm": 200.0,
+        "main_marker_size": 3.4,
+        "facet_marker_size": 2.6,
+        "main_marker_edge_width": 0.55,
+        "main_line_width": 1.0,
+        "timeseries_line_width": 0.85,
+        "error_line_width": 0.8,
+        "error_cap_size": 2.0,
+        "jitter_size": 12.0,
+        "violin_width": 0.5,
+        "default_colormap": "viridis",
+        "official_claim": false,
+        "notes": "Cell Press source URL is recorded, but this session could not re-fetch it past Cloudflare; encoded tokens remain local FigOps anchors."
+      },
+      "observed_visual_language": [
+        {
+          "item": "Biomedical journal canvas with 85/114/174 mm width slots and moderate 6 pt text floor.",
+          "official": false,
+          "basis": "Non-official visual-language interpretation of existing FigOps source anchors."
+        },
+        {
+          "item": "Moderate marker and line scale similar to ACS/Wiley, without forcing a distinct decorative style.",
+          "official": false,
+          "basis": "Non-official FigOps heuristic encoded in style tokens."
+        }
+      ],
+      "unsupported_or_deferred": [
+        "No claim of latest Cell Press compliance because the official page was Cloudflare-challenged in this session.",
+        "No automatic validation of image mode, embedded fonts, panel labels, scale bars, or journal-specific Cell Press variants."
+      ]
+    }
+  }
+}

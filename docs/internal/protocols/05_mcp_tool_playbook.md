@@ -51,6 +51,113 @@ Required result inspection:
 - `manual_review_needed`
 - `geometry_diagnostics`
 
+Same-dataset, all-public-journal render example:
+
+```json
+[
+  {
+    "tool": "figops.list_styles",
+    "arguments": {}
+  },
+  {
+    "tool": "figops.render_csv_graph",
+    "arguments": {
+      "data_path": "/allowed/measurements.csv",
+      "x_column": "strain",
+      "y_column": "stress",
+      "series_column": "sample",
+      "plot_type": "line",
+      "target_format": "nature",
+      "output_format": "png",
+      "job_id": "journal-nature"
+    }
+  },
+  {
+    "tool": "figops.render_csv_graph",
+    "arguments": {
+      "data_path": "/allowed/measurements.csv",
+      "x_column": "strain",
+      "y_column": "stress",
+      "series_column": "sample",
+      "plot_type": "line",
+      "target_format": "science",
+      "output_format": "png",
+      "job_id": "journal-science"
+    }
+  },
+  {
+    "tool": "figops.render_csv_graph",
+    "arguments": {
+      "data_path": "/allowed/measurements.csv",
+      "x_column": "strain",
+      "y_column": "stress",
+      "series_column": "sample",
+      "plot_type": "line",
+      "target_format": "acs",
+      "output_format": "png",
+      "job_id": "journal-acs"
+    }
+  },
+  {
+    "tool": "figops.render_csv_graph",
+    "arguments": {
+      "data_path": "/allowed/measurements.csv",
+      "x_column": "strain",
+      "y_column": "stress",
+      "series_column": "sample",
+      "plot_type": "line",
+      "target_format": "rsc",
+      "output_format": "png",
+      "job_id": "journal-rsc"
+    }
+  },
+  {
+    "tool": "figops.render_csv_graph",
+    "arguments": {
+      "data_path": "/allowed/measurements.csv",
+      "x_column": "strain",
+      "y_column": "stress",
+      "series_column": "sample",
+      "plot_type": "line",
+      "target_format": "elsevier",
+      "output_format": "png",
+      "job_id": "journal-elsevier"
+    }
+  },
+  {
+    "tool": "figops.render_csv_graph",
+    "arguments": {
+      "data_path": "/allowed/measurements.csv",
+      "x_column": "strain",
+      "y_column": "stress",
+      "series_column": "sample",
+      "plot_type": "line",
+      "target_format": "wiley",
+      "output_format": "png",
+      "job_id": "journal-wiley"
+    }
+  },
+  {
+    "tool": "figops.render_csv_graph",
+    "arguments": {
+      "data_path": "/allowed/measurements.csv",
+      "x_column": "strain",
+      "y_column": "stress",
+      "series_column": "sample",
+      "plot_type": "line",
+      "target_format": "cell",
+      "output_format": "png",
+      "job_id": "journal-cell"
+    }
+  }
+]
+```
+
+Use the same `data_path`, `x_column`, `y_column`, `series_column`, and
+`plot_type` across tracks; change only journal style/output controls such as
+`target_format`, `output_format`, and `job_id`. Do not use stale `x`, `y`, or
+`chart_type` keys.
+
 ## Project Figure Render
 
 User request:

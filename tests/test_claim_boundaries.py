@@ -22,7 +22,10 @@ RUBRIC_SURFACES: Final = (
     Path("docs/QA.md"),
     Path("docs/specs/2026-06-30-figure-quality-rubric.md"),
 )
-CLAIM_TERM_RE: Final = re.compile(r"\b(?:publishable|publication[- ]ready|publication readiness)\b", re.IGNORECASE)
+CLAIM_TERM_RE: Final = re.compile(
+    r"\b(?:publishable|publication[- ]ready|publication readiness|journal[- ]ready)\b",
+    re.IGNORECASE,
+)
 HARD_GATE_RE: Final = re.compile(r"\b(?:hard[- ]gate|hard gates|rubric-backed|cited hard gates)\b", re.IGNORECASE)
 MANUAL_REVIEW_RE: Final = re.compile(
     r"\b(?:manual_review_needed|manual-review|manual review)\b",
@@ -35,6 +38,7 @@ BOUNDED_NEGATIVE_PHRASES: Final = (
     "must not describe a graph as publication-ready",
     "not automatically publication-ready",
     "not publication-ready",
+    "not journal-ready",
     "not by itself a publishable verdict",
     "not sufficient for publishable",
 )
@@ -60,8 +64,6 @@ def _claim_context(lines: tuple[str, ...], line_index: int) -> str:
 
 
 def _claim_is_bounded(context: str) -> bool:
-    if "publication-oriented" in context:
-        return True
     if "unsafe:" in context:
         return True
     if "publication-ready figure quality rubric" in context:
@@ -83,7 +85,8 @@ def _claim_is_bounded(context: str) -> bool:
 
 def _claim_violation(path: Path, line_number: int, line: str) -> str:
     return (
-        f"{path}:{line_number}: unqualified publishable/publication-ready claim: {line.strip()!r}. "
+        f"{path}:{line_number}: unqualified publishable/publication-ready claim "
+        f"or journal-ready claim: {line.strip()!r}. "
         "Publishable claims require cited hard-gate evidence and manual_review_needed review."
     )
 
@@ -130,6 +133,22 @@ def test_manual_review_needed_false_overclaim_is_rejected() -> None:
 
     # Then: manual-review status alone is rejected as a publication claim boundary.
     assert violations
+    assert "manual_review_needed" in violations[0]
+
+
+def test_authentic_journal_style_claim_does_not_permit_journal_ready_status() -> None:
+    # Given: style-forward wording that tries to convert journal feel into readiness.
+    text = (
+        "Publication-oriented authentic journal style gives the graph a journal feel "
+        "and makes it journal-ready.\n"
+    )
+
+    # When: the claim-boundary guard scans the wording.
+    violations = _claim_boundary_violations(Path("README.md"), text)
+
+    # Then: styling language still requires hard-gate evidence and manual review wording.
+    assert violations
+    assert "hard-gate evidence" in violations[0]
     assert "manual_review_needed" in violations[0]
 
 
