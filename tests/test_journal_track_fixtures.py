@@ -26,6 +26,14 @@ EXPECTED_CROWDED_LABEL_FINDINGS = (
     "text_axis_edge_proximity",
     "point_label_skips",
 )
+EXPECTED_DENSE_LEGEND_CHECKS = (
+    "legend_data_collision",
+    "legend_internal_overlaps",
+    "legend_marker_consistency",
+)
+EXPECTED_DENSE_LEGEND_WARNINGS = {
+    "science": ("tick_label_overlaps", "tick_label_crowding"),
+}
 FORBIDDEN_PUBLICATION_CLAIMS = ("publishable", "publication-ready")
 POLISH_MANIFEST_PATH = HUB_ROOT / "docs" / "specs" / "polish-fixture-manifest.json"
 ACCEPTANCE_COMMAND = (
@@ -160,6 +168,43 @@ def _assert_crowded_label_render_surfaces_findings(result, expected_summary) -> 
     assert manifest["manual_review_needed"] is True
 
 
+def _assert_dense_legend_render_surfaces_track_diagnostics(result, expected_summary) -> None:
+    track = expected_summary["track"]
+    expected_warning_checks = EXPECTED_DENSE_LEGEND_WARNINGS.get(track, ())
+    if expected_warning_checks:
+        assert result["status"] == "warning"
+        assert result["manual_review_needed"] is True
+        assert result["summary"] != "Rendered CSV graph."
+    else:
+        assert result["status"] == "ok"
+        assert result["manual_review_needed"] is False
+        assert result["summary"] == "Rendered CSV graph."
+
+    assert result["style_summary"] == expected_summary["style_summary"]
+    assert result["geometry_diagnostics"]["schema_version"] == "geometry_diagnostics/1"
+    assert result["layout_report"]["schema_version"] == "layout_report/1"
+    assert not result["layout_report"]["overlaps"]
+    assert not result["layout_report"]["clipped"]
+    assert _selected_token_floors(expected_summary["track"]) == expected_summary["selected_token_floors"]
+
+    checks_by_name = _checks_by_name(result["geometry_diagnostics"])
+    for check_name in EXPECTED_DENSE_LEGEND_CHECKS:
+        assert any(check["passed"] is True for check in checks_by_name[check_name]), check_name
+
+    failed_checks = [check["name"] for check in result["geometry_diagnostics"]["checks"] if check["passed"] is False]
+    assert tuple(failed_checks) == expected_warning_checks
+    assert result["layout_report"]["passed"] is (not expected_warning_checks)
+
+    result_text = json.dumps(result, sort_keys=True).lower()
+    for claim in FORBIDDEN_PUBLICATION_CLAIMS:
+        assert claim not in result_text
+
+    manifest = _read_json(Path(result["manifest_path"]))
+    assert manifest["geometry_diagnostics"] == result["geometry_diagnostics"]
+    assert manifest["layout_report"] == result["layout_report"]
+    assert manifest["manual_review_needed"] is bool(expected_warning_checks)
+
+
 def test_journal_track_fixture_manifest_is_complete() -> None:
     # Given: the committed journal-track fixture manifest.
     manifest = _load_manifest()
@@ -248,3 +293,15 @@ def test_crowded_label_journal_tracks_surface_geometry_findings(tmp_path: Path) 
         result = _render_journal_fixture(tmp_path / track, fixture, track)
         expected_summary = _read_json(_expected_path(track, "crowded_labels"))
         _assert_crowded_label_render_surfaces_findings(result, expected_summary)
+
+
+def test_dense_legend_journal_tracks_surface_track_specific_diagnostics(tmp_path: Path) -> None:
+    # Given: the dense-legend stress fixture and committed expected summaries.
+    manifest = _load_manifest()
+    fixture = _fixture_entry(manifest, "dense_legend")
+
+    # When / Then: each public journal track exposes dense-legend and tick-label diagnostics explicitly.
+    for track in PUBLIC_JOURNAL_TRACKS:
+        result = _render_journal_fixture(tmp_path / track, fixture, track)
+        expected_summary = _read_json(_expected_path(track, "dense_legend"))
+        _assert_dense_legend_render_surfaces_track_diagnostics(result, expected_summary)
