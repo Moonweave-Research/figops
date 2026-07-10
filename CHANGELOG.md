@@ -15,6 +15,29 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.18.0] - 2026-07-10
+
+### Added
+
+- Add authentic journal visual-language metadata for Nature, Science, ACS, RSC,
+  Elsevier, Wiley, and Cell tracks, including package-resource access from installed
+  distributions and same-dataset journal comparison fixtures.
+
+### Changed
+
+- Make release verification reproducible with locked Ruff tooling, strict Windows
+  containment coverage, immutable external GitHub Action references, and fresh-package
+  consumer checks.
+- Refresh the CLI, MCP, and runtime contracts so failed attempts retain provenance and
+  selected Python-only workflows do not require an unused R runtime.
+
+### Fixed
+
+- Reject reserved environment overrides, output-path traversal, empty or corrupt figure
+  artifacts, unbounded process output, and ineffective process timeouts.
+- Harden MCP transport framing, runtime-manifest boundaries, secret redaction, input
+  provenance, and failure recording.
+
 ## [0.17.11] - 2026-07-03
 
 ### Added

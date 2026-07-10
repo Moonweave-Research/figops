@@ -40,7 +40,8 @@ Completed blocker families:
   release-check fixtures;
 - workflow protocol docs moved from the legacy private path to
   `docs/internal/protocols/`;
-- post-tag metadata bumped through `0.17.11`.
+- post-tag source metadata bumped to the `0.18.0` release candidate; published
+  artifacts remain at `0.17.11` until promotion.
 
 Current structured status:
 

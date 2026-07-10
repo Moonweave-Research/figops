@@ -4,9 +4,10 @@
 > publication-quality plotting, self-describing MCP tools, and honest
 > operational guardrails.
 >
-> Status baseline: source checkout `0.17.11` after graph QA hardening, release
-> metadata alignment, public PyPI publication, and matching `v0.17.11` GitHub
-> Release assets. M1 through M5 have shipped across the 0.5.0+ release line. The
+> Status baseline: source checkout `0.18.0` release candidate after authentic
+> journal-style integration and runtime, packaging, and release hardening. The
+> latest published PyPI package and GitHub Release remain `0.17.11`. M1 through
+> M5 have shipped across the 0.5.0+ release line. The
 > remaining roadmap is maintenance, scoped debt reduction, and bounded
 > polish-layer waves that preserve journal constraints.
 
@@ -35,7 +36,7 @@
   workflow is not the place to regenerate large render packs for unrelated
   changes.
 
-## Current-state scorecard (0.17.11 source line, 2026-07-04)
+## Current-state scorecard (0.18.0 release-candidate source line, 2026-07-10)
 
 | Dimension | Score | Read |
 |---|---:|---|

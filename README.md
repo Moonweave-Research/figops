@@ -45,7 +45,7 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 
 | Item | Status |
 | --- | --- |
-| Source checkout | `0.17.11` release metadata (`pyproject.toml`) |
+| Source checkout | `0.18.0` release-candidate metadata (`pyproject.toml`); not yet published |
 | Published package | [`figops==0.17.11`](https://pypi.org/project/figops/0.17.11/) is the latest locally documented PyPI release |
 | TestPyPI dry run | [`figops==0.17.11`](https://test.pypi.org/project/figops/0.17.11/) was published and install-smoke verified |
 | Python | 3.12+ |
@@ -54,8 +54,9 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 | Compatibility aliases | `graphhub`, `graphhub-mcp` |
 | GitHub Release | [`v0.17.11`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.11) is the latest locally documented release asset |
 
-The source checkout, public PyPI package, and GitHub Release asset are aligned
-at `0.17.11`.
+The source checkout is prepared for `0.18.0`. The latest published PyPI package,
+TestPyPI dry run, and GitHub Release asset remain at `0.17.11` until an explicit
+publish workflow is approved and run.
 
 ## Install
 

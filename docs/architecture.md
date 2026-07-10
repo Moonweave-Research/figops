@@ -1,6 +1,6 @@
 # FigOps - Architecture
 
-> Companion to `docs/ROADMAP.md`. Describes the current v0.17.11 source-line
+> Companion to `docs/ROADMAP.md`. Describes the current v0.18.0 release-candidate source-line
 > architecture after the 0.5.0 MCP decomposition, polish-layer work, and the
 > 2026-06-29 large-module decomposition wave.
 
@@ -56,7 +56,7 @@ The 800-line architecture budget is a split signal, not a hard failure threshold
 Inventory freshness is checked by `tests/test_architecture_inventory.py`, which
 compares the committed block below against live source. Import layering remains
 policy-only; there is no import-linter contract in `.github/workflows/ci.yml` as
-of v0.17.11. Remaining over-budget files should be handled as scoped maintenance
+of v0.18.0. Remaining over-budget files should be handled as scoped maintenance
 tracks rather than broad rewrites.
 
 Current files over the approximate 800-line budget, measured on 2026-07-10 with
