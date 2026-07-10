@@ -77,7 +77,6 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | `hub_core/config_parser.py` | 903 |
 | `hub_core/visual_regression.py` | 902 |
 | `hub_core/geometry_diagnostics.py` | 850 |
-| `hub_core/mcp/schemas.py` | 833 |
 <!-- architecture-inventory:end -->
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below

@@ -12,7 +12,7 @@ import hub_core.mcp.render_geometry_schemas as render_geometry_schemas
 import hub_core.mcp.render_input_schemas as render_input_schemas
 import hub_core.mcp.schemas as mcp_schemas
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
-from hub_core.mcp import GraphHubMCPServer, McpServerConfig
+from hub_core.mcp import GraphHubMCPServer, McpServerConfig, discovery_schemas
 from hub_core.mcp.config import ROOT_ADAPTER_SECURITY_ENV_VARS
 from hub_core.mcp.schemas import list_tool_definitions
 from hub_core.mcp.transport import (
@@ -245,6 +245,14 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         self.assertIs(mcp_schemas._POINT_LABEL_OPTIONS_SCHEMA, render_input_schemas.POINT_LABEL_OPTIONS_SCHEMA)
         self.assertIs(mcp_schemas._SERIES_STYLES_SCHEMA, render_input_schemas.SERIES_STYLES_SCHEMA)
         self.assertIs(mcp_schemas._SHARED_LEGEND_OPTIONS_SCHEMA, render_input_schemas.SHARED_LEGEND_OPTIONS_SCHEMA)
+
+    def test_schema_module_keeps_discovery_schema_compatibility_exports(self):
+        self.assertEqual(mcp_schemas.list_resource_definitions(), discovery_schemas.list_resource_definitions())
+        self.assertEqual(mcp_schemas.list_resource_templates(), discovery_schemas.list_resource_templates())
+        self.assertEqual(
+            mcp_schemas.list_prompt_definitions(),
+            discovery_schemas.list_prompt_definitions(mcp_schemas._supported_render_plot_types()),
+        )
 
     def test_list_styles_uses_graph_hub_canonical_contract(self):
         server = GraphHubMCPServer()
