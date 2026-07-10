@@ -70,12 +70,12 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | File | Lines |
 |---|---:|
 | `themes/journal_theme.py` | 1178 |
-| `hub_core/process_runner.py` | 1136 |
 | `plotting/bridge_renderer.py` | 1099 |
 | `hub_core/mcp/render_orchestration.py` | 1074 |
 | `hub_core/mcp/tools/render_csv.py` | 991 |
 | `hub_core/config_parser.py` | 903 |
 | `hub_core/visual_regression.py` | 902 |
+| `hub_core/process_runner.py` | 893 |
 | `hub_core/geometry_diagnostics.py` | 850 |
 | `hub_core/mcp/schemas.py` | 833 |
 <!-- architecture-inventory:end -->

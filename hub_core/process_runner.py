@@ -34,6 +34,9 @@ from .process_runner_commands import join_config_path as _join_config_path
 from .process_runner_commands import prefix_uv_if_needed as _prefix_uv_if_needed
 from .process_runner_commands import resolve_runner as _resolve_runner
 from .process_runner_commands import sanitize_script_path as _sanitize_script_path
+from .process_runner_variants import VariantDependencies
+from .process_runner_variants import run_comparison as _run_comparison_variant
+from .process_runner_variants import run_sweep as _run_sweep_variant
 from .process_supervisor import supervise_process
 from .utils import (
     expand_glob_inputs,
@@ -116,6 +119,29 @@ def _resolve_prefetcher(config: dict, prefetcher=None):
 
 def _resolve_athena(config: dict, athena=None):
     return athena if athena is not None else select_adapters(config).athena
+
+
+def _variant_dependencies() -> VariantDependencies:
+    """Bind variant orchestration to this module's compatibility surface."""
+
+    from .config_parser import parse_comparison_config, parse_sweep_config
+    from .data_contract import validate_data_contract, validate_data_contract_preflight
+
+    return VariantDependencies(
+        log=_log,
+        set_failure_context=_set_failure_context,
+        parse_sweep_config=parse_sweep_config,
+        parse_comparison_config=parse_comparison_config,
+        validate_data_contract=validate_data_contract,
+        validate_data_contract_preflight=validate_data_contract_preflight,
+        resolve_contained_project_path=resolve_contained_project_path,
+        execution_security_error=ExecutionSecurityError,
+        join_config_path=_join_config_path,
+        env_overlay=_run_command_env_overlay,
+        run_analysis=run_analysis,
+        run_plots=run_plots,
+        run_diagrams=run_diagrams,
+    )
 
 
 _OUTPUT_TAIL_LINES = 20
@@ -798,156 +824,20 @@ def run_sweep(
     prefetcher=None,
     athena=None,
 ) -> bool:
-    from .config_parser import parse_sweep_config
-    from .data_contract import validate_data_contract, validate_data_contract_preflight
-
-    parsed = parse_sweep_config(sweep_cfg)
-    runs = parsed["runs"]
-    output_dir_pattern = parsed["output_dir_pattern"]
-
-    if not runs:
-        _log("   ⚠️  Sweep enabled but no parameter runs resolved. Check sweep.values or sweep.grid.")
-        _set_failure_context(
-            failure_context,
-            "CONFIG",
-            "Sweep enabled but no parameter runs were resolved.",
-        )
-        return False
-
-    total = len(runs)
-    _log(f"\n🔁 [Sweep Mode] {total} run(s) scheduled")
-
-    all_success = True
-    for idx, env_overrides in enumerate(runs, 1):
-        label_parts = ", ".join(f"{k}={v}" for k, v in env_overrides.items())
-        _log(f"\n{'─' * 60}")
-        _log(f"   Sweep run {idx}/{total}: {label_parts}")
-
-        # Resolve output directory for this run
-        output_dir = output_dir_pattern
-        for param_name, param_value in env_overrides.items():
-            output_dir = output_dir.replace(f"{{{param_name}}}", param_value)
-        if "{parameter}" in output_dir or "{value}" in output_dir:
-            if len(env_overrides) == 1:
-                param_name, param_value = next(iter(env_overrides.items()))
-                output_dir = output_dir.replace("{parameter}", param_name).replace("{value}", param_value)
-            else:
-                joined_names = "_".join(env_overrides.keys())
-                joined_pairs = "_".join(f"{name}_{value}" for name, value in env_overrides.items())
-                output_dir = output_dir.replace("{parameter}", joined_names).replace("{value}", joined_pairs)
-        try:
-            sweep_output_dir = resolve_contained_project_path(project_dir, output_dir)
-        except ExecutionSecurityError as exc:
-            _log(f"      ❌ Sweep output directory rejected: {exc}")
-            _set_failure_context(failure_context, "CONFIG", f"Sweep output directory rejected: {exc}")
-            return False
-        os.makedirs(sweep_output_dir, exist_ok=True)
-
-        # Build a patched config with figures/diagrams outputs redirected to sweep_output_dir
-        import copy
-
-        run_config = copy.deepcopy(config)
-        for analysis_step in run_config.get("pipeline", {}).get("analysis", []):
-            analysis_step["_cache_env_overrides"] = dict(env_overrides)
-        for section in ("figures", "diagrams"):
-            for artifact in run_config.get(section, []):
-                orig_output = artifact.get("output", "")
-                artifact["output"] = _join_config_path(output_dir, os.path.basename(orig_output))
-
-        run_success = True
-        if step in ("plot", "all"):
-            run_success = validate_data_contract_preflight(
-                project_dir,
-                run_config,
-                require_existing=step == "plot",
-                prefetcher=prefetcher,
-            )
-            if not run_success:
-                _set_failure_context(
-                    failure_context,
-                    "VALIDATE",
-                    f"Sweep preflight failed for run {idx}/{total} ({label_parts}).",
-                )
-
-        # Inject sweep env vars prefixed with SWEEP_
-        sweep_env = {f"SWEEP_{k}": v for k, v in env_overrides.items()}
-        # Also inject bare names so scripts can reference them directly
-        sweep_env.update(env_overrides)
-
-        with _run_command_env_overlay(sweep_env):
-            if run_success and step in ("analysis", "all"):
-                run_success = run_analysis(
-                    project_dir,
-                    run_config,
-                    build_state,
-                    build_state_path,
-                    config_hash,
-                    force=force,
-                    prefetcher=prefetcher,
-                    athena=athena,
-                )
-                if not run_success:
-                    _set_failure_context(
-                        failure_context,
-                        "EXECUTE",
-                        f"Sweep analysis failed for run {idx}/{total} ({label_parts}).",
-                    )
-            if run_success and step in ("plot", "all"):
-                run_success = validate_data_contract(project_dir, run_config, prefetcher=prefetcher)
-                if not run_success:
-                    _set_failure_context(
-                        failure_context,
-                        "VALIDATE",
-                        f"Sweep data contract validation failed for run {idx}/{total} ({label_parts}).",
-                    )
-            if run_success and step in ("plot", "all"):
-                run_success = run_plots(
-                    project_dir,
-                    run_config,
-                    build_state,
-                    build_state_path,
-                    config_hash,
-                    force=force,
-                    prefetcher=prefetcher,
-                    athena=athena,
-                )
-                if not run_success:
-                    _set_failure_context(
-                        failure_context,
-                        "EXECUTE",
-                        f"Sweep plotting failed for run {idx}/{total} ({label_parts}).",
-                    )
-            if run_success and step in ("diagrams", "all"):
-                run_success = run_diagrams(
-                    project_dir,
-                    run_config,
-                    build_state,
-                    build_state_path,
-                    config_hash,
-                    force=force,
-                    prefetcher=prefetcher,
-                    athena=athena,
-                )
-                if not run_success:
-                    _set_failure_context(
-                        failure_context,
-                        "EXECUTE",
-                        f"Sweep diagram generation failed for run {idx}/{total} ({label_parts}).",
-                    )
-
-        status = "✅" if run_success else "❌"
-        _log(f"   {status} Sweep run {idx}/{total} ({label_parts}): {'OK' if run_success else 'FAILED'}")
-        _log(f"      output_dir: {sweep_output_dir}")
-
-        if not run_success:
-            all_success = False
-
-    _log(f"\n{'=' * 60}")
-    if all_success:
-        _log(f"✅ Sweep completed: {total}/{total} runs passed.")
-    else:
-        _log("❌ Sweep finished with failures. Check output above.")
-    return all_success
+    return _run_sweep_variant(
+        project_dir,
+        config,
+        build_state,
+        build_state_path,
+        config_hash,
+        sweep_cfg,
+        dependencies=_variant_dependencies(),
+        step=step,
+        force=force,
+        failure_context=failure_context,
+        prefetcher=prefetcher,
+        athena=athena,
+    )
 
 
 def run_comparison(
@@ -963,153 +853,20 @@ def run_comparison(
     prefetcher=None,
     athena=None,
 ) -> bool:
-    from .config_parser import parse_comparison_config
-    from .data_contract import validate_data_contract, validate_data_contract_preflight
-
-    parsed = parse_comparison_config(comparison_cfg)
-    conditions = parsed["conditions"]
-    overlay_output = parsed["overlay_output"]
-
-    if not conditions:
-        _log("   ⚠️  Comparison enabled but no conditions defined. Check comparison.conditions.")
-        _set_failure_context(
-            failure_context,
-            "CONFIG",
-            "Comparison enabled but no conditions were resolved.",
-        )
-        return False
-
-    total = len(conditions)
-    _log(f"\n🔀 [Comparison Mode] {total} condition(s) scheduled")
-    if overlay_output:
-        _log(f"   overlay_output: {overlay_output}")
-
-    all_success = True
-    for idx, cond in enumerate(conditions, 1):
-        label = cond["label"]
-        env_overrides = cond["env"]
-        data_override = cond.get("data_override")
-
-        _log(f"\n{'─' * 60}")
-        _log(f"   Condition {idx}/{total}: {label}")
-
-        import copy
-
-        run_config = copy.deepcopy(config)
-
-        # Redirect outputs to a per-condition subdirectory so runs don't overwrite each other
-        safe_label = label.replace(" ", "_").replace("/", "_").replace("%", "pct")
-        condition_output_dir = f"results/figures/comparison_{safe_label}"
-        abs_condition_dir = os.path.join(project_dir, condition_output_dir)
-        os.makedirs(abs_condition_dir, exist_ok=True)
-
-        for section in ("figures", "diagrams"):
-            for artifact in run_config.get(section, []):
-                orig_output = artifact.get("output", "")
-                artifact["output"] = _join_config_path(condition_output_dir, os.path.basename(orig_output))
-
-        # Apply data_override: redirect pipeline analysis inputs if specified
-        if data_override:
-            for analysis_step in run_config.get("pipeline", {}).get("analysis", []):
-                analysis_step["inputs"] = [data_override]
-
-        run_success = True
-        if step in ("plot", "all"):
-            run_success = validate_data_contract_preflight(
-                project_dir,
-                run_config,
-                require_existing=step == "plot",
-                prefetcher=prefetcher,
-            )
-            if not run_success:
-                _set_failure_context(
-                    failure_context,
-                    "VALIDATE",
-                    f"Comparison preflight failed for condition {idx}/{total} ({label}).",
-                )
-
-        # Inject env vars — COMPARISON_ prefixed + bare names, plus the condition label
-        cond_env = {f"COMPARISON_{k}": v for k, v in env_overrides.items()}
-        cond_env.update(env_overrides)
-        cond_env["COMPARISON_LABEL"] = label
-
-        with _run_command_env_overlay(cond_env):
-            if run_success and step in ("analysis", "all"):
-                run_success = run_analysis(
-                    project_dir,
-                    run_config,
-                    build_state,
-                    build_state_path,
-                    config_hash,
-                    force=force,
-                    prefetcher=prefetcher,
-                    athena=athena,
-                )
-                if not run_success:
-                    _set_failure_context(
-                        failure_context,
-                        "EXECUTE",
-                        f"Comparison analysis failed for condition {idx}/{total} ({label}).",
-                    )
-            if run_success and step in ("plot", "all"):
-                run_success = validate_data_contract(project_dir, run_config, prefetcher=prefetcher)
-                if not run_success:
-                    _set_failure_context(
-                        failure_context,
-                        "VALIDATE",
-                        f"Comparison data contract validation failed for condition {idx}/{total} ({label}).",
-                    )
-            if run_success and step in ("plot", "all"):
-                run_success = run_plots(
-                    project_dir,
-                    run_config,
-                    build_state,
-                    build_state_path,
-                    config_hash,
-                    force=force,
-                    prefetcher=prefetcher,
-                    athena=athena,
-                )
-                if not run_success:
-                    _set_failure_context(
-                        failure_context,
-                        "EXECUTE",
-                        f"Comparison plotting failed for condition {idx}/{total} ({label}).",
-                    )
-            if run_success and step in ("diagrams", "all"):
-                run_success = run_diagrams(
-                    project_dir,
-                    run_config,
-                    build_state,
-                    build_state_path,
-                    config_hash,
-                    force=force,
-                    prefetcher=prefetcher,
-                    athena=athena,
-                )
-                if not run_success:
-                    _set_failure_context(
-                        failure_context,
-                        "EXECUTE",
-                        f"Comparison diagram generation failed for condition {idx}/{total} ({label}).",
-                    )
-
-        status = "✅" if run_success else "❌"
-        _log(f"   {status} Condition {idx}/{total} ({label}): {'OK' if run_success else 'FAILED'}")
-        _log(f"      output_dir: {abs_condition_dir}")
-
-        if not run_success:
-            all_success = False
-
-    _log(f"\n{'=' * 60}")
-    if all_success:
-        _log(f"✅ Comparison completed: {total}/{total} conditions passed.")
-        if overlay_output:
-            _log(f"   overlay_output target: {os.path.join(project_dir, overlay_output)}")
-            _log("   (overlay assembly is delegated to the project's plot script via COMPARISON_LABEL env vars)")
-    else:
-        _log("❌ Comparison finished with failures. Check output above.")
-    return all_success
+    return _run_comparison_variant(
+        project_dir,
+        config,
+        build_state,
+        build_state_path,
+        config_hash,
+        comparison_cfg,
+        dependencies=_variant_dependencies(),
+        step=step,
+        force=force,
+        failure_context=failure_context,
+        prefetcher=prefetcher,
+        athena=athena,
+    )
 
 
 def run_assemblies(project_dir: str, config: dict, force: bool = False) -> bool:
