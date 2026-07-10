@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from pathlib import Path
 
 from PIL import Image
 
@@ -102,6 +103,71 @@ class TestProvenanceFingerprint(unittest.TestCase):
         self.assertIn("data", fingerprint)
         self.assertEqual(fingerprint["data"]["data.csv"], csv_hash)
         self.assertEqual(len(csv_hash), 16)
+
+    def test_glob_hashes_use_project_relative_paths_and_file_bytes(self):
+        from hub_core.provenance import _hash_input_files
+
+        first = Path(self.test_dir) / "first" / "same.csv"
+        second = Path(self.test_dir) / "second" / "same.csv"
+        first.parent.mkdir()
+        second.parent.mkdir()
+        first.write_text("x\n1\n", encoding="utf-8")
+        second.write_text("x\n2\n", encoding="utf-8")
+
+        hashes = _hash_input_files(self.test_dir, ["**/*.csv"])
+
+        self.assertEqual(set(hashes), {"first/same.csv", "second/same.csv"})
+        self.assertNotEqual(hashes["first/same.csv"], hashes["second/same.csv"])
+
+    def test_directory_hash_changes_when_bytes_change_with_preserved_mtime(self):
+        from hub_core.provenance import _hash_input_files
+
+        data_dir = Path(self.test_dir) / "data"
+        data_dir.mkdir()
+        sample = data_dir / "sample.csv"
+        sample.write_text("x\n1\n", encoding="utf-8")
+        original_stat = sample.stat()
+        before = _hash_input_files(self.test_dir, ["data"])
+
+        sample.write_text("x\n9\n", encoding="utf-8")
+        os.utime(sample, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+        after = _hash_input_files(self.test_dir, ["data"])
+
+        self.assertNotEqual(before, after)
+
+    def test_embed_figures_preserves_declared_input_patterns(self):
+        from hub_core.provenance import embed_figures_fingerprint
+
+        project = Path(self.test_dir)
+        (project / "data").mkdir()
+        (project / "data" / "sample.csv").write_text("x,y\n1,2\n", encoding="utf-8")
+        output = project / "results" / "figures" / "figure.png"
+        output.parent.mkdir(parents=True)
+        Image.new("RGB", (8, 8), color="white").save(output)
+        config = {
+            "project": {"name": "PatternProject"},
+            "figures": [
+                {
+                    "output": "results/figures/figure.png",
+                    "inputs": ["data/**/*.csv"],
+                    "script": "plot.py",
+                }
+            ],
+        }
+
+        embedded = embed_figures_fingerprint(
+            str(project),
+            config,
+            config_hash="config",
+            environment_hash="environment",
+            git_commit="commit",
+            timestamp="1970-01-01T00:00:01+00:00",
+        )
+
+        self.assertEqual(embedded, 1)
+        fingerprint = read_provenance_fingerprint(str(output))
+        self.assertEqual(fingerprint["input_patterns"], ["data/**/*.csv"])
+        self.assertIn("data/sample.csv", fingerprint["data"])
 
 
 if __name__ == "__main__":

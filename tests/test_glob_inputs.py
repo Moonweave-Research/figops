@@ -85,6 +85,66 @@ def test_expand_glob_recursive(tmp_path):
     assert "deep.csv" in basenames
 
 
+def test_canonical_input_expansion_is_sorted_unique_and_recursive(tmp_path):
+    from hub_core.provenance_inputs import expand_project_input_files
+
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    top = tmp_path / "top.csv"
+    deep = nested / "deep.csv"
+    top.write_text("x\n1\n", encoding="utf-8")
+    deep.write_text("x\n2\n", encoding="utf-8")
+
+    expanded = expand_project_input_files(
+        tmp_path,
+        ["**/*.csv", "nested", "top.csv"],
+        require_matches=True,
+    )
+
+    assert expanded == sorted({top.resolve(), deep.resolve()}, key=lambda path: path.as_posix())
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "../outside.csv",
+        "/absolute.csv",
+        "C:\\outside.csv",
+        "C:drive-relative.csv",
+        "\\\\host\\share\\x.csv",
+    ],
+)
+def test_canonical_input_expansion_rejects_paths_outside_project(tmp_path, declaration):
+    from hub_core.provenance_inputs import expand_project_input_files
+
+    with pytest.raises(ValueError, match="project|relative|outside"):
+        expand_project_input_files(tmp_path, [declaration], require_matches=True)
+
+
+def test_canonical_input_expansion_requires_each_declaration_to_match(tmp_path):
+    from hub_core.provenance_inputs import expand_project_input_files
+
+    with pytest.raises(FileNotFoundError, match="matched zero|not found"):
+        expand_project_input_files(tmp_path, ["missing/**/*.csv"], require_matches=True)
+
+
+def test_canonical_input_expansion_rejects_outside_symlink(tmp_path):
+    from hub_core.provenance_inputs import expand_project_input_files
+
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.csv"
+    outside.write_text("x\n1\n", encoding="utf-8")
+    link = tmp_path / "link.csv"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("symlink creation is unavailable")
+    try:
+        with pytest.raises(ValueError, match="outside|escape"):
+            expand_project_input_files(tmp_path, ["link.csv"], require_matches=True)
+    finally:
+        outside.unlink(missing_ok=True)
+
+
 # ---------------------------------------------------------------------------
 # flatten_glob_results
 # ---------------------------------------------------------------------------

@@ -145,9 +145,11 @@ from .smart_layout import find_empty_quadrant
 try:
     from hub_core.provenance import embed_provenance_fingerprint as _embed_fingerprint
     from hub_core.provenance import hash_csv_file as _hash_csv_file
+    from hub_core.provenance import reproducible_timestamp as _reproducible_timestamp
 except Exception:
     _embed_fingerprint = None  # type: ignore[assignment]
     _hash_csv_file = None  # type: ignore[assignment]
+    _reproducible_timestamp = None  # type: ignore[assignment]
     warnings.warn(
         "hub_core.provenance not available; reproducibility fingerprinting disabled",
         stacklevel=1,
@@ -157,11 +159,16 @@ _PANEL_LABELS = tuple("abcdefghijklmnopqrstuvwxyz")
 
 
 def _deterministic_timestamp() -> str:
-    """Return SOURCE_DATE_EPOCH if set, else current UTC time."""
-    epoch = os.environ.get("SOURCE_DATE_EPOCH")
-    if epoch is not None:
-        return datetime.fromtimestamp(int(epoch), tz=timezone.utc).isoformat()
-    return datetime.now(tz=timezone.utc).isoformat()
+    if _reproducible_timestamp is not None:
+        return _reproducible_timestamp()
+    raw_epoch = os.environ.get("SOURCE_DATE_EPOCH", "1")
+    if not raw_epoch.isascii() or not raw_epoch.isdigit():
+        raise ValueError("SOURCE_DATE_EPOCH must be a nonnegative integer")
+    try:
+        timestamp = datetime.fromtimestamp(int(raw_epoch), tz=timezone.utc)
+    except (OSError, OverflowError, ValueError) as exc:
+        raise ValueError("SOURCE_DATE_EPOCH is outside the supported timestamp range") from exc
+    return timestamp.isoformat(timespec="seconds")
 
 
 def draw_zenith_plot(ax, x, y, label=None, kind="scatter", palette="Nature Energy", series_index=0, **kwargs):
@@ -253,6 +260,7 @@ class BridgeFigureSpec:
 
 
 def render_bridge_figure(spec: BridgeFigureSpec) -> str:
+    fingerprint_timestamp = _deterministic_timestamp()
     _saved_rc = plt.rcParams.copy()
     try:
         apply_journal_theme(
@@ -315,7 +323,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
             {
                 "generator": "Graph-Hub/bridge_renderer.py",
                 "target_format": spec.target_format,
-                "ts": _deterministic_timestamp(),
+                "ts": fingerprint_timestamp,
                 "csv_hash": csv_hash,
                 "spec": {
                     "plot_type": spec.plot_type,
@@ -401,6 +409,7 @@ class MultiPanelSpec:
 
 def render_multipanel_figure(spec: MultiPanelSpec) -> str:
     """Compose multiple panels into a single publication figure."""
+    fingerprint_timestamp = _deterministic_timestamp()
     _saved_rc = plt.rcParams.copy()
     try:
         compose_mode = _validated_compose_mode(spec)
@@ -432,7 +441,7 @@ def render_multipanel_figure(spec: MultiPanelSpec) -> str:
                 "rows": spec.rows,
                 "cols": spec.cols,
                 "n_panels": len(spec.panels),
-                "ts": _deterministic_timestamp(),
+                "ts": fingerprint_timestamp,
             },
         )
     return str(output_path)
@@ -724,6 +733,8 @@ def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
             f"bridge_renderer: skipped {skipped} row(s) with NaN/inf in {csv_path.name}",
             stacklevel=2,
         )
+    if not points:
+        raise ValueError(f"CSV {csv_path.name} contains no valid data rows")
     return points
 
 

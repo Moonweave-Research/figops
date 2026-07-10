@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 import tempfile
+from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -17,6 +18,15 @@ from .cache_manager import (
 from .config_parser import get_language_policy, normalize_lang, resolve_presets, resolve_step_style
 from .data_contract import get_data_contract_paths
 from .domain_analysis import DomainAnalysisError, run_domain_helper
+from .execution_security import (
+    DEFAULT_EXECUTION_TIMEOUT_SECONDS,
+    ExecutionSecurityError,
+    canonicalize_execution_environment,
+    execution_timeout_seconds,
+    is_positive_finite_timeout,
+    reject_reserved_execution_env,
+    resolve_contained_project_path,
+)
 from .logging import get_logger
 from .process_runner_commands import build_r_cmd as _build_r_cmd
 from .process_runner_commands import fallback_sanitize_path as _fallback_sanitize_path
@@ -24,6 +34,7 @@ from .process_runner_commands import join_config_path as _join_config_path
 from .process_runner_commands import prefix_uv_if_needed as _prefix_uv_if_needed
 from .process_runner_commands import resolve_runner as _resolve_runner
 from .process_runner_commands import sanitize_script_path as _sanitize_script_path
+from .process_supervisor import supervise_process
 from .utils import (
     expand_glob_inputs,
     flatten_glob_results,
@@ -110,23 +121,41 @@ def _resolve_athena(config: dict, athena=None):
 _OUTPUT_TAIL_LINES = 20
 
 
-def run_command(cmd_list, cwd, additional_env=None):
+def run_command(cmd_list, cwd, additional_env=None, *, timeout_seconds=DEFAULT_EXECUTION_TIMEOUT_SECONDS):
     # This assumes orchestrator.py is one level up from hub_core
     hub_path = get_hub_path()
 
-    env = os.environ.copy()
-    env["PYTHONPATH"] = (
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + os.pathsep + env.get("PYTHONPATH", "")
-    )
-    env["RESEARCH_HUB_PATH"] = hub_path
-    env["PROJECT_ROOT"] = os.path.abspath(cwd)
+    if not is_positive_finite_timeout(timeout_seconds):
+        _log("      ❌ Execution configuration rejected: timeout_seconds must be a positive finite number")
+        return False
+
+    try:
+        if additional_env:
+            reject_reserved_execution_env(additional_env, source="additional_env")
+        env_overlay = _RUN_COMMAND_ENV_OVERLAY.get()
+        if env_overlay:
+            reject_reserved_execution_env(env_overlay, source="execution environment overlay")
+    except ExecutionSecurityError as exc:
+        _log(f"      ❌ Execution configuration rejected: {exc}")
+        return False
+
+    inherited_env = os.environ.copy()
+    canonical_env = {
+        "PYTHONPATH": (
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            + os.pathsep
+            + inherited_env.get("PYTHONPATH", "")
+        ),
+        "RESEARCH_HUB_PATH": hub_path,
+        "PROJECT_ROOT": os.path.abspath(cwd),
+    }
+    env = canonicalize_execution_environment(inherited_env, canonical_env)
     if "MPLCONFIGDIR" not in env:
         mpl_cache = os.path.join(tempfile.gettempdir(), "graph_hub_mplcache")
         os.makedirs(mpl_cache, exist_ok=True)
         env["MPLCONFIGDIR"] = mpl_cache
     if "MPLBACKEND" not in env and not env.get("DISPLAY"):
         env["MPLBACKEND"] = "Agg"
-    env_overlay = _RUN_COMMAND_ENV_OVERLAY.get()
     if env_overlay:
         env.update(env_overlay)
     if additional_env:
@@ -134,39 +163,38 @@ def run_command(cmd_list, cwd, additional_env=None):
     env = build_uv_environment(env, hub_root=hub_path)
     ensure_uv_runtime_dirs(env)
 
+    output_lines: deque[str] = deque(maxlen=_OUTPUT_TAIL_LINES)
+
+    def record_output(line: str) -> None:
+        stripped = line.strip()
+        _log(f"      {stripped}")
+        if stripped:
+            output_lines.append(stripped)
+
     try:
-        process = subprocess.Popen(
+        result = supervise_process(
             cmd_list,
             cwd=os.path.abspath(cwd),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
             env=env,
+            timeout_seconds=float(timeout_seconds),
+            on_output=record_output,
+            popen_factory=subprocess.Popen,
         )
-        output_lines: list[str] = []
-        for line in process.stdout:
-            stripped = line.strip()
-            _log(f"      {stripped}")
-            if stripped:
-                output_lines.append(stripped)
-        process.wait(timeout=600)  # 10분 타임아웃
-        if process.returncode != 0:
-            _log(f"      ❌ Execution failed with return code {process.returncode}")
-            tail = output_lines[-_OUTPUT_TAIL_LINES:] if len(output_lines) > _OUTPUT_TAIL_LINES else output_lines
-            if tail:
-                _log(f"      ── last {len(tail)} lines ──")
-                for tail_line in tail:
-                    _log(f"      {tail_line}")
-        return process.returncode == 0
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-        _log("      ❌ Execution timed out (600s limit)")
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        _log(f"      ❌ Execution failed: {exc}")
         return False
-    except Exception as e:
-        _log(f"      ❌ Execution failed: {e}")
-        return False
+
+    if result.timed_out:
+        _log(f"      ❌ Execution timed out ({timeout_seconds:g}s limit)")
+    if result.failure:
+        _log(f"      ❌ Execution supervision failed: {result.failure}")
+    if not result.succeeded:
+        _log(f"      ❌ Execution failed with return code {result.returncode}")
+        if output_lines:
+            _log(f"      ── last {len(output_lines)} lines ──")
+            for tail_line in output_lines:
+                _log(f"      {tail_line}")
+    return result.succeeded
 
 
 def run_analysis(
@@ -183,6 +211,7 @@ def run_analysis(
     prefetcher = _resolve_prefetcher(config, prefetcher)
     athena = _resolve_athena(config, athena)
     policy = get_language_policy(config)
+    timeout_seconds = execution_timeout_seconds(config)
     pipeline = config.get("pipeline", {})
     steps = pipeline.get("analysis", [])
     contract_paths = get_data_contract_paths(config)
@@ -362,7 +391,7 @@ def run_analysis(
         else:
             base_cmd = [runner, script]
         cmd = _prefix_uv_if_needed(base_cmd, config)
-        if not run_command(cmd, project_dir, additional_env=additional_env):
+        if not run_command(cmd, project_dir, additional_env=additional_env, timeout_seconds=timeout_seconds):
             _log(f"      ❌ Step {i} failed. Stopping pipeline.")
             return False
 
@@ -408,6 +437,7 @@ def _run_visual_artifacts(
     prefetcher = _resolve_prefetcher(config, prefetcher)
     athena = _resolve_athena(config, athena)
     policy = get_language_policy(config)
+    timeout_seconds = execution_timeout_seconds(config)
     artifacts = config.get(section_name, [])
 
     if not artifacts:
@@ -532,6 +562,11 @@ def _run_visual_artifacts(
                     )
 
                 if not iter_stale:
+                    iter_output_path = resolve_path(project_dir, expanded_output)
+                    valid, verification_msg = verify_output_file(iter_output_path)
+                    if not valid:
+                        _log(f"      ❌ Cached output verification failed: {verification_msg}")
+                        return False
                     _log(f"   [SKIP] {skip_label} {artifact_id} ({stem}): {expanded_output} (unchanged)")
                     continue
 
@@ -550,7 +585,12 @@ def _run_visual_artifacts(
                 else:
                     cmd = _prefix_uv_if_needed([runner, script], config)
                     try:
-                        if not run_command(cmd, project_dir, additional_env=iter_env_vars):
+                        if not run_command(
+                            cmd,
+                            project_dir,
+                            additional_env=iter_env_vars,
+                            timeout_seconds=timeout_seconds,
+                        ):
                             _log(f"      ❌ Failed to generate {artifact_id} ({stem}). Stopping pipeline.")
                             return False
                     except KeyError as e:
@@ -618,6 +658,11 @@ def _run_visual_artifacts(
             )
 
         if not stale:
+            output_path = resolve_path(project_dir, output)
+            valid, verification_msg = verify_output_file(output_path)
+            if not valid:
+                _log(f"      ❌ Cached output verification failed: {verification_msg}")
+                return False
             _log(f"   [SKIP] {skip_label} {artifact_id}: {output} (unchanged)")
             continue
 
@@ -641,7 +686,7 @@ def _run_visual_artifacts(
         else:
             cmd = _prefix_uv_if_needed([runner, script], config)
             try:
-                if not run_command(cmd, project_dir, additional_env=env_vars):
+                if not run_command(cmd, project_dir, additional_env=env_vars, timeout_seconds=timeout_seconds):
                     _log(f"      ❌ Failed to generate {artifact_id}. Stopping pipeline.")
                     return False
             except KeyError as e:
@@ -790,7 +835,12 @@ def run_sweep(
                 joined_names = "_".join(env_overrides.keys())
                 joined_pairs = "_".join(f"{name}_{value}" for name, value in env_overrides.items())
                 output_dir = output_dir.replace("{parameter}", joined_names).replace("{value}", joined_pairs)
-        sweep_output_dir = os.path.join(project_dir, output_dir)
+        try:
+            sweep_output_dir = resolve_contained_project_path(project_dir, output_dir)
+        except ExecutionSecurityError as exc:
+            _log(f"      ❌ Sweep output directory rejected: {exc}")
+            _set_failure_context(failure_context, "CONFIG", f"Sweep output directory rejected: {exc}")
+            return False
         os.makedirs(sweep_output_dir, exist_ok=True)
 
         # Build a patched config with figures/diagrams outputs redirected to sweep_output_dir

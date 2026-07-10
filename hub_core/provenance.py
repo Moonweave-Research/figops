@@ -3,16 +3,28 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .logging import get_logger
+from .provenance_inputs import expand_project_input_files
 from .utils import hash_file, is_executable_available, short_hash
 
 DEFAULT_PYTHON_LOCK_CANDIDATES = ("uv.lock",)
 DEFAULT_R_LOCK_CANDIDATE = "renv.lock"
 
 logger = get_logger(__name__)
+
+
+def reproducible_timestamp() -> str:
+    raw_epoch = os.environ.get("SOURCE_DATE_EPOCH", "1")
+    if not raw_epoch.isascii() or not raw_epoch.isdigit():
+        raise ValueError("SOURCE_DATE_EPOCH must be a nonnegative integer")
+    try:
+        timestamp = datetime.fromtimestamp(int(raw_epoch), tz=timezone.utc)
+    except (OSError, OverflowError, ValueError) as exc:
+        raise ValueError("SOURCE_DATE_EPOCH is outside the supported timestamp range") from exc
+    return timestamp.isoformat(timespec="seconds")
 
 
 def hash_csv_file(csv_path: str | Path) -> str:
@@ -255,22 +267,17 @@ def build_fingerprint_payload(
     return payload
 
 
-def _hash_input_files(project_dir: str, inputs: list) -> dict:
-    """inputs 경로 목록의 파일을 해시하여 {파일명: short_hash} 맵을 반환합니다."""
-    result = {}
-    for inp in inputs:
-        if not isinstance(inp, str):
-            continue
-        abs_path = os.path.join(project_dir, inp)
-        if os.path.isfile(abs_path):
-            h = hash_file(abs_path)
-            result[os.path.basename(inp)] = short_hash(h) if h else "N/A"
-        elif os.path.isdir(abs_path):
-            # 디렉터리인 경우: 내부 파일 목록 해시
-            dir_files = sorted(f for f in os.listdir(abs_path) if os.path.isfile(os.path.join(abs_path, f)))
-            dir_hash = hashlib.sha256("\n".join(dir_files).encode("utf-8")).hexdigest()
-            result[os.path.basename(inp) + "/"] = short_hash(dir_hash)
+def hash_input_files(project_dir: str, inputs: list[str]) -> dict[str, str]:
+    project_root = Path(project_dir).resolve(strict=True)
+    result: dict[str, str] = {}
+    for path in expand_project_input_files(project_root, inputs, require_matches=False):
+        digest = hash_file(path)
+        result[path.relative_to(project_root).as_posix()] = short_hash(digest) if digest else "N/A"
     return result
+
+
+def _hash_input_files(project_dir: str, inputs: list[str]) -> dict[str, str]:
+    return hash_input_files(project_dir, inputs)
 
 
 def embed_provenance_fingerprint(output_path: str, fingerprint: dict) -> bool:
@@ -442,6 +449,7 @@ def embed_figures_fingerprint(
             **base_fingerprint_kwargs,
             data_hashes=data_hashes,
             script=meta.get("script") or None,
+            input_patterns=list(meta.get("inputs") or []),
         )
 
         if embed_provenance_fingerprint(path, fingerprint):

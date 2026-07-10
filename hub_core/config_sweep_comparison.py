@@ -3,6 +3,8 @@ from __future__ import annotations
 import itertools
 import os
 
+from .execution_security import is_reserved_execution_env_key, output_pattern_error
+
 
 def validate_sweep(sweep: dict) -> list[str]:
     errors: list[str] = []
@@ -25,6 +27,8 @@ def validate_sweep(sweep: dict) -> list[str]:
         parameter = sweep.get("parameter")
         if not isinstance(parameter, str) or not parameter.strip():
             errors.append("sweep.parameter is required and must be a non-empty string when 'values' is used.")
+        elif is_reserved_execution_env_key(parameter):
+            errors.append(f"sweep.parameter is a reserved execution environment key: {parameter!r}.")
         values = sweep.get("values")
         if not isinstance(values, list) or len(values) == 0:
             errors.append("sweep.values must be a non-empty list.")
@@ -39,6 +43,8 @@ def validate_sweep(sweep: dict) -> list[str]:
             for param_name, param_values in grid.items():
                 if not isinstance(param_name, str) or not param_name.strip():
                     errors.append("sweep.grid keys must be non-empty strings.")
+                elif is_reserved_execution_env_key(param_name):
+                    errors.append(f"sweep.grid.{param_name} is a reserved execution environment key.")
                 if not isinstance(param_values, list) or len(param_values) == 0:
                     errors.append(f"sweep.grid.{param_name} must be a non-empty list.")
                 elif any(not isinstance(v, (int, float, str)) for v in param_values):
@@ -48,6 +54,10 @@ def validate_sweep(sweep: dict) -> list[str]:
     if output_dir_pattern is not None:
         if not isinstance(output_dir_pattern, str) or not output_dir_pattern.strip():
             errors.append("sweep.output_dir_pattern must be a non-empty string.")
+        else:
+            pattern_error = output_pattern_error(output_dir_pattern)
+            if pattern_error is not None:
+                errors.append(f"sweep.output_dir_pattern {pattern_error}.")
 
     return errors
 
@@ -96,6 +106,10 @@ def validate_comparison(comparison: dict) -> list[str]:
                 for key, val in env.items():
                     if not isinstance(key, str):
                         errors.append(f"comparison.conditions[{i}].env keys must be strings.")
+                    elif is_reserved_execution_env_key(key):
+                        errors.append(
+                            f"comparison.conditions[{i}].env.{key} is a reserved execution environment key."
+                        )
                     if not isinstance(val, (str, int, float, bool)):
                         errors.append(
                             f"comparison.conditions[{i}].env.{key} value must be a scalar (str/int/float/bool)."

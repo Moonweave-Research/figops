@@ -37,6 +37,7 @@ from .config_top_level_keys import top_level_key_suggestion as _top_level_key_su
 from .config_top_level_keys import validate_top_level_key_near_misses as _validate_top_level_key_near_misses
 from .config_visual_outputs import validate_visual_outputs as _validate_visual_outputs_impl
 from .domain_analysis import DOMAIN_HELPER_NAMES
+from .execution_security import is_positive_finite_timeout
 from .logging import get_logger
 from .project_roles import ALLOWED_FOLDER_ROLES as ALLOWED_FOLDER_ROLES
 from .project_roles import ALLOWED_PROJECT_ROLES as ALLOWED_PROJECT_ROLES
@@ -512,6 +513,8 @@ def validate_config(config):
         for key in ("python", "rscript"):
             if key in execution and execution[key] is not None and not isinstance(execution[key], str):
                 errors.append(f"execution.{key} must be a string or null.")
+        if "timeout_seconds" in execution and not is_positive_finite_timeout(execution["timeout_seconds"]):
+            errors.append("execution.timeout_seconds must be a positive finite number.")
 
     environment = config.get("environment", {})
     if environment is None:

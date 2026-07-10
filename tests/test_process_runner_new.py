@@ -3,7 +3,10 @@
 import csv
 import os
 import shutil
+import sys
 import tempfile
+import time
+import tracemalloc
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -96,6 +99,355 @@ class TestRunCommandRuntimeEnv(unittest.TestCase):
         )
         self.assertNotEqual(captured["env"]["UV_PROJECT_ENVIRONMENT"], str(HUB_ROOT / ".venv"))
         self.assertEqual(captured["env"]["UV_CACHE_DIR"], str(Path(runtime_root) / "uv_cache"))
+
+    def test_run_command_rejects_reserved_additional_env_case_insensitively(self):
+        with tempfile.TemporaryDirectory() as project_dir:
+            for key in ("PROJECT_ROOT", "project_root", "PyThOnPaTh"):
+                with self.subTest(key=key), patch("hub_core.process_runner.subprocess.Popen") as popen:
+                    result = pr.run_command(
+                        [sys.executable, "-c", "raise SystemExit(0)"],
+                        project_dir,
+                        additional_env={key: "attacker"},
+                    )
+
+                    self.assertFalse(result)
+                    popen.assert_not_called()
+
+    def test_run_command_replaces_case_variant_inherited_reserved_env(self):
+        captured: dict[str, str] = {}
+
+        class Completed:
+            stdout: list[str] = []
+            returncode = 0
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+        def fake_popen(_cmd, **kwargs):
+            captured.update(kwargs["env"])
+            return Completed()
+
+        with tempfile.TemporaryDirectory() as project_dir:
+            with (
+                patch("hub_core.process_runner.os.environ.copy", return_value={"project_root": "attacker"}),
+                patch("hub_core.process_runner.subprocess.Popen", side_effect=fake_popen),
+            ):
+                result = pr.run_command([sys.executable, "-c", "raise SystemExit(0)"], project_dir)
+
+        matching_keys = [key for key in captured if key.upper() == "PROJECT_ROOT"]
+        self.assertTrue(result)
+        self.assertEqual(matching_keys, ["PROJECT_ROOT"])
+        self.assertEqual(captured["PROJECT_ROOT"], os.path.abspath(project_dir))
+
+    def test_run_command_times_out_silent_child_before_stdout_eof(self):
+        with tempfile.TemporaryDirectory() as project_dir:
+            started = time.monotonic()
+
+            result = pr.run_command(
+                [sys.executable, "-c", "import time; time.sleep(5)"],
+                project_dir,
+                timeout_seconds=0.1,
+            )
+
+            elapsed = time.monotonic() - started
+
+        self.assertFalse(result)
+        self.assertLess(elapsed, 3.0)
+
+    def test_run_command_logs_streamed_stdout_before_timeout(self):
+        script = "import time; print('stream-before-timeout', flush=True); time.sleep(5)"
+        with tempfile.TemporaryDirectory() as project_dir:
+            with self.assertLogs("hub_core.process_runner", level="INFO") as captured:
+                result = pr.run_command(
+                    [sys.executable, "-c", script],
+                    project_dir,
+                    timeout_seconds=0.1,
+                )
+
+        self.assertFalse(result)
+        self.assertIn("stream-before-timeout", "\n".join(captured.output))
+
+    def test_run_command_retains_bounded_memory_for_high_output_failure(self):
+        class Completed:
+            returncode = 1
+
+            def __init__(self):
+                self.stdout = (f"{index:05d}-{'x' * 1024}\n" for index in range(20_000))
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+        tracemalloc.start()
+        try:
+            with (
+                patch("hub_core.process_runner.subprocess.Popen", return_value=Completed()),
+                patch("hub_core.process_runner._log", new=lambda _message="": None),
+            ):
+                result = pr.run_command([sys.executable, "-c", "raise SystemExit(1)"], tempfile.gettempdir())
+            _current, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        self.assertFalse(result)
+        self.assertLess(peak, 5_000_000)
+
+    def test_run_command_retains_bounded_memory_for_high_output_without_newline(self):
+        class NoNewlineStream:
+            def __init__(self) -> None:
+                self.remaining = 20_000_000
+
+            def __iter__(self):
+                yield "x" * self.remaining
+
+            def read(self, size: int) -> str:
+                if self.remaining == 0:
+                    return ""
+                chunk_size = min(size, self.remaining)
+                self.remaining -= chunk_size
+                return "x" * chunk_size
+
+        class Completed:
+            returncode = 1
+
+            def __init__(self) -> None:
+                self.stdout = NoNewlineStream()
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+        tracemalloc.start()
+        try:
+            with (
+                patch("hub_core.process_runner.subprocess.Popen", return_value=Completed()),
+                patch("hub_core.process_runner._log", new=lambda _message="": None),
+            ):
+                result = pr.run_command([sys.executable, "-c", "raise SystemExit(1)"], tempfile.gettempdir())
+            _current, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        self.assertFalse(result)
+        self.assertLess(peak, 5_000_000)
+
+    def test_run_command_terminates_and_reaps_child_when_windows_job_assignment_fails(self):
+        class FailedJob:
+            def assign(self, _process):
+                raise OSError("assignment rejected")
+
+            def close(self):
+                return None
+
+        class StartedProcess:
+            _handle = 123
+            pid = 123
+            returncode = None
+            stdout: list[str] = []
+
+            def __init__(self) -> None:
+                self.killed = False
+                self.wait_calls = 0
+
+            def poll(self):
+                return None if not self.killed else self.returncode
+
+            def kill(self):
+                self.killed = True
+                self.returncode = 1
+
+            def wait(self, timeout=None):
+                self.wait_calls += 1
+                return self.returncode
+
+        process = StartedProcess()
+        with (
+            patch("hub_core.process_supervisor.os.name", "nt"),
+            patch("hub_core.process_supervisor._WindowsProcessJob.create", return_value=FailedJob()),
+            patch("hub_core.process_supervisor.subprocess.run"),
+            patch("hub_core.process_runner.subprocess.Popen", return_value=process),
+        ):
+            result = pr.run_command([sys.executable, "-c", "raise SystemExit(0)"], tempfile.gettempdir())
+
+        self.assertFalse(result)
+        self.assertTrue(process.killed)
+        self.assertGreaterEqual(process.wait_calls, 1)
+
+    @unittest.skipUnless(os.name == "nt", "Windows Job Object containment is Windows-specific")
+    def test_run_command_kills_stdout_inheriting_orphan_descendant_on_timeout(self):
+        with tempfile.TemporaryDirectory() as project_dir:
+            marker = Path(project_dir, "orphan-descendant-marker.txt")
+            grandchild_script = (
+                "import time; from pathlib import Path; "
+                f"time.sleep(0.75); Path({str(marker)!r}).write_text('escaped', encoding='utf-8')"
+            )
+            parent_script = (
+                "import subprocess, sys; "
+                f"subprocess.Popen([sys.executable, '-c', {grandchild_script!r}])"
+            )
+            started = time.monotonic()
+            result = pr.run_command(
+                [sys.executable, "-c", parent_script],
+                project_dir,
+                timeout_seconds=0.2,
+            )
+            elapsed = time.monotonic() - started
+            time.sleep(1.0)
+            descendant_survived = marker.exists()
+
+        self.assertFalse(result)
+        self.assertLess(elapsed, 3.0)
+        self.assertFalse(descendant_survived, "stdout-inheriting orphan descendant survived the timeout")
+
+
+class TestConfiguredTimeoutPropagation(unittest.TestCase):
+    def test_analysis_passes_configured_timeout_to_run_command(self):
+        with tempfile.TemporaryDirectory() as project_dir:
+            Path(project_dir, "analysis.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+            config = {
+                "project": {"name": "analysis_timeout"},
+                "environment": {},
+                "execution": {"python": sys.executable, "timeout_seconds": 1.25},
+                "language_policy": {"allow_nonstandard": True},
+                "pipeline": {
+                    "analysis": [
+                        {"script": "analysis.py", "lang": "python", "outputs": [], "cache": False},
+                    ]
+                },
+                "data_contract": {},
+            }
+            with patch("hub_core.process_runner.run_command", return_value=True) as run_command:
+                result = run_analysis(
+                    project_dir,
+                    config,
+                    {},
+                    str(Path(project_dir, ".build_state.json")),
+                    "hash",
+                )
+
+        self.assertTrue(result)
+        self.assertEqual(run_command.call_args.kwargs["timeout_seconds"], 1.25)
+
+    def test_batch_visual_passes_configured_timeout_to_run_command(self):
+        with tempfile.TemporaryDirectory() as project_dir:
+            Path(project_dir, "plot.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+            config = {
+                "project": {"name": "plot_timeout"},
+                "environment": {},
+                "execution": {"python": sys.executable, "timeout_seconds": 2.5},
+                "language_policy": {"allow_nonstandard": True},
+                "figures": [
+                    {"id": "Fig1", "script": "plot.py", "output": "results/Fig1.png", "cache": False},
+                ],
+                "data_contract": {},
+            }
+            with (
+                patch("hub_core.process_runner.run_command", return_value=True) as run_command,
+                patch("hub_core.process_runner.verify_output_file", return_value=(True, "valid")),
+            ):
+                result = run_plots(
+                    project_dir,
+                    config,
+                    {},
+                    str(Path(project_dir, ".build_state.json")),
+                    "hash",
+                )
+
+        self.assertTrue(result)
+        self.assertEqual(run_command.call_args.kwargs["timeout_seconds"], 2.5)
+
+    def test_each_visual_passes_configured_timeout_to_every_run_command(self):
+        with tempfile.TemporaryDirectory() as project_dir:
+            project_path = Path(project_dir)
+            project_path.joinpath("plot.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+            project_path.joinpath("raw").mkdir()
+            project_path.joinpath("raw", "a.csv").write_text("x\n1\n", encoding="utf-8")
+            project_path.joinpath("raw", "b.csv").write_text("x\n2\n", encoding="utf-8")
+            config = {
+                "project": {"name": "each_timeout"},
+                "environment": {},
+                "execution": {"python": sys.executable, "timeout_seconds": 3.75},
+                "language_policy": {"allow_nonstandard": True},
+                "figures": [
+                    {
+                        "id": "FigEach",
+                        "script": "plot.py",
+                        "inputs": ["raw/*.csv"],
+                        "expand": "each",
+                        "output": "results/{stem}.png",
+                        "cache": False,
+                    },
+                ],
+                "data_contract": {},
+            }
+            with (
+                patch("hub_core.process_runner.run_command", return_value=True) as run_command,
+                patch("hub_core.process_runner.verify_output_file", return_value=(True, "valid")),
+            ):
+                result = run_plots(
+                    project_dir,
+                    config,
+                    {},
+                    str(project_path / ".build_state.json"),
+                    "hash",
+                )
+
+        self.assertTrue(result)
+        self.assertEqual(run_command.call_count, 2)
+        self.assertTrue(all(call.kwargs["timeout_seconds"] == 3.75 for call in run_command.call_args_list))
+
+    def test_cached_batch_visual_rejects_corrupt_output_without_rerunning(self):
+        with tempfile.TemporaryDirectory() as project_dir:
+            Path(project_dir, "plot.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+            config = {
+                "project": {"name": "cached_batch"},
+                "environment": {},
+                "execution": {"python": sys.executable},
+                "language_policy": {"allow_nonstandard": True},
+                "figures": [{"id": "Fig1", "script": "plot.py", "output": "results/Fig1.png"}],
+                "data_contract": {},
+            }
+            with (
+                patch("hub_core.process_runner.is_step_stale", return_value=(False, "unchanged")),
+                patch("hub_core.process_runner.verify_output_file", return_value=(False, "corrupt")) as verify_output,
+                patch("hub_core.process_runner.run_command") as run_command,
+            ):
+                result = run_plots(project_dir, config, {}, str(Path(project_dir, ".build_state.json")), "hash")
+
+        self.assertFalse(result)
+        verify_output.assert_called_once()
+        run_command.assert_not_called()
+
+    def test_cached_each_visual_rejects_corrupt_output_without_rerunning(self):
+        with tempfile.TemporaryDirectory() as project_dir:
+            project_path = Path(project_dir)
+            project_path.joinpath("plot.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+            project_path.joinpath("raw").mkdir()
+            project_path.joinpath("raw", "a.csv").write_text("x\n1\n", encoding="utf-8")
+            config = {
+                "project": {"name": "cached_each"},
+                "environment": {},
+                "execution": {"python": sys.executable},
+                "language_policy": {"allow_nonstandard": True},
+                "figures": [
+                    {
+                        "id": "FigEach",
+                        "script": "plot.py",
+                        "inputs": ["raw/*.csv"],
+                        "expand": "each",
+                        "output": "results/{stem}.png",
+                    },
+                ],
+                "data_contract": {},
+            }
+            with (
+                patch("hub_core.process_runner.is_step_stale", return_value=(False, "unchanged")),
+                patch("hub_core.process_runner.verify_output_file", return_value=(False, "corrupt")) as verify_output,
+                patch("hub_core.process_runner.run_command") as run_command,
+            ):
+                result = run_plots(project_dir, config, {}, str(project_path / ".build_state.json"), "hash")
+
+        self.assertFalse(result)
+        verify_output.assert_called_once()
+        run_command.assert_not_called()
 
 
 class TestScaffoldRAnalysisInputContract(unittest.TestCase):
@@ -528,6 +880,140 @@ class TestRunSweepMonkeyPatch(unittest.TestCase):
         self.assertEqual(failure_context["stage"], "VALIDATE")
         self.assertIn("Sweep preflight failed", failure_context["message"])
         run_analysis.assert_not_called()
+
+    def test_run_sweep_rejects_substituted_traversal_before_creating_outside_directory(self):
+        with tempfile.TemporaryDirectory() as root_dir:
+            project_dir = Path(root_dir, "project")
+            project_dir.mkdir()
+            outside_dir = Path(root_dir, "outside")
+            failure_context: dict[str, str] = {}
+
+            result = run_sweep(
+                project_dir=str(project_dir),
+                config={
+                    "project": {"name": "substituted_traversal"},
+                    "environment": {},
+                    "pipeline": {"analysis": []},
+                    "figures": [],
+                    "diagrams": [],
+                    "data_contract": {},
+                },
+                build_state={},
+                build_state_path=str(project_dir / ".build_state.json"),
+                config_hash="hash",
+                sweep_cfg={
+                    "enabled": True,
+                    "parameter": "value",
+                    "values": ["../../outside"],
+                    "output_dir_pattern": "results/{value}",
+                },
+                step="analysis",
+                failure_context=failure_context,
+            )
+
+            self.assertFalse(result)
+            self.assertFalse(outside_dir.exists())
+            self.assertEqual(failure_context["stage"], "CONFIG")
+
+    def test_run_sweep_rejects_absolute_output_before_creation(self):
+        with tempfile.TemporaryDirectory() as root_dir:
+            project_dir = Path(root_dir, "project")
+            project_dir.mkdir()
+            outside_dir = Path(root_dir, "outside")
+            failure_context: dict[str, str] = {}
+
+            result = run_sweep(
+                project_dir=str(project_dir),
+                config={
+                    "project": {"name": "absolute_output"},
+                    "environment": {},
+                    "pipeline": {"analysis": []},
+                    "figures": [],
+                    "diagrams": [],
+                    "data_contract": {},
+                },
+                build_state={},
+                build_state_path=str(project_dir / ".build_state.json"),
+                config_hash="hash",
+                sweep_cfg={
+                    "enabled": True,
+                    "parameter": "value",
+                    "values": ["safe"],
+                    "output_dir_pattern": str(outside_dir),
+                },
+                step="analysis",
+                failure_context=failure_context,
+            )
+
+            self.assertFalse(result)
+            self.assertFalse(outside_dir.exists())
+            self.assertEqual(failure_context["stage"], "CONFIG")
+
+    def test_run_sweep_rejects_output_through_outside_symlink(self):
+        with tempfile.TemporaryDirectory() as root_dir:
+            project_dir = Path(root_dir, "project")
+            outside_dir = Path(root_dir, "outside")
+            project_dir.mkdir()
+            outside_dir.mkdir()
+            try:
+                project_dir.joinpath("linked").symlink_to(outside_dir, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks unavailable: {exc}")
+            failure_context: dict[str, str] = {}
+
+            result = run_sweep(
+                project_dir=str(project_dir),
+                config={
+                    "project": {"name": "symlink_output"},
+                    "environment": {},
+                    "pipeline": {"analysis": []},
+                    "figures": [],
+                    "diagrams": [],
+                    "data_contract": {},
+                },
+                build_state={},
+                build_state_path=str(project_dir / ".build_state.json"),
+                config_hash="hash",
+                sweep_cfg={
+                    "enabled": True,
+                    "parameter": "value",
+                    "values": ["safe"],
+                    "output_dir_pattern": "linked/{value}",
+                },
+                step="analysis",
+                failure_context=failure_context,
+            )
+
+            self.assertFalse(result)
+            self.assertFalse(outside_dir.joinpath("safe").exists())
+            self.assertEqual(failure_context["stage"], "CONFIG")
+
+    def test_run_sweep_allows_contained_relative_output(self):
+        with tempfile.TemporaryDirectory() as project_dir:
+            result = run_sweep(
+                project_dir=project_dir,
+                config={
+                    "project": {"name": "safe_output"},
+                    "environment": {},
+                    "pipeline": {"analysis": []},
+                    "figures": [],
+                    "diagrams": [],
+                    "data_contract": {},
+                },
+                build_state={},
+                build_state_path=str(Path(project_dir, ".build_state.json")),
+                config_hash="hash",
+                sweep_cfg={
+                    "enabled": True,
+                    "parameter": "value",
+                    "values": ["safe"],
+                    "output_dir_pattern": "results/{value}",
+                },
+                step="analysis",
+            )
+
+            self.assertTrue(result)
+            self.assertTrue(Path(project_dir, "results", "safe").is_dir())
 
     def test_run_comparison_reports_validate_stage_when_preflight_fails(self):
         failure_context = {}

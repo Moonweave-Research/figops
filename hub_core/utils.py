@@ -204,33 +204,6 @@ def prompt_numeric_selection(options, header="Select an Option"):
             print("❌ Invalid input. Please enter a number.")
 
 def verify_output_file(output_path):
-    if not os.path.exists(output_path):
-        return False, f"missing file: {output_path}"
+    from .output_verification import verify_output_file as verify_artifact
 
-    try:
-        file_size = os.path.getsize(output_path)
-    except OSError as e:
-        return False, f"cannot stat output: {output_path} ({e})"
-
-    if file_size <= 0:
-        return False, f"empty file (0 byte): {output_path}"
-
-    ext = os.path.splitext(output_path)[1].lower()
-    try:
-        with open(output_path, "rb") as f:
-            header = f.read(2048)
-    except OSError as e:
-        return False, f"cannot read output: {output_path} ({e})"
-
-    if ext == ".pdf" and not header.startswith(b"%PDF"):
-        return False, f"invalid PDF header: {output_path}"
-    if ext == ".png" and not header.startswith(b"\x89PNG\r\n\x1a\n"):
-        return False, f"invalid PNG header: {output_path}"
-    if ext in {".jpg", ".jpeg"} and not header.startswith(b"\xff\xd8"):
-        return False, f"invalid JPEG header: {output_path}"
-    if ext == ".svg":
-        head_text = header.decode("utf-8", errors="ignore").lower()
-        if "<svg" not in head_text:
-            return False, f"invalid SVG content: {output_path}"
-
-    return True, f"{output_path} ({file_size} bytes)"
+    return verify_artifact(output_path)

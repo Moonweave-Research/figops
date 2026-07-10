@@ -10,11 +10,23 @@ from hub_core.config_parser import (
     SUPPORTED_CONFIG_SCHEMA_VERSIONS,
     _load_project_metadata,
     _load_yaml_with_unique_keys,
+    _validate_comparison,
     _validate_sweep,
     load_config,
     migrate_config,
     parse_sweep_config,
     validate_config,
+)
+
+RESERVED_EXECUTION_ENV_KEYS = (
+    "PYTHONPATH",
+    "RESEARCH_HUB_PATH",
+    "PROJECT_ROOT",
+    "RESEARCH_HUB_RUNTIME_ROOT",
+    "RESEARCH_HUB_RUNTIME_HOME",
+    "GRAPH_HUB_RUNTIME_ROOT",
+    "UV_PROJECT_ENVIRONMENT",
+    "UV_CACHE_DIR",
 )
 
 
@@ -334,6 +346,87 @@ class TestValidateSweepMissingParameter(unittest.TestCase):
             any("parameter" in e for e in errors),
             f"Expected parameter error for empty string, got: {errors}",
         )
+
+
+class TestExecutionBoundaryValidation(unittest.TestCase):
+    def _minimal_config(self) -> dict:
+        return {
+            "project": {"name": "Execution Boundary"},
+            "visual_style": {"target_format": "nature"},
+        }
+
+    def test_sweep_values_parameter_rejects_reserved_keys_case_insensitively(self):
+        for reserved_key in RESERVED_EXECUTION_ENV_KEYS:
+            with self.subTest(reserved_key=reserved_key):
+                errors = _validate_sweep(
+                    {
+                        "enabled": True,
+                        "parameter": reserved_key.lower(),
+                        "values": ["attacker"],
+                    }
+                )
+
+                self.assertTrue(any("reserved" in error.lower() for error in errors), errors)
+
+    def test_sweep_grid_rejects_reserved_keys_case_insensitively(self):
+        errors = _validate_sweep(
+            {
+                "enabled": True,
+                "grid": {"project_root": ["attacker"]},
+            }
+        )
+
+        self.assertTrue(any("reserved" in error.lower() for error in errors), errors)
+
+    def test_comparison_env_rejects_reserved_keys_case_insensitively(self):
+        errors = _validate_comparison(
+            {
+                "enabled": True,
+                "conditions": [{"label": "attack", "env": {"PyThOnPaTh": "attacker"}}],
+            }
+        )
+
+        self.assertTrue(any("reserved" in error.lower() for error in errors), errors)
+
+    def test_sweep_output_pattern_rejects_absolute_and_parent_paths(self):
+        unsafe_patterns = (
+            "../outside",
+            "results/../../outside",
+            "C:\\outside",
+            "\\\\server\\share\\outside",
+            "/outside",
+        )
+        for pattern in unsafe_patterns:
+            with self.subTest(pattern=pattern):
+                errors = _validate_sweep(
+                    {
+                        "enabled": True,
+                        "parameter": "mode",
+                        "values": ["safe"],
+                        "output_dir_pattern": pattern,
+                    }
+                )
+
+                self.assertTrue(any("output_dir_pattern" in error for error in errors), errors)
+
+    def test_execution_timeout_seconds_accepts_positive_finite_numbers(self):
+        for timeout_seconds in (0.1, 1, 600.0):
+            with self.subTest(timeout_seconds=timeout_seconds):
+                config = self._minimal_config()
+                config["execution"] = {"timeout_seconds": timeout_seconds}
+
+                self.assertEqual(validate_config(config), [])
+
+    def test_execution_timeout_seconds_rejects_non_positive_non_finite_and_non_numeric(self):
+        invalid_values = (True, False, 0, -1, float("inf"), float("-inf"), float("nan"), "1", None)
+        for timeout_seconds in invalid_values:
+            with self.subTest(timeout_seconds=timeout_seconds):
+                config = self._minimal_config()
+                config["execution"] = {"timeout_seconds": timeout_seconds}
+
+                errors = validate_config(config)
+
+                self.assertTrue(any("execution.timeout_seconds" in error for error in errors), errors)
 
 
 class TestDataContractConfigValidation(unittest.TestCase):

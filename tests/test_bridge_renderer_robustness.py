@@ -1,8 +1,11 @@
 """Tests for bridge_renderer robustness features: NaN filtering, CSV validation, empty guard, timestamps."""
 
+import builtins
 import csv
 import hashlib
+import importlib.util
 import os
+import sys
 import tempfile
 import unittest
 import warnings
@@ -16,6 +19,7 @@ from pathlib import Path
 
 from plotting.bridge_renderer import (
     BridgeFigureSpec,
+    MultiPanelSpec,
     _deterministic_timestamp,
     _load_points,
     _render_plot,
@@ -286,6 +290,59 @@ class TestEmptyDatasetGuard(unittest.TestCase):
             _render_plot(ax, [], spec)
             self.assertTrue(any("blank" in str(x.message) for x in w))
         plt.close(fig)
+
+    def test_header_only_dataset_raises_before_save(self):
+        with tempfile.TemporaryDirectory() as td:
+            csv_path = Path(td) / "data.csv"
+            csv_path.write_text("x,y\n", encoding="utf-8")
+            output_path = Path(td) / "out.png"
+            spec = _make_spec(str(csv_path), output_path=str(output_path))
+
+            with self.assertRaisesRegex(ValueError, "no valid"):
+                render_bridge_figure(spec)
+
+            self.assertFalse(output_path.exists())
+
+    def test_all_invalid_dataset_raises_before_save(self):
+        with tempfile.TemporaryDirectory() as td:
+            csv_path = Path(td) / "data.csv"
+            _write_csv(csv_path, [{"x": "1", "y": "nan"}, {"x": "2", "y": "bad"}])
+            output_path = Path(td) / "out.png"
+            spec = _make_spec(str(csv_path), output_path=str(output_path))
+
+            with self.assertRaisesRegex(ValueError, "no valid"):
+                render_bridge_figure(spec)
+
+            self.assertFalse(output_path.exists())
+
+    def test_multipanel_all_invalid_dataset_raises_before_save(self):
+        from plotting.bridge_renderer import render_multipanel_figure
+
+        with tempfile.TemporaryDirectory() as td:
+            csv_path = Path(td) / "data.csv"
+            _write_csv(csv_path, [{"x": "1", "y": "inf"}])
+            output_path = Path(td) / "out.png"
+            panel = _make_spec(str(csv_path))
+            spec = MultiPanelSpec(panels=(panel,), output_path=str(output_path), rows=1, cols=1)
+
+            with self.assertRaisesRegex(ValueError, "no valid"):
+                render_multipanel_figure(spec)
+
+            self.assertFalse(output_path.exists())
+
+    def test_mixed_dataset_still_renders_valid_observations(self):
+        with tempfile.TemporaryDirectory() as td:
+            csv_path = Path(td) / "data.csv"
+            _write_csv(csv_path, [{"x": "1", "y": "nan"}, {"x": "2", "y": "3"}])
+            output_path = Path(td) / "out.png"
+            spec = _make_spec(str(csv_path), output_path=str(output_path))
+
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                rendered = render_bridge_figure(spec)
+
+            self.assertTrue(Path(rendered).exists())
+            self.assertTrue(any("skipped 1 row" in str(item.message) for item in caught))
 
 
 class TestAsymmetricLowerErrorNotDropped(unittest.TestCase):
@@ -615,10 +672,61 @@ class TestDeterministicTimestamp(unittest.TestCase):
         finally:
             del os.environ["SOURCE_DATE_EPOCH"]
 
-    def test_without_epoch_returns_current(self):
+    def test_without_epoch_returns_epoch_one(self):
         os.environ.pop("SOURCE_DATE_EPOCH", None)
         ts = _deterministic_timestamp()
-        self.assertIn("T", ts)  # ISO format contains T
+        self.assertEqual(ts, "1970-01-01T00:00:01+00:00")
+
+    def test_invalid_epoch_raises_before_render_save(self):
+        with tempfile.TemporaryDirectory() as td:
+            csv_path = Path(td) / "data.csv"
+            _write_csv(csv_path, [{"x": "1", "y": "2"}])
+            output_path = Path(td) / "out.png"
+            spec = _make_spec(str(csv_path), output_path=str(output_path))
+
+            with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "not-an-integer"}):
+                with self.assertRaisesRegex(ValueError, "SOURCE_DATE_EPOCH"):
+                    render_bridge_figure(spec)
+
+            self.assertFalse(output_path.exists())
+
+    def test_identical_fresh_renders_have_identical_bytes_without_epoch_override(self):
+        with tempfile.TemporaryDirectory() as td:
+            csv_path = Path(td) / "data.csv"
+            _write_csv(csv_path, [{"x": "1", "y": "2"}, {"x": "2", "y": "3"}])
+            first = Path(td) / "first.png"
+            second = Path(td) / "second.png"
+            os.environ.pop("SOURCE_DATE_EPOCH", None)
+
+            render_bridge_figure(_make_spec(str(csv_path), output_path=str(first)))
+            render_bridge_figure(_make_spec(str(csv_path), output_path=str(second)))
+
+            self.assertEqual(_sha256(first), _sha256(second))
+
+    def test_renderer_import_and_timestamp_fallback_without_provenance_module(self):
+        module_name = "plotting._bridge_renderer_without_provenance"
+        source_path = Path(__file__).resolve().parent.parent / "plotting" / "bridge_renderer.py"
+        spec = importlib.util.spec_from_file_location(module_name, source_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        original_import = builtins.__import__
+
+        def block_provenance_import(name, *args, **kwargs):
+            if name == "hub_core.provenance":
+                raise ImportError("simulated optional provenance absence")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=block_provenance_import):
+            sys.modules[module_name] = module
+            try:
+                spec.loader.exec_module(module)
+            finally:
+                sys.modules.pop(module_name, None)
+
+        self.assertIsNone(module._embed_fingerprint)
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(module._deterministic_timestamp(), "1970-01-01T00:00:01+00:00")
 
 
 if __name__ == "__main__":
