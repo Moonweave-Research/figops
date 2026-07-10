@@ -178,8 +178,21 @@ P0 - Preserve claim boundaries:
   rubric-backed `publishable` verdict.
 - Preserve the rule that `manual_review_needed=false` is necessary but not
   sufficient for publishable claims.
-- Do not market latest publisher compliance until a dated publisher matrix is
-  added.
+- Do not market latest publisher compliance beyond the dated
+  [journal visual-language matrix](2026-07-04-journal-visual-language-matrix.md)
+  and its source-date limitations.
+- Treat journal style as three layers:
+  - encoded minimum compliance: FigOps tokens, dimensions, preflight checks, and
+    geometry diagnostics where measured;
+  - authentic visual-language heuristics: source-backed or explicitly
+    heuristic differences by journal/track, compared through the
+    [journal style-delta report](2026-07-04-journal-style-delta-report.md);
+  - evidence-backed publishability review: `publishable` or `journal-ready`
+    wording requires cited hard-gate evidence and `manual_review_needed` not
+    true.
+- Todo 10 dogfood render-pack evidence is expected at
+  `.omo/evidence/task-10-journal-style-real-use-hardening-final/render-pack/`;
+  it supports review, not automatic acceptance.
 
 P1 - Journal-track fixture qualification:
 
