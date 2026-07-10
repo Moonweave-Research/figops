@@ -178,6 +178,15 @@ def test_public_release_status_snapshot_is_valid_markdown_report():
     assert "| Family | Count | Status | Confirmation | Action |" in snapshot
 
 
+def test_public_release_status_snapshot_matches_current_generated_report():
+    snapshot_path = HUB_ROOT / "docs" / "packaging" / "public-release-status.md"
+    snapshot = snapshot_path.read_text(encoding="utf-8")
+
+    expected = format_public_core_payload(build_public_core_status(HUB_ROOT), "markdown")
+
+    assert snapshot == expected
+
+
 def test_public_core_inventory_output_writes_markdown_report(tmp_path: Path, capsys):
     report_path = tmp_path / "reports" / "public-release-status.md"
 
