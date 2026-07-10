@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 
 from hub_core import (
     BUILD_STATE_SCHEMA_VERSION,
+    build_attempt_provenance,
     check_golden_regression,
     dump_exception_failure,
     dump_pipeline_failure,
@@ -40,6 +41,7 @@ from hub_core import (
     project_role,
     project_status,
     prompt_numeric_selection,
+    required_r_runners,
     rerun_in_docker,
     run_analysis,
     run_check_all,
@@ -59,8 +61,11 @@ from hub_core import (
     write_execution_log,
 )
 from hub_core.adapters import select_adapters
+from hub_core.attempt_provenance import render_attempt_provenance, update_attempt_provenance
 from hub_core.cache_manager import collect_signatures
+from hub_core.config_parser import find_config_path
 from hub_core.logging import configure_logging, get_logger
+from hub_core.redaction import redact_text
 from hub_core.research_ops_enforcement import validate_research_ops_contract
 
 logger = get_logger(__name__)
@@ -111,11 +116,75 @@ def _apply_cli_preset(config: dict, preset_name: str) -> None:
         )
 
 
+def _selector_kind(args: argparse.Namespace) -> str:
+    if args.check_all:
+        return "check_all"
+    if args.project:
+        return "project"
+    if args.init or args.wizard:
+        return "scaffold"
+    if args.list_projects or args.status:
+        return "list"
+    return "interactive"
+
+
+def _emit_attempt_provenance(attempt: dict[str, object]) -> None:
+    ui_print(render_attempt_provenance(attempt))
+
+
+def _persist_project_failure(
+    *,
+    project_path: str,
+    hub_path: str,
+    config: dict | None,
+    config_path: str | None,
+    config_hash: str | None,
+    args: argparse.Namespace,
+    start_time: datetime,
+    failure_stage: str,
+    message: str,
+    raw_request: str,
+    engine_target: str,
+    job_id: str,
+    attempt_provenance: dict[str, object],
+) -> str | None:
+    """Persist a sanitized failure for a project that has already been resolved."""
+    safe_message = redact_text(message)
+    _emit_attempt_provenance(attempt_provenance)
+    context = {
+        "step": args.step,
+        "raw_request": raw_request,
+        "engine_target": engine_target,
+        "job_id": job_id,
+        "failure_stage": failure_stage,
+        "attempt_provenance": attempt_provenance,
+    }
+    failure_dump_path = dump_pipeline_failure(project_path, message=safe_message, context=context)
+    try:
+        write_execution_log(
+            project_path,
+            hub_path,
+            config,
+            config_path,
+            config_hash,
+            args=args,
+            start_time=start_time,
+            end_time=datetime.now(timezone.utc),
+            success=False,
+            failure_stage=failure_stage,
+            message=safe_message,
+            raw_request=raw_request,
+            engine_target=engine_target,
+            attempt_provenance=attempt_provenance,
+        )
+    except RuntimeError:
+        logger.warning("⚠️  Execution history was not persisted after early pipeline failure.")
+    return failure_dump_path
+
+
 def main():
     inferred_hub_path = get_hub_path()
-    os.environ.setdefault("RESEARCH_HUB_PATH", inferred_hub_path)
     inferred_root_dir = get_research_root()
-    os.environ.setdefault("PROJECT_ROOT", inferred_root_dir)
 
     parser = argparse.ArgumentParser(
         description="Research Central Orchestrator (RC-Arch)",
@@ -221,6 +290,13 @@ def main():
 
     root_dir = inferred_root_dir
     hub_path = inferred_hub_path
+    attempt_provenance = build_attempt_provenance(
+        surface="cli",
+        step=args.step,
+        selector_kind=_selector_kind(args),
+        hub_path=hub_path,
+    )
+    _emit_attempt_provenance(attempt_provenance)
 
     if args.list_projects or args.status:
         list_projects(root_dir, recursive=not args.list_root_only, max_depth=args.scan_depth)
@@ -273,10 +349,44 @@ def main():
         if not os.path.isabs(project_path):
             project_path = os.path.join(root_dir, project_path)
         project_path = os.path.abspath(project_path)
+        raw_request = shlex.join(["python", "orchestrator.py", *sys.argv[1:]])
+        engine_target = "hub_pipeline"
+        job_id = os.path.basename(project_path.rstrip(os.sep)) or "hub_project"
 
+        if not os.path.isdir(project_path):
+            update_attempt_provenance(attempt_provenance, config_path=None, config_status="missing")
+            _emit_attempt_provenance(attempt_provenance)
+            ui_print(f"❌ Error: Project directory not found: {project_path}")
+            return 1
+
+        candidate_config_path = find_config_path(project_path)
         config, config_path, config_hash = load_config(project_path)
         if not config:
+            update_attempt_provenance(attempt_provenance, config_path=candidate_config_path)
+            if attempt_provenance["config_status"] == "valid":
+                update_attempt_provenance(
+                    attempt_provenance,
+                    config_path=candidate_config_path,
+                    config_status="invalid",
+                )
+            _persist_project_failure(
+                project_path=project_path,
+                hub_path=hub_path,
+                config=None,
+                config_path=candidate_config_path,
+                config_hash=None,
+                args=args,
+                start_time=start_time,
+                failure_stage="CONFIG",
+                message="Project configuration could not be loaded for fingerprint injection.",
+                raw_request=raw_request,
+                engine_target=engine_target,
+                job_id=job_id,
+                attempt_provenance=attempt_provenance,
+            )
             return 1
+        update_attempt_provenance(attempt_provenance, config_path=config_path, config_status="valid")
+        _emit_attempt_provenance(attempt_provenance)
 
         from hub_core.provenance import (
             _build_environment_hash,
@@ -289,7 +399,13 @@ def main():
         r_version = _readable_tool_version(r_exec)
         env_hash = _build_environment_hash(None, python_version, r_version, config)
         git_commit = _readable_git_commit(hub_path)
-        ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        from hub_core.provenance import reproducible_timestamp
+
+        try:
+            ts = reproducible_timestamp()
+        except ValueError as exc:
+            ui_print(f"❌ {exc}")
+            return 1
 
         n = embed_figures_fingerprint(
             project_dir=project_path,
@@ -326,11 +442,6 @@ def main():
             style="green",
         )
         return 0
-
-    # Runtime preflight is required for executable pipeline paths, but read-only,
-    # scaffold, fingerprint, and Docker-delegated commands must work on machines
-    # that do not have local R/project runtimes installed.
-    run_preflight_check(exit_on_failure=True)
 
     if args.check_all:
         try:
@@ -399,19 +510,97 @@ def main():
 
     try:
         # 설정 로드 및 실행
+        candidate_config_path = find_config_path(project_path)
         config, config_path, config_hash = load_config(project_path)
         if not config:
+            update_attempt_provenance(attempt_provenance, config_path=candidate_config_path)
+            if attempt_provenance["config_status"] == "valid":
+                update_attempt_provenance(
+                    attempt_provenance,
+                    config_path=candidate_config_path,
+                    config_status="invalid",
+                )
+            failure_stage = "CONFIG"
+            status_message = "Project configuration could not be loaded."
+            failure_dump_path = _persist_project_failure(
+                project_path=project_path,
+                hub_path=hub_path,
+                config=None,
+                config_path=candidate_config_path,
+                config_hash=None,
+                args=args,
+                start_time=start_time,
+                failure_stage=failure_stage,
+                message=status_message,
+                raw_request=raw_request,
+                engine_target=engine_target,
+                job_id=job_id,
+                attempt_provenance=attempt_provenance,
+            )
             return 1
+        update_attempt_provenance(attempt_provenance, config_path=config_path, config_status="valid")
+        _emit_attempt_provenance(attempt_provenance)
         if project_role(config) == "master":
-            logger.error("❌ Error: %s", master_execution_error(config))
+            failure_stage = "CONFIG"
+            status_message = master_execution_error(config)
+            failure_dump_path = _persist_project_failure(
+                project_path=project_path,
+                hub_path=hub_path,
+                config=config,
+                config_path=config_path,
+                config_hash=config_hash,
+                args=args,
+                start_time=start_time,
+                failure_stage=failure_stage,
+                message=status_message,
+                raw_request=raw_request,
+                engine_target=engine_target,
+                job_id=job_id,
+                attempt_provenance=attempt_provenance,
+            )
+            logger.error("❌ Error: %s", redact_text(status_message))
             return 1
         if project_status(config) == "legacy":
-            logger.error("❌ Error: project is marked legacy; rendering is disabled for retired projects.")
+            failure_stage = "CONFIG"
+            status_message = "project is marked legacy; rendering is disabled for retired projects."
+            failure_dump_path = _persist_project_failure(
+                project_path=project_path,
+                hub_path=hub_path,
+                config=config,
+                config_path=config_path,
+                config_hash=config_hash,
+                args=args,
+                start_time=start_time,
+                failure_stage=failure_stage,
+                message=status_message,
+                raw_request=raw_request,
+                engine_target=engine_target,
+                job_id=job_id,
+                attempt_provenance=attempt_provenance,
+            )
+            logger.error("❌ Error: %s", status_message)
             return 1
         research_ops = validate_research_ops_contract(project_path, config)
         if research_ops["errors"]:
             for message in research_ops["errors"]:
-                logger.error("❌ Error: %s", message)
+                logger.error("❌ Error: %s", redact_text(message))
+            failure_stage = "CONFIG"
+            status_message = "; ".join(research_ops["errors"])
+            failure_dump_path = _persist_project_failure(
+                project_path=project_path,
+                hub_path=hub_path,
+                config=config,
+                config_path=config_path,
+                config_hash=config_hash,
+                args=args,
+                start_time=start_time,
+                failure_stage=failure_stage,
+                message=status_message,
+                raw_request=raw_request,
+                engine_target=engine_target,
+                job_id=job_id,
+                attempt_provenance=attempt_provenance,
+            )
             return 1
         for message in research_ops["warnings"]:
             logger.warning("⚠️  Warning: %s", message)
@@ -419,6 +608,46 @@ def main():
         if args.preset:
             _apply_cli_preset(config, args.preset)
             config_hash = hashlib.sha256(f"{config_hash}:preset={args.preset}".encode()).hexdigest()
+
+        rscript_commands = required_r_runners(config, args.step)
+        if not run_preflight_check(exit_on_failure=False, rscript_commands=rscript_commands):
+            end_time = datetime.now(timezone.utc)
+            failure_stage = "VALIDATE"
+            status_message = "Runtime preflight failed for selected pipeline steps."
+            failure_dump_path = dump_pipeline_failure(
+                project_path,
+                message=status_message,
+                context={
+                    "step": args.step,
+                    "raw_request": raw_request,
+                    "engine_target": engine_target,
+                    "job_id": job_id,
+                    "failure_stage": failure_stage,
+                    "attempt_provenance": attempt_provenance,
+                },
+            )
+            try:
+                write_execution_log(
+                    project_path,
+                    hub_path,
+                    config,
+                    config_path,
+                    config_hash,
+                    args=args,
+                    start_time=start_time,
+                    end_time=end_time,
+                    success=False,
+                    failure_stage=failure_stage,
+                    message=status_message,
+                    raw_request=raw_request,
+                    engine_target=engine_target,
+                    attempt_provenance=attempt_provenance,
+                )
+            except RuntimeError:
+                logger.warning("⚠️  Execution history was not persisted after preflight failure.")
+            logger.error("❌ %s", status_message)
+            logger.error("   └─ Failure snapshot: %s", failure_dump_path)
+            return 1
 
         adapters = select_adapters(config)
 
@@ -449,6 +678,7 @@ def main():
                     message=status_message,
                     raw_request=raw_request,
                     engine_target=engine_target,
+                    attempt_provenance=attempt_provenance,
                 )
             except RuntimeError:
                 return 1
@@ -585,7 +815,7 @@ def main():
                     failure_stage = "VALIDATE"
                     status_message = "Data contract preflight failed."
 
-            if args.step in ["analysis", "all"]:
+            if success and args.step in ["analysis", "all"]:
                 success = run_analysis(
                     project_path,
                     config,
@@ -693,14 +923,15 @@ def main():
                 r_version = _readable_tool_version(r_exec)
                 env_hash = _build_environment_hash(lock_info, python_version, r_version, config)
                 git_commit = _readable_git_commit(hub_path)
-                fingerprint_time = datetime.now(timezone.utc)
+                from hub_core.provenance import reproducible_timestamp
+
                 embed_figures_fingerprint(
                     project_dir=project_path,
                     config=config,
                     config_hash=config_hash,
                     environment_hash=env_hash,
                     git_commit=git_commit,
-                    timestamp=fingerprint_time.isoformat(timespec="seconds"),
+                    timestamp=reproducible_timestamp(),
                 )
                 _refresh_visual_output_signatures(project_path, config, build_state)
                 save_build_state(build_state_path, build_state)
@@ -725,6 +956,7 @@ def main():
                 "engine_target": engine_target,
                 "job_id": job_id,
                 "failure_stage": failure_stage,
+                "attempt_provenance": attempt_provenance,
             },
         )
         logger.error("\n❌ Unexpected orchestrator exception: %s: %s", type(exc).__name__, exc)
@@ -751,6 +983,7 @@ def main():
             message=status_message,
             raw_request=raw_request,
             engine_target=engine_target,
+            attempt_provenance=attempt_provenance,
         )
     except RuntimeError:
         logging_failed = True
@@ -777,6 +1010,7 @@ def main():
                     "engine_target": engine_target,
                     "job_id": job_id,
                     "failure_stage": failure_stage or "EXECUTE",
+                    "attempt_provenance": attempt_provenance,
                 },
             )
         logger.error("❌ Pipeline Failed midway. Check errors above.")

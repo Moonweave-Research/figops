@@ -69,6 +69,16 @@ def test_doctor_reports_missing_source_checkout_dependencies(monkeypatch, tmp_pa
 
 
 def test_doctor_json_reports_structured_readiness(tmp_path):
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    if os.name == "nt":
+        fake_uv = fake_bin / "uv.cmd"
+        fake_uv.write_text("@echo off\r\necho uv 0.8.0\r\n", encoding="utf-8")
+    else:
+        fake_uv = fake_bin / "uv"
+        fake_uv.write_text("#!/bin/sh\necho 'uv 0.8.0'\n", encoding="utf-8")
+        fake_uv.chmod(0o755)
+    env = {**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"}
     completed = subprocess.run(
         [
             sys.executable,
@@ -86,6 +96,7 @@ def test_doctor_json_reports_structured_readiness(tmp_path):
         text=True,
         capture_output=True,
         check=False,
+        env=env,
     )
 
     assert completed.returncode == 0, completed.stderr

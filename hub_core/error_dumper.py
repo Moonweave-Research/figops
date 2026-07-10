@@ -9,11 +9,14 @@ import sys
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Final
 
 from .logging import get_logger
+from .redaction import redact_locals, redact_secrets, redact_text
 from .runtime_paths import resolve_execution_artifacts_dir, resolve_latest_publish_dir
 
 logger = get_logger(__name__)
+_DEFAULT_LOCAL_ALLOWLIST: Final = frozenset()
 
 
 def dump_exception_failure(
@@ -23,6 +26,7 @@ def dump_exception_failure(
     context: dict | None = None,
     max_frames: int = 3,
     max_locals: int = 8,
+    allowed_local_keys: frozenset[str] | None = None,
 ) -> str:
     """Write a structured exception snapshot to results/latest_failure.json."""
     tb = traceback.TracebackException.from_exception(exc, capture_locals=True)
@@ -31,18 +35,22 @@ def dump_exception_failure(
         "timestamp_utc": _utc_now(),
         "failure_kind": "exception",
         "exception_type": type(exc).__name__,
-        "message": str(exc),
+        "message": redact_text(str(exc)),
         "traceback_tail": [
             {
                 "file": frame.filename,
                 "line": frame.lineno,
                 "function": frame.name,
                 "code": (frame.line or "").strip(),
-                "locals": _trim_locals(frame.locals or {}, limit=max_locals),
+                "locals": _trim_locals(
+                    frame.locals or {},
+                    limit=max_locals,
+                    allowed_local_keys=allowed_local_keys,
+                ),
             }
             for frame in frames
         ],
-        "context": context or {},
+        "context": redact_secrets(context or {}),
     }
     return _write_payload(project_dir, payload)
 
@@ -58,9 +66,9 @@ def dump_pipeline_failure(
         "timestamp_utc": _utc_now(),
         "failure_kind": "pipeline_failure",
         "exception_type": "PipelineStepFailed",
-        "message": message,
+        "message": redact_text(message),
         "traceback_tail": [],
-        "context": context or {},
+        "context": redact_secrets(context or {}),
     }
     return _write_payload(project_dir, payload)
 
@@ -79,7 +87,9 @@ def _write_payload(project_dir: str | Path, payload: dict) -> str:
     payload["artifacts_dir"] = resolve_execution_artifacts_dir(str(project_path), engine_target)
     payload["latest_dir"] = resolve_latest_publish_dir(engine_target, job_id)
     if raw_request:
-        payload["request"] = {"raw_request": str(raw_request)}
+        payload["request"] = {"raw_request": redact_text(str(raw_request))}
+
+    payload = redact_secrets(payload)
 
     output_path = project_path / "results" / "latest_failure.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -96,9 +106,15 @@ def _write_payload(project_dir: str | Path, payload: dict) -> str:
     return str(output_path)
 
 
-def _trim_locals(local_map: dict[str, object], *, limit: int) -> dict[str, str]:
+def _trim_locals(
+    local_map: dict[str, object],
+    *,
+    limit: int,
+    allowed_local_keys: frozenset[str] | None,
+) -> dict[str, str]:
     trimmed: dict[str, str] = {}
-    for index, (key, value) in enumerate(local_map.items()):
+    safe_locals = redact_locals(local_map, allowed_local_keys or _DEFAULT_LOCAL_ALLOWLIST)
+    for index, (key, value) in enumerate(safe_locals.items()):
         if index >= limit:
             trimmed["..."] = f"{len(local_map) - limit} more"
             break

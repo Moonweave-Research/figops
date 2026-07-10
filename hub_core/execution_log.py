@@ -71,6 +71,7 @@ def build_execution_log_record(
     detail="",
     raw_request=None,
     engine_target=DEFAULT_ENGINE_TARGET,
+    attempt_provenance=None,
 ):
     config = config if isinstance(config, dict) else {}
     execution = config.get("execution", {}) if isinstance(config.get("execution", {}), dict) else {}
@@ -129,6 +130,8 @@ def build_execution_log_record(
         "success": bool(success),
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+    if isinstance(attempt_provenance, dict):
+        record["attempt_provenance"] = attempt_provenance
     if raw_request:
         record["request"] = {"raw_request": raw_request}
     return record
@@ -181,6 +184,7 @@ def write_execution_log(
     detail="",
     raw_request=None,
     engine_target=DEFAULT_ENGINE_TARGET,
+    attempt_provenance=None,
     log_dirname=DEFAULT_LOG_DIRNAME,
     filename=DEFAULT_LOG_FILENAME,
 ):
@@ -201,6 +205,7 @@ def write_execution_log(
         detail=detail,
         raw_request=raw_request,
         engine_target=engine_target,
+        attempt_provenance=attempt_provenance,
     )
     log_path = append_execution_log(hub_path, record, log_dirname=log_dirname, filename=filename)
     _persist_execution_contract(record)
@@ -246,6 +251,7 @@ def _persist_execution_contract(record):
         "environment_hash": record.get("environment_hash"),
         "git_commit": record.get("git_commit"),
         "request": record.get("request", {}),
+        "attempt_provenance": record.get("attempt_provenance"),
         "result": {
             "success": record["success"],
             "message": record.get("message") or _default_status_message(record["success"]),
@@ -270,6 +276,7 @@ def _persist_execution_contract(record):
         "artifacts_dir": record["artifacts_dir"],
         "latest_dir": record["latest_dir"],
         "job_id": record["job_id"],
+        "attempt_provenance": record.get("attempt_provenance"),
     }
 
     for path, payload in (

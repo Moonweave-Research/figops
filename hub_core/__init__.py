@@ -12,6 +12,7 @@ from typing import Any
 _LAZY_EXPORTS = {
     "BUILD_STATE_SCHEMA_VERSION": ("hub_core.cache_manager", "BUILD_STATE_SCHEMA_VERSION"),
     "append_execution_log": ("hub_core.execution_log", "append_execution_log"),
+    "build_attempt_provenance": ("hub_core.attempt_provenance", "build_attempt_provenance"),
     "build_execution_log_record": ("hub_core.execution_log", "build_execution_log_record"),
     "check_golden_regression": ("hub_core.data_regression", "check_golden_regression"),
     "dump_exception_failure": ("hub_core.error_dumper", "dump_exception_failure"),
@@ -38,6 +39,7 @@ _LAZY_EXPORTS = {
     "run_diagrams": ("hub_core.process_runner", "run_diagrams"),
     "run_plots": ("hub_core.process_runner", "run_plots"),
     "run_preflight_check": ("hub_core.health_check", "run_preflight_check"),
+    "required_r_runners": ("hub_core.health_check", "required_r_runners"),
     "run_sweep": ("hub_core.process_runner", "run_sweep"),
     "save_build_state": ("hub_core.cache_manager", "save_build_state"),
     "scaffold_project": ("hub_core.scaffold", "scaffold_project"),
@@ -73,6 +75,7 @@ def __dir__() -> list[str]:
 __all__ = [
     "BUILD_STATE_SCHEMA_VERSION",
     "append_execution_log",
+    "build_attempt_provenance",
     "build_execution_log_record",
     "check_golden_regression",
     "dump_exception_failure",
@@ -99,6 +102,7 @@ __all__ = [
     "run_diagrams",
     "run_plots",
     "run_preflight_check",
+    "required_r_runners",
     "run_sweep",
     "save_build_state",
     "scaffold_project",

@@ -2,7 +2,10 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 
+from .config_parser import normalize_lang
+from .process_runner_commands import resolve_runner
 from .ui_utils import ui_panel
 from .utils import get_hub_path, get_research_root
 
@@ -14,8 +17,8 @@ def check_python():
         return False, f"Python {REQUIRED_PYTHON[0]}.{REQUIRED_PYTHON[1]}+ required (found {current[0]}.{current[1]})"
     return True, f"Python {current[0]}.{current[1]} OK"
 
-def check_r():
-    rscript = shutil.which("Rscript")
+def check_r(rscript: str = "Rscript"):
+    rscript = shutil.which(rscript)
     if not rscript:
         return False, "R (Rscript) not found in PATH. Please install R to run analysis steps."
 
@@ -49,9 +52,30 @@ def check_env_vars():
 
     return True, "Environment variables OK", False
 
-def run_preflight_check(exit_on_failure=True):
+def required_r_runners(config: Mapping[str, object], step: str) -> tuple[str, ...]:
+    """Return the distinct R runners needed by the selected pipeline step."""
+    selected_sections = _selected_sections(step)
+    runners: list[str] = []
+    for section_name, default_language in selected_sections:
+        entries = _section_entries(config, section_name)
+        for entry in entries:
+            if section_name == "analysis" and entry.get("domain_helper"):
+                continue
+            language = _entry_language(entry, default_language)
+            if language != "r":
+                continue
+            runner = resolve_runner(language, entry, config)
+            if isinstance(runner, str) and runner not in runners:
+                runners.append(runner)
+    return tuple(runners)
+
+
+def run_preflight_check(exit_on_failure=True, *, rscript_commands: tuple[str, ...] | None = None):
     py_ok, py_msg = check_python()
-    r_ok, r_msg = check_r()
+    commands = ("Rscript",) if rscript_commands is None else rscript_commands
+    r_results = [check_r(command) for command in commands]
+    r_ok = all(result[0] for result in r_results)
+    r_msg = "; ".join(result[1] for result in r_results) or "R check not required for selected steps."
     env_ok, env_msg, is_env_warning = check_env_vars()
 
     all_ok = py_ok and r_ok and env_ok
@@ -90,3 +114,36 @@ def run_preflight_check(exit_on_failure=True):
             sys.exit(1)
 
     return all_ok
+
+
+def _selected_sections(step: str) -> tuple[tuple[str, str], ...]:
+    if step == "analysis":
+        return (("analysis", "r"),)
+    if step == "plot":
+        return (("figures", "python"),)
+    if step == "diagrams":
+        return (("diagrams", "python"),)
+    if step == "all":
+        return (("analysis", "r"), ("figures", "python"), ("diagrams", "python"))
+    return ()
+
+
+def _section_entries(config: Mapping[str, object], section_name: str) -> list[Mapping[str, object]]:
+    if section_name == "analysis":
+        pipeline = config.get("pipeline")
+        raw_entries = pipeline.get("analysis") if isinstance(pipeline, Mapping) else None
+    else:
+        raw_entries = config.get(section_name)
+    if not isinstance(raw_entries, list):
+        return []
+    return [entry for entry in raw_entries if isinstance(entry, Mapping)]
+
+
+def _entry_language(entry: Mapping[str, object], default_language: str) -> str:
+    raw_language = entry.get("lang")
+    if raw_language is None:
+        script = entry.get("script")
+        if isinstance(script, str) and script.lower().endswith(".r"):
+            return "r"
+        return default_language
+    return normalize_lang(raw_language)
