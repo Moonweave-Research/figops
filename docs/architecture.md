@@ -1,6 +1,6 @@
 # FigOps - Architecture
 
-> Companion to `docs/ROADMAP.md`. Describes the current v0.17.10 source-line
+> Companion to `docs/ROADMAP.md`. Describes the current v0.17.11 source-line
 > architecture after the 0.5.0 MCP decomposition, polish-layer work, and the
 > 2026-06-29 large-module decomposition wave.
 
@@ -56,10 +56,10 @@ The 800-line architecture budget is a split signal, not a hard failure threshold
 Inventory freshness is checked by `tests/test_architecture_inventory.py`, which
 compares the committed block below against live source. Import layering remains
 policy-only; there is no import-linter contract in `.github/workflows/ci.yml` as
-of v0.17.10. Remaining over-budget files should be handled as scoped maintenance
+of v0.17.11. Remaining over-budget files should be handled as scoped maintenance
 tracks rather than broad rewrites.
 
-Current files over the approximate 800-line budget, measured on 2026-06-29 with
+Current files over the approximate 800-line budget, measured on 2026-07-10 with
 the architecture inventory helper:
 
 ```bash
@@ -70,12 +70,12 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | File | Lines |
 |---|---:|
 | `themes/journal_theme.py` | 1178 |
-| `plotting/bridge_renderer.py` | 1088 |
-| `hub_core/process_runner.py` | 1086 |
+| `hub_core/process_runner.py` | 1136 |
+| `plotting/bridge_renderer.py` | 1099 |
+| `hub_core/mcp/render_orchestration.py` | 1075 |
 | `hub_core/mcp/tools/render_csv.py` | 991 |
-| `hub_core/mcp/render_orchestration.py` | 958 |
+| `hub_core/config_parser.py` | 903 |
 | `hub_core/visual_regression.py` | 902 |
-| `hub_core/config_parser.py` | 900 |
 | `hub_core/geometry_diagnostics.py` | 850 |
 | `hub_core/mcp/schemas.py` | 833 |
 <!-- architecture-inventory:end -->
