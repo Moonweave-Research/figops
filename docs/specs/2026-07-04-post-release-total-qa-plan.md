@@ -172,6 +172,16 @@ Result:
 
 ## Next Plan
 
+### Implementation status update (2026-07-11)
+
+P1 through P4 below are implemented in the 0.18.0 release-candidate source
+line: the seven-track manifest fixture pack and expected summaries are present,
+the MCP agent-consumability test guards registries/docs/playbooks, doctor checks
+source-checkout `uv` runtime readiness, and the geometry rubric-map checker
+validates every diagnostics metric. The remaining active slice is P5 maintenance
+decomposition; this update does not change the publication-oriented claim
+boundary.
+
 P0 - Preserve claim boundaries:
 
 - Keep public wording at publication-oriented unless a specific output has a
@@ -237,6 +247,6 @@ The current release line passes the post-release total QA re-check for encoded
 journal-track differentiation, MCP agent tool availability, and operational
 release controls.
 
-Open work is quality hardening, not release repair: fixture qualification,
-agent-consumability guards, local environment readiness, diagnostic-to-rubric
-mapping, and maintenance decomposition.
+Open work is quality hardening, not release repair: maintain the shipped fixture,
+agent-consumability, readiness, and rubric guards while continuing bounded
+maintenance decomposition.

@@ -105,5 +105,5 @@
     "architecture-data-contract-debt-v1",
     "semantic-constraint-decomposition-v1"
   ],
-  "selected_next_slice": "data-contract-orchestration-decomposition-v1"
+  "selected_next_slice": "process-runner-variants-decomposition-v1"
 }

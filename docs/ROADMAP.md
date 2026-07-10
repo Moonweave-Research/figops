@@ -213,24 +213,24 @@ lives in:
 - `docs/specs/polish-layer-legend-axis-wave.md`
 - `docs/specs/polish-fixture-manifest.json`
 
-Next implementation priority: graph QA fixture qualification and
-agent-consumability guards before broader architecture/data-contract debt. Do
-not reclassify shipped polish controls as open gaps unless a regression is
-proven.
+The first graph-QA hardening slices are now shipped and guarded:
 
-Immediate next slices:
+1. `tests/fixtures/journal_tracks/` contains manifest-backed Nature, Science,
+   ACS, RSC, Elsevier, Wiley, and Cell fixture coverage with expected summaries,
+   token floors, geometry diagnostics, and layout-report expectations.
+2. `tests/test_mcp_agent_consumability.py` keeps live tool names, legacy
+   aliases, handler discovery, generated `docs/tools.md`, prompts, and internal
+   playbooks aligned.
+3. `figops.doctor` checks `uv`, the external source-checkout runtime root, and
+   the active Python environment without weakening `hub_uv.py` fail-fast
+   behavior.
+4. `scripts/check_geometry_rubric_map.py` and its tests require every
+   `geometry_diagnostics/1` metric to resolve to a hard, advisory, or explicit
+   informational rubric status.
 
-1. Add representative journal-track fixtures for Nature, Science, ACS, RSC,
-   Elsevier, Wiley, and Cell, with expected `style_summary`, token floors,
-   `geometry_diagnostics`, and `layout_report` summaries.
-2. Add a guard that keeps `TOOL_NAMES`, legacy aliases,
-   `list_tool_definitions()`, generated `docs/tools.md`, and internal agent
-   playbooks aligned when MCP tools change.
-3. Add or document a lightweight local operator-readiness check for `uv`,
-   external runtime root, and active Python environment before release QA.
-4. Add a generated/checkable diagnostic-to-rubric map so every
-   `geometry_diagnostics/1` name resolves to `FQ-H*`, `FQ-A*`, or explicit
-   informational status.
+The next priority is behavior-preserving maintenance decomposition from the
+live architecture inventory. Do not reclassify shipped polish controls as open
+gaps unless a regression is proven.
 
 ### R1 - Large-module decomposition
 
@@ -261,6 +261,12 @@ Remaining over-budget files are listed in `docs/architecture.md`. Future
 extractions should be selected from that live inventory, remain
 behavior-preserving, keep public imports compatible, and add a witness test for
 the behavior being moved.
+
+The 2026-07-11 bounded slice extracted sweep and comparison orchestration from
+`hub_core.process_runner` behind its existing public compatibility façade. The
+facade preserves environment-overlay, failure-stage, path-containment, and
+monkeypatch contracts while reducing variation-specific control flow in the base
+pipeline module.
 
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
