@@ -4,6 +4,14 @@ import pytest
 
 from scripts.consumer_install_smoke import consumer_smoke_commands, expected_wheel_name, resolve_wheel
 
+AUTHENTIC_STYLE_METADATA_SMOKE = (
+    "import json; "
+    "from themes.authentic_style_language import get_authentic_style_language_metadata; "
+    "metadata = get_authentic_style_language_metadata('nature'); "
+    "assert metadata['matrix_source'] == 'package:themes/data/journal_visual_language_matrix.json'; "
+    "print(json.dumps(metadata, sort_keys=True))"
+)
+
 
 def _write_pyproject(root: Path, version: str = "1.2.3") -> None:
     (root / "pyproject.toml").write_text(f'[project]\nname = "figops"\nversion = "{version}"\n')
@@ -36,6 +44,16 @@ def test_consumer_smoke_commands_use_isolated_uv_with_console_scripts(tmp_path: 
     commands = consumer_smoke_commands(wheel, uv_bin="uv-test", scaffold_project="/tmp/smoke_project")
 
     assert commands == (
+        (
+            "uv-test",
+            "run",
+            "--isolated",
+            "--with",
+            str(wheel),
+            "python",
+            "-c",
+            AUTHENTIC_STYLE_METADATA_SMOKE,
+        ),
         ("uv-test", "run", "--isolated", "--with", str(wheel), "figops-mcp", "--smoke"),
         ("uv-test", "run", "--isolated", "--with", str(wheel), "figops", "--help"),
         ("uv-test", "run", "--isolated", "--with", str(wheel), "figops", "--init", "--project", "/tmp/smoke_project"),

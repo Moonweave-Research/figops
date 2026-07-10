@@ -58,7 +58,7 @@ include = ["hub_core*", "plotting*", "themes*"]
 
 [tool.setuptools.package-data]
 hub_core = ["templates/*.yaml"]
-themes = ["*.yaml", "*.R"]
+themes = ["*.yaml", "*.R", "data/*.json"]
 
 [tool.ruff]
 target-version = "py312"

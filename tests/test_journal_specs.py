@@ -1,7 +1,10 @@
 """Tests for journal compliance provenance registry and report output."""
 
 import json
+import re
 from pathlib import Path
+
+import pytest
 
 from hub_core.config_parser import ALLOWED_TARGET_FORMATS
 from hub_core.journal_specs import (
@@ -11,6 +14,7 @@ from hub_core.journal_specs import (
     list_supported_preflight_targets,
 )
 from hub_core.style_report import build_style_report, format_style_report
+from themes import authentic_style_language
 from themes.authentic_style_language import (
     get_authentic_style_language_metadata,
     validate_authentic_style_language_metadata,
@@ -18,7 +22,16 @@ from themes.authentic_style_language import (
 from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 from themes.style_profiles import get_render_style_tokens
 
-MATRIX_PATH = Path(__file__).resolve().parent.parent / "docs" / "specs" / "2026-07-04-journal-visual-language-matrix.json"
+MATRIX_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "docs"
+    / "specs"
+    / "2026-07-04-journal-visual-language-matrix.json"
+)
+PACKAGE_MATRIX_PATH = (
+    Path(__file__).resolve().parent.parent / "themes" / "data" / "journal_visual_language_matrix.json"
+)
+MATRIX_SOURCE_LABEL = "package:themes/data/journal_visual_language_matrix.json"
 PUBLIC_JOURNAL_TRACKS = ("nature", "science", "acs", "rsc", "elsevier", "wiley", "cell")
 
 
@@ -84,7 +97,7 @@ def test_public_journal_style_language_helper_exposes_matrix_backed_metadata():
         authentic_style_language = get_authentic_style_language_metadata(target_format)
 
         assert validate_authentic_style_language_metadata(authentic_style_language)
-        assert authentic_style_language["matrix_source"] == MATRIX_PATH.as_posix()
+        assert authentic_style_language["matrix_source"] == MATRIX_SOURCE_LABEL
         assert authentic_style_language["matrix_track"] == target_format
         assert authentic_style_language["rationale_category"] == "observed_visual_language"
         assert authentic_style_language["official_claim"] is False
@@ -94,6 +107,40 @@ def test_public_journal_style_language_helper_exposes_matrix_backed_metadata():
         assert authentic_style_language["observed_visual_language"] == [
             item["item"] for item in matrix["public_tracks"][target_format]["observed_visual_language"]
         ]
+
+
+def test_packaged_visual_language_matrix_matches_canonical_docs_semantically() -> None:
+    docs_matrix = json.loads(MATRIX_PATH.read_text(encoding="utf-8"))
+    package_matrix = json.loads(PACKAGE_MATRIX_PATH.read_text(encoding="utf-8"))
+
+    assert package_matrix == docs_matrix
+
+
+def test_authentic_style_language_reports_missing_package_matrix_explicitly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(authentic_style_language, "files", lambda _package: tmp_path, raising=False)
+
+    with pytest.raises(
+        authentic_style_language.AuthenticStyleLanguageMatrixMissingError,
+        match=re.escape(f"Missing authentic style-language matrix: {MATRIX_SOURCE_LABEL}"),
+    ):
+        get_authentic_style_language_metadata("nature")
+
+
+def test_authentic_style_language_reports_corrupt_package_matrix_explicitly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "journal_visual_language_matrix.json").write_text("{not-json", encoding="utf-8")
+    monkeypatch.setattr(authentic_style_language, "files", lambda _package: tmp_path, raising=False)
+
+    with pytest.raises(
+        authentic_style_language.AuthenticStyleLanguageMatrixCorruptError,
+        match=re.escape(f"Corrupt authentic style-language matrix: {MATRIX_SOURCE_LABEL}"),
+    ):
+        get_authentic_style_language_metadata("nature")
 
 
 def test_public_journal_style_language_metadata_rejects_missing_rationale():

@@ -14,6 +14,13 @@ from typing import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIST_DIR = "dist"
+AUTHENTIC_STYLE_METADATA_SMOKE = (
+    "import json; "
+    "from themes.authentic_style_language import get_authentic_style_language_metadata; "
+    "metadata = get_authentic_style_language_metadata('nature'); "
+    "assert metadata['matrix_source'] == 'package:themes/data/journal_visual_language_matrix.json'; "
+    "print(json.dumps(metadata, sort_keys=True))"
+)
 
 
 def package_version(root: Path) -> str:
@@ -52,6 +59,16 @@ def consumer_smoke_commands(
 ) -> tuple[tuple[str, ...], ...]:
     wheel_ref = str(wheel)
     return (
+        (
+            uv_bin,
+            "run",
+            "--isolated",
+            "--with",
+            wheel_ref,
+            "python",
+            "-c",
+            AUTHENTIC_STYLE_METADATA_SMOKE,
+        ),
         (uv_bin, "run", "--isolated", "--with", wheel_ref, "figops-mcp", "--smoke"),
         (uv_bin, "run", "--isolated", "--with", wheel_ref, "figops", "--help"),
         (uv_bin, "run", "--isolated", "--with", wheel_ref, "figops", "--init", "--project", scaffold_project),

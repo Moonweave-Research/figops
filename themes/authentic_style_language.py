@@ -4,7 +4,7 @@ import json
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
-from pathlib import Path
+from importlib.resources import files
 from typing import Final, TypedDict
 
 
@@ -20,10 +20,8 @@ class AuthenticStyleLanguageMetadata(TypedDict):
 
 
 StyleLanguageMetadataValue = str | bool | Sequence[str]
-MATRIX_SOURCE_PATH: Final = (
-    Path(__file__).resolve().parent.parent / "docs" / "specs" / "2026-07-04-journal-visual-language-matrix.json"
-)
-AUTHENTIC_STYLE_LANGUAGE_MATRIX_SOURCE: Final = MATRIX_SOURCE_PATH.as_posix()
+MATRIX_RESOURCE_PATH: Final = "data/journal_visual_language_matrix.json"
+AUTHENTIC_STYLE_LANGUAGE_MATRIX_SOURCE: Final = f"package:themes/{MATRIX_RESOURCE_PATH}"
 PUBLIC_JOURNAL_TRACKS: Final = ("nature", "science", "acs", "rsc", "elsevier", "wiley", "cell")
 RATIONALES: Final[Mapping[str, str]] = {
     "nature": (
@@ -66,6 +64,23 @@ class AuthenticStyleLanguageMetadataError(RuntimeError):
         return f"Malformed authentic style-language metadata for {self.target_format}"
 
 
+@dataclass(frozen=True, slots=True)
+class AuthenticStyleLanguageMatrixMissingError(RuntimeError):
+    source: str
+
+    def __str__(self) -> str:
+        return f"Missing authentic style-language matrix: {self.source}"
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticStyleLanguageMatrixCorruptError(RuntimeError):
+    source: str
+    detail: str
+
+    def __str__(self) -> str:
+        return f"Corrupt authentic style-language matrix: {self.source} ({self.detail})"
+
+
 def get_authentic_style_language_metadata(target_format: str) -> AuthenticStyleLanguageMetadata:
     target_key = target_format.strip().lower()
     metadata: AuthenticStyleLanguageMetadata = {
@@ -100,8 +115,35 @@ def validate_authentic_style_language_metadata(metadata: Mapping[str, StyleLangu
 
 
 def _observed_visual_language(target_format: str) -> list[str]:
-    matrix = json.loads(MATRIX_SOURCE_PATH.read_text(encoding="utf-8"))
-    tracks = matrix["public_tracks"]
-    track = tracks[target_format]
-    observed_items = track["observed_visual_language"]
-    return [item["item"] for item in observed_items]
+    resource = files("themes").joinpath(MATRIX_RESOURCE_PATH)
+    try:
+        matrix_text = resource.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise AuthenticStyleLanguageMatrixMissingError(AUTHENTIC_STYLE_LANGUAGE_MATRIX_SOURCE) from exc
+    except UnicodeDecodeError as exc:
+        raise AuthenticStyleLanguageMatrixCorruptError(
+            AUTHENTIC_STYLE_LANGUAGE_MATRIX_SOURCE,
+            "resource is not valid UTF-8",
+        ) from exc
+
+    try:
+        matrix = json.loads(matrix_text)
+        observed_items = matrix["public_tracks"][target_format]["observed_visual_language"]
+        observed_visual_language = [item["item"] for item in observed_items]
+    except json.JSONDecodeError as exc:
+        raise AuthenticStyleLanguageMatrixCorruptError(
+            AUTHENTIC_STYLE_LANGUAGE_MATRIX_SOURCE,
+            f"invalid JSON at line {exc.lineno} column {exc.colno}",
+        ) from exc
+    except (KeyError, TypeError) as exc:
+        raise AuthenticStyleLanguageMatrixCorruptError(
+            AUTHENTIC_STYLE_LANGUAGE_MATRIX_SOURCE,
+            "missing expected public track metadata",
+        ) from exc
+
+    if not all(isinstance(item, str) and bool(item) for item in observed_visual_language):
+        raise AuthenticStyleLanguageMatrixCorruptError(
+            AUTHENTIC_STYLE_LANGUAGE_MATRIX_SOURCE,
+            "observed visual-language items must be non-empty strings",
+        )
+    return observed_visual_language
