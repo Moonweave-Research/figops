@@ -9,6 +9,7 @@ from urllib.parse import unquote, urlsplit
 import yaml
 
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS, load_yaml_with_unique_keys
+from hub_core.mcp.manifest_io import read_json_object_file
 from hub_core.project_discovery import ProjectDiscoveryService
 from themes.style_packs import list_style_packs
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
@@ -59,9 +60,9 @@ class McpResourcesMixin:
             if not manifest_path.exists():
                 raise FileNotFoundError(f"Render job manifest not found: {job_id}")
             try:
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as exc:
-                raise RuntimeError(f"Render job manifest could not be read: {exc}") from exc
+                manifest = read_json_object_file(manifest_path)
+            except ValueError as exc:
+                raise RuntimeError("Render job manifest could not be read safely.") from exc
             sanitized = self._sanitize_resource_payload(manifest, {"data_path": manifest.get("source_data_path")})
             return self._resource_text(uri, "application/json", self._json_resource_text(sanitized))
 

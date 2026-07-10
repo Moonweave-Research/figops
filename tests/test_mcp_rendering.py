@@ -731,7 +731,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(Path(result["output_path"]).is_file())
             self.assertTrue(str(Path(result["output_path"]).resolve()).startswith(str(runtime_root.resolve())))
             self.assertEqual(_snapshot_tree(project), before)
-            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            manifest = json.loads(
+                (runtime_root / "mcp_project_jobs" / "synthetic-project-render" / "manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
             self.assertEqual(manifest["style_summary"]["target_format"], "nature")
             self.assertEqual(manifest["style_summary"]["profile"], "baseline")
 
@@ -813,7 +817,10 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "CONTRACT")
             self.assertIn("figure_id", result["resolution_hint"])
-            self.assertFalse((runtime_root / "mcp_project_jobs").exists())
+            job_root = runtime_root / "mcp_project_jobs" / "ambiguous-project"
+            self.assertTrue((job_root / "manifest.json").is_file())
+            self.assertTrue((job_root / "status.json").is_file())
+            self.assertTrue(result["manifest_path"].startswith("runtime://"))
 
     def test_render_project_figure_rejects_output_path_escape_without_writing(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -846,6 +853,39 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(parent_result["failure_stage"], "CONTRACT")
             self.assertFalse(outside_output.exists())
             self.assertFalse((runtime_root / "mcp_project_jobs").exists())
+
+    def test_render_project_invalid_style_persists_failure_artifacts(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_project_figure",
+                {
+                    "project_path": str(project),
+                    "figure_id": "Fig1",
+                    "job_id": "invalid-style",
+                    "target_format": "not-a-style",
+                },
+            )
+
+            job_root = runtime_root / "mcp_project_jobs" / "invalid-style"
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertTrue((job_root / "manifest.json").is_file())
+            self.assertTrue((job_root / "status.json").is_file())
+            manifest = json.loads((job_root / "manifest.json").read_text(encoding="utf-8"))
+            status = json.loads((job_root / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual(result["style_summary"]["target_format"], "not-a-style")
+            self.assertEqual(manifest["style_summary"], result["style_summary"])
+            self.assertEqual(status["style_summary"], result["style_summary"])
+            self.assertEqual(
+                manifest["provenance"]["attempt"],
+                result["provenance"]["attempt"],
+            )
 
     def test_render_project_figure_rejects_project_path_outside_research_root(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -883,7 +923,36 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "VALIDATE")
             self.assertIn("Data contract preflight failed", result["errors"][0])
-            self.assertFalse((runtime_root / "mcp_project_jobs" / "missing-input").exists())
+            job_root = runtime_root / "mcp_project_jobs" / "missing-input"
+            self.assertTrue((job_root / "manifest.json").is_file())
+            self.assertTrue((job_root / "status.json").is_file())
+            self.assertNotIn(str(tmpdir), json.dumps(result))
+            self.assertTrue(result["manifest_path"].startswith("runtime://"))
+            persisted = json.loads((job_root / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(persisted["provenance"]["attempt"], result["provenance"]["attempt"])
+
+    def test_render_project_invalid_config_persists_public_safe_failure_artifacts(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            (project / "project_config.yaml").write_text("project: {}\n", encoding="utf-8")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "invalid-config"},
+            )
+
+            job_root = runtime_root / "mcp_project_jobs" / "invalid-config"
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertTrue((job_root / "manifest.json").is_file())
+            self.assertTrue((job_root / "status.json").is_file())
+            self.assertTrue(result["job_root"].startswith("runtime://"))
+            self.assertTrue(result["manifest_path"].startswith("runtime://"))
+            self.assertNotIn(str(tmpdir), result["job_root"])
 
     def test_render_project_figure_semantic_failure_fails_full_data_contract_without_writing(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -933,6 +1002,45 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["failure_stage"], "EXPORT")
             self.assertIn("symlink", result["errors"][0])
 
+    def test_render_project_figure_expands_declared_input_globs_in_snapshot(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            measurements = project / "raw" / "measurements"
+            measurements.mkdir()
+            (measurements / "a.csv").write_text("x,y\n1,2\n", encoding="utf-8")
+            (measurements / "b.csv").write_text("x,y\n3,4\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+
+            copied = server._copy_project_snapshot(
+                source_project=project,
+                snapshot_project=Path(tmpdir) / "snapshot",
+                config_relpath="project_config.yaml",
+                selected_figure={
+                    "script": "hub_scripts/plot.py",
+                    "inputs": ["raw/measurements/**/*.csv", "raw/measurements/a.csv"],
+                },
+            )
+
+            copied_names = {Path(path).relative_to(Path(tmpdir) / "snapshot").as_posix() for path in copied}
+            self.assertTrue({"raw/measurements/a.csv", "raw/measurements/b.csv"}.issubset(copied_names))
+
+    def test_collect_artifacts_rejects_discovered_manifest_symlink_outside_runtime_root(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_manifest_") as tmpdir:
+            root = Path(tmpdir)
+            runtime_root = root / "runtime"
+            outside = root / "outside-manifest.json"
+            outside.write_text('{"leak":"OUTSIDE_SECRET"}', encoding="utf-8")
+            manifest_path = runtime_root / "mcp_jobs" / "escaped" / "manifest.json"
+            manifest_path.parent.mkdir(parents=True)
+            symlink_or_skip(manifest_path, outside)
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(server, "figops.collect_artifacts", {"job_id": "escaped"})
+
+            self.assertEqual(result["status"], "error")
+            self.assertNotIn("OUTSIDE_SECRET", json.dumps(result))
+
     def test_safe_preflight_preserves_supported_non_nature_targets(self):
         server = GraphHubMCPServer(research_root=Path.cwd(), runtime_root=Path.cwd() / ".tmp-mcp-runtime")
         with patch(
@@ -950,7 +1058,8 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             root = Path(tmpdir) / "ResearchOS"
             project = _write_project_render_fixture(root)
             (project / "hub_scripts" / "plot.py").write_text(
-                "from pathlib import Path\nraise RuntimeError(f'failed at {Path.cwd() / \"private-output.png\"}')\n",
+                "from pathlib import Path\n"
+                "raise RuntimeError(f'token=TOKEN_SENTINEL failed at {Path.cwd() / \"private-output.png\"}')\n",
                 encoding="utf-8",
             )
             runtime_root = Path(tmpdir) / "runtime"
@@ -965,7 +1074,32 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "PLOT")
             self.assertNotIn(str(tmpdir), result["errors"][0])
+            self.assertNotIn("TOKEN_SENTINEL", json.dumps(result))
+            self.assertNotIn(str(tmpdir), json.dumps(result))
             self.assertIn("runtime://", result["errors"][0])
+            nested_tail = result["layout_report"]["render_errors"][0]["script_output_tail"]
+            self.assertFalse(any("TOKEN_SENTINEL" in line for line in nested_tail))
+            self.assertFalse(any(str(tmpdir) in line for line in nested_tail))
+            attempt = result["provenance"]["attempt"]
+            self.assertTrue(result["job_root"].startswith("runtime://"))
+            self.assertTrue(result["snapshot_project_path"].startswith("runtime://"))
+            self.assertTrue(result["output_path"].startswith("runtime://"))
+            self.assertTrue(result["config_path"].startswith("runtime://"))
+            self.assertTrue(result["manifest_path"].startswith("runtime://"))
+            self.assertTrue(result["status_path"].startswith("runtime://"))
+            job_root = runtime_root / "mcp_project_jobs" / "script-fails"
+            manifest = json.loads((job_root / "manifest.json").read_text(encoding="utf-8"))
+            status = json.loads((job_root / "status.json").read_text(encoding="utf-8"))
+            collected = self._call(server, "figops.collect_artifacts", {"job_id": "script-fails"})
+            self.assertTrue(attempt["attempt_id"])
+            self.assertEqual(attempt["surface"], "mcp")
+            self.assertEqual(manifest["provenance"]["attempt"], attempt)
+            self.assertEqual(status["provenance"]["attempt"], attempt)
+            self.assertEqual(collected["provenance"]["attempt"], attempt)
+            self.assertNotIn(str(tmpdir), json.dumps(collected))
+            self.assertTrue(collected["manifest_path"].startswith("runtime://"))
+            self.assertTrue(collected["status_path"].startswith("runtime://"))
+            self.assertNotIn("manifest_path", collected["provenance"])
 
     def test_render_project_figure_export_failure_surfaces_swallowed_traceback_tail(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -1000,7 +1134,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                     for line in result["layout_report"]["render_errors"][0]["script_output_tail"]
                 )
             )
-            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+            manifest = json.loads(
+                (runtime_root / "mcp_project_jobs" / "swallowed-traceback" / "manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
             self.assertTrue(any("KeyError" in line for line in manifest["script_output"]))
             self.assertEqual(manifest["layout_report"]["render_errors"][0]["stage"], "EXPORT")
             collected = self._call(server, "figops.collect_artifacts", {"job_id": "swallowed-traceback"})

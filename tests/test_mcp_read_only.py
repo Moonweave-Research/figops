@@ -1222,6 +1222,77 @@ project:
             _read_stdio_message(stream)
         self.assertEqual(stream.read(), b"short")
 
+    def test_read_stdio_message_rejects_oversized_header_before_body_read(self):
+        from hub_core.mcp.transport import MCP_MAX_HEADER_BYTES, _read_stdio_message
+
+        body = b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+        stream = BytesIO(b"X-Long: " + b"x" * MCP_MAX_HEADER_BYTES + b"\r\n\r\n" + body)
+
+        with self.assertRaisesRegex(ValueError, "header line exceeds"):
+            _read_stdio_message(stream)
+        self.assertTrue(stream.read().endswith(body))
+
+    def test_stdio_server_stops_after_one_oversized_header_response(self):
+        valid = json.dumps({"jsonrpc": "2.0", "id": 99, "method": "tools/list"}).encode("utf-8") + b"\n"
+        output_stream = BytesIO()
+
+        with unittest.mock.patch("hub_core.mcp.transport.MCP_MAX_HEADER_BYTES", 8):
+            rc = run_stdio_server(
+                GraphHubMCPServer(),
+                input_stream=BytesIO(b"X-Long: 123456789\r\n\r\n" + valid),
+                output_stream=output_stream,
+        )
+
+        self.assertEqual(rc, 1)
+        header, body = output_stream.getvalue().split(b"\r\n\r\n", 1)
+        self.assertIn(b"Content-Length:", header)
+        self.assertEqual(json.loads(body)["error"]["code"], -32700)
+
+    def test_read_stdio_message_rejects_oversized_newline_frame_before_dispatch(self):
+        from hub_core.mcp.transport import _read_stdio_message
+
+        with unittest.mock.patch("hub_core.mcp.transport.MCP_MAX_MESSAGE_BYTES", 8):
+            stream = BytesIO(b'{"x":123}\n')
+
+            with self.assertRaisesRegex(ValueError, "newline MCP message exceeds"):
+                _read_stdio_message(stream)
+
+    def test_stdio_server_stops_after_one_oversized_newline_frame(self):
+        oversized = b'{"x":123}\n'
+        valid = json.dumps({"jsonrpc": "2.0", "id": 99, "method": "tools/list"}).encode("utf-8") + b"\n"
+        output_stream = BytesIO()
+
+        with unittest.mock.patch("hub_core.mcp.transport.MCP_MAX_MESSAGE_BYTES", 8):
+            rc = run_stdio_server(
+                GraphHubMCPServer(),
+                input_stream=BytesIO(oversized + valid),
+                output_stream=output_stream,
+            )
+
+        self.assertEqual(rc, 1)
+        responses = [json.loads(line) for line in output_stream.getvalue().splitlines() if line]
+        self.assertEqual(len(responses), 1)
+        self.assertEqual(responses[0]["error"]["code"], -32700)
+
+    def test_runtime_manifest_reader_rejects_oversize_non_object_and_invalid_utf8(self):
+        from hub_core.mcp.manifest_io import read_json_object_file
+
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_manifest_") as tmpdir:
+            root = Path(tmpdir)
+            oversize = root / "oversize.json"
+            oversize.write_text('{"value":"0123456789"}', encoding="utf-8")
+            array = root / "array.json"
+            array.write_text("[]", encoding="utf-8")
+            invalid = root / "invalid.json"
+            invalid.write_bytes(b"\xff")
+
+            with self.assertRaisesRegex(ValueError, "limit"):
+                read_json_object_file(oversize, max_bytes=8)
+            with self.assertRaisesRegex(ValueError, "object"):
+                read_json_object_file(array)
+            with self.assertRaisesRegex(ValueError, "UTF-8"):
+                read_json_object_file(invalid)
+
     def test_stdio_server_accepts_content_length_framed_messages(self):
         request = {"jsonrpc": "2.0", "id": 4, "method": "tools/list"}
         body = json.dumps(request).encode("utf-8")
@@ -1292,12 +1363,12 @@ project:
 
         rc = run_stdio_server(GraphHubMCPServer(), input_stream=input_stream, output_stream=output_stream)
 
-        self.assertEqual(rc, 0)
+        self.assertEqual(rc, 1)
         header, payload = output_stream.getvalue().split(b"\r\n\r\n", 1)
         self.assertIn(b"Content-Length:", header)
         response = json.loads(payload.decode("utf-8"))
-        self.assertEqual(response["error"]["code"], -32603)
-        self.assertIn("Invalid Content-Length", response["error"]["message"])
+        self.assertEqual(response["error"]["code"], -32700)
+        self.assertIn("invalid literal", response["error"]["message"])
 
     def test_stdio_server_frames_newline_parse_error_as_newline(self):
         input_stream = BytesIO(b"{bad json\n")

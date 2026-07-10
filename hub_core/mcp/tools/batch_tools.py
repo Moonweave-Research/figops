@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from hub_core.mcp import render_orchestration as render_helpers
+from hub_core.mcp.manifest_io import read_json_object_file, resolve_runtime_manifest_file
 from hub_core.mcp.schemas import MCP_BATCH_MAX_PROJECTS
 from hub_core.runtime_paths import runtime_root_lookup_candidates
 
@@ -62,14 +63,14 @@ class McpBatchToolsMixin:
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            manifest = read_json_object_file(manifest_path)
+        except ValueError:
             return self._envelope(
                 "figops.collect_artifacts",
                 arguments,
                 status="error",
                 summary="Render job manifest could not be read.",
-                errors=[str(exc)],
+                errors=["Render job manifest could not be read safely."],
                 manual_review_needed=True,
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
@@ -116,6 +117,28 @@ class McpBatchToolsMixin:
         artifact_status = (
             persisted_artifact_status if persisted_failed else self._artifact_status(preflight, baseline_comparison)
         )
+        project_render_failure = persisted_failed and manifest.get("renderer_surface") == "figops.render_project_figure"
+        public_manifest_path = self._runtime_uri(manifest_path) if project_render_failure else str(manifest_path)
+        raw_status_path = str(manifest.get("status_path", ""))
+        raw_latest_dir = str(manifest.get("latest_dir", ""))
+        raw_latest_alias = str(manifest.get("latest_alias", ""))
+        public_status_path = self._runtime_uri(Path(raw_status_path)) if project_render_failure and raw_status_path else raw_status_path
+        public_latest_dir = self._runtime_uri(Path(raw_latest_dir)) if project_render_failure and raw_latest_dir else raw_latest_dir
+        public_latest_alias = self._runtime_uri(Path(raw_latest_alias)) if project_render_failure and raw_latest_alias else raw_latest_alias
+        persisted_provenance = manifest.get("provenance") if isinstance(manifest.get("provenance"), dict) else {}
+        public_provenance = (
+            {"job_id": job_id, **persisted_provenance}
+            if project_render_failure
+            else {
+                "job_id": job_id,
+                "manifest_path": str(manifest_path),
+                "status_path": raw_status_path,
+                "latest_dir": raw_latest_dir,
+                "latest_alias": raw_latest_alias,
+                "job_root": manifest.get("job_root", ""),
+                **persisted_provenance,
+            }
+        )
         return self._envelope(
             "figops.collect_artifacts",
             arguments,
@@ -124,30 +147,34 @@ class McpBatchToolsMixin:
             artifact_resources=[f"file://{figure['path']}" for figure in figures if isinstance(figure, dict)],
             warnings=preflight_warnings + baseline_warnings + figure_format_warnings,
             script_output=manifest.get("script_output") if isinstance(manifest.get("script_output"), list) else [],
-            created_paths=self._manifest_path_list(manifest, "created_paths"),
-            modified_paths=self._manifest_path_list(manifest, "modified_paths"),
-            skipped_paths=self._manifest_path_list(manifest, "skipped_paths"),
+            created_paths=(
+                [self._runtime_uri(Path(path)) for path in self._manifest_path_list(manifest, "created_paths")]
+                if project_render_failure
+                else self._manifest_path_list(manifest, "created_paths")
+            ),
+            modified_paths=(
+                [self._runtime_uri(Path(path)) for path in self._manifest_path_list(manifest, "modified_paths")]
+                if project_render_failure
+                else self._manifest_path_list(manifest, "modified_paths")
+            ),
+            skipped_paths=(
+                [self._runtime_uri(Path(path)) for path in self._manifest_path_list(manifest, "skipped_paths")]
+                if project_render_failure
+                else self._manifest_path_list(manifest, "skipped_paths")
+            ),
             manual_review_needed=manual_review_needed,
             job_id=job_id,
             figures=figures,
             diagrams=manifest.get("diagrams") or [],
             assemblies=manifest.get("assemblies") or [],
             logs=manifest.get("logs") or [],
-            manifest_path=str(manifest_path),
-            status_path=str(manifest.get("status_path", "")),
-            latest_dir=str(manifest.get("latest_dir", "")),
-            latest_alias=str(manifest.get("latest_alias", "")),
+            manifest_path=public_manifest_path,
+            status_path=public_status_path,
+            latest_dir=public_latest_dir,
+            latest_alias=public_latest_alias,
             failure_stage=persisted_failure_stage,
             resolution_hint=persisted_resolution_hint,
-            provenance={
-                "job_id": job_id,
-                "manifest_path": str(manifest_path),
-                "status_path": str(manifest.get("status_path", "")),
-                "latest_dir": str(manifest.get("latest_dir", "")),
-                "latest_alias": str(manifest.get("latest_alias", "")),
-                "job_root": manifest.get("job_root", ""),
-                **(manifest.get("provenance") if isinstance(manifest.get("provenance"), dict) else {}),
-            },
+            provenance=public_provenance,
             visual_preflight_status=preflight,
             layout_report=layout_report,
             figure_metadata=figure_metadata,
@@ -191,12 +218,12 @@ class McpBatchToolsMixin:
                 )
             resumed_from = str(resume_path)
             try:
-                resume_manifest = json.loads(resume_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as exc:
+                resume_manifest = read_json_object_file(resume_path)
+            except ValueError:
                 return self._batch_check_error(
                     arguments,
                     summary="Batch resume manifest could not be read.",
-                    errors=[str(exc)],
+                    errors=["Batch resume manifest could not be read safely."],
                     is_dry_run=dry_run,
                     batch_id=batch_id,
                     batch_root=batch_root,
@@ -314,6 +341,7 @@ class McpBatchToolsMixin:
             candidate_roots.extend(Path(path) for path in runtime_root_lookup_candidates())
 
         seen = set()
+        unsafe_manifest_found = False
         for root in candidate_roots:
             resolved_root = Path(root).expanduser().resolve()
             for jobs_dir_name in ("mcp_jobs", "mcp_project_jobs"):
@@ -323,7 +351,13 @@ class McpBatchToolsMixin:
                     continue
                 seen.add(key)
                 if manifest_path.exists():
-                    return manifest_path
+                    try:
+                        return resolve_runtime_manifest_file(resolved_root, manifest_path)
+                    except ValueError:
+                        unsafe_manifest_found = True
+                        continue
+        if unsafe_manifest_found:
+            return Path(candidate_roots[0]).expanduser().resolve() / "mcp_jobs" / ".manifest-unavailable.json"
         return Path(candidate_roots[0]).expanduser().resolve() / "mcp_jobs" / job_id / "manifest.json"
 
     @staticmethod

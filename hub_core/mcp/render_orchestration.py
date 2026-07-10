@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import traceback
+import uuid
 from contextlib import contextmanager, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,9 @@ from hub_core.mcp.render_geometry import (
     _read_geometry_sidecar,  # noqa: F401
 )
 from hub_core.project_discovery import ProjectDiscoveryService
+from hub_core.provenance_inputs import expand_project_input_files
+from hub_core.redaction import redact_text
+from hub_core.process_supervisor import supervise_process
 
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0
@@ -143,17 +147,40 @@ def _write_manifest_and_status(
     _ensure_no_symlinked_runtime_path(manifest_path)
     _ensure_no_symlinked_runtime_path(status_path)
     _ensure_no_symlinked_runtime_path(latest_dir)
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    status_path.write_text(
-        json.dumps(status_payload, ensure_ascii=False, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
     latest_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(manifest_path, latest_dir / "manifest.json")
-    shutil.copy2(status_path, latest_dir / "status.json")
+    latest_manifest_path = latest_dir / "manifest.json"
+    latest_status_path = latest_dir / "status.json"
+    _ensure_no_symlinked_runtime_path(latest_manifest_path)
+    _ensure_no_symlinked_runtime_path(latest_status_path)
+    _atomic_json_write(manifest_path, manifest)
+    _atomic_json_write(status_path, status_payload)
+    _atomic_json_write(latest_manifest_path, manifest)
+    _atomic_json_write(latest_status_path, status_payload)
+
+
+def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
+    """Write one runtime JSON leaf atomically after validating its full path."""
+    _ensure_no_symlinked_runtime_path(path)
+    if path.exists() and path.is_symlink():
+        raise RuntimeError(f"Runtime write target must not be a symlink: {path}")
+    encoded = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
+    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(temporary_path, flags | nofollow, 0o600)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _ensure_no_symlinked_runtime_path(path)
+        os.replace(temporary_path, path)
+    except OSError:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def _first_symlink_component(path: Path) -> Path | None:
@@ -437,6 +464,50 @@ class McpRenderOrchestrationMixin:
         **extra: Any,
     ) -> dict[str, Any]:
         geometry_diagnostics = extra.pop("geometry_diagnostics", _geometry_stub("no figure"))
+        persist_failure = bool(extra.pop("persist_failure", False)) and not dry_run
+        provenance = extra.pop(
+            "provenance",
+            {"attempt": arguments.get("_mcp_attempt_provenance", {})},
+        )
+        style_summary = extra.get("style_summary", {})
+        if not isinstance(style_summary, dict):
+            style_summary = {}
+        created_paths: list[str] = []
+        manifest_path = job_root / "manifest.json"
+        status_path = job_root / "status.json"
+        latest_dir = self.runtime_root / "_latest" / "mcp_project_render"
+        snapshot_project_path = job_root / "project"
+        if persist_failure:
+            unsafe_path = _first_symlink_component(job_root) or _first_symlink_component(latest_dir)
+            if unsafe_path is None:
+                layout_report = extra.get(
+                    "layout_report",
+                    _layout_report_from_geometry(geometry_diagnostics, failure_stage=failure_stage),
+                )
+                created_paths = self._write_project_render_failure_artifacts(
+                    job_id=job_id,
+                    job_root=job_root,
+                    snapshot_project_path=snapshot_project_path,
+                    selected_figure=extra.get("selected_figure", {}),
+                    manifest_path=manifest_path,
+                    status_path=status_path,
+                    latest_dir=latest_dir,
+                    created_paths=[],
+                    failure_stage=failure_stage,
+                    resolution_hint=resolution_hint,
+                    baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+                    provenance=provenance,
+                    style_summary=style_summary,
+                    layout_report=layout_report,
+                )
+                extra["manifest_path"] = self._public_runtime_path(manifest_path)
+                extra["status_path"] = self._public_runtime_path(status_path)
+                extra["latest_dir"] = self._public_runtime_path(latest_dir)
+                extra["latest_alias"] = self._public_runtime_path(latest_dir)
+            else:
+                errors = [*errors, "Failure artifacts were not persisted because the runtime path is unsafe."]
+        extra["created_paths"] = self._public_runtime_paths(created_paths)
+        extra = self._public_failure_extra(extra)
         return self._envelope(
             "figops.render_project_figure",
             arguments,
@@ -446,10 +517,10 @@ class McpRenderOrchestrationMixin:
             manual_review_needed=True,
             is_dry_run=dry_run,
             job_id=job_id,
-            job_root=str(job_root),
+            job_root=self._public_runtime_path(job_root),
             artifact_status="failed",
             baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
-            provenance={},
+            provenance=provenance,
             geometry_diagnostics=geometry_diagnostics,
             layout_report=extra.pop(
                 "layout_report",
@@ -459,6 +530,35 @@ class McpRenderOrchestrationMixin:
             resolution_hint=resolution_hint,
             **extra,
         )
+
+    def _public_runtime_path(self, path: Path) -> str:
+        """Expose runtime artifacts only as runtime URIs, never host-local paths."""
+        resolved = path.resolve()
+        if not resolved.is_relative_to(self.runtime_root.resolve()):
+            return ""
+        return self._runtime_uri(resolved)
+
+    def _public_runtime_paths(self, paths: list[str]) -> list[str]:
+        return [public for raw_path in paths if (public := self._public_runtime_path(Path(raw_path)))]
+
+    def _public_failure_extra(self, extra: dict[str, Any]) -> dict[str, Any]:
+        path_keys = {
+            "job_root",
+            "snapshot_project_path",
+            "output_path",
+            "config_path",
+            "manifest_path",
+            "status_path",
+            "latest_dir",
+            "latest_alias",
+        }
+        for key in path_keys:
+            raw_value = extra.get(key)
+            if isinstance(raw_value, str) and raw_value:
+                if raw_value.startswith("runtime://"):
+                    continue
+                extra[key] = self._public_runtime_path(Path(raw_value))
+        return extra
 
     def _copy_project_snapshot(
         self,
@@ -499,8 +599,16 @@ class McpRenderOrchestrationMixin:
         script_rel = str(selected_figure.get("script") or "").split("::")[0]
         if script_rel:
             copy_relative_path(script_rel)
-        for input_rel in self._selected_figure_declared_inputs(selected_figure):
-            copy_relative_path(input_rel)
+        try:
+            input_paths = expand_project_input_files(
+                source_project,
+                self._selected_figure_declared_inputs(selected_figure),
+                require_matches=True,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            raise ProjectRenderExportError(str(exc)) from exc
+        for input_path in input_paths:
+            copy_relative_path(input_path.relative_to(source_project.resolve()).as_posix())
         for standard_folder in ("hub_scripts", "results/data"):
             if (source_project / standard_folder).is_dir():
                 copy_relative_path(standard_folder)
@@ -575,40 +683,43 @@ class McpRenderOrchestrationMixin:
             }
         )
         Path(env["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
-        try:
-            completed = subprocess.run(
-                [sys.executable, str(script_path)],
-                cwd=str(snapshot_project_path),
-                text=True,
-                capture_output=True,
-                check=False,
-                timeout=MCP_RENDER_TIMEOUT_SECONDS,
-                env=env,
-            )
-        except subprocess.TimeoutExpired as exc:
+        output_lines: list[str] = []
+
+        def capture_output(line: str) -> None:
+            output_lines.append(line)
+            if len(output_lines) > SCRIPT_OUTPUT_TAIL_LINES:
+                del output_lines[:-SCRIPT_OUTPUT_TAIL_LINES]
+
+        completed = supervise_process(
+            [sys.executable, str(script_path)],
+            cwd=str(snapshot_project_path),
+            env=env,
+            timeout_seconds=MCP_RENDER_TIMEOUT_SECONDS,
+            on_output=capture_output,
+        )
+        script_output = "".join(output_lines)
+        if completed.timed_out:
             self._write_project_script_output(
                 script_output_path,
                 returncode=None,
-                stdout=exc.stdout,
-                stderr=exc.stderr,
+                stdout=script_output,
+                stderr=completed.failure or "",
                 timed_out=True,
             )
-            raise TimeoutError(f"Figure script timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.") from exc
+            raise TimeoutError(f"Figure script timed out after {MCP_RENDER_TIMEOUT_SECONDS:.1f} seconds.")
         self._write_project_script_output(
             script_output_path,
             returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
+            stdout=script_output,
+            stderr=completed.failure or "",
             timed_out=False,
         )
-        if completed.returncode != 0:
-            message = (
-                completed.stderr.strip() or completed.stdout.strip() or f"Figure script exited {completed.returncode}."
-            )
+        if completed.failure or completed.returncode != 0:
+            message = completed.failure or script_output.strip() or f"Figure script exited {completed.returncode}."
             raise ProjectRenderScriptError(
                 message,
                 returncode=completed.returncode,
-                script_output=self._script_output_tail(completed.stdout, completed.stderr),
+                script_output=self._script_output_tail(script_output, completed.failure or ""),
             )
 
     @staticmethod
@@ -629,7 +740,7 @@ class McpRenderOrchestrationMixin:
             )
             if part
         )
-        lines = [line.rstrip() for line in combined.splitlines() if line.strip()]
+        lines = [redact_text(line.rstrip()) for line in combined.splitlines() if line.strip()]
         return lines[-SCRIPT_OUTPUT_TAIL_LINES:]
 
     @classmethod
@@ -666,14 +777,14 @@ class McpRenderOrchestrationMixin:
     def _project_failure_script_output(self, exc: Exception, job_root: Path) -> list[str]:
         explicit = getattr(exc, "script_output", None)
         if isinstance(explicit, list) and explicit:
-            return [str(line) for line in explicit if str(line).strip()]
+            return [redact_text(str(line)) for line in explicit if str(line).strip()]
         return self._read_project_script_output(job_root)
 
     @staticmethod
     def _exception_error_lines(exc: Exception) -> list[str]:
         lines = [line.rstrip() for line in traceback.format_exception(type(exc), exc, exc.__traceback__)]
-        compact = [line for line in lines if line.strip()]
-        message = str(exc).strip()
+        compact = [redact_text(line) for line in lines if line.strip()]
+        message = redact_text(str(exc).strip())
         tail = compact[-SCRIPT_OUTPUT_TAIL_LINES:]
         if message:
             tail = [line for line in tail if line != message]
@@ -717,6 +828,8 @@ class McpRenderOrchestrationMixin:
         failure_stage: str,
         resolution_hint: str,
         baseline_comparison: dict[str, Any],
+        provenance: dict[str, Any],
+        style_summary: dict[str, Any],
         script_output: list[str] | None = None,
         layout_report: dict[str, Any] | None = None,
     ) -> list[str]:
@@ -729,6 +842,7 @@ class McpRenderOrchestrationMixin:
         created = list(created_paths)
         manifest = {
             "job_id": job_id,
+            "renderer_surface": "figops.render_project_figure",
             "job_root": str(job_root),
             "snapshot_project_path": str(snapshot_project_path),
             "selected_figure": selected_figure,
@@ -742,7 +856,7 @@ class McpRenderOrchestrationMixin:
             "created_paths": created,
             "modified_paths": [],
             "skipped_paths": [],
-            "style_summary": {},
+            "style_summary": style_summary,
             "visual_preflight_status": {"passed": False, "checks": [], "warnings": ["render_execution_failed"]},
             "layout_report": layout_report,
             "failure_stage": failure_stage,
@@ -751,6 +865,7 @@ class McpRenderOrchestrationMixin:
             "artifact_status": "failed",
             "baseline_comparison": baseline_comparison,
             "manual_review_needed": True,
+            "provenance": provenance,
         }
         status_payload = self._render_status_payload(
             job_id=job_id,
@@ -766,6 +881,8 @@ class McpRenderOrchestrationMixin:
         if script_output:
             status_payload["script_output"] = script_output
         status_payload["layout_report"] = layout_report
+        status_payload["provenance"] = provenance
+        status_payload["style_summary"] = style_summary
         return self._write_failure_artifacts_to_disk(
             manifest, manifest_path, status_payload, status_path, latest_dir, created
         )

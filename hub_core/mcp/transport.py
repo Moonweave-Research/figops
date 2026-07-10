@@ -17,6 +17,8 @@ from hub_core.mcp.errors import (
 )
 
 MCP_MAX_MESSAGE_BYTES = 16 * 1024 * 1024
+MCP_MAX_HEADER_BYTES = 8 * 1024
+MCP_MAX_HEADER_COUNT = 64
 
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = frozenset({"2024-11-05", "2025-03-26", DEFAULT_PROTOCOL_VERSION})
@@ -40,6 +42,7 @@ def run_stdio_server(
 
     while True:
         framing = "content-length"
+        terminate_after_response = False
         try:
             request, framing = _read_stdio_message(in_stream)
             if request is None:
@@ -51,12 +54,15 @@ def run_stdio_server(
         except _StdioParseError as exc:
             framing = exc.framing
             response = _json_rpc_error(None, JSONRPC_PARSE_ERROR, f"Parse error: {exc.error}")
+            terminate_after_response = exc.fatal
         except json.JSONDecodeError as exc:
             response = _json_rpc_error(None, JSONRPC_PARSE_ERROR, f"Parse error: {exc}")
         except Exception as exc:
             response = _json_rpc_error(None, JSONRPC_INTERNAL_ERROR, str(exc))
         if response is not None:
             _write_stdio_message(out_stream, response, framing)
+        if terminate_after_response:
+            return 1
     return 0
 
 
@@ -331,40 +337,48 @@ def _json_rpc_error(request_id: Any, code: int, message: str) -> dict[str, Any]:
     }
 
 
-class _StdioParseError(Exception):
+class _StdioParseError(ValueError):
     """Carries the detected framing so an error reply matches the client's wire format."""
 
-    def __init__(self, error: ValueError, framing: str) -> None:
+    def __init__(self, error: ValueError, framing: str, *, fatal: bool = False) -> None:
         super().__init__(str(error))
         self.error = error
         self.framing = framing
+        self.fatal = fatal
 
 
 def _read_stdio_message(stream: Any) -> tuple[dict[str, Any] | list[Any] | None, str]:
-    first_line = stream.readline()
+    first_line = stream.readline(MCP_MAX_MESSAGE_BYTES + 2)
     if first_line == b"" or first_line == "":
         return None, "content-length"
     if isinstance(first_line, str):
         first_line = first_line.encode("utf-8")
 
     if first_line.lstrip().startswith((b"{", b"[")):
+        encoded_payload = first_line.rstrip(b"\r\n")
+        if len(encoded_payload) > MCP_MAX_MESSAGE_BYTES:
+            raise _StdioParseError(
+                ValueError(f"newline MCP message exceeds {MCP_MAX_MESSAGE_BYTES}-byte limit."),
+                "newline",
+                fatal=True,
+            )
         try:
             return json.loads(first_line.decode("utf-8")), "newline"
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise _StdioParseError(exc, "newline") from exc
 
-    headers = _read_headers(stream, first_line)
-    content_length = headers.get("content-length")
-    if content_length is None:
-        raise ValueError("Missing Content-Length header.")
     try:
+        headers = _read_headers(stream, first_line)
+        content_length = headers.get("content-length")
+        if content_length is None:
+            raise ValueError("Missing Content-Length header.")
         expected_size = int(content_length)
+        # Reject before reading: a negative size makes stream.read(-1) buffer the whole stream,
+        # and an oversized size invites a single huge allocation - both memory-exhaustion DoS.
+        if expected_size < 0 or expected_size > MCP_MAX_MESSAGE_BYTES:
+            raise ValueError(f"Content-Length out of range: {expected_size} (allowed 0..{MCP_MAX_MESSAGE_BYTES}).")
     except ValueError as exc:
-        raise ValueError(f"Invalid Content-Length header: {content_length}") from exc
-    # Reject before reading: a negative size makes stream.read(-1) buffer the whole stream,
-    # and an oversized size invites a single huge allocation - both memory-exhaustion DoS.
-    if expected_size < 0 or expected_size > MCP_MAX_MESSAGE_BYTES:
-        raise ValueError(f"Content-Length out of range: {expected_size} (allowed 0..{MCP_MAX_MESSAGE_BYTES}).")
+        raise _StdioParseError(exc, "content-length", fatal=True) from exc
     body = stream.read(expected_size)
     if isinstance(body, str):
         body = body.encode("utf-8")
@@ -376,12 +390,20 @@ def _read_stdio_message(stream: Any) -> tuple[dict[str, Any] | list[Any] | None,
 def _read_headers(stream: Any, first_line: bytes) -> dict[str, str]:
     headers: dict[str, str] = {}
     line = first_line
+    total_bytes = 0
+    header_count = 0
     while line not in (b"", b"\n", b"\r\n"):
+        if len(line) > MCP_MAX_HEADER_BYTES:
+            raise ValueError(f"MCP header line exceeds {MCP_MAX_HEADER_BYTES}-byte limit.")
+        total_bytes += len(line)
+        header_count += 1
+        if total_bytes > MCP_MAX_HEADER_BYTES or header_count > MCP_MAX_HEADER_COUNT:
+            raise ValueError("MCP headers exceed the configured size or count limit.")
         text = line.decode("ascii", errors="replace").strip()
         if ":" in text:
             key, value = text.split(":", 1)
             headers[key.lower()] = value.strip()
-        line = stream.readline()
+        line = stream.readline(MCP_MAX_HEADER_BYTES + 1)
         if isinstance(line, str):
             line = line.encode("utf-8")
     return headers

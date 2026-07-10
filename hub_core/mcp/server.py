@@ -34,6 +34,7 @@ from .schemas import (
     list_tool_definitions as schema_list_tool_definitions,
 )
 from .security import McpSecurityMixin, is_write_tool_name
+from hub_core.redaction import redact_secrets, redact_text
 from .tools.batch_tools import McpBatchToolsMixin
 from .tools.project_tools import McpProjectToolsMixin
 from .tools.read_tools import McpReadToolsMixin
@@ -126,7 +127,7 @@ class FigOpsMCPServer(
                 arguments,
                 status="error",
                 summary=f"{name} failed.",
-                errors=[str(exc)],
+                errors=[redact_text(str(exc))],
                 manual_review_needed=True,
                 error_category=entry.category,
             )
@@ -181,6 +182,14 @@ class FigOpsMCPServer(
     ) -> dict[str, Any]:
         operation_id = self._operation_id(tool_name, arguments)
         script_output = extra.pop("script_output", None)
+        redacted_extra = redact_secrets(extra)
+        public_extra = (
+            self._sanitize_public_payload(redacted_extra, arguments)
+            if status == "error" and tool_name == "figops.render_project_figure"
+            else redacted_extra
+        )
+        if not isinstance(public_extra, dict):
+            raise RuntimeError("MCP envelope extras must be a mapping.")
         result = {
             "status": status,
             "operation_id": operation_id,
@@ -190,15 +199,15 @@ class FigOpsMCPServer(
             "modified_paths": modified_paths or [],
             "skipped_paths": skipped_paths or [],
             "artifact_resources": artifact_resources or [],
-            "warnings": [self._sanitize_diagnostic_text(warning, arguments) for warning in (warnings or [])],
-            "errors": [self._sanitize_diagnostic_text(error, arguments) for error in (errors or [])],
-            "script_output": [self._sanitize_diagnostic_text(line, arguments) for line in (script_output or [])],
+            "warnings": [self._sanitize_diagnostic_text(redact_text(str(warning)), arguments) for warning in (warnings or [])],
+            "errors": [self._sanitize_diagnostic_text(redact_text(str(error)), arguments) for error in (errors or [])],
+            "script_output": [self._sanitize_diagnostic_text(redact_text(str(line)), arguments) for line in (script_output or [])],
             "manual_review_needed": manual_review_needed,
         }
         if status == "error":
             entry = infer_tool_error_entry(
                 error_category=error_category,
-                failure_stage=extra.get("failure_stage"),
+            failure_stage=public_extra.get("failure_stage"),
                 errors=result["errors"],
             )
             data = taxonomy_data(entry)
@@ -211,8 +220,18 @@ class FigOpsMCPServer(
             result["error_category"] = data["category"]
             result["error_code"] = error_code or str(data["code"])
             result["jsonrpc_code"] = jsonrpc_code if jsonrpc_code is not None else int(data["jsonrpc_code"])
-        result.update(extra)
+        result.update(public_extra)
         return result
+
+    def _sanitize_public_payload(self, value: object, arguments: dict[str, Any]) -> object:
+        """Recursively sanitize nested envelope extras without changing their JSON shape."""
+        if isinstance(value, dict):
+            return {str(key): self._sanitize_public_payload(item, arguments) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._sanitize_public_payload(item, arguments) for item in value]
+        if isinstance(value, str):
+            return self._sanitize_diagnostic_text(redact_text(value), arguments)
+        return value
 
     @staticmethod
     def _operation_id(tool_name: str, arguments: dict[str, Any]) -> str:

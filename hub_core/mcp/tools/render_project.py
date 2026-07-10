@@ -4,6 +4,7 @@ import shutil
 from typing import Any
 
 from hub_core.adapters import select_adapters
+from hub_core.attempt_provenance import build_attempt_provenance, update_attempt_provenance
 from hub_core.config_parser import master_execution_error, project_role, project_status, validate_config
 from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
 from hub_core.mcp import render_orchestration as render_helpers
@@ -14,16 +15,34 @@ class McpRenderProjectMixin:
     """Project-figure rendering MCP tool handlers."""
 
     def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        arguments = dict(arguments)
         dry_run = bool(arguments.get("dry_run", False))
         overwrite = bool(arguments.get("overwrite", False))
         job_id = self._render_job_id(arguments.get("job_id"))
+        selector_kind = "project_id" if arguments.get("project_id") else "project_path"
+        attempt = build_attempt_provenance(
+            surface="mcp",
+            step="plot",
+            selector_kind=selector_kind,
+            hub_path=self.hub_path,
+        )
+        arguments["_mcp_attempt_provenance"] = attempt
         self._activate_runtime_root_for_runtime_access()
         job_root = self._mcp_project_jobs_root() / job_id
+        project_resolved = False
+        safe_output_path = False
         try:
             project_path = self._resolve_project_render_path(arguments)
+            project_resolved = True
             loaded = self._load_project_config(project_path, allow_invalid=True)
             config = loaded["config"] if isinstance(loaded["config"], dict) else {}
             config_errors = validate_config(config) if isinstance(config, dict) else list(loaded["errors"])
+            config_source_path = project_path / str(loaded["config_relpath"] or "project_config.yaml")
+            update_attempt_provenance(
+                attempt,
+                config_path=config_source_path,
+                config_status="invalid" if config_errors else "valid",
+            )
             if config_errors:
                 return self._project_render_error(
                     arguments,
@@ -34,6 +53,7 @@ class McpRenderProjectMixin:
                     errors=config_errors,
                     failure_stage="CONFIG",
                     resolution_hint="Fix project_config.yaml before rendering this project figure.",
+                    persist_failure=True,
                 )
             if project_role(config) == "master":
                 return self._project_render_error(
@@ -45,6 +65,7 @@ class McpRenderProjectMixin:
                     errors=[master_execution_error(config)],
                     failure_stage="CONFIG",
                     resolution_hint="Select a declared execution module and render from that module project.",
+                    persist_failure=True,
                 )
             if project_status(config) == "legacy":
                 return self._project_render_error(
@@ -59,6 +80,7 @@ class McpRenderProjectMixin:
                         "Keep the retired project inspectable with inspect_project/validate_project, "
                         "or set project.status to active before rendering."
                     ),
+                    persist_failure=True,
                 )
             research_ops = validate_research_ops_contract(project_path, config)
             if research_ops["errors"]:
@@ -71,6 +93,7 @@ class McpRenderProjectMixin:
                     errors=research_ops["errors"],
                     failure_stage="CONFIG",
                     resolution_hint="Fix declared research-ops contracts or set an explicit opt-out before rendering.",
+                    persist_failure=True,
                 )
             adapters = select_adapters(config)
             if not validate_data_contract_preflight(
@@ -88,6 +111,7 @@ class McpRenderProjectMixin:
                     errors=["Data contract preflight failed for project render."],
                     failure_stage="VALIDATE",
                     resolution_hint="Fix declared data_contract inputs before rendering this project figure.",
+                    persist_failure=True,
                 )
             if not validate_data_contract(
                 project_path,
@@ -104,6 +128,7 @@ class McpRenderProjectMixin:
                     errors=["Data contract validation failed for project render."],
                     failure_stage="VALIDATE",
                     resolution_hint="Fix declared data_contract checks before rendering this project figure.",
+                    persist_failure=True,
                 )
             figures = self._project_figure_entries(config)
             selected, selection_errors = self._select_project_figure(
@@ -121,8 +146,10 @@ class McpRenderProjectMixin:
                     errors=selection_errors,
                     failure_stage="CONTRACT",
                     resolution_hint=f"Select one of: {self._figure_selector_summary(figures)}",
+                    persist_failure=True,
                 )
             output_relpath = self._project_relative_path(selected.get("output"), "figures[].output").as_posix()
+            safe_output_path = True
             style_summary = self._selected_figure_style_summary(config, selected, arguments)
             style_errors = self._render_style_errors(
                 style_summary["target_format"],
@@ -140,6 +167,8 @@ class McpRenderProjectMixin:
                     failure_stage="CONFIG",
                     resolution_hint="Use a supported target_format, output_format, and profile.",
                     selected_figure=self._public_selected_figure(selected),
+                    style_summary=style_summary,
+                    persist_failure=True,
                 )
         except ValueError as exc:
             return self._project_render_error(
@@ -151,6 +180,7 @@ class McpRenderProjectMixin:
                 errors=[str(exc)],
                 failure_stage="CONTRACT",
                 resolution_hint="Provide a valid project_id or project_path and figure selector.",
+                persist_failure=project_resolved and safe_output_path,
             )
         config_relpath = str(loaded["config_relpath"] or "project_config.yaml")
         source_project_path = self._public_project_path(project_path)
@@ -186,7 +216,7 @@ class McpRenderProjectMixin:
                 layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("dry_run")),
                 artifact_status="validated",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
-                provenance={},
+                provenance={"attempt": attempt},
                 failure_stage="",
                 resolution_hint="",
             )
@@ -320,6 +350,7 @@ class McpRenderProjectMixin:
                 selected_figure=selected,
                 style_summary=style_summary,
             )
+            provenance["attempt"] = attempt
             created_paths.extend([str(manifest_path), str(status_path)])
             manifest = render_helpers._build_manifest(
                 job_id=job_id,
@@ -328,7 +359,7 @@ class McpRenderProjectMixin:
                 status_path=status_path,
                 latest_dir=latest_dir,
                 figures=figures_out,
-                created_paths=created_paths,
+                created_paths=self._public_runtime_paths(created_paths),
                 style_summary=style_summary,
                 visual_preflight_status=preflight,
                 geometry_diagnostics=geometry_diagnostics,
@@ -403,6 +434,8 @@ class McpRenderProjectMixin:
                     failure_stage=failure_stage,
                     resolution_hint=resolution_hint,
                     baseline_comparison=baseline_comparison,
+                    provenance={"attempt": attempt},
+                    style_summary=style_summary,
                     script_output=script_output,
                     layout_report=failure_layout_report,
                 )
@@ -411,7 +444,7 @@ class McpRenderProjectMixin:
                 arguments,
                 status="error",
                 summary="Project figure render execution failed.",
-                created_paths=created_paths,
+                created_paths=self._public_runtime_paths(created_paths),
                 errors=self._exception_error_lines(exc),
                 script_output=script_output,
                 manual_review_needed=True,
@@ -419,22 +452,22 @@ class McpRenderProjectMixin:
                 job_id=job_id,
                 project_id=project_id,
                 source_project_path=source_project_path,
-                job_root=str(job_root),
-                snapshot_project_path=str(snapshot_project_path),
+                job_root=self._public_runtime_path(job_root),
+                snapshot_project_path=self._public_runtime_path(snapshot_project_path),
                 selected_figure=selected_public,
-                output_path=str(output_path),
-                config_path=str(config_path),
-                manifest_path=str(manifest_path) if job_root.exists() else "",
-                status_path=str(status_path) if job_root.exists() else "",
-                latest_dir=str(latest_dir) if job_root.exists() else "",
-                latest_alias=str(latest_dir) if job_root.exists() else "",
+                output_path=self._public_runtime_path(output_path),
+                config_path=self._public_runtime_path(config_path),
+                manifest_path=self._public_runtime_path(manifest_path) if job_root.exists() else "",
+                status_path=self._public_runtime_path(status_path) if job_root.exists() else "",
+                latest_dir=self._public_runtime_path(latest_dir) if job_root.exists() else "",
+                latest_alias=self._public_runtime_path(latest_dir) if job_root.exists() else "",
                 style_summary=style_summary,
                 visual_preflight_status={"passed": False, "checks": [], "warnings": ["render_execution_failed"]},
                 geometry_diagnostics=failure_geometry,
                 layout_report=failure_layout_report,
                 artifact_status="failed",
                 baseline_comparison=baseline_comparison,
-                provenance={},
+                provenance={"attempt": attempt},
                 failure_stage=failure_stage,
                 resolution_hint=resolution_hint,
             )
