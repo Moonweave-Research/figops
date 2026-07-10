@@ -10,9 +10,9 @@ from typing import Final, Mapping, Sequence
 
 from tests.fixture_tools.journal_style_delta_validation import (
     PUBLIC_TRACKS,
+    JournalStyleDeltaError,
     JsonObject,
     JsonValue,
-    JournalStyleDeltaError,
     check_counts,
     diagnostic_delta,
     entry_for_track,
@@ -58,8 +58,16 @@ def build_style_delta_report(request: StyleDeltaRequest) -> JsonObject:
     baseline = entries.get(request.baseline_track)
     if baseline is None:
         raise JournalStyleDeltaError(f"missing baseline track: {request.baseline_track}")
-    render_pack_root = request.render_pack_summary_path.resolve().parent if request.render_pack_summary_path is not None else None
-    context = DeltaContext(matrix, request.baseline_track, baseline, track_tokens(matrix, request.baseline_track), render_pack_root)
+    render_pack_root = (
+        request.render_pack_summary_path.resolve().parent if request.render_pack_summary_path is not None else None
+    )
+    context = DeltaContext(
+        matrix,
+        request.baseline_track,
+        baseline,
+        track_tokens(matrix, request.baseline_track),
+        render_pack_root,
+    )
     report: JsonObject = {
         "schema_version": "journal_style_delta_report/1",
         "report_kind": "style-delta",
@@ -72,7 +80,9 @@ def build_style_delta_report(request: StyleDeltaRequest) -> JsonObject:
             "evidence_role": "comparison_evidence_only",
             "publishable_verdict": "not_a_publishable_verdict",
             "quality_threshold_policy": "no_arbitrary_pixel_difference_thresholds",
-            "review_requirement": "Human review remains required; this report only compares encoded tokens and renderer diagnostics.",
+            "review_requirement": (
+                "Human review remains required; this report only compares encoded tokens and renderer diagnostics."
+            ),
         },
     }
     validate_style_delta_report(report, expected_tracks=tracks)
@@ -83,7 +93,12 @@ def render_markdown_summary(report: Mapping[str, JsonValue]) -> str:
     raw_deltas = report.get("track_deltas")
     if not isinstance(raw_deltas, list):
         raise JournalStyleDeltaError("track_deltas must be a list")
-    lines = ["# Journal Style Delta Evidence", "", "This report compares encoded tokens and renderer diagnostics only; it is not a publishable verdict.", ""]
+    lines = [
+        "# Journal Style Delta Evidence",
+        "",
+        "This report compares encoded tokens and renderer diagnostics only; it is not a publishable verdict.",
+        "",
+    ]
     for raw_delta in raw_deltas:
         if not isinstance(raw_delta, dict):
             raise JournalStyleDeltaError("track_delta must be an object")
@@ -139,15 +154,33 @@ def _delta(track: str, entry: Mapping[str, JsonValue], context: DeltaContext) ->
         "reference_track": context.baseline_track,
         "token_delta": token_delta(context.baseline_tokens, track_tokens(context.matrix, track)),
         "render_delta": {
-            "output_dimensions": {"style_summary": named_delta(context.baseline_entry.get("style_summary"), entry.get("style_summary"))},
-            "layout_density": {"layout_report": named_delta(check_counts(context.baseline_entry, "layout_report"), check_counts(entry, "layout_report"))},
-            "legend_behavior": {"legend_checks": named_delta(notable_checks(context.baseline_entry, "layout_report"), notable_checks(entry, "layout_report"))},
+            "output_dimensions": {
+                "style_summary": named_delta(
+                    context.baseline_entry.get("style_summary"),
+                    entry.get("style_summary"),
+                )
+            },
+            "layout_density": {
+                "layout_report": named_delta(
+                    check_counts(context.baseline_entry, "layout_report"),
+                    check_counts(entry, "layout_report"),
+                )
+            },
+            "legend_behavior": {
+                "legend_checks": named_delta(
+                    notable_checks(context.baseline_entry, "layout_report"),
+                    notable_checks(entry, "layout_report"),
+                )
+            },
             "rendered_output_metrics": _metrics(entry, context.render_pack_root),
             "artifact_paths": _paths(entry, context.render_pack_root),
         },
         "diagnostic_delta": {
             "status_delta": named_delta(context.baseline_entry.get("status"), entry.get("status")),
-            "manual_review_delta": named_delta(context.baseline_entry.get("manual_review_needed"), entry.get("manual_review_needed")),
+            "manual_review_delta": named_delta(
+                context.baseline_entry.get("manual_review_needed"),
+                entry.get("manual_review_needed"),
+            ),
             "geometry_diagnostics": diagnostic_delta(context.baseline_entry, entry, "geometry_diagnostics"),
             "layout_report": diagnostic_delta(context.baseline_entry, entry, "layout_report"),
         },
@@ -203,10 +236,22 @@ def _scope(request: StyleDeltaRequest, tracks: Sequence[str]) -> JsonObject:
         raw_classes = read_json_object(request.manifest_path).get("fixture_classes")
         if isinstance(raw_classes, list):
             dataset = next(
-                (str(item.get("csv_path")) for item in raw_classes if isinstance(item, dict) and item.get("id") == request.fixture_id and item.get("csv_path")),
+                (
+                    str(item.get("csv_path"))
+                    for item in raw_classes
+                    if isinstance(item, dict)
+                    and item.get("id") == request.fixture_id
+                    and item.get("csv_path")
+                ),
                 dataset,
             )
-    return {"fixture_id": request.fixture_id, "input_dataset": dataset, "renderer_surface": "figops.render_csv_graph", "output_format": "png", "tracks": list(tracks)}
+    return {
+        "fixture_id": request.fixture_id,
+        "input_dataset": dataset,
+        "renderer_surface": "figops.render_csv_graph",
+        "output_format": "png",
+        "tracks": list(tracks),
+    }
 
 
 def _rationale(matrix: Mapping[str, JsonValue], track: str) -> JsonObject:
@@ -222,14 +267,31 @@ def _rationale(matrix: Mapping[str, JsonValue], track: str) -> JsonObject:
         "summary": require_text(observed[0], "item"),
         "rationale_category": "observed_visual_language",
         "evidence_basis": [item for item in evidence if item],
-        "unsupported_or_deferred": data.get("unsupported_or_deferred") if isinstance(data.get("unsupported_or_deferred"), list) else [],
+        "unsupported_or_deferred": (
+            data.get("unsupported_or_deferred")
+            if isinstance(data.get("unsupported_or_deferred"), list)
+            else []
+        ),
         "claim_boundary": "publication-oriented comparison evidence, not a publishable verdict",
     }
 
 
 def _metrics(entry: Mapping[str, JsonValue], render_pack_root: Path | None) -> JsonObject:
-    raw_path = next((path for key in SUMMARY_ARTIFACT_PATH_KEYS[:2] if isinstance((path := entry.get(key)), str) and path), None)
-    path = _resolve_summary_path(raw_path, render_pack_root, "output") if render_pack_root is not None and raw_path is not None else Path(raw_path) if raw_path is not None else None
+    raw_path = next(
+        (
+            path
+            for key in SUMMARY_ARTIFACT_PATH_KEYS[:2]
+            if isinstance((path := entry.get(key)), str) and path
+        ),
+        None,
+    )
+    path = (
+        _resolve_summary_path(raw_path, render_pack_root, "output")
+        if render_pack_root is not None and raw_path is not None
+        else Path(raw_path)
+        if raw_path is not None
+        else None
+    )
     width, height = _png_size(path) if path is not None and path.is_file() else (None, None)
     return {
         "width_px": width or 1,
@@ -271,7 +333,11 @@ def _floors(delta: Mapping[str, JsonValue]) -> str:
     for group in ("font_floor_tokens", "line_floor_tokens", "dimension_tokens"):
         raw_group = delta.get(group)
         if isinstance(raw_group, dict):
-            parts.extend(f"{key}={raw_delta.get('candidate')}" for key, raw_delta in raw_group.items() if isinstance(raw_delta, dict))
+            parts.extend(
+                f"{key}={raw_delta.get('candidate')}"
+                for key, raw_delta in raw_group.items()
+                if isinstance(raw_delta, dict)
+            )
     return ", ".join(parts)
 
 

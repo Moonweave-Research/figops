@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from hub_core.redaction import redact_secrets, redact_text
+
 from .config import McpServerConfig
 from .errors import (
     DISABLED_ERROR,
@@ -34,7 +36,6 @@ from .schemas import (
     list_tool_definitions as schema_list_tool_definitions,
 )
 from .security import McpSecurityMixin, is_write_tool_name
-from hub_core.redaction import redact_secrets, redact_text
 from .tools.batch_tools import McpBatchToolsMixin
 from .tools.project_tools import McpProjectToolsMixin
 from .tools.read_tools import McpReadToolsMixin
@@ -199,9 +200,16 @@ class FigOpsMCPServer(
             "modified_paths": modified_paths or [],
             "skipped_paths": skipped_paths or [],
             "artifact_resources": artifact_resources or [],
-            "warnings": [self._sanitize_diagnostic_text(redact_text(str(warning)), arguments) for warning in (warnings or [])],
-            "errors": [self._sanitize_diagnostic_text(redact_text(str(error)), arguments) for error in (errors or [])],
-            "script_output": [self._sanitize_diagnostic_text(redact_text(str(line)), arguments) for line in (script_output or [])],
+            "warnings": [
+                self._sanitize_diagnostic_text(redact_text(str(warning)), arguments)
+                for warning in (warnings or [])
+            ],
+            "errors": [
+                self._sanitize_diagnostic_text(redact_text(str(error)), arguments) for error in (errors or [])
+            ],
+            "script_output": [
+                self._sanitize_diagnostic_text(redact_text(str(line)), arguments) for line in (script_output or [])
+            ],
             "manual_review_needed": manual_review_needed,
         }
         if status == "error":

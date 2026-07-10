@@ -14,8 +14,8 @@ HUB_ROOT = Path(__file__).resolve().parents[2]
 if str(HUB_ROOT) not in sys.path:
     sys.path.insert(0, str(HUB_ROOT))
 
-from tests.fixture_tools.journal_style_delta import StyleDeltaRequest, build_style_delta_report
-from tests.fixture_tools.journal_style_delta_validation import JsonObject, JsonValue, check_counts
+from tests.fixture_tools.journal_style_delta import StyleDeltaRequest, build_style_delta_report  # noqa: E402
+from tests.fixture_tools.journal_style_delta_validation import JsonObject, JsonValue, check_counts  # noqa: E402
 
 FIXTURE_ROOT = HUB_ROOT / "tests" / "fixtures" / "journal_tracks"
 MANIFEST_PATH = FIXTURE_ROOT / "manifest.json"
@@ -72,7 +72,11 @@ def _render_fixture(server, fixture: Mapping[str, JsonValue], track: str, output
     return result
 
 
-def _write_contact_sheet(summary: Mapping[str, JsonValue], style_reports: Mapping[str, JsonObject], contact_sheet: Path) -> None:
+def _write_contact_sheet(
+    summary: Mapping[str, JsonValue],
+    style_reports: Mapping[str, JsonObject],
+    contact_sheet: Path,
+) -> None:
     cards = []
     base = contact_sheet.parent.resolve()
     raw_entries = summary["entries"]
@@ -206,7 +210,10 @@ def main() -> int:
     fixture_ids = [str(fixture["id"]) for fixture in selected_fixtures]
     style_reports = _build_style_reports(summary_path, fixture_ids)
     style_delta_summary_path = output_dir / "style_delta_summary.json"
-    style_delta_summary_path.write_text(json.dumps(_style_delta_summary(style_reports), indent=2, sort_keys=True), encoding="utf-8")
+    style_delta_summary_path.write_text(
+        json.dumps(_style_delta_summary(style_reports), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
     if args.contact_sheet:
         _write_contact_sheet(summary, style_reports, Path(args.contact_sheet).resolve())
     print(

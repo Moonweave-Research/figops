@@ -14,8 +14,8 @@ from tests.fixture_tools.journal_style_delta_validation import (
     PUBLIC_TRACKS,
     RATIONALE_CATEGORIES,
     TOKEN_GROUPS,
-    JsonValue,
     JournalStyleDeltaError,
+    JsonValue,
     read_json_object,
     validate_style_delta_report,
 )
@@ -67,8 +67,19 @@ def test_style_delta_report_builds_all_public_track_deltas() -> None:
     for raw_delta in raw_deltas:
         assert isinstance(raw_delta, dict)
         assert set(raw_delta["token_delta"]) == set(TOKEN_GROUPS)
-        assert {"output_dimensions", "layout_density", "legend_behavior", "rendered_output_metrics", "artifact_paths"} <= set(raw_delta["render_delta"])
-        assert {"status_delta", "manual_review_delta", "geometry_diagnostics", "layout_report"} <= set(raw_delta["diagnostic_delta"])
+        assert {
+            "output_dimensions",
+            "layout_density",
+            "legend_behavior",
+            "rendered_output_metrics",
+            "artifact_paths",
+        } <= set(raw_delta["render_delta"])
+        assert {
+            "status_delta",
+            "manual_review_delta",
+            "geometry_diagnostics",
+            "layout_report",
+        } <= set(raw_delta["diagnostic_delta"])
         rationale = raw_delta["visual_language_rationale"]
         assert isinstance(rationale, dict)
         assert rationale["rationale_category"] == "observed_visual_language"

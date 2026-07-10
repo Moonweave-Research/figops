@@ -6,7 +6,6 @@ import multiprocessing
 import os
 import pickle
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -25,10 +24,10 @@ from hub_core.mcp.render_geometry import (
     _layout_report_from_geometry,
     _read_geometry_sidecar,  # noqa: F401
 )
+from hub_core.process_supervisor import supervise_process
 from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.provenance_inputs import expand_project_input_files
 from hub_core.redaction import redact_text
-from hub_core.process_supervisor import supervise_process
 
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0

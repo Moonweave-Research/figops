@@ -12,7 +12,14 @@ TOKEN_GROUPS: Final[Mapping[str, tuple[str, ...]]] = {
     "dimension_tokens": ("figure_width_mm", "figure_height_mm", "figure_column_widths_mm", "max_figure_height_mm"),
     "font_floor_tokens": ("min_font_size_pt",),
     "line_floor_tokens": ("min_line_width_pt", "main_line_width", "timeseries_line_width", "error_line_width"),
-    "marker_grammar_tokens": ("main_marker_size", "facet_marker_size", "main_marker_edge_width", "error_cap_size", "jitter_size", "violin_width"),
+    "marker_grammar_tokens": (
+        "main_marker_size",
+        "facet_marker_size",
+        "main_marker_edge_width",
+        "error_cap_size",
+        "jitter_size",
+        "violin_width",
+    ),
     "palette_tokens": ("default_colormap",),
     "legend_tokens": (),
 }
@@ -122,7 +129,10 @@ def track_data(matrix: Mapping[str, JsonValue], track: str) -> Mapping[str, Json
 
 
 def token_delta(reference: Mapping[str, JsonValue], candidate: Mapping[str, JsonValue]) -> JsonObject:
-    return {group: {key: named_delta(reference.get(key), candidate.get(key)) for key in keys} for group, keys in TOKEN_GROUPS.items()}
+    return {
+        group: {key: named_delta(reference.get(key), candidate.get(key)) for key in keys}
+        for group, keys in TOKEN_GROUPS.items()
+    }
 
 
 def diagnostic_delta(reference: Mapping[str, JsonValue], candidate: Mapping[str, JsonValue], key: str) -> JsonObject:
@@ -159,23 +169,45 @@ def notable_checks(entry: Mapping[str, JsonValue], key: str) -> list[JsonValue]:
     if isinstance(raw_report, dict):
         raw_checks = raw_report.get("checks")
         if isinstance(raw_checks, list):
-            names.extend(str(item.get("name", "unnamed_check")) for item in raw_checks if isinstance(item, dict) and item.get("passed") is not True)
-        names.extend(f"{name}:{len(value)}" for name in ("render_errors", "warnings", "overlaps", "clipped") if isinstance((value := raw_report.get(name)), list) and value)
+            names.extend(
+                str(item.get("name", "unnamed_check"))
+                for item in raw_checks
+                if isinstance(item, dict) and item.get("passed") is not True
+            )
+        names.extend(
+            f"{name}:{len(value)}"
+            for name in ("render_errors", "warnings", "overlaps", "clipped")
+            if isinstance((value := raw_report.get(name)), list) and value
+        )
     return names
 
 
 def named_delta(reference: JsonValue, candidate: JsonValue) -> JsonObject:
     if candidate == reference:
         delta: JsonValue = None
-    elif isinstance(reference, int | float) and not isinstance(reference, bool) and isinstance(candidate, int | float) and not isinstance(candidate, bool):
+    elif (
+        isinstance(reference, int | float)
+        and not isinstance(reference, bool)
+        and isinstance(candidate, int | float)
+        and not isinstance(candidate, bool)
+    ):
         delta = round(float(candidate) - float(reference), 6)
     else:
         delta = "changed"
-    return {"reference": reference, "candidate": candidate, "delta": delta, "interpretation": "same as reference" if delta is None else "differs from reference"}
+    return {
+        "reference": reference,
+        "candidate": candidate,
+        "delta": delta,
+        "interpretation": "same as reference" if delta is None else "differs from reference",
+    }
 
 
 def _require_groups(delta: Mapping[str, JsonValue], track: str) -> None:
-    groups = (require_object(delta, "token_delta"), require_object(delta, "render_delta"), require_object(delta, "diagnostic_delta"))
+    groups = (
+        require_object(delta, "token_delta"),
+        require_object(delta, "render_delta"),
+        require_object(delta, "diagnostic_delta"),
+    )
     for key in TOKEN_GROUPS:
         if not isinstance(groups[0].get(key), dict):
             raise JournalStyleDeltaError(f"{track} missing token_delta group: {key}")

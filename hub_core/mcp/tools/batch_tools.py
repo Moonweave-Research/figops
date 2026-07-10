@@ -122,9 +122,19 @@ class McpBatchToolsMixin:
         raw_status_path = str(manifest.get("status_path", ""))
         raw_latest_dir = str(manifest.get("latest_dir", ""))
         raw_latest_alias = str(manifest.get("latest_alias", ""))
-        public_status_path = self._runtime_uri(Path(raw_status_path)) if project_render_failure and raw_status_path else raw_status_path
-        public_latest_dir = self._runtime_uri(Path(raw_latest_dir)) if project_render_failure and raw_latest_dir else raw_latest_dir
-        public_latest_alias = self._runtime_uri(Path(raw_latest_alias)) if project_render_failure and raw_latest_alias else raw_latest_alias
+        public_status_path = (
+            self._runtime_uri(Path(raw_status_path))
+            if project_render_failure and raw_status_path
+            else raw_status_path
+        )
+        public_latest_dir = (
+            self._runtime_uri(Path(raw_latest_dir)) if project_render_failure and raw_latest_dir else raw_latest_dir
+        )
+        public_latest_alias = (
+            self._runtime_uri(Path(raw_latest_alias))
+            if project_render_failure and raw_latest_alias
+            else raw_latest_alias
+        )
         persisted_provenance = manifest.get("provenance") if isinstance(manifest.get("provenance"), dict) else {}
         public_provenance = (
             {"job_id": job_id, **persisted_provenance}
