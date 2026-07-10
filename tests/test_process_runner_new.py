@@ -158,15 +158,20 @@ class TestRunCommandRuntimeEnv(unittest.TestCase):
     def test_run_command_logs_streamed_stdout_before_timeout(self):
         script = "import time; print('stream-before-timeout', flush=True); time.sleep(5)"
         with tempfile.TemporaryDirectory() as project_dir:
+            started = time.monotonic()
             with self.assertLogs("hub_core.process_runner", level="INFO") as captured:
                 result = pr.run_command(
                     [sys.executable, "-c", script],
                     project_dir,
-                    timeout_seconds=0.1,
+                    timeout_seconds=1.0,
                 )
+            elapsed = time.monotonic() - started
 
         self.assertFalse(result)
-        self.assertIn("stream-before-timeout", "\n".join(captured.output))
+        output = "\n".join(captured.output)
+        self.assertIn("Execution timed out", output)
+        self.assertIn("stream-before-timeout", output)
+        self.assertLess(elapsed, 3.0)
 
     def test_run_command_retains_bounded_memory_for_high_output_failure(self):
         class Completed:
