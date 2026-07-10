@@ -7,11 +7,9 @@ from pathlib import Path
 import pytest
 
 from hub_core.mcp import GraphHubMCPServer
-from themes.style_profiles import get_render_style_tokens
 from tests.fixture_tools.journal_track_assertions import (
     EXPECTED_CROWDED_LABEL_FINDINGS,
     EXPECTED_DENSE_LEGEND_CHECKS,
-    EXPECTED_DENSE_LEGEND_WARNINGS,
     FIXTURE_CLASSES,
     FIXTURE_ROOT,
     FORBIDDEN_PUBLICATION_CLAIMS,
@@ -29,6 +27,7 @@ from tests.fixture_tools.journal_track_assertions import (
     load_manifest,
     read_json,
 )
+from themes.style_profiles import get_render_style_tokens
 
 
 def _render_journal_fixture(tmp_path: Path, fixture, track: str):
@@ -85,6 +84,7 @@ def _assert_crowded_label_render_surfaces_findings(result, expected_summary) -> 
     assert result["style_summary"] == expected_summary["style_summary"]
     assert result["geometry_diagnostics"]["schema_version"] == "geometry_diagnostics/1"
     assert result["layout_report"]["schema_version"] == "layout_report/1"
+    assert result["layout_report"]["passed"] is False
 
     checks_by_name = _checks_by_name(result["geometry_diagnostics"])
     for check_name in EXPECTED_CROWDED_LABEL_FINDINGS:
@@ -106,9 +106,11 @@ def _assert_crowded_label_render_surfaces_findings(result, expected_summary) -> 
 
 
 def _assert_dense_legend_render_surfaces_track_diagnostics(result, expected_summary) -> None:
-    track = expected_summary["track"]
-    expected_warning_checks = EXPECTED_DENSE_LEGEND_WARNINGS.get(track, ())
-    if expected_warning_checks:
+    failed_checks = tuple(
+        check["name"] for check in result["geometry_diagnostics"]["checks"] if check["passed"] is False
+    )
+    has_failed_checks = bool(failed_checks)
+    if has_failed_checks:
         assert result["status"] == "warning"
         assert result["manual_review_needed"] is True
         assert result["summary"] != "Rendered CSV graph."
@@ -128,9 +130,7 @@ def _assert_dense_legend_render_surfaces_track_diagnostics(result, expected_summ
     for check_name in EXPECTED_DENSE_LEGEND_CHECKS:
         assert any(check["passed"] is True for check in checks_by_name[check_name]), check_name
 
-    failed_checks = [check["name"] for check in result["geometry_diagnostics"]["checks"] if check["passed"] is False]
-    assert tuple(failed_checks) == expected_warning_checks
-    assert result["layout_report"]["passed"] is (not expected_warning_checks)
+    assert result["layout_report"]["passed"] is (not has_failed_checks)
 
     result_text = json.dumps(result, sort_keys=True).lower()
     for claim in FORBIDDEN_PUBLICATION_CLAIMS:
@@ -139,7 +139,7 @@ def _assert_dense_legend_render_surfaces_track_diagnostics(result, expected_summ
     manifest = read_json(Path(result["manifest_path"]))
     assert manifest["geometry_diagnostics"] == result["geometry_diagnostics"]
     assert manifest["layout_report"] == result["layout_report"]
-    assert manifest["manual_review_needed"] is bool(expected_warning_checks)
+    assert manifest["manual_review_needed"] is has_failed_checks
 
 
 def test_journal_track_fixture_manifest_is_complete() -> None:

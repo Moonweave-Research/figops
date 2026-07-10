@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Final, Mapping
+from typing import Final
 
 from hub_core.config_style import ALLOWED_TARGET_FORMATS
 
@@ -33,7 +33,6 @@ EXPECTED_DENSE_LEGEND_CHECKS: Final = (
     "legend_internal_overlaps",
     "legend_marker_consistency",
 )
-EXPECTED_DENSE_LEGEND_WARNINGS: Final[Mapping[str, tuple[str, ...]]] = {}
 FORBIDDEN_PUBLICATION_CLAIMS: Final = ("publishable", "publication-ready")
 POLISH_MANIFEST_PATH: Final = HUB_ROOT / "docs" / "specs" / "polish-fixture-manifest.json"
 ACCEPTANCE_COMMAND: Final = (
