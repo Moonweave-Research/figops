@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hub_core.config_parser import validate_config
 from hub_core.utils import expand_glob_inputs, flatten_glob_results
+from tests._symlink import symlink_or_skip
 
 
 # ---------------------------------------------------------------------------
@@ -134,10 +135,7 @@ def test_canonical_input_expansion_rejects_outside_symlink(tmp_path):
     outside = tmp_path.parent / f"{tmp_path.name}-outside.csv"
     outside.write_text("x\n1\n", encoding="utf-8")
     link = tmp_path / "link.csv"
-    try:
-        link.symlink_to(outside)
-    except OSError:
-        pytest.skip("symlink creation is unavailable")
+    symlink_or_skip(link, outside)
     try:
         with pytest.raises(ValueError, match="outside|escape"):
             expand_project_input_files(tmp_path, ["link.csv"], require_matches=True)

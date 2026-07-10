@@ -15,6 +15,7 @@ import hub_core.process_runner as pr
 from hub_core.process_runner import _build_r_cmd, run_analysis, run_comparison, run_plots, run_sweep
 from hub_core.process_runner_commands import build_r_cmd as build_r_cmd_from_command_helpers
 from hub_core.scaffold import DEFAULT_ANALYZE_R, normalize_scaffold_target_format, scaffold_project
+from tests._symlink import symlink_or_skip
 from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
@@ -955,10 +956,7 @@ class TestRunSweepMonkeyPatch(unittest.TestCase):
             outside_dir = Path(root_dir, "outside")
             project_dir.mkdir()
             outside_dir.mkdir()
-            try:
-                project_dir.joinpath("linked").symlink_to(outside_dir, target_is_directory=True)
-            except OSError as exc:
-                self.skipTest(f"directory symlinks unavailable: {exc}")
+            symlink_or_skip(project_dir / "linked", outside_dir, target_is_directory=True)
             failure_context: dict[str, str] = {}
 
             result = run_sweep(

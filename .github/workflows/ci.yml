@@ -10,6 +10,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-security:
+    name: Windows containment and symlinks (gating)
+    runs-on: windows-latest
+    env:
+      FIGOPS_REQUIRE_SYMLINK_TESTS: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install locked uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+          version: "0.11.25"
+      - name: Sync locked dependencies
+        run: uv sync --locked --all-extras --group dev
+      - name: Run Windows security tests
+        run: >-
+          uv run --locked python -m pytest -p no:cacheprovider -q
+          --junitxml=windows-security-junit.xml
+          "@.github/windows-security-pytest.txt"
+      - name: Require zero skipped security tests
+        shell: pwsh
+        run: |
+          [xml]$report = Get-Content -LiteralPath windows-security-junit.xml
+          $skipped = @($report.SelectNodes("//testcase/skipped")).Count
+          if ($skipped -ne 0) {
+            throw "Windows security gate skipped $skipped test(s)."
+          }
+
   test:
     name: Test (gating)
     runs-on: macos-latest
