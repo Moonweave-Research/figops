@@ -37,6 +37,8 @@ from .process_runner_commands import sanitize_script_path as _sanitize_script_pa
 from .process_runner_variants import VariantDependencies
 from .process_runner_variants import run_comparison as _run_comparison_variant
 from .process_runner_variants import run_sweep as _run_sweep_variant
+from .process_runner_visual_batch import run_visual_artifact_batch as _run_visual_artifact_batch
+from .process_runner_visual_expansion import run_expanded_visual_artifacts as _run_expanded_visual_artifacts
 from .process_supervisor import supervise_process
 from .utils import (
     expand_glob_inputs,
@@ -543,205 +545,87 @@ def _run_visual_artifacts(
             _log("      [WARN] expand='each' has no effect without glob patterns in inputs")
 
         if expand_mode == "each" and has_glob_patterns:
-            all_matched = flatten_glob_results(glob_results)
-            for matched_file in all_matched:
-                stem = os.path.splitext(os.path.basename(matched_file))[0]
-                expanded_output = output.replace("{stem}", stem)
-                expanded_step_key = f"{artifact_id}:{script}->{expanded_output}"
-                expanded_declared_inputs = [os.path.relpath(matched_file, project_dir)]
-                expanded_declared_outputs = [expanded_output]
-                iter_env_vars = dict(env_vars)
-                iter_env_vars["GRAPH_HUB_INPUTS"] = matched_file
-
-                iter_signature = {
-                    "script": file_signature(script_full_path, project_dir),
-                    "inputs": collect_signatures(project_dir, expanded_declared_inputs),
-                    "runner": runner,
-                    "lang": lang,
-                    "theme": {
-                        "format": target_format,
-                        "scale": font_scale,
-                        "profile": profile_name,
-                    },
-                    "input_patterns": raw_inputs,
-                    "expand_mode": expand_mode,
-                }
-                declared_format = artifact.get("format")
-                if declared_format:
-                    iter_signature["declared_format"] = str(declared_format).strip().lower()
-
-                iter_output_signatures = collect_signatures(project_dir, expanded_declared_outputs)
-                cache_enabled = bool(artifact.get("cache", True))
-
-                if not cache_enabled:
-                    iter_stale = True
-                    iter_stale_reason = "cache disabled by config"
-                else:
-                    iter_stale, iter_stale_reason = is_step_stale(
-                        step_kind=step_kind,
-                        step_key=expanded_step_key,
-                        signature=iter_signature,
-                        output_signatures=iter_output_signatures,
-                        build_state=build_state,
-                        config_hash=config_hash,
-                        force=force,
-                    )
-
-                if not iter_stale:
-                    iter_output_path = resolve_path(project_dir, expanded_output)
-                    valid, verification_msg = verify_output_file(iter_output_path)
-                    if not valid:
-                        _log(f"      ❌ Cached output verification failed: {verification_msg}")
-                        return False
-                    _log(f"   [SKIP] {skip_label} {artifact_id} ({stem}): {expanded_output} (unchanged)")
-                    continue
-
-                _log(f"   [RUN] {run_label} {artifact_id} ({stem}): {expanded_output} ({iter_stale_reason})")
-
-                if lang == "athena":
-                    from hub_core import athena_bridge
-
-                    athena_spec = artifact.get("spec", {})
-                    output_abs_path = resolve_path(project_dir, expanded_output)
-                    data_context = athena.load_solve_data_context()
-                    success = athena_bridge.render_from_athena_spec(athena_spec, output_abs_path, data_context)
-                    if not success:
-                        _log(f"      ❌ Athena rendering failed for {artifact_id} ({stem}).")
-                        return False
-                else:
-                    cmd = _prefix_uv_if_needed([runner, script], config)
-                    try:
-                        if not run_command(
-                            cmd,
-                            project_dir,
-                            additional_env=iter_env_vars,
-                            timeout_seconds=timeout_seconds,
-                        ):
-                            _log(f"      ❌ Failed to generate {artifact_id} ({stem}). Stopping pipeline.")
-                            return False
-                    except KeyError as e:
-                        if "RESEARCH_COLOR_PALETTES" in str(e) or "Nature Journal" in str(e):
-                            _log("      ❌ Style Error: Invalid palette name in script. Check palettes.yaml.")
-                        else:
-                            _log(f"      ❌ Logic Error: Missing key {e} in {run_label} script.")
-                        return False
-                    except Exception as e:
-                        _log(f"      ❌ Unexpected execution failure: {e}")
-                        return False
-
-                iter_output_path = resolve_path(project_dir, expanded_output)
-                valid, verification_msg = verify_output_file(iter_output_path)
-                if not valid:
-                    _log(f"      ❌ Output verification failed: {verification_msg}")
-                    return False
-                _log(f"      ✅ Output verified: {verification_msg}")
-
-                iter_output_signatures = collect_signatures(project_dir, expanded_declared_outputs)
-                record_step_state(
-                    build_state=build_state,
-                    step_kind=step_kind,
-                    step_key=expanded_step_key,
-                    signature=iter_signature,
-                    outputs=iter_output_signatures,
-                    config_hash=config_hash,
-                )
-                save_build_state(build_state_path, build_state)
-
-            continue
-
-        signature = {
-            "script": file_signature(script_full_path, project_dir),
-            "inputs": collect_signatures(project_dir, declared_inputs),
-            "runner": runner,
-            "lang": lang,
-            "theme": {
-                "format": target_format,
-                "scale": font_scale,
-                "profile": profile_name,
-            },
-            "input_patterns": raw_inputs,
-            "expand_mode": expand_mode,
-        }
-        declared_format = artifact.get("format")
-        if declared_format:
-            signature["declared_format"] = str(declared_format).strip().lower()
-
-        output_signatures = collect_signatures(project_dir, declared_outputs)
-        cache_enabled = bool(artifact.get("cache", True))
-
-        if not cache_enabled:
-            stale = True
-            stale_reason = "cache disabled by config"
-        else:
-            stale, stale_reason = is_step_stale(
+            if not _run_expanded_visual_artifacts(
+                project_dir,
+                config,
+                build_state,
+                build_state_path,
+                config_hash,
+                artifact=artifact,
+                artifact_id=artifact_id,
+                script=script,
+                script_full_path=script_full_path,
+                output=output,
+                lang=lang,
+                runner=runner,
+                raw_inputs=raw_inputs,
+                glob_results=glob_results,
+                env_vars=env_vars,
+                timeout_seconds=timeout_seconds,
                 step_kind=step_kind,
-                step_key=step_key,
-                signature=signature,
-                output_signatures=output_signatures,
-                build_state=build_state,
-                config_hash=config_hash,
+                run_label=run_label,
+                skip_label=skip_label,
                 force=force,
-            )
-
-        if not stale:
-            output_path = resolve_path(project_dir, output)
-            valid, verification_msg = verify_output_file(output_path)
-            if not valid:
-                _log(f"      ❌ Cached output verification failed: {verification_msg}")
+                target_format=target_format,
+                font_scale=font_scale,
+                profile_name=profile_name,
+                log=_log,
+                flatten_glob_results=flatten_glob_results,
+                file_signature=file_signature,
+                collect_signatures=collect_signatures,
+                is_step_stale=is_step_stale,
+                resolve_path=resolve_path,
+                prefix_uv_if_needed=_prefix_uv_if_needed,
+                run_command=run_command,
+                verify_output_file=verify_output_file,
+                record_step_state=record_step_state,
+                save_build_state=save_build_state,
+                athena=athena,
+            ):
                 return False
-            _log(f"   [SKIP] {skip_label} {artifact_id}: {output} (unchanged)")
+
             continue
 
-        _log(f"   [RUN] {run_label} {artifact_id}: {output} ({stale_reason})")
-
-        # ── 1. Check for Athena Engine ──────────────────────────────────────
-        if lang == "athena":
-            from hub_core import athena_bridge
-
-            athena_spec = artifact.get("spec", {})
-            output_abs_path = resolve_path(project_dir, output)
-
-            data_context = athena.load_solve_data_context()
-
-            success = athena_bridge.render_from_athena_spec(athena_spec, output_abs_path, data_context)
-            if not success:
-                _log(f"      ❌ Athena rendering failed for {artifact_id}.")
-                return False
-
-        # ── 2. Standard Script Execution ────────────────────────────────────
-        else:
-            cmd = _prefix_uv_if_needed([runner, script], config)
-            try:
-                if not run_command(cmd, project_dir, additional_env=env_vars, timeout_seconds=timeout_seconds):
-                    _log(f"      ❌ Failed to generate {artifact_id}. Stopping pipeline.")
-                    return False
-            except KeyError as e:
-                if "RESEARCH_COLOR_PALETTES" in str(e) or "Nature Journal" in str(e):
-                    _log("      ❌ Style Error: Invalid palette name in script. Check palettes.yaml.")
-                else:
-                    _log(f"      ❌ Logic Error: Missing key {e} in {run_label} script.")
-                return False
-            except Exception as e:
-                _log(f"      ❌ Unexpected execution failure: {e}")
-                return False
-
-        output_path = resolve_path(project_dir, output)
-        valid, verification_msg = verify_output_file(output_path)
-        if not valid:
-            _log(f"      ❌ Output verification failed: {verification_msg}")
-            return False
-        _log(f"      ✅ Output verified: {verification_msg}")
-
-        output_signatures = collect_signatures(project_dir, declared_outputs)
-        record_step_state(
-            build_state=build_state,
+        if not _run_visual_artifact_batch(
+            project_dir,
+            config,
+            build_state,
+            build_state_path,
+            config_hash,
+            artifact=artifact,
+            artifact_id=artifact_id,
+            script=script,
+            script_full_path=script_full_path,
+            output=output,
+            lang=lang,
+            runner=runner,
+            raw_inputs=raw_inputs,
+            expand_mode=expand_mode,
+            declared_inputs=declared_inputs,
+            declared_outputs=declared_outputs,
+            env_vars=env_vars,
+            timeout_seconds=timeout_seconds,
             step_kind=step_kind,
             step_key=step_key,
-            signature=signature,
-            outputs=output_signatures,
-            config_hash=config_hash,
-        )
-        save_build_state(build_state_path, build_state)
+            run_label=run_label,
+            skip_label=skip_label,
+            force=force,
+            target_format=target_format,
+            font_scale=font_scale,
+            profile_name=profile_name,
+            log=_log,
+            file_signature=file_signature,
+            collect_signatures=collect_signatures,
+            is_step_stale=is_step_stale,
+            resolve_path=resolve_path,
+            prefix_uv_if_needed=_prefix_uv_if_needed,
+            run_command=run_command,
+            verify_output_file=verify_output_file,
+            record_step_state=record_step_state,
+            save_build_state=save_build_state,
+            athena=athena,
+        ):
+            return False
 
     return True
 

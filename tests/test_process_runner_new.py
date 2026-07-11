@@ -360,6 +360,36 @@ class TestConfiguredTimeoutPropagation(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(run_command.call_args.kwargs["timeout_seconds"], 2.5)
 
+    def test_batch_visual_binds_facade_prefix_helper_at_call_time(self):
+        with tempfile.TemporaryDirectory() as project_dir:
+            Path(project_dir, "plot.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+            config = {
+                "project": {"name": "plot_prefix"},
+                "environment": {},
+                "execution": {"python": sys.executable},
+                "language_policy": {"allow_nonstandard": True},
+                "figures": [
+                    {"id": "Fig1", "script": "plot.py", "output": "results/Fig1.png", "cache": False},
+                ],
+                "data_contract": {},
+            }
+            with (
+                patch("hub_core.process_runner._prefix_uv_if_needed", return_value=["facade-uv"]) as prefix,
+                patch("hub_core.process_runner.run_command", return_value=True) as run_command,
+                patch("hub_core.process_runner.verify_output_file", return_value=(True, "valid")),
+            ):
+                result = run_plots(
+                    project_dir,
+                    config,
+                    {},
+                    str(Path(project_dir, ".build_state.json")),
+                    "hash",
+                )
+
+        self.assertTrue(result)
+        prefix.assert_called_once_with([sys.executable, "plot.py"], config)
+        self.assertEqual(run_command.call_args.args[0], ["facade-uv"])
+
     def test_each_visual_passes_configured_timeout_to_every_run_command(self):
         with tempfile.TemporaryDirectory() as project_dir:
             project_path = Path(project_dir)

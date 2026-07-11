@@ -286,6 +286,12 @@ language-policy normalization into `hub_core.config_assemblies` and
 assembly entry point and retains `get_language_policy` as a wrapper so the
 existing `normalize_lang` monkeypatch seam remains intact.
 
+The next 2026-07-11 slice extracted the visual artifact batch and per-input
+expansion execution paths into `hub_core.process_runner_visual_batch` and
+`hub_core.process_runner_visual_expansion`. The process-runner façade passes
+low-level collaborators at call time, preserving command, cache, and output
+verification monkeypatch seams.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 
