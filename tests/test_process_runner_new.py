@@ -267,6 +267,7 @@ class TestRunCommandRuntimeEnv(unittest.TestCase):
         process = StartedProcess()
         with (
             patch("hub_core.process_supervisor.os.name", "nt"),
+            patch("hub_core.process_supervisor.subprocess.CREATE_NEW_PROCESS_GROUP", 0, create=True),
             patch("hub_core.process_supervisor._WindowsProcessJob.create", return_value=FailedJob()),
             patch("hub_core.process_supervisor.subprocess.run"),
             patch("hub_core.process_runner.subprocess.Popen", return_value=process),
