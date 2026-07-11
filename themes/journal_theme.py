@@ -3,7 +3,6 @@
 ==========================================
 📐 저널 투고용 matplotlib 전역 테마 설정 (Theme Library Vending Machine)
 
-[역할]
 - 모든 Python 연구 스크립트가 import하는 시각화 표준
 - target_format 파라미터에 따라 딕셔너리를 로드하고, font_scale에 따라 크기를 보정하는 순수 함수.
 - 환경 변수 직접 참조를 배제하여 순수 함수(Pure function) 원칙 준수.
@@ -22,9 +21,11 @@ from cycler import cycler
 try:
     from .compliance import _clamp_figure_artists_to_journal_compliance, _clamp_rc_to_journal_compliance
     from .declutter import _declutter_text_artists
+    from .font_token_resolver import build_font_token_presets, resolve_font_tokens
 except ImportError:
     from compliance import _clamp_figure_artists_to_journal_compliance, _clamp_rc_to_journal_compliance
     from declutter import _declutter_text_artists
+    from font_token_resolver import build_font_token_presets, resolve_font_tokens
 
 try:
     # Package import path: from themes.journal_theme import ...
@@ -150,69 +151,22 @@ class FontTokens:
         }
 
 
-_FONT_TOKEN_PRESETS: dict[str, FontTokens] = {
-    "nature": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
-    # Science/AAAS figure guidance uses Helvetica/Arial-family lettering and
-    # compact final-size labels; 7 pt body/axis text with 6.5 pt ticks is a
-    # Graph Hub assumption that keeps above the repo's existing small-text floor.
-    "science": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    # ACS artwork guidance permits small final lettering, but this track uses
-    # readable 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
-    "acs": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    # RSC artwork guidance uses Arial/Helvetica-style sans-serif lettering;
-    # use 7 pt body/axis/tick text to stay at the RSC minimum font floor.
-    "rsc": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=7.0),
-    # Elsevier figure guidance supports Arial/Helvetica-style sans-serif text;
-    # use 7 pt body/axis/tick text for main lettering; subscripts may be 6 pt.
-    "elsevier": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=7.0),
-    # Wiley/Advanced Materials-family artwork uses readable sans-serif labels;
-    # keep 7 pt body/axis text and 6.5 pt ticks within Graph Hub's floor.
-    "wiley": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    # Cell Press figure guidance specifies Arial fonts; use readable 7 pt
-    # body/axis lettering with 6.5 pt ticks as a Graph Hub assumption that
-    # stays within the repo's established small-text floor.
-    "cell": FontTokens(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),
-    INTERNAL_STYLE_TARGET_FORMAT: FontTokens(tag=6.0, label=5.0, annot=6.0, legend=6.0, axis=7.0, tick=6.0),
-    "ppt": FontTokens(tag=16.0, label=12.0, annot=12.0, legend=12.0, axis=14.0, tick=12.0),
-    "default": FontTokens(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
-}
+_FONT_TOKEN_PRESETS: dict[str, FontTokens] = build_font_token_presets(FontTokens, INTERNAL_STYLE_TARGET_FORMAT)
 _ACTIVE_FONT_TOKENS = _FONT_TOKEN_PRESETS["nature"]
 _ACTIVE_TARGET_FORMAT = "nature"
 _ACTIVE_COMPLIANCE_TOKENS: dict[str, float | str] | None = None
 
 
 def font_tokens(target: str = "nature", font_scale: float = 1.0, profile_name=None) -> FontTokens:
-    target_key = str(target or "nature").lower()
-    tokens = _FONT_TOKEN_PRESETS.get(target_key, _FONT_TOKEN_PRESETS["nature"])
-    if not isinstance(font_scale, (int, float)) or font_scale <= 0:
-        raise ValueError(f"font_scale must be a positive number, got {font_scale!r}")
-    if font_scale == 1.0:
-        scaled = tokens
-    else:
-        scaled = FontTokens(
-            tag=tokens.tag * font_scale,
-            label=tokens.label * font_scale,
-            annot=tokens.annot * font_scale,
-            legend=tokens.legend * font_scale,
-            axis=tokens.axis * font_scale,
-            tick=tokens.tick * font_scale,
-        )
-    if profile_name is None:
-        return scaled
-    profile_rc, _ = get_profile_rc_overrides(resolve_profile_name(profile_name))
-    resolved_axis = float(profile_rc.get("axes.labelsize", scaled.axis))
-    resolved_tick = float(profile_rc.get("xtick.labelsize", profile_rc.get("ytick.labelsize", scaled.tick)))
-    resolved_legend = float(profile_rc.get("legend.fontsize", scaled.legend))
-    resolved_tag = float(profile_rc.get("axes.titlesize", scaled.tag))
-    return FontTokens(
-        tag=resolved_tag,
-        label=resolved_axis,
-        annot=resolved_axis,
-        legend=resolved_legend,
-        axis=resolved_axis,
-        tick=resolved_tick,
+    return resolve_font_tokens(
+        target,
+        font_scale,
+        profile_name,
+        presets=_FONT_TOKEN_PRESETS,
+        token_type=FontTokens,
+        get_profile_rc_overrides=get_profile_rc_overrides,
+        resolve_profile_name=resolve_profile_name,
     )
-
 
 def mm_to_inch(mm):
     return mm / 25.4

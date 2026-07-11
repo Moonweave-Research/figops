@@ -132,6 +132,12 @@ compliance floors into `themes/compliance.py`. The preset dictionaries and
 the extracted functions preserve their warning text and stack levels and are
 covered by the rcParams, explicit-artist, and diagnostics compliance witnesses.
 
+The final bounded journal slice moved font-token preset construction and
+scale/profile resolution into `themes/font_token_resolver.py`. `FontTokens`
+remains defined in the façade, which passes its profile functions into the
+resolver and therefore preserves return-type identity and compatibility. This
+cleared the remaining over-800-line architecture inventory entry.
+
 ## Non-Goals
 
 - No source movement in this task.

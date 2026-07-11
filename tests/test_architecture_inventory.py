@@ -11,10 +11,11 @@ HUB_ROOT = Path(__file__).resolve().parent.parent
 def test_architecture_inventory_reports_large_modules_in_descending_order():
     rows = architecture_inventory(HUB_ROOT)
 
-    assert rows
     assert all(row["lines"] > 800 for row in rows)
     assert [row["lines"] for row in rows] == sorted((row["lines"] for row in rows), reverse=True)
-    assert any(row["file"] == "themes/journal_theme.py" for row in rows)
+    oversized_files = {row["file"] for row in rows}
+    assert "plotting/bridge_renderer.py" not in oversized_files
+    assert "themes/journal_theme.py" not in oversized_files
 
 
 def test_architecture_inventory_matches_committed_architecture_doc():

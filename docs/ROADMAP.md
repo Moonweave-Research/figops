@@ -327,6 +327,12 @@ point-label option normalization into `plotting.renderers.point_loader`.
 `plotting.bridge_renderer` directly re-exports its original private helpers and
 is now below the 800-line architecture split signal.
 
+The subsequent 2026-07-11 journal slice extracted font-token preset creation
+and scale/profile resolution into `themes.font_token_resolver`. The public
+`FontTokens` type remains façade-owned, and the live profile collaborators are
+passed through explicitly. With `themes.journal_theme` now below 800 lines, no
+tracked Python module exceeds the current architecture split signal.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 

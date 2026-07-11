@@ -111,6 +111,14 @@ class JournalThemeLayoutTest(unittest.TestCase):
         self.assertEqual(tokens["legend"], 6.0)
         self.assertEqual(tokens.as_dict()["axis"], 7.0)
 
+    def test_font_tokens_preserve_facade_owned_result_type(self):
+        from themes.journal_theme import FontTokens
+
+        tokens = font_tokens("nature")
+
+        self.assertIs(type(tokens), FontTokens)
+        self.assertEqual(FontTokens.__module__, "themes.journal_theme")
+
     def test_science_font_tokens_use_aaas_sans_serif_scale(self):
         tokens = font_tokens("science")
 

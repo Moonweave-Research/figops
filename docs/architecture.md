@@ -69,8 +69,9 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 <!-- architecture-inventory:start -->
 | File | Lines |
 |---|---:|
-| `themes/journal_theme.py` | 845 |
 <!-- architecture-inventory:end -->
+
+No tracked Python module currently exceeds the 800-line split signal.
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
 1000 lines while preserving compatibility shims:
@@ -127,6 +128,12 @@ floors to `themes/compliance.py`, covering rcParams and live figure artists.
 Preset definitions and compliance-token resolution remain in
 `themes/journal_theme.py`, while the original private clamp names are direct
 imports so warning messages and stack levels remain stable.
+
+Font-token preset construction and scale/profile resolution now live in
+`themes/font_token_resolver.py`. The public `FontTokens` class remains owned by
+`themes/journal_theme.py`, and the façade passes its live profile collaborators
+into the resolver so return-type identity and compatibility behavior remain
+stable. The façade is now below the 800-line split signal.
 
 The first `plotting.bridge_renderer` extraction wave moved box/violin
 distribution rendering into `plotting/renderers/distribution.py`, heatmap
