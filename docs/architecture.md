@@ -70,7 +70,7 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | File | Lines |
 |---|---:|
 | `themes/journal_theme.py` | 1178 |
-| `plotting/bridge_renderer.py` | 1099 |
+| `plotting/bridge_renderer.py` | 883 |
 <!-- architecture-inventory:end -->
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
@@ -126,8 +126,11 @@ Line/scatter XY rendering now lives in `plotting/renderers/xy.py`, and
 broken-axis XY drawing now lives in `plotting/renderers/broken_axis.py`. The
 facet rendering now lives in `plotting/renderers/facet.py`. Overlay,
 shared-legend, manuscript layout, and figure-style helpers also live under
-`plotting/renderers/`. The old private import paths remain available for
-compatibility.
+`plotting/renderers/`. Multi-panel specifications, draft/manuscript composition,
+validation, image-panel embedding, and save/fingerprint orchestration now live
+in `plotting/renderers/multipanel.py`; the bridge-renderer facade supplies its
+live collaborators so existing save hooks and private imports remain effective.
+The old private import paths remain available for compatibility.
 
 ## Current architecture constraints
 

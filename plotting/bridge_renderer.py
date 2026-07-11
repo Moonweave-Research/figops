@@ -13,8 +13,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from hub_core.rendering import PLOT_TYPES, render_plot
 from plotting.axis_break import _draw_break_marks
@@ -90,6 +88,14 @@ from plotting.renderers.legend import normalized_legend_options as _normalized_l
 from plotting.renderers.legend import replace_legend as _replace_legend  # noqa: F401
 from plotting.renderers.legend import resolved_legend_layout as _resolved_legend_layout
 from plotting.renderers.legend import separate_top_legend_title as _separate_top_legend_title
+from plotting.renderers.multipanel import MultipanelRendererContext
+from plotting.renderers.multipanel import MultiPanelSpec as MultiPanelSpec
+from plotting.renderers.multipanel import PanelImageSpec as PanelImageSpec
+from plotting.renderers.multipanel import render_image_panel as _render_image_panel_impl
+from plotting.renderers.multipanel import render_multipanel_draft as _render_multipanel_draft_impl
+from plotting.renderers.multipanel import render_multipanel_figure as _render_multipanel_figure_impl
+from plotting.renderers.multipanel import render_multipanel_manuscript as _render_multipanel_manuscript_impl
+from plotting.renderers.multipanel import validated_compose_mode as _validated_compose_mode_impl
 from plotting.renderers.multipanel_layout import distributed_lengths_mm as _distributed_lengths_mm
 from plotting.renderers.multipanel_layout import manuscript_axis_rect as _manuscript_axis_rect_impl
 from plotting.renderers.multipanel_layout import panel_geometry_mm as _panel_geometry_mm_impl
@@ -338,249 +344,39 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
     return str(output_path)
 
 
-@dataclass(frozen=True)
-class PanelImageSpec:
-    """Existing rendered figure file to embed as a panel."""
-
-    image_path: str
-    title: str = ""
-
-
-@dataclass(frozen=True)
-class MultiPanelSpec:
-    """Specification for a multi-panel composite figure.
-
-    Each element of ``panels`` is either a ``BridgeFigureSpec`` (rendered
-    fresh from CSV) or a ``PanelImageSpec`` (existing image file).
-    Grid is filled left-to-right, top-to-bottom; excess cells are hidden.
-
-    Parameters
-    ----------
-    panels:
-        Ordered tuple of panel specs.
-    output_path:
-        Destination file (PNG / TIFF / PDF).
-    rows, cols:
-        Grid dimensions.
-    column_width:
-        Target-format column key. Nature/default use ``"single"`` (89 mm) or
-        ``"double"`` (183 mm); formats with explicit style tokens may also
-        define values such as ``"full"`` or ``"triple"``.
-    panel_height_mm:
-        Height of each row in mm.
-    panel_labels:
-        If True, add bold **(a)**, **(b)**, … tags to each panel.
-    compose_mode:
-        ``"draft"`` keeps subplot auto-fitting, while ``"manuscript"``
-        preserves a fixed plot box inside each panel slot.
-    gutter_h_mm, gutter_v_mm:
-        Absolute gutters used by manuscript compose mode.
-    wspace, hspace:
-        Fractional subplot spacing used by draft compose mode.
-    width_ratios, height_ratios:
-        Optional relative column/row weights. Draft mode forwards them to
-        matplotlib GridSpec; manuscript mode uses them to divide the fixed
-        journal-width canvas before preserving each panel box.
-    shared_legend:
-        If True, collect panel legends into one figure-level legend and remove
-        duplicate per-panel legends.
-    """
-
-    panels: tuple[BridgeFigureSpec | PanelImageSpec, ...]
-    output_path: str
-    rows: int
-    cols: int
-    target_format: str = "nature"
-    column_width: str = "double"
-    panel_height_mm: float = 65.0
-    panel_labels: bool = True
-    font_scale: float = 1.0
-    profile_name: str = "baseline"
-    compose_mode: str = "draft"
-    gutter_h_mm: float = 5.0
-    gutter_v_mm: float = 5.0
-    wspace: float = 0.35
-    hspace: float = 0.45
-    width_ratios: tuple[float, ...] = ()
-    height_ratios: tuple[float, ...] = ()
-    shared_legend: bool = False
-    shared_legend_options: dict | None = None
+def _multipanel_renderer_context() -> MultipanelRendererContext:
+    return MultipanelRendererContext(
+        deterministic_timestamp=_deterministic_timestamp,
+        apply_journal_theme=apply_journal_theme,
+        column_width_mm=_column_width_mm,
+        mm_to_inch=mm_to_inch,
+        render_csv_panel=_render_csv_panel,
+        apply_shared_legend=_apply_shared_legend,
+        auto_panel_tag=auto_panel_tag,
+        normalized_shared_legend_options=_normalized_shared_legend_options,
+        validated_layout_ratios=_validated_layout_ratios,
+        distributed_lengths_mm=_distributed_lengths_mm,
+        manuscript_axis_rect=_manuscript_axis_rect,
+        save_journal_fig=save_journal_fig,
+        embed_fingerprint=_embed_fingerprint,
+    )
 
 
 def render_multipanel_figure(spec: MultiPanelSpec) -> str:
-    """Compose multiple panels into a single publication figure."""
-    fingerprint_timestamp = _deterministic_timestamp()
-    _saved_rc = plt.rcParams.copy()
-    try:
-        compose_mode = _validated_compose_mode(spec)
-        apply_journal_theme(
-            target_format=spec.target_format,
-            font_scale=spec.font_scale,
-            profile_name=spec.profile_name,
-        )
-        if compose_mode == "manuscript":
-            fig = _render_multipanel_manuscript(spec)
-        else:
-            fig = _render_multipanel_draft(spec)
-        FigureCanvasAgg(fig)
-        output_path = Path(spec.output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            save_journal_fig(fig, output_path)
-        finally:
-            plt.close(fig)
-            FigureCanvasAgg(fig)
-    finally:
-        plt.rcParams.update(_saved_rc)
-
-    if _embed_fingerprint is not None:
-        _embed_fingerprint(
-            str(output_path),
-            {
-                "generator": "Graph-Hub/bridge_renderer.py::render_multipanel_figure",
-                "rows": spec.rows,
-                "cols": spec.cols,
-                "n_panels": len(spec.panels),
-                "ts": fingerprint_timestamp,
-            },
-        )
-    return str(output_path)
+    """Compose multiple panels while preserving the bridge-renderer facade."""
+    return _render_multipanel_figure_impl(spec, _multipanel_renderer_context())
 
 
 def _render_multipanel_draft(spec: MultiPanelSpec):
-    col_mm = _column_width_mm(spec.target_format, spec.column_width, spec.profile_name)
-    fig_w_in = mm_to_inch(col_mm)
-    fig_h_in = mm_to_inch(spec.panel_height_mm * spec.rows)
-
-    gridspec_kw: dict[str, tuple[float, ...]] = {}
-    if spec.width_ratios:
-        gridspec_kw["width_ratios"] = spec.width_ratios
-    if spec.height_ratios:
-        gridspec_kw["height_ratios"] = spec.height_ratios
-    fig, axes = plt.subplots(
-        spec.rows,
-        spec.cols,
-        figsize=(fig_w_in, fig_h_in),
-        gridspec_kw=gridspec_kw or None,
-    )
-    axes_flat = np.asarray(axes).ravel().tolist()
-    fig.subplots_adjust(wspace=spec.wspace, hspace=spec.hspace)
-
-    for idx, ax in enumerate(axes_flat):
-        if idx >= len(spec.panels):
-            ax.set_visible(False)
-            continue
-        panel = spec.panels[idx]
-        if isinstance(panel, PanelImageSpec):
-            _render_image_panel(ax, panel)
-        else:
-            _render_csv_panel(fig, ax, panel)
-        if spec.panel_labels and idx < len(_PANEL_LABELS):
-            auto_panel_tag(ax, label=_PANEL_LABELS[idx])
-
-    _apply_shared_legend(fig, spec)
-    if hasattr(fig, "_graph_hub_layout_lock"):
-        delattr(fig, "_graph_hub_layout_lock")
-    return fig
+    return _render_multipanel_draft_impl(spec, _multipanel_renderer_context())
 
 
 def _validated_compose_mode(spec: MultiPanelSpec) -> str:
-    compose_mode = str(spec.compose_mode or "draft").strip().lower()
-    if compose_mode not in {"draft", "manuscript"}:
-        raise ValueError(f"unsupported compose_mode {spec.compose_mode!r}; expected 'draft' or 'manuscript'")
-    if spec.rows <= 0 or spec.cols <= 0:
-        raise ValueError("rows and cols must be positive integers")
-    if spec.panel_height_mm <= 0 or not math.isfinite(float(spec.panel_height_mm)):
-        raise ValueError("panel_height_mm must be positive")
-    if not math.isfinite(float(spec.wspace)) or not math.isfinite(float(spec.hspace)):
-        raise ValueError("wspace and hspace must be finite")
-    if spec.wspace < 0 or spec.hspace < 0:
-        raise ValueError("wspace and hspace must be non-negative")
-    if not math.isfinite(float(spec.gutter_h_mm)) or not math.isfinite(float(spec.gutter_v_mm)):
-        raise ValueError("gutter_h_mm and gutter_v_mm must be finite")
-    if spec.gutter_h_mm < 0 or spec.gutter_v_mm < 0:
-        raise ValueError("gutter_h_mm and gutter_v_mm must be non-negative")
-    _validated_layout_ratios(spec.width_ratios, expected_len=spec.cols, field_name="width_ratios")
-    _validated_layout_ratios(spec.height_ratios, expected_len=spec.rows, field_name="height_ratios")
-    shared_legend_options = _normalized_shared_legend_options(spec)
-    if shared_legend_options and not spec.shared_legend:
-        raise ValueError("shared_legend_options requires shared_legend=True")
-    if compose_mode == "manuscript" and str(spec.target_format or "").lower() == "ppt":
-        raise ValueError("manuscript compose is not supported for target_format='ppt'")
-    return compose_mode
+    return _validated_compose_mode_impl(spec, _multipanel_renderer_context())
 
 
 def _render_multipanel_manuscript(spec: MultiPanelSpec):
-    panel_area_w_mm = _column_width_mm(spec.target_format, spec.column_width, spec.profile_name)
-    panel_area_h_mm = (spec.panel_height_mm * spec.rows) + (spec.gutter_v_mm * max(spec.rows - 1, 0))
-    shared_legend_options = _normalized_shared_legend_options(spec) if spec.shared_legend else {}
-    shared_legend_position = str(shared_legend_options.get("position") or "top") if spec.shared_legend else ""
-    legend_extra_h_mm = 12.0 if shared_legend_position in {"top", "bottom"} else 0.0
-    legend_extra_w_mm = 30.0 if shared_legend_position == "right" else 0.0
-    panel_area_bottom_mm = legend_extra_h_mm if shared_legend_position == "bottom" else 0.0
-    fig_w_mm = panel_area_w_mm + legend_extra_w_mm
-    fig_h_mm = panel_area_h_mm + legend_extra_h_mm
-    fig = plt.figure(figsize=(mm_to_inch(fig_w_mm), mm_to_inch(fig_h_mm)))
-    setattr(
-        fig,
-        "_graph_hub_layout_lock",
-        {
-            "compose_mode": "manuscript",
-            "figure_width_mm": float(fig_w_mm),
-            "figure_height_mm": float(fig_h_mm),
-            "panel_area_width_mm": float(panel_area_w_mm),
-            "panel_area_height_mm": float(panel_area_h_mm),
-            "panel_area_bottom_mm": float(panel_area_bottom_mm),
-            "panel_area_bottom": float(panel_area_bottom_mm / fig_h_mm),
-            "panel_area_top": float((panel_area_bottom_mm + panel_area_h_mm) / fig_h_mm),
-            "panel_area_right": float(panel_area_w_mm / fig_w_mm),
-        },
-    )
-
-    col_widths_mm = _distributed_lengths_mm(
-        panel_area_w_mm - (spec.gutter_h_mm * max(spec.cols - 1, 0)),
-        spec.cols,
-        spec.width_ratios,
-    )
-    row_heights_mm = _distributed_lengths_mm(
-        spec.panel_height_mm * spec.rows,
-        spec.rows,
-        spec.height_ratios,
-    )
-
-    for idx, panel in enumerate(spec.panels):
-        if idx >= spec.rows * spec.cols:
-            break
-        row_idx = idx // spec.cols
-        col_idx = idx % spec.cols
-        cell_w_mm = col_widths_mm[col_idx]
-        cell_h_mm = row_heights_mm[row_idx]
-        cell_left_mm = sum(col_widths_mm[:col_idx]) + (spec.gutter_h_mm * col_idx)
-        cell_bottom_mm = (
-            panel_area_bottom_mm
-            + panel_area_h_mm
-            - sum(row_heights_mm[: row_idx + 1])
-            - (spec.gutter_v_mm * row_idx)
-        )
-        axis_rect = _manuscript_axis_rect(
-            panel,
-            fig_w_mm=fig_w_mm,
-            fig_h_mm=fig_h_mm,
-            cell_left_mm=cell_left_mm,
-            cell_bottom_mm=cell_bottom_mm,
-            cell_w_mm=cell_w_mm,
-            cell_h_mm=cell_h_mm,
-        )
-        ax = fig.add_axes(axis_rect)
-        if isinstance(panel, PanelImageSpec):
-            _render_image_panel(ax, panel)
-        else:
-            _render_csv_panel(fig, ax, panel)
-        if spec.panel_labels and idx < len(_PANEL_LABELS):
-            auto_panel_tag(ax, label=_PANEL_LABELS[idx])
-
-    _apply_shared_legend(fig, spec)
-    return fig
+    return _render_multipanel_manuscript_impl(spec, _multipanel_renderer_context())
 
 
 def _manuscript_axis_rect(
@@ -644,19 +440,7 @@ def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
 
 
 def _render_image_panel(ax, panel: PanelImageSpec) -> None:
-    """Load an existing image file and display it inside *ax*."""
-    try:
-        import numpy as np
-        from PIL import Image
-
-        with Image.open(panel.image_path) as img:
-            img_arr = np.asarray(img)
-    except ImportError:
-        img_arr = plt.imread(panel.image_path)
-    ax.imshow(img_arr)
-    ax.set_axis_off()
-    if panel.title:
-        ax.set_title(panel.title)
+    _render_image_panel_impl(ax, panel)
 
 
 def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:

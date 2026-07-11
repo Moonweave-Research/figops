@@ -304,6 +304,12 @@ redaction, and failure-artifact helpers into
 the compatibility surface for project-render error types and the patchable
 render timeout; its source is now below the 800-line maintenance signal.
 
+The subsequent 2026-07-11 slice extracted multi-panel specifications and
+draft/manuscript composition orchestration into
+`plotting.renderers.multipanel`. `plotting.bridge_renderer` retains its public
+spec names and private composition helpers as context-backed compatibility
+wrappers, including the existing `save_journal_fig` patch seam.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 

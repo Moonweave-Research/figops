@@ -99,6 +99,12 @@ Progress:
   marker-axis-margin helpers moved to `plotting/renderers/figure_style.py`;
   `plotting.bridge_renderer` keeps private compatibility aliases and is below
   1000 lines after this extraction.
+- 2026-07-11: multi-panel specifications, compose-mode validation,
+  draft/manuscript composition, image-panel embedding, and save/fingerprint
+  orchestration moved to `plotting/renderers/multipanel.py` behind a
+  facade-supplied dependency context. Public spec names, private composition
+  helpers, and the `save_journal_fig` patch seam remain available from
+  `plotting.bridge_renderer`.
 - After this extraction, `plotting/bridge_renderer.py` is no longer the largest
   hotspot. Continue bridge extraction only with tightly scoped visual witness
   tests; otherwise move to D2/D3 based on current inventory.
