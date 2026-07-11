@@ -292,6 +292,12 @@ expansion execution paths into `hub_core.process_runner_visual_batch` and
 low-level collaborators at call time, preserving command, cache, and output
 verification monkeypatch seams.
 
+The subsequent 2026-07-11 slice extracted the complete
+`figops.render_csv_multipanel` envelope into
+`hub_core.mcp.tools.render_csv_multipanel_handler`. The CSV render mixin still
+supplies its original renderer instance, preserving runtime-root, write safety,
+manifest, status, and response-envelope behavior.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 

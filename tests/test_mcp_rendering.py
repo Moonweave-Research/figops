@@ -56,6 +56,21 @@ def _successful_batch_discovery_worker(_root, _max_depth, result_path):
     render_helpers._write_worker_result(result_path, {"status": "ok", "projects": []})
 
 
+def test_render_csv_multipanel_facade_delegates_current_renderer_instance(tmp_path):
+    server = GraphHubMCPServer(research_root=tmp_path, runtime_root=tmp_path / "runtime")
+    arguments = {"job_id": "delegate-witness"}
+    expected = {"status": "ok", "summary": "delegated"}
+
+    with patch(
+        "hub_core.mcp.tools.render_csv._render_csv_multipanel_handler",
+        return_value=expected,
+    ) as handler:
+        result = server.render_csv_multipanel(arguments)
+
+    assert result is expected
+    handler.assert_called_once_with(server, arguments)
+
+
 def _write_csv(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:

@@ -72,7 +72,6 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | `themes/journal_theme.py` | 1178 |
 | `plotting/bridge_renderer.py` | 1099 |
 | `hub_core/mcp/render_orchestration.py` | 1074 |
-| `hub_core/mcp/tools/render_csv.py` | 991 |
 <!-- architecture-inventory:end -->
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
@@ -106,6 +105,12 @@ The process-runner façade now delegates non-expanded visual artifacts and
 per-input `expand: each` visual execution to focused helper modules. It passes
 its cache, command, path, and output-verification collaborators at invocation
 time so existing `hub_core.process_runner` monkeypatch paths remain effective.
+
+The CSV render mixin now delegates the complete multipanel tool envelope to
+`hub_core/mcp/tools/render_csv_multipanel_handler.py`, passing its renderer
+instance through unchanged. Runtime-root activation, write safety, manifest,
+status, and envelope methods therefore retain their existing instance-level
+contracts.
 
 The first `plotting.bridge_renderer` extraction wave moved box/violin
 distribution rendering into `plotting/renderers/distribution.py`, heatmap
