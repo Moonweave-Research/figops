@@ -118,6 +118,8 @@ class McpBatchToolsMixin:
             persisted_artifact_status if persisted_failed else self._artifact_status(preflight, baseline_comparison)
         )
         project_render_failure = persisted_failed and manifest.get("renderer_surface") == "figops.render_project_figure"
+        if project_render_failure:
+            layout_report = self._sanitize_public_payload(layout_report, arguments)
         public_manifest_path = self._runtime_uri(manifest_path) if project_render_failure else str(manifest_path)
         raw_status_path = str(manifest.get("status_path", ""))
         raw_latest_dir = str(manifest.get("latest_dir", ""))

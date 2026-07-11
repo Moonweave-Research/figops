@@ -270,6 +270,8 @@ class TestRunCommandRuntimeEnv(unittest.TestCase):
             patch("hub_core.process_supervisor._WindowsProcessJob.create", return_value=FailedJob()),
             patch("hub_core.process_supervisor.subprocess.run"),
             patch("hub_core.process_runner.subprocess.Popen", return_value=process),
+            patch("hub_core.process_runner.build_uv_environment", side_effect=lambda env, **_kwargs: env),
+            patch("hub_core.process_runner.ensure_uv_runtime_dirs"),
         ):
             result = pr.run_command([sys.executable, "-c", "raise SystemExit(0)"], tempfile.gettempdir())
 
