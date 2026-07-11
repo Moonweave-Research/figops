@@ -71,6 +71,13 @@ def test_render_csv_multipanel_facade_delegates_current_renderer_instance(tmp_pa
     handler.assert_called_once_with(server, arguments)
 
 
+def test_project_runtime_timeout_uses_render_orchestration_facade(tmp_path):
+    server = GraphHubMCPServer(research_root=tmp_path, runtime_root=tmp_path / "runtime")
+
+    with patch("hub_core.mcp.render_orchestration.MCP_RENDER_TIMEOUT_SECONDS", 7.5):
+        assert server._project_render_timeout_seconds() == 7.5
+
+
 def _write_csv(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:

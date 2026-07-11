@@ -298,6 +298,12 @@ The subsequent 2026-07-11 slice extracted the complete
 supplies its original renderer instance, preserving runtime-root, write safety,
 manifest, status, and response-envelope behavior.
 
+The next 2026-07-11 slice extracted project snapshot, figure-script runtime,
+redaction, and failure-artifact helpers into
+`hub_core.mcp.render_project_runtime`. The render-orchestration façade remains
+the compatibility surface for project-render error types and the patchable
+render timeout; its source is now below the 800-line maintenance signal.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 

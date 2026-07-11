@@ -71,7 +71,6 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 |---|---:|
 | `themes/journal_theme.py` | 1178 |
 | `plotting/bridge_renderer.py` | 1099 |
-| `hub_core/mcp/render_orchestration.py` | 1074 |
 <!-- architecture-inventory:end -->
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
@@ -111,6 +110,12 @@ The CSV render mixin now delegates the complete multipanel tool envelope to
 instance through unchanged. Runtime-root activation, write safety, manifest,
 status, and envelope methods therefore retain their existing instance-level
 contracts.
+
+The MCP render-orchestration façade now inherits project snapshot copying,
+figure-script supervision, output redaction, and failure-artifact persistence
+from `hub_core/mcp/render_project_runtime.py`. The façade continues to expose
+the project-render error types and supplies the live timeout value, preserving
+existing imports and timeout monkeypatch contracts.
 
 The first `plotting.bridge_renderer` extraction wave moved box/violin
 distribution rendering into `plotting/renderers/distribution.py`, heatmap
