@@ -117,6 +117,15 @@ These remain valid backlog items, but they are not the next slice:
 5. Decide whether `docs/architecture.md` should track the post-0.17.11
    inventory date after M1 lands.
 
+## Follow-up token-free journal audit (2026-07-11)
+
+The journal-theme follow-up selected only `_declutter_text_artists` for
+movement into `themes/declutter.py`. The helper owns optional text/marker
+overlap correction and has a dedicated visual witness set in
+`tests/test_journal_theme_layout.py`. The extraction does not move or modify
+`STYLE_PRESETS`, font tokens, compliance floors, output-format decisions,
+geometry-diagnostics ordering, or the `save_journal_fig` chokepoint.
+
 ## Non-Goals
 
 - No source movement in this task.

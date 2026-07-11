@@ -69,7 +69,7 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 <!-- architecture-inventory:start -->
 | File | Lines |
 |---|---:|
-| `themes/journal_theme.py` | 1178 |
+| `themes/journal_theme.py` | 1002 |
 | `plotting/bridge_renderer.py` | 883 |
 <!-- architecture-inventory:end -->
 
@@ -116,6 +116,12 @@ figure-script supervision, output redaction, and failure-artifact persistence
 from `hub_core/mcp/render_project_runtime.py`. The façade continues to expose
 the project-render error types and supplies the live timeout value, preserving
 existing imports and timeout monkeypatch contracts.
+
+The journal-theme façade now delegates its opt-in text/marker overlap nudge,
+leader-line targeting, axes-edge correction, and convergence reporting to
+`themes/declutter.py`. Journal style tokens, rcParams, compliance floors,
+save-format behavior, and the `save_journal_fig` chokepoint remain in
+`themes/journal_theme.py` unchanged.
 
 The first `plotting.bridge_renderer` extraction wave moved box/violin
 distribution rendering into `plotting/renderers/distribution.py`, heatmap

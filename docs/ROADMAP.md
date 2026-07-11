@@ -310,6 +310,11 @@ draft/manuscript composition orchestration into
 spec names and private composition helpers as context-backed compatibility
 wrappers, including the existing `save_journal_fig` patch seam.
 
+The next 2026-07-11 token-free journal slice extracted only the opt-in text
+decluttering engine into `themes.declutter`. Journal presets, font and line
+tokens, compliance clamps, output formats, diagnostics ordering, and the
+`save_journal_fig` chokepoint remain unchanged in the journal-theme façade.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 
