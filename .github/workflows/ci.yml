@@ -74,16 +74,20 @@ jobs:
   audit:
     name: Dependency audit (advisory)
     runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Install uv
+      - name: Install locked uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           python-version: "3.12"
+          version: "0.11.25"
       - name: Export resolved requirements
-        run: uv export --no-emit-project --no-hashes -o requirements-audit.txt
+        run: uv export --locked --no-emit-project --no-hashes -o requirements-audit.txt
       - name: pip-audit
         # Advisory: surfaces known CVEs without blocking merges (a transitive CVE may have
         # no released fix). Triage findings and bump floors in pyproject.toml.
         continue-on-error: true
-        run: uvx pip-audit -r requirements-audit.txt --strict
+        run: uvx --from pip-audit==2.10.1 pip-audit -r requirements-audit.txt --strict

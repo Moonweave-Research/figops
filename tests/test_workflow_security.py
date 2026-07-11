@@ -219,6 +219,26 @@ def test_publish_build_job_uses_pinned_uv_and_locked_project_commands() -> None:
     assert build["run"] == "uv build --no-sources"
 
 
+def test_dependency_audit_is_reproducible_and_remains_advisory() -> None:
+    document = yaml.load((WORKFLOW_DIR / "ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    assert isinstance(document, dict)
+    audit = document["jobs"]["audit"]
+    assert audit["name"] == "Dependency audit (advisory)"
+    assert audit["env"] == {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+    steps = audit["steps"]
+    setup_uv = next(step for step in steps if step.get("name") == "Install locked uv")
+    assert setup_uv["with"]["python-version"] == "3.12"
+    assert setup_uv["with"]["version"] == "0.11.25"
+    export = next(step for step in steps if step.get("name") == "Export resolved requirements")
+    assert export["run"] == "uv export --locked --no-emit-project --no-hashes -o requirements-audit.txt"
+    pip_audit = next(step for step in steps if step.get("name") == "pip-audit")
+    assert pip_audit["continue-on-error"] == "true"
+    assert pip_audit["run"] == (
+        "uvx --from pip-audit==2.10.1 pip-audit -r requirements-audit.txt --strict"
+    )
+
+
 def test_dependabot_updates_github_actions_weekly() -> None:
     document = yaml.load(DEPENDABOT_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 

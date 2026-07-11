@@ -130,6 +130,8 @@ What is true now:
   exported from the decomposed MCP package.
 - Ruff debt has been cleared; `ruff check .` is expected to pass with 0 errors.
 - Normal Test and Ruff CI use pinned uv plus `--locked`; both jobs are gating.
+- The advisory dependency audit pins uv and pip-audit, exports from the lock,
+  and runs in explicit UTF-8 mode for locale-independent diagnostics.
 - The module-size budget remains a split signal rather than a hard threshold.
   Inventory freshness is pytest-checked through `tests/test_architecture_inventory.py`;
   import layering remains policy-only.
