@@ -280,6 +280,12 @@ paintability handling, and severe marker-overlap reporting into
 the corresponding private helper names to preserve renderer and test patch
 contracts.
 
+The subsequent 2026-07-11 slice extracted multi-panel assembly validation and
+language-policy normalization into `hub_core.config_assemblies` and
+`hub_core.config_language_policy`. `hub_core.config_parser` preserves its
+assembly entry point and retains `get_language_policy` as a wrapper so the
+existing `normalize_lang` monkeypatch seam remains intact.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 

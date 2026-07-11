@@ -73,7 +73,6 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | `plotting/bridge_renderer.py` | 1099 |
 | `hub_core/mcp/render_orchestration.py` | 1074 |
 | `hub_core/mcp/tools/render_csv.py` | 991 |
-| `hub_core/config_parser.py` | 903 |
 | `hub_core/process_runner.py` | 893 |
 <!-- architecture-inventory:end -->
 
@@ -97,6 +96,12 @@ paintability checks, and severe marker-overlap reporting to
 `hub_core/geometry_marker_footprints.py`. Its existing private helper names
 remain wrappers so renderer and test monkeypatch contracts continue to resolve
 through `hub_core.geometry_diagnostics`.
+
+The config-parser façade now delegates multi-panel assembly validation to
+`hub_core/config_assemblies.py` and language-policy normalization to
+`hub_core/config_language_policy.py`. `get_language_policy` remains a local
+wrapper so callers that patch `config_parser.normalize_lang` retain their
+existing behavior.
 
 The first `plotting.bridge_renderer` extraction wave moved box/violin
 distribution rendering into `plotting/renderers/distribution.py`, heatmap

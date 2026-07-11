@@ -4,6 +4,9 @@ import os
 import yaml
 
 from . import config_schema as _config_schema
+from .config_assemblies import validate_assemblies as _validate_assemblies_impl
+from .config_language_policy import get_language_policy as _get_language_policy_impl
+from .config_language_policy import normalize_lang as normalize_lang
 from .config_project_registry import load_registry_operational_states as _load_registry_operational_states
 from .config_project_registry import normalize_registry_path as _normalize_registry_path  # noqa: F401
 from .config_project_registry import resolve_operational_state as _resolve_operational_state
@@ -79,15 +82,6 @@ CONFIG_FILE_CANDIDATES = (
 logger = get_logger(__name__)
 
 
-def normalize_lang(lang):
-    if lang is None:
-        return ""
-    key = str(lang).strip().lower()
-    if key == "py":
-        return "python"
-    return key
-
-
 def _validate_raw_integrity_config(errors: list[str], raw_integrity: object) -> None:
     from .config_research_metadata import validate_raw_integrity_config
 
@@ -113,20 +107,8 @@ def _validate_named_adapter(
 
 
 def get_language_policy(config):
-    raw = config.get("language_policy", {})
-    if raw is None:
-        raw = {}
-    if not isinstance(raw, dict):
-        raw = {}
-
-    analysis_lang = normalize_lang(raw.get("analysis_lang", "r")) or "r"
-    plot_lang = normalize_lang(raw.get("plot_lang", "python")) or "python"
-    allow_nonstandard = bool(raw.get("allow_nonstandard", False))
-    return {
-        "analysis_lang": analysis_lang,
-        "plot_lang": plot_lang,
-        "allow_nonstandard": allow_nonstandard,
-    }
+    """Compatibility wrapper that preserves the local language-normalizer seam."""
+    return _get_language_policy_impl(config, normalize_lang_func=normalize_lang)
 
 
 def find_config_path(project_dir):
@@ -193,6 +175,15 @@ def _load_project_metadata(config_path, fallback_name):
 def _read_project_metadata(config_path, fallback_name):
     metadata = _load_project_metadata(config_path, fallback_name)
     return metadata["name"], metadata["valid"], list(metadata["errors"])
+
+
+def _validate_assemblies(errors: list[str], assemblies) -> None:
+    """Compatibility wrapper for multi-panel figure assembly validation."""
+    _validate_assemblies_impl(
+        errors,
+        assemblies,
+        allowed_font_strategies=ALLOWED_FONT_STRATEGIES,
+    )
 
 
 def validate_config(config):
@@ -618,107 +609,7 @@ def validate_config(config):
         if sweep_enabled and comparison_enabled:
             errors.append("sweep.enabled and comparison.enabled cannot both be true; they are mutually exclusive.")
 
-    assemblies = config.get("assemblies", {})
-    if assemblies is not None:
-        if not isinstance(assemblies, dict):
-            errors.append("Invalid 'assemblies' section (must be a mapping).")
-        else:
-            for fig_id, fig_cfg in assemblies.items():
-                if not isinstance(fig_cfg, dict):
-                    errors.append(f"assemblies.{fig_id} must be a mapping.")
-                    continue
-
-                tw = fig_cfg.get("target_width_mm")
-                if tw is None:
-                    errors.append(f"assemblies.{fig_id}.target_width_mm is required.")
-                elif not isinstance(tw, (int, float)) or tw <= 0:
-                    errors.append(f"assemblies.{fig_id}.target_width_mm must be a positive number.")
-
-                gap = fig_cfg.get("gap_mm", 3)
-                if not isinstance(gap, (int, float)) or gap < 0:
-                    errors.append(f"assemblies.{fig_id}.gap_mm must be a non-negative number.")
-
-                layout = fig_cfg.get("layout")
-                if not isinstance(layout, str) or not layout.strip():
-                    errors.append(f"assemblies.{fig_id}.layout is required (mosaic string).")
-                else:
-                    rows = [list(r) for r in layout.strip().splitlines() if r.strip()]
-                    if rows:
-                        row_len = len(rows[0])
-                        for ri, row in enumerate(rows):
-                            if len(row) != row_len:
-                                errors.append(
-                                    f"assemblies.{fig_id}.layout row {ri + 1} has {len(row)} cols, expected {row_len}."
-                                )
-
-                        # Validate contiguous rectangles
-                        chars: dict[str, list[tuple[int, int]]] = {}
-                        for ri, row in enumerate(rows):
-                            for ci, ch in enumerate(row):
-                                if ch != ".":
-                                    chars.setdefault(ch, []).append((ri, ci))
-                        for ch, cells in chars.items():
-                            rows_set = {r for r, _ in cells}
-                            cols_set = {c for _, c in cells}
-                            if len(cells) != len(rows_set) * len(cols_set):
-                                errors.append(
-                                    f"assemblies.{fig_id}.layout: character '{ch}' "
-                                    f"does not form a contiguous rectangle."
-                                )
-
-                # Validate row_height_ratios length
-                rhr = fig_cfg.get("row_height_ratios")
-                if rhr is not None:
-                    if not isinstance(rhr, list):
-                        errors.append(f"assemblies.{fig_id}.row_height_ratios must be a list.")
-                    elif isinstance(layout, str) and layout.strip():
-                        n_layout_rows = len([r for r in layout.strip().splitlines() if r.strip()])
-                        if len(rhr) != n_layout_rows:
-                            errors.append(
-                                f"assemblies.{fig_id}.row_height_ratios has {len(rhr)} entries "
-                                f"but layout has {n_layout_rows} rows."
-                            )
-
-                panels = fig_cfg.get("panels", {})
-                if not isinstance(panels, dict):
-                    errors.append(f"assemblies.{fig_id}.panels must be a mapping.")
-                else:
-                    for pid, p_cfg in panels.items():
-                        if not isinstance(p_cfg, dict):
-                            errors.append(f"assemblies.{fig_id}.panels.{pid} must be a mapping.")
-                            continue
-                        if "source" not in p_cfg or not isinstance(p_cfg["source"], str):
-                            errors.append(f"assemblies.{fig_id}.panels.{pid}.source is required (string).")
-                        else:
-                            src = p_cfg["source"]
-                            if os.path.isabs(src):
-                                errors.append(
-                                    f"assemblies.{fig_id}.panels.{pid}.source: absolute paths are not allowed."
-                                )
-                            elif ".." in src.replace("\\", "/").split("/"):
-                                errors.append(
-                                    f"assemblies.{fig_id}.panels.{pid}.source: path traversal '..' is not allowed."
-                                )
-                        fs = p_cfg.get("font_strategy", "compensate")
-                        if fs not in ALLOWED_FONT_STRATEGIES:
-                            allowed = ", ".join(sorted(ALLOWED_FONT_STRATEGIES))
-                            errors.append(f"assemblies.{fig_id}.panels.{pid}.font_strategy must be one of: {allowed}.")
-
-                    # Cross-check: layout characters vs panel keys
-                    if isinstance(layout, str) and layout.strip():
-                        layout_chars = {ch for row in rows for ch in row if ch != "."}
-                        panel_keys = set(panels.keys())
-                        missing_panels = layout_chars - panel_keys
-                        extra_panels = panel_keys - layout_chars
-                        if missing_panels:
-                            errors.append(
-                                f"assemblies.{fig_id}: layout references "
-                                f"{sorted(missing_panels)} but panels section is missing them."
-                            )
-                        if extra_panels:
-                            errors.append(
-                                f"assemblies.{fig_id}: panels {sorted(extra_panels)} are not referenced in layout."
-                            )
+    _validate_assemblies(errors, config.get("assemblies", {}))
 
     return errors
 

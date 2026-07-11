@@ -3,8 +3,15 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from hub_core import config_parser, config_research_metadata, config_schema, config_top_level_keys
+from hub_core import (
+    config_language_policy,
+    config_parser,
+    config_research_metadata,
+    config_schema,
+    config_top_level_keys,
+)
 from hub_core.config_parser import (
     CURRENT_CONFIG_SCHEMA_VERSION,
     SUPPORTED_CONFIG_SCHEMA_VERSIONS,
@@ -48,6 +55,14 @@ def test_config_parser_keeps_top_level_key_compatibility_exports():
     assert config_parser._levenshtein_distance is config_top_level_keys.levenshtein_distance
     assert config_parser._top_level_key_suggestion is config_top_level_keys.top_level_key_suggestion
     assert config_parser._validate_top_level_key_near_misses is config_top_level_keys.validate_top_level_key_near_misses
+
+
+def test_config_parser_keeps_language_policy_compatibility_exports():
+    assert config_parser.normalize_lang is config_language_policy.normalize_lang
+    with patch.object(config_parser, "normalize_lang", return_value="patched"):
+        policy = config_parser.get_language_policy({"language_policy": {"analysis_lang": "r", "plot_lang": "py"}})
+    assert policy["analysis_lang"] == "patched"
+    assert policy["plot_lang"] == "patched"
 
 
 def test_config_parser_keeps_research_metadata_compatibility_exports():
@@ -227,6 +242,35 @@ class TestValidateConfigTopLevelNearMisses(unittest.TestCase):
         errors = validate_config(config)
 
         self.assertEqual(errors, [])
+
+
+class TestAssemblyConfigValidation(unittest.TestCase):
+    def test_assembly_layout_and_panel_containment_errors_remain_precise(self):
+        config = {
+            "project": {"name": "Assembly Validation"},
+            "visual_style": {"target_format": "nature"},
+            "assemblies": {
+                "Fig1": {
+                    "target_width_mm": 100,
+                    "layout": "ab\naa",
+                    "row_height_ratios": [1],
+                    "panels": {
+                        "a": {"source": "../escape.svg", "font_strategy": "invalid"},
+                        "b": {"source": "panel-b.svg"},
+                    },
+                }
+            },
+        }
+
+        errors = validate_config(config)
+
+        self.assertIn("assemblies.Fig1.layout: character 'a' does not form a contiguous rectangle.", errors)
+        self.assertIn("assemblies.Fig1.row_height_ratios has 1 entries but layout has 2 rows.", errors)
+        self.assertIn("assemblies.Fig1.panels.a.source: path traversal '..' is not allowed.", errors)
+        self.assertIn(
+            "assemblies.Fig1.panels.a.font_strategy must be one of: as_is, compensate.",
+            errors,
+        )
 
 
 class TestParseSweepConfigValues(unittest.TestCase):
