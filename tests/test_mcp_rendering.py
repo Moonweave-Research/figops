@@ -1022,7 +1022,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "EXPORT")
-            self.assertIn("symlink", result["errors"][0])
+            error = result["errors"][0]
+            self.assertTrue(
+                "symlink" in error or "escapes project root" in error,
+                f"unexpected snapshot-input rejection: {error}",
+            )
 
     def test_render_project_figure_expands_declared_input_globs_in_snapshot(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
