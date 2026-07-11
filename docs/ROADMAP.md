@@ -268,6 +268,12 @@ facade preserves environment-overlay, failure-stage, path-containment, and
 monkeypatch contracts while reducing variation-specific control flow in the base
 pipeline module.
 
+The subsequent 2026-07-11 slice extracted visual-regression baseline manifest
+state, snapshot persistence, decision flow, and reporting aggregation into
+`hub_core.visual_regression_baselines`. The `hub_core.visual_regression` façade
+retains its existing private helper import and monkeypatch surface while keeping
+comparison algorithms in their established module.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 

@@ -10,13 +10,30 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import warnings
 from datetime import datetime
 
 from .config_parser import discover_projects_with_status, load_config
 from .logging import get_logger
 from .runtime_paths import resolve_hub_logs_dir, resolve_runtime_root
 from .utils import resolve_path
+from .visual_regression_baselines import (
+    build_baseline_key as _build_baseline_key_impl,
+)
+from .visual_regression_baselines import (
+    build_baseline_summary as _build_baseline_summary_impl,
+)
+from .visual_regression_baselines import (
+    load_baseline_state as _load_baseline_state_impl,
+)
+from .visual_regression_baselines import (
+    resolve_figure_baseline as _resolve_figure_baseline_impl,
+)
+from .visual_regression_baselines import (
+    upsert_baseline_entry as _upsert_baseline_entry_impl,
+)
+from .visual_regression_baselines import (
+    write_baseline_manifest as _write_baseline_manifest_impl,
+)
 
 logger = get_logger(__name__)
 
@@ -391,62 +408,21 @@ def _normalize_regression_baseline_mode(mode):
 
 
 def _load_baseline_state(hub_path):
-    baseline_dir = os.path.join(resolve_hub_logs_dir(), DEFAULT_BASELINE_DIRNAME)
-    files_dir = os.path.join(baseline_dir, "files")
-    manifest_path = os.path.join(baseline_dir, DEFAULT_BASELINE_MANIFEST)
-    manifest = {
-        "schema_version": 1,
-        "updated_at": None,
-        "figures": {},
-    }
-
-    if os.path.exists(manifest_path):
-        try:
-            with open(manifest_path, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-            if isinstance(loaded, dict):
-                loaded_ver = loaded.get("schema_version", 1)
-                if loaded_ver != 1:
-                    warnings.warn(
-                        f"Baseline manifest schema_version={loaded_ver} "
-                        f"(expected 1) in {manifest_path}; results may be unreliable",
-                        stacklevel=2,
-                    )
-                figures = loaded.get("figures", {})
-                if isinstance(figures, dict):
-                    manifest = {
-                        "schema_version": loaded_ver,
-                        "updated_at": loaded.get("updated_at"),
-                        "figures": figures,
-                    }
-        except (OSError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"failed to load regression baseline manifest: {manifest_path}") from exc
-
-    return {
-        "baseline_dir": baseline_dir,
-        "files_dir": files_dir,
-        "manifest_path": manifest_path,
-        "manifest": manifest,
-        "dirty": False,
-        "was_updated": False,
-    }
+    """Compatibility wrapper for baseline manifest state loading."""
+    del hub_path
+    return _load_baseline_state_impl(
+        resolve_hub_logs_dir=resolve_hub_logs_dir,
+        baseline_dirname=DEFAULT_BASELINE_DIRNAME,
+        manifest_filename=DEFAULT_BASELINE_MANIFEST,
+    )
 
 
 def _write_baseline_manifest(baseline_state):
-    manifest = baseline_state["manifest"]
-    manifest["updated_at"] = datetime.now().isoformat(timespec="seconds")
-    manifest_path = baseline_state["manifest_path"]
-    try:
-        os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            json.dump(manifest, f, ensure_ascii=False, indent=2, sort_keys=True)
-            f.write("\n")
-            f.flush()
-            os.fsync(f.fileno())
-    except OSError as exc:
-        raise RuntimeError(f"failed to write regression baseline manifest: {manifest_path}") from exc
-    baseline_state["dirty"] = False
-    baseline_state["was_updated"] = True
+    """Compatibility wrapper for durable baseline manifest persistence."""
+    return _write_baseline_manifest_impl(
+        baseline_state,
+        updated_at=datetime.now().isoformat(timespec="seconds"),
+    )
 
 
 def _resolve_figure_baseline(
@@ -459,118 +435,25 @@ def _resolve_figure_baseline(
     regression_baseline,
     tolerances=None,
 ):
+    """Compatibility wrapper for per-output baseline decisions."""
     if tolerances is None:
         tolerances = _resolve_regression_tolerances(None)
-    current_exists = os.path.exists(output_path)
-    current_hash = _hash_file(output_path)
-    current_size = _file_size(output_path)
-    key = _build_baseline_key(project_dir, figure_id)
-    entry = baseline_state["manifest"]["figures"].get(key)
-
-    if regression_baseline == "ignore":
-        return {
-            "mode": "ignore",
-            "status": "skipped",
-            "regression_ok": True,
-            "baseline_path": entry.get("baseline_path") if isinstance(entry, dict) else None,
-            "baseline_sha256": entry.get("sha256") if isinstance(entry, dict) else None,
-            "current_sha256": current_hash,
-            "diff": None,
-        }
-
-    if regression_baseline == "update":
-        if current_exists:
-            entry = _upsert_baseline_entry(
-                baseline_state,
-                key=key,
-                project_dir=project_dir,
-                project_name=project_name,
-                figure_id=figure_id,
-                output_path=output_path,
-                current_hash=current_hash,
-                current_size=current_size,
-            )
-            return {
-                "mode": "update",
-                "status": "updated",
-                "regression_ok": True,
-                "baseline_path": entry.get("baseline_path"),
-                "baseline_sha256": entry.get("sha256"),
-                "current_sha256": current_hash,
-                "diff": None,
-            }
-        return {
-            "mode": "update",
-            "status": "missing_output",
-            "regression_ok": False,
-            "baseline_path": entry.get("baseline_path") if isinstance(entry, dict) else None,
-            "baseline_sha256": entry.get("sha256") if isinstance(entry, dict) else None,
-            "current_sha256": current_hash,
-            "diff": None,
-        }
-
-    if not isinstance(entry, dict):
-        return {
-            "mode": "check",
-            "status": "missing_baseline",
-            "regression_ok": False,
-            "baseline_path": None,
-            "baseline_sha256": None,
-            "current_sha256": current_hash,
-            "diff": None,
-        }
-
-    if not current_exists:
-        return {
-            "mode": "check",
-            "status": "missing_output",
-            "regression_ok": False,
-            "baseline_path": entry.get("baseline_path"),
-            "baseline_sha256": entry.get("sha256"),
-            "current_sha256": current_hash,
-            "diff": None,
-        }
-
-    baseline_path = entry.get("baseline_path")
-    baseline_hash = entry.get("sha256")
-    if not baseline_path or not os.path.exists(baseline_path):
-        return {
-            "mode": "check",
-            "status": "missing_baseline",
-            "regression_ok": False,
-            "baseline_path": baseline_path,
-            "baseline_sha256": baseline_hash,
-            "current_sha256": current_hash,
-            "diff": None,
-        }
-
-    if bool(baseline_hash) and baseline_hash == current_hash:
-        return {
-            "mode": "check",
-            "status": "matched",
-            "regression_ok": True,
-            "baseline_path": baseline_path,
-            "baseline_sha256": baseline_hash,
-            "current_sha256": current_hash,
-            "diff": None,
-        }
-
-    # Hashes differ: do not decide on the hash alone. Compute pixel metrics and
-    # gate on tolerances. A size mismatch fails outright (no silent cropping).
-    diff = _build_visual_diff_metrics(baseline_path, output_path)
-    regression_ok, status, reason = _evaluate_pixel_verdict(diff, tolerances)
-    result = {
-        "mode": "check",
-        "status": status,
-        "regression_ok": regression_ok,
-        "baseline_path": baseline_path,
-        "baseline_sha256": baseline_hash,
-        "current_sha256": current_hash,
-        "diff": diff,
-    }
-    if reason:
-        result["reason"] = reason
-    return result
+    return _resolve_figure_baseline_impl(
+        baseline_state,
+        project_dir=project_dir,
+        project_name=project_name,
+        figure_id=figure_id,
+        output_path=output_path,
+        regression_baseline=regression_baseline,
+        tolerances=tolerances,
+        path_exists=os.path.exists,
+        hash_file=_hash_file,
+        file_size=_file_size,
+        build_baseline_key=_build_baseline_key,
+        upsert_baseline_entry=_upsert_baseline_entry,
+        build_visual_diff_metrics=_build_visual_diff_metrics,
+        evaluate_pixel_verdict=_evaluate_pixel_verdict,
+    )
 
 
 def _resolve_regression_tolerances(config):
@@ -652,75 +535,29 @@ def _upsert_baseline_entry(
     current_hash,
     current_size,
 ):
-    ext = os.path.splitext(output_path)[1].lower() or ".bin"
-    project_hash = hashlib.sha256(os.path.abspath(project_dir).encode("utf-8")).hexdigest()[:12]
-    dest_rel = os.path.join("files", project_hash, f"{figure_id}{ext}")
-    dest_path = os.path.join(baseline_state["baseline_dir"], dest_rel)
-    try:
-        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-        shutil.copy2(output_path, dest_path)
-    except OSError as exc:
-        raise RuntimeError(f"failed to update regression baseline snapshot: {dest_path}") from exc
-
-    entry = {
-        "project_dir": os.path.abspath(project_dir),
-        "project_name": project_name,
-        "figure_id": figure_id,
-        "source_output": os.path.abspath(output_path),
-        "baseline_path": dest_path,
-        "baseline_relpath": dest_rel.replace(os.sep, "/"),
-        "sha256": current_hash,
-        "size": current_size,
-        "dimensions": _artifact_dimensions(output_path),
-        "updated_at": datetime.now().isoformat(timespec="seconds"),
-    }
-    baseline_state["manifest"]["figures"][key] = entry
-    baseline_state["dirty"] = True
-    return entry
+    """Compatibility wrapper for baseline snapshot updates."""
+    return _upsert_baseline_entry_impl(
+        baseline_state,
+        key=key,
+        project_dir=project_dir,
+        project_name=project_name,
+        figure_id=figure_id,
+        output_path=output_path,
+        current_hash=current_hash,
+        current_size=current_size,
+        artifact_dimensions=_artifact_dimensions,
+        updated_at=datetime.now().isoformat(timespec="seconds"),
+    )
 
 
 def _build_baseline_key(project_dir, figure_id):
-    normalized = f"{os.path.abspath(project_dir)}::{figure_id}"
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    """Compatibility wrapper for stable baseline manifest keys."""
+    return _build_baseline_key_impl(project_dir, figure_id)
 
 
 def _build_baseline_summary(results, baseline_state, regression_baseline):
-    summary = {
-        "mode": regression_baseline,
-        "manifest_path": baseline_state["manifest_path"],
-        "updated": bool(baseline_state.get("was_updated")),
-        "figure_count": 0,
-        "matched_count": 0,
-        "within_tolerance_count": 0,
-        "mismatch_count": 0,
-        "size_mismatch_count": 0,
-        "missing_baseline_count": 0,
-        "missing_output_count": 0,
-        "updated_count": 0,
-        "skipped_count": 0,
-    }
-    for result in results:
-        for output in result.get("figure_outputs", []):
-            summary["figure_count"] += 1
-            baseline = output.get("baseline", {})
-            status = baseline.get("status", "skipped")
-            if status == "matched":
-                summary["matched_count"] += 1
-            elif status == "within_tolerance":
-                summary["within_tolerance_count"] += 1
-            elif status == "mismatch":
-                summary["mismatch_count"] += 1
-            elif status == "size_mismatch":
-                summary["size_mismatch_count"] += 1
-            elif status == "missing_baseline":
-                summary["missing_baseline_count"] += 1
-            elif status == "missing_output":
-                summary["missing_output_count"] += 1
-            elif status == "updated":
-                summary["updated_count"] += 1
-            else:
-                summary["skipped_count"] += 1
-    return summary
+    """Compatibility wrapper for check-all baseline reporting."""
+    return _build_baseline_summary_impl(results, baseline_state, regression_baseline)
 
 
 def _build_visual_diff_metrics(baseline_path, current_path):

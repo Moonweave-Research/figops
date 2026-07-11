@@ -59,7 +59,7 @@ policy-only; there is no import-linter contract in `.github/workflows/ci.yml` as
 of v0.18.0. Remaining over-budget files should be handled as scoped maintenance
 tracks rather than broad rewrites.
 
-Current files over the approximate 800-line budget, measured on 2026-07-10 with
+Current files over the approximate 800-line budget, measured on 2026-07-11 with
 the architecture inventory helper:
 
 ```bash
@@ -74,7 +74,6 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | `hub_core/mcp/render_orchestration.py` | 1074 |
 | `hub_core/mcp/tools/render_csv.py` | 991 |
 | `hub_core/config_parser.py` | 903 |
-| `hub_core/visual_regression.py` | 902 |
 | `hub_core/process_runner.py` | 893 |
 | `hub_core/geometry_diagnostics.py` | 850 |
 <!-- architecture-inventory:end -->
@@ -87,6 +86,12 @@ The 2026-06-29 decomposition wave reduced the previous primary hotspots below
 `hub_core/data_contract.py` has already been reduced to a
 compatibility/orchestration surface after IO and semantic helpers were
 extracted.
+
+The visual-regression façade now delegates baseline manifest loading, durable
+snapshot updates, baseline decision flow, and check-all summary aggregation to
+`hub_core/visual_regression_baselines.py`. Existing private helper names remain
+available from `hub_core.visual_regression` for downstream compatibility and
+monkeypatching.
 
 The first `plotting.bridge_renderer` extraction wave moved box/violin
 distribution rendering into `plotting/renderers/distribution.py`, heatmap

@@ -13,11 +13,14 @@ from hub_core.visual_regression import (
     _build_baseline_key,
     _build_output_record,
     _evaluate_pixel_verdict,
+    _load_baseline_state,
     _normalize_regression_baseline_mode,
     _resolve_figure_baseline,
     _resolve_project_name,
     _resolve_regression_tolerances,
     _summarize_stdout,
+    _upsert_baseline_entry,
+    _write_baseline_manifest,
     write_check_all_report,
 )
 
@@ -73,6 +76,34 @@ def test_build_baseline_key_differs_by_project_dir(tmp_path):
     key1 = _build_baseline_key(str(tmp_path), "Fig1")
     key2 = _build_baseline_key(str(other), "Fig1")
     assert key1 != key2
+
+
+def test_baseline_state_facade_preserves_runtime_root_and_snapshot_contract(tmp_path):
+    output_path = tmp_path / "Fig1.png"
+    output_path.write_bytes(b"fixture-output")
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    with patch("hub_core.visual_regression.resolve_hub_logs_dir", return_value=str(tmp_path / "logs")):
+        state = _load_baseline_state("ignored")
+
+    key = _build_baseline_key(str(project_dir), "Fig1")
+    entry = _upsert_baseline_entry(
+        state,
+        key=key,
+        project_dir=str(project_dir),
+        project_name="project",
+        figure_id="Fig1",
+        output_path=str(output_path),
+        current_hash=_sha256(output_path),
+        current_size=output_path.stat().st_size,
+    )
+    _write_baseline_manifest(state)
+
+    assert Path(entry["baseline_path"]).read_bytes() == output_path.read_bytes()
+    assert state["was_updated"] is True
+    stored = json.loads(Path(state["manifest_path"]).read_text(encoding="utf-8"))
+    assert stored["figures"][key]["baseline_relpath"].startswith("files/")
 
 
 def test_resolve_project_name_from_config(tmp_path):
