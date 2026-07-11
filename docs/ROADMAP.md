@@ -321,6 +321,12 @@ original private clamp names and warning stack levels; preset values,
 compliance-token resolution, output formats, and diagnostics ordering remain
 in `themes.journal_theme`.
 
+The next 2026-07-11 bridge slice extracted CSV required-column validation,
+finite-number filtering, point payload normalization, x parsing, and
+point-label option normalization into `plotting.renderers.point_loader`.
+`plotting.bridge_renderer` directly re-exports its original private helpers and
+is now below the 800-line architecture split signal.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 

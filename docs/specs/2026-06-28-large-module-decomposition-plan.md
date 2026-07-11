@@ -105,6 +105,11 @@ Progress:
   facade-supplied dependency context. Public spec names, private composition
   helpers, and the `save_journal_fig` patch seam remain available from
   `plotting.bridge_renderer`.
+- 2026-07-11: CSV required-column collection, finite-number filtering, point
+  payload construction, x parsing, and point-label option normalization moved
+  to `plotting/renderers/point_loader.py`. `_load_points`, `_parse_x_value`,
+  and `_normalized_point_label_options` remain direct compatibility aliases in
+  `plotting.bridge_renderer`, which is now below the 800-line split signal.
 - After this extraction, `plotting/bridge_renderer.py` is no longer the largest
   hotspot. Continue bridge extraction only with tightly scoped visual witness
   tests; otherwise move to D2/D3 based on current inventory.

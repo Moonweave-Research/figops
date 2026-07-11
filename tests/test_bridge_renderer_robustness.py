@@ -28,6 +28,15 @@ from plotting.bridge_renderer import (
 from tests.test_bridge_renderer import _assert_visual_baseline
 
 
+def test_bridge_renderer_keeps_point_loader_compatibility_aliases():
+    from plotting import bridge_renderer
+    from plotting.renderers import point_loader
+
+    assert bridge_renderer._load_points is point_loader.load_points
+    assert bridge_renderer._parse_x_value is point_loader.parse_x_value
+    assert bridge_renderer._normalized_point_label_options is point_loader.normalized_point_label_options
+
+
 def _write_csv(path: Path, rows: list[dict]) -> None:
     with path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))

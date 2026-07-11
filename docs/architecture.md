@@ -69,7 +69,6 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 <!-- architecture-inventory:start -->
 | File | Lines |
 |---|---:|
-| `plotting/bridge_renderer.py` | 883 |
 | `themes/journal_theme.py` | 845 |
 <!-- architecture-inventory:end -->
 
@@ -142,6 +141,11 @@ shared-legend, manuscript layout, and figure-style helpers also live under
 validation, image-panel embedding, and save/fingerprint orchestration now live
 in `plotting/renderers/multipanel.py`; the bridge-renderer facade supplies its
 live collaborators so existing save hooks and private imports remain effective.
+CSV required-column collection, numeric validity filtering, point payload
+normalization, x-value parsing, and point-label option normalization now live
+in `plotting/renderers/point_loader.py`. The original private helper names are
+direct aliases and `plotting/bridge_renderer.py` is below the 800-line split
+signal.
 The old private import paths remain available for compatibility.
 
 ## Current architecture constraints

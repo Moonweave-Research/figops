@@ -4,8 +4,6 @@ Reusable Graph Hub renderer for Athena bridge plots.
 
 from __future__ import annotations
 
-import csv
-import math
 import os
 import warnings
 from dataclasses import dataclass
@@ -73,7 +71,9 @@ from plotting.renderers.heatmap import render_heatmap_plot as _render_heatmap_pl
 from plotting.renderers.labels import annotate_points as _annotate_points  # noqa: F401
 from plotting.renderers.labels import display_label as _display_label  # noqa: F401
 from plotting.renderers.labels import draw_point_label as _draw_point_label  # noqa: F401
-from plotting.renderers.labels import normalized_point_label_options_dict as _normalized_point_label_options_dict
+from plotting.renderers.labels import (
+    normalized_point_label_options_dict as _normalized_point_label_options_dict,  # noqa: F401
+)
 from plotting.renderers.labels import point_label_candidates as _point_label_candidates  # noqa: F401
 from plotting.renderers.labels import point_label_xytext as _point_label_xytext  # noqa: F401
 from plotting.renderers.labels import record_point_label_skips as _record_point_label_skips  # noqa: F401
@@ -127,6 +127,9 @@ from plotting.renderers.overlays import tag_annotation_text as _tag_annotation_t
 from plotting.renderers.overlays import tag_overlay_artist as _tag_overlay_artist  # noqa: F401
 from plotting.renderers.overlays import validate_manual_overlays as _validate_manual_overlays
 from plotting.renderers.overlays import validate_statistical_overlays as _validate_statistical_overlays
+from plotting.renderers.point_loader import load_points as _load_points
+from plotting.renderers.point_loader import normalized_point_label_options as _normalized_point_label_options
+from plotting.renderers.point_loader import parse_x_value as _parse_x_value  # noqa: F401
 from plotting.renderers.shared_legend import apply_shared_legend as _apply_shared_legend
 from plotting.renderers.shared_legend import normalized_shared_legend_options as _normalized_shared_legend_options
 from plotting.renderers.xy import XYRendererContext
@@ -443,95 +446,6 @@ def _render_image_panel(ax, panel: PanelImageSpec) -> None:
     _render_image_panel_impl(ax, panel)
 
 
-def _load_points(csv_path: Path, spec: BridgeFigureSpec) -> list[dict]:
-    points: list[dict] = []
-    skipped = 0
-    with csv_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        headers = reader.fieldnames or []
-        required = [spec.x_column, spec.y_column]
-        secondary_y = spec.secondary_y or {}
-        secondary_y_column = str(secondary_y.get("column") or "").strip()
-        if secondary_y_column:
-            required.append(secondary_y_column)
-        for col_attr in ("label_column", "series_column", "yerr_column", "yerr_minus_column", "facet_column"):
-            col = getattr(spec, col_attr)
-            if col:
-                required.append(col)
-        point_label_options = _normalized_point_label_options(spec)
-        for option_key in ("priority_column", "skip_column"):
-            col = point_label_options.get(option_key)
-            if col:
-                required.append(str(col))
-        for region in spec.fill_between:
-            for key in ("x_column", "y1_column", "y2_column"):
-                col = region.get(key)
-                if col:
-                    required.append(str(col))
-        if spec.plot_type == "heatmap" and spec.z_column:
-            required.append(spec.z_column)
-        missing = [c for c in required if c not in headers]
-        if missing:
-            raise ValueError(
-                f"CSV {csv_path.name} is missing column(s): {', '.join(missing)}. Available: {', '.join(headers)}"
-            )
-        for row_num, row in enumerate(reader, start=2):
-            try:
-                y_val = float(row[spec.y_column])
-                secondary_y_val = float(row[secondary_y_column]) if secondary_y_column else None
-                yerr_val = float(row[spec.yerr_column]) if spec.yerr_column else None
-                yerr_minus_val = float(row[spec.yerr_minus_column]) if spec.yerr_minus_column else None
-                z_val = float(row[spec.z_column]) if spec.z_column else None
-            except (ValueError, TypeError):
-                skipped += 1
-                continue
-            if (
-                not math.isfinite(y_val)
-                or (secondary_y_val is not None and not math.isfinite(secondary_y_val))
-                or (yerr_val is not None and not math.isfinite(yerr_val))
-            ):
-                skipped += 1
-                continue
-            if yerr_minus_val is not None and not math.isfinite(yerr_minus_val):
-                skipped += 1
-                continue
-            if z_val is not None and not math.isfinite(z_val):
-                skipped += 1
-                continue
-            points.append(
-                {
-                    "x": _parse_x_value(row[spec.x_column]),
-                    "y": y_val,
-                    "secondary_y": secondary_y_val,
-                    "z": z_val,
-                    "label": row[spec.label_column] if spec.label_column else "",
-                    "series": row[spec.series_column] if spec.series_column else "",
-                    "yerr": yerr_val,
-                    "yerr_minus": yerr_minus_val,
-                    "facet": row[spec.facet_column] if spec.facet_column else "",
-                    "raw": dict(row),
-                }
-            )
-    if skipped:
-        warnings.warn(
-            f"bridge_renderer: skipped {skipped} row(s) with NaN/inf in {csv_path.name}",
-            stacklevel=2,
-        )
-    if not points:
-        raise ValueError(f"CSV {csv_path.name} contains no valid data rows")
-    return points
-
-
-def _parse_x_value(value: object) -> float | str:
-    text = str(value).strip()
-    if not text:
-        return ""
-    try:
-        return float(text)
-    except ValueError:
-        return text
-
-
 def _series_style_override(spec: BridgeFigureSpec, series_name: object) -> dict[str, object]:
     styles = spec.series_styles or {}
     if not isinstance(styles, dict):
@@ -686,8 +600,6 @@ def _render_secondary_y_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> 
         ax.legend(handles, labels, **kwargs)
 
 
-def _normalized_point_label_options(spec: BridgeFigureSpec) -> dict[str, object]:
-    return _normalized_point_label_options_dict(spec.point_label_options)
 def _render_broken_axis_plot(fig, points: list[dict], spec: BridgeFigureSpec) -> None:
     if not points:
         warnings.warn(

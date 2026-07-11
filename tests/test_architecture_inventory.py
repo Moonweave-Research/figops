@@ -14,7 +14,7 @@ def test_architecture_inventory_reports_large_modules_in_descending_order():
     assert rows
     assert all(row["lines"] > 800 for row in rows)
     assert [row["lines"] for row in rows] == sorted((row["lines"] for row in rows), reverse=True)
-    assert any(row["file"] == "plotting/bridge_renderer.py" for row in rows)
+    assert any(row["file"] == "themes/journal_theme.py" for row in rows)
 
 
 def test_architecture_inventory_matches_committed_architecture_doc():
