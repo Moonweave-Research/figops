@@ -177,6 +177,9 @@ Current state:
 - M5.3 `figops.doctor` / smoke-style environment readiness checks shipped.
 - M5.4 release discipline is active through `pyproject.toml`, `CHANGELOG.md`,
   and tags beginning at v0.6.0.
+- The manual publish build pins uv, validates the project lock before testing,
+  builds standards-compliant artifacts with `--no-sources`, and lock-enforces
+  metadata checks, consumer installation smoke, and upload-policy validation.
 
 ---
 

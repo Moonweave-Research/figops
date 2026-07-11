@@ -261,11 +261,12 @@ Before a package release, combine package readiness with an operator review of
 current visual evidence:
 
 ```bash
-python hub_uv.py run python -m pytest -q tests/test_guarded_pypi_upload.py tests/test_package_metadata_smoke.py tests/test_packaging_metadata.py tests/test_public_package_surface.py tests/test_release_discipline.py
-python hub_uv.py run python scripts/package_metadata_smoke.py
-python hub_uv.py run python scripts/public_package_surface.py
-python hub_uv.py run python scripts/consumer_install_smoke.py
-python hub_uv.py run --with twine python -m twine check dist/*
+python hub_uv.py run --locked python -m pytest -q tests/test_guarded_pypi_upload.py tests/test_package_metadata_smoke.py tests/test_packaging_metadata.py tests/test_public_package_surface.py tests/test_release_discipline.py
+python hub_uv.py build --no-sources
+python hub_uv.py run --locked python scripts/package_metadata_smoke.py
+python hub_uv.py run --locked python scripts/public_package_surface.py
+python hub_uv.py run --locked python scripts/consumer_install_smoke.py
+python hub_uv.py run --locked --with twine python -m twine check dist/*
 ```
 
 The GitHub Actions workflow named `Publish Python package`

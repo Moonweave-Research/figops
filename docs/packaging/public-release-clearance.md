@@ -53,12 +53,12 @@ Run these before upload approval:
 python scripts/public_core_inventory.py --status --format markdown
 python scripts/public_core_inventory.py --status --format markdown --output docs/packaging/public-release-status.md
 python scripts/public_core_inventory.py --status --include-blockers
-python scripts/check_public_release.py
-uv build
-python scripts/package_metadata_smoke.py
-python scripts/public_package_surface.py
-python scripts/consumer_install_smoke.py
-uv run --with twine python -m twine check dist/*
+python hub_uv.py run --locked python scripts/check_public_release.py
+python hub_uv.py build --no-sources
+python hub_uv.py run --locked python scripts/package_metadata_smoke.py
+python hub_uv.py run --locked python scripts/public_package_surface.py
+python hub_uv.py run --locked python scripts/consumer_install_smoke.py
+python hub_uv.py run --locked --with twine python -m twine check dist/*
 ```
 
 Expected for a private-repo / public-PyPI path: `guarded_pypi_upload.py` can pass once license and built artifacts are clean, while `check_public_release.py` may still report repo-only private docs/tests that are not shipped in the wheel or sdist.

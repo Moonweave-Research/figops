@@ -192,6 +192,33 @@ def test_test_and_ruff_jobs_are_gating_and_locked() -> None:
     assert jobs["lint"]["name"] == "Ruff (gating)"
 
 
+def test_publish_build_job_uses_pinned_uv_and_locked_project_commands() -> None:
+    document = yaml.load((WORKFLOW_DIR / "publish.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    assert isinstance(document, dict)
+    steps = document["jobs"]["build"]["steps"]
+    setup_uv = next(step for step in steps if step.get("name") == "Install locked uv")
+    assert setup_uv["with"]["python-version"] == "3.12"
+    assert setup_uv["with"]["version"] == "0.11.25"
+    sync = next(step for step in steps if step.get("name") == "Sync locked dependencies")
+    assert sync["run"] == "uv sync --locked --group dev"
+
+    locked_steps = (
+        "Run release-critical tests",
+        "Package metadata smoke",
+        "Public package surface",
+        "Consumer install smoke",
+        "Twine metadata check",
+        "Guard upload policy",
+    )
+    for step_name in locked_steps:
+        step = next(step for step in steps if step.get("name") == step_name)
+        assert "--locked" in step["run"]
+
+    build = next(step for step in steps if step.get("name") == "Build distributions")
+    assert build["run"] == "uv build --no-sources"
+
+
 def test_dependabot_updates_github_actions_weekly() -> None:
     document = yaml.load(DEPENDABOT_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 

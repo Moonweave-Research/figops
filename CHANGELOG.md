@@ -30,6 +30,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   consumer checks.
 - Run normal Test and Ruff CI with a pinned uv release and lock enforcement, and make
   Ruff failures gating now that repository lint debt is clear.
+- Run the manual publish build and verification job with the same pinned uv release and
+  lock-enforced project commands before any TestPyPI or PyPI promotion.
 - Refresh the CLI, MCP, and runtime contracts so failed attempts retain provenance and
   selected Python-only workflows do not require an unused R runtime.
 

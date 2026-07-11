@@ -8,7 +8,7 @@ distribution for the current distribution name:
 ```bash
 python -m build
 # or
-uv build
+python hub_uv.py build --no-sources
 ```
 
 The install name from the current `pyproject.toml` is:
@@ -30,8 +30,8 @@ Before a package is shared outside the repository, build the wheel and run the
 same console commands through an isolated consumer-style install path:
 
 ```bash
-uv build
-python scripts/consumer_install_smoke.py
+python hub_uv.py build --no-sources
+python hub_uv.py run --locked python scripts/consumer_install_smoke.py
 ```
 
 This does not publish anything. It verifies that someone installing the built
