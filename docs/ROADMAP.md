@@ -315,6 +315,12 @@ decluttering engine into `themes.declutter`. Journal presets, font and line
 tokens, compliance clamps, output formats, diagnostics ordering, and the
 `save_journal_fig` chokepoint remain unchanged in the journal-theme façade.
 
+The subsequent 2026-07-11 journal slice extracted the application of resolved
+font and line compliance floors into `themes.compliance`. It preserves the
+original private clamp names and warning stack levels; preset values,
+compliance-token resolution, output formats, and diagnostics ordering remain
+in `themes.journal_theme`.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 

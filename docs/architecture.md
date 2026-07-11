@@ -69,8 +69,8 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 <!-- architecture-inventory:start -->
 | File | Lines |
 |---|---:|
-| `themes/journal_theme.py` | 1002 |
 | `plotting/bridge_renderer.py` | 883 |
+| `themes/journal_theme.py` | 845 |
 <!-- architecture-inventory:end -->
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
@@ -122,6 +122,12 @@ leader-line targeting, axes-edge correction, and convergence reporting to
 `themes/declutter.py`. Journal style tokens, rcParams, compliance floors,
 save-format behavior, and the `save_journal_fig` chokepoint remain in
 `themes/journal_theme.py` unchanged.
+
+The same façade delegates the application of already-resolved font and line
+floors to `themes/compliance.py`, covering rcParams and live figure artists.
+Preset definitions and compliance-token resolution remain in
+`themes/journal_theme.py`, while the original private clamp names are direct
+imports so warning messages and stack levels remain stable.
 
 The first `plotting.bridge_renderer` extraction wave moved box/violin
 distribution rendering into `plotting/renderers/distribution.py`, heatmap

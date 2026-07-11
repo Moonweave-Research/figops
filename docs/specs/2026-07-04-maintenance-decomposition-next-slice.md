@@ -126,6 +126,12 @@ overlap correction and has a dedicated visual witness set in
 `STYLE_PRESETS`, font tokens, compliance floors, output-format decisions,
 geometry-diagnostics ordering, or the `save_journal_fig` chokepoint.
 
+A subsequent bounded slice moved only the application of already-resolved
+compliance floors into `themes/compliance.py`. The preset dictionaries and
+`_journal_compliance_tokens` resolution remain in `themes/journal_theme.py`;
+the extracted functions preserve their warning text and stack levels and are
+covered by the rcParams, explicit-artist, and diagnostics compliance witnesses.
+
 ## Non-Goals
 
 - No source movement in this task.
