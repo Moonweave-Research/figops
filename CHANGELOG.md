@@ -28,6 +28,8 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
 - Make release verification reproducible with locked Ruff tooling, strict Windows
   containment coverage, immutable external GitHub Action references, and fresh-package
   consumer checks.
+- Run normal Test and Ruff CI with a pinned uv release and lock enforcement, and make
+  Ruff failures gating now that repository lint debt is clear.
 - Refresh the CLI, MCP, and runtime contracts so failed attempts retain provenance and
   selected Python-only workflows do not require an unused R runtime.
 

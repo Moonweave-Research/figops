@@ -129,6 +129,7 @@ What is true now:
 - `GraphHubMCPServer`, `run_stdio_server`, and `list_tool_definitions` are
   exported from the decomposed MCP package.
 - Ruff debt has been cleared; `ruff check .` is expected to pass with 0 errors.
+- Normal Test and Ruff CI use pinned uv plus `--locked`; both jobs are gating.
 - The module-size budget remains a split signal rather than a hard threshold.
   Inventory freshness is pytest-checked through `tests/test_architecture_inventory.py`;
   import layering remains policy-only.

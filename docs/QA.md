@@ -276,7 +276,8 @@ Attach or link the preserved visual evidence in the release review record when
 journal rendering changed since the last release.
 
 The normal workflow named `CI` (`.github/workflows/ci.yml`) runs on push and
-pull request. Keep it focused on tests and lint/audit signals unless a future
+pull request. Test and Ruff jobs are lock-enforced merge gates; dependency audit
+remains advisory. Keep the workflow focused on tests and lint/audit signals unless a future
 journal-evidence workflow is explicitly manual or path-filtered to files that
 can affect visual rendering, such as journal fixtures, render-pack tooling,
 style profiles, plotting renderers, MCP CSV rendering, or lockfile/runtime

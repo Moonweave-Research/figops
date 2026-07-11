@@ -171,6 +171,27 @@ def test_windows_security_job_is_strict_and_locked() -> None:
     assert 'SelectNodes("//testcase/skipped")' in skip_gate["run"]
 
 
+def test_test_and_ruff_jobs_are_gating_and_locked() -> None:
+    document = yaml.load((WORKFLOW_DIR / "ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    assert isinstance(document, dict)
+    jobs = document["jobs"]
+    for job_name, execution_step in (("test", "Tests"), ("lint", "Ruff")):
+        job = jobs[job_name]
+        steps = job["steps"]
+        setup_uv = next(step for step in steps if step.get("name") == "Install locked uv")
+        assert setup_uv["with"]["python-version"] == "3.12"
+        assert setup_uv["with"]["version"] == "0.11.25"
+        sync = next(step for step in steps if step.get("name") == "Sync locked dependencies")
+        assert sync["run"] == "uv sync --locked --group dev"
+        execution = next(step for step in steps if step.get("name") == execution_step)
+        assert "uv run --locked" in execution["run"]
+        assert "continue-on-error" not in execution
+
+    assert jobs["test"]["name"] == "Test (gating)"
+    assert jobs["lint"]["name"] == "Ruff (gating)"
+
+
 def test_dependabot_updates_github_actions_weekly() -> None:
     document = yaml.load(DEPENDABOT_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 

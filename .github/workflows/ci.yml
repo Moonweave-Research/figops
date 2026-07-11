@@ -46,30 +46,30 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Install uv
+      - name: Install locked uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           python-version: "3.12"
-      - name: Sync dependencies
-        run: uv sync
+          version: "0.11.25"
+      - name: Sync locked dependencies
+        run: uv sync --locked --group dev
       - name: Tests
-        run: uv run python -m pytest -q
+        run: uv run --locked python -m pytest -q
 
   lint:
-    name: Ruff (advisory)
+    name: Ruff (gating)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Install uv
+      - name: Install locked uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           python-version: "3.12"
-      - name: Sync dependencies
-        run: uv sync
+          version: "0.11.25"
+      - name: Sync locked dependencies
+        run: uv sync --locked --group dev
       - name: Ruff
-        # Advisory until the repo's pre-existing lint debt is cleared, then make gating.
-        continue-on-error: true
-        run: uv run ruff check .
+        run: uv run --locked ruff check .
 
   audit:
     name: Dependency audit (advisory)
