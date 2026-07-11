@@ -41,6 +41,12 @@ from .geometry_label_offsets import _point_label_skips as _point_label_skips
 from .geometry_label_offsets import _text_axis_edge_proximity as _text_axis_edge_proximity_impl
 from .geometry_layout_checks import _axis_label_title_overlap as _axis_label_title_overlap_impl
 from .geometry_layout_checks import _figure_title_panel_title_overlap as _figure_title_panel_title_overlap_impl
+from .geometry_marker_footprints import alpha_from_rgba_value as _alpha_from_rgba_value_impl
+from .geometry_marker_footprints import collection_marker_is_paintable as _collection_marker_is_paintable_impl
+from .geometry_marker_footprints import line_marker_is_paintable as _line_marker_is_paintable_impl
+from .geometry_marker_footprints import marker_footprint_entries as _marker_footprint_entries_impl
+from .geometry_marker_footprints import marker_marker_overlaps as _marker_marker_overlaps_impl
+from .geometry_marker_footprints import sequence_entry_alpha as _sequence_entry_alpha_impl
 from .geometry_marker_styles import _collection_marker_style as _collection_marker_style
 from .geometry_marker_styles import _is_none_color as _is_none_color
 from .geometry_marker_styles import _line_marker_style as _line_marker_style
@@ -467,77 +473,15 @@ def _blank_area_ratio(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any
 
 
 def _marker_footprint_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox, tuple[float, float], float]]:
-    """Return marker footprints as display-space circles plus bounding boxes.
-
-    Adjacent dense-series markers can share a few pixels while remaining
-    legible, so marker-marker warnings use circle area overlap rather than bbox
-    contact. The 0.55 default threshold corresponds to equal-size centers being
-    closer than about one third of the marker diameter: severe pile-up, not
-    ordinary dense plotting.
-    """
-    px_per_point = fig.dpi / 72.0
-    entries: list[tuple[str, Bbox, tuple[float, float], float]] = []
-    for collection_index, collection in enumerate(ax.collections):
-        if not _is_paintable(collection) or not hasattr(collection, "get_sizes"):
-            continue  # scatter-style PathCollection only; QuadMesh/pcolormesh has no markers
-        offsets = collection.get_offsets()
-        if offsets is None or len(offsets) == 0:
-            continue
-        sizes = collection.get_sizes()
-        display = ax.transData.transform(np.asarray(offsets))
-        if not np.all(np.isfinite(display)):
-            continue
-        for point_index, (x_px, y_px) in enumerate(display):
-            if not _collection_marker_is_paintable(collection, point_index):
-                continue
-            if sizes is not None and len(sizes) > 0:
-                size = float(sizes[min(point_index, len(sizes) - 1)])
-                # scatter `s` is marker area in pt^2, so diameter = 2*sqrt(s/pi)
-                diameter_pt = 2.0 * float(np.sqrt(size / np.pi))
-            else:
-                diameter_pt = 6.0
-            radius_px = max(GEOM_EPS_PX, diameter_pt / 2 * px_per_point)
-            entries.append(
-                (
-                    f"marker:collection{collection_index}[{point_index}]",
-                    Bbox.from_extents(
-                        float(x_px) - radius_px,
-                        float(y_px) - radius_px,
-                        float(x_px) + radius_px,
-                        float(y_px) + radius_px,
-                    ),
-                    (float(x_px), float(y_px)),
-                    float(radius_px),
-                )
-            )
-    for line_index, line in enumerate(ax.get_lines()):
-        if not _line_marker_is_paintable(line):
-            continue
-        xy = np.asarray(line.get_xydata(), dtype=float)
-        if xy.size == 0:
-            continue
-        finite = xy[np.all(np.isfinite(xy), axis=1)]
-        if len(finite) == 0:
-            continue
-        display = ax.transData.transform(finite)
-        if not np.all(np.isfinite(display)):
-            continue
-        radius_px = max(GEOM_EPS_PX, float(line.get_markersize()) / 2 * px_per_point)
-        for point_index, (x_px, y_px) in enumerate(display):
-            entries.append(
-                (
-                    f"marker:line{line_index}[{point_index}]",
-                    Bbox.from_extents(
-                        float(x_px) - radius_px,
-                        float(y_px) - radius_px,
-                        float(x_px) + radius_px,
-                        float(y_px) + radius_px,
-                    ),
-                    (float(x_px), float(y_px)),
-                    float(radius_px),
-                )
-            )
-    return entries
+    """Compatibility wrapper for display-space marker footprint measurement."""
+    return _marker_footprint_entries_impl(
+        ax,
+        fig,
+        is_paintable=_is_paintable,
+        collection_marker_is_paintable=_collection_marker_is_paintable,
+        line_marker_is_paintable=_line_marker_is_paintable,
+        geom_eps_px=GEOM_EPS_PX,
+    )
 
 
 def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox]]:
@@ -545,88 +489,48 @@ def _marker_footprint_box_entries(ax: Axes, fig: Figure) -> list[tuple[str, Bbox
 
 
 def _alpha_from_rgba_value(value: Any) -> float | None:
-    rgba = _rgba_tuple(value)
-    if rgba is None:
-        return None
-    return float(rgba[3])
+    """Compatibility wrapper for marker alpha extraction."""
+    return _alpha_from_rgba_value_impl(value, rgba_tuple=_rgba_tuple)
 
 
 def _sequence_entry_alpha(values: Any, index: int) -> float | None:
-    if values is None or len(values) == 0:
-        return None
-    value = values[min(index, len(values) - 1)]
-    return _alpha_from_rgba_value(value)
+    """Compatibility wrapper for per-marker alpha lookup."""
+    return _sequence_entry_alpha_impl(values, index, alpha_from_rgba_value=_alpha_from_rgba_value)
 
 
 def _collection_marker_is_paintable(collection: Any, point_index: int) -> bool:
-    face_alpha = _sequence_entry_alpha(collection.get_facecolors(), point_index)
-    edge_alpha = _sequence_entry_alpha(collection.get_edgecolors(), point_index)
-    if face_alpha is None and edge_alpha is None:
-        return True
-    return max(face_alpha or 0.0, edge_alpha or 0.0) > ALPHA_EPS
+    """Compatibility wrapper for per-point collection paintability."""
+    return _collection_marker_is_paintable_impl(
+        collection,
+        point_index,
+        sequence_entry_alpha=_sequence_entry_alpha,
+        alpha_eps=ALPHA_EPS,
+    )
 
 
 def _line_marker_is_paintable(line: Any) -> bool:
-    marker = line.get_marker()
-    if marker in {None, "", "None", "none", " "}:
-        return False
-    if marker in _ERRORBAR_CAP_MARKERS:
-        return False
-    if float(line.get_markersize()) <= 0:
-        return False
-    face_alpha = _alpha_from_rgba_value(line.get_markerfacecolor())
-    edge_alpha = _alpha_from_rgba_value(line.get_markeredgecolor())
-    if face_alpha is None and edge_alpha is None:
-        return True
-    return max(face_alpha or 0.0, edge_alpha or 0.0) > ALPHA_EPS
+    """Compatibility wrapper for line marker paintability."""
+    return _line_marker_is_paintable_impl(
+        line,
+        alpha_from_rgba_value=_alpha_from_rgba_value,
+        alpha_eps=ALPHA_EPS,
+        errorbar_cap_markers=_ERRORBAR_CAP_MARKERS,
+    )
 
 
 def _marker_marker_overlaps(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:
-    name = "marker_marker_overlaps"
-    markers = _marker_footprint_entries(ax, ax.figure)
-    if len(markers) > MAX_TEXT_ARTISTS:
-        return {
-            "name": name,
-            "passed": None,
-            "detail": f"skipped: marker count {len(markers)} exceeds cap {MAX_TEXT_ARTISTS}",
-            "data": {"axis_index": int(axis_index)},
-        }
-    overlaps: list[dict[str, Any]] = []
-    total_pairs = len(markers) * (len(markers) - 1) // 2
-    for index_a in range(len(markers)):
-        label_a, _box_a, center_a, radius_a = markers[index_a]
-        for index_b in range(index_a + 1, len(markers)):
-            label_b, _box_b, center_b, radius_b = markers[index_b]
-            overlap = _circle_overlap_fraction(center_a, radius_a, center_b, radius_b)
-            if overlap <= MARKER_MARKER_OVERLAP_WARN:
-                continue
-            overlaps.append(
-                {
-                    "axes": int(axis_index),
-                    "a": label_a,
-                    "b": label_b,
-                    "iou": round(overlap, 4),
-                    "severity": _overlap_severity(overlap),
-                }
-            )
-    if len(overlaps) > _MAX_REPORTED_PAIRS:
-        overlaps = overlaps[:_MAX_REPORTED_PAIRS]
-        truncated = True
-    else:
-        truncated = False
-    return {
-        "name": name,
-        "passed": len(overlaps) == 0,
-        "detail": f"{len(overlaps)} severe marker-marker overlaps (axis {axis_index})",
-        "data": {
-            "axis_index": int(axis_index),
-            "overlaps": overlaps,
-            "overlaps_truncated": bool(truncated),
-            "threshold": float(MARKER_MARKER_OVERLAP_WARN),
-            "overlap_fraction": float(len(overlaps) / total_pairs) if total_pairs else 0.0,
-            "total_pairs": int(total_pairs),
-        },
-    }
+    """Compatibility wrapper for severe marker overlap diagnostics."""
+    return _marker_marker_overlaps_impl(
+        ax,
+        renderer,
+        axis_index,
+        marker_footprint_entries=_marker_footprint_entries,
+        max_text_artists=MAX_TEXT_ARTISTS,
+        marker_marker_overlap_warn=MARKER_MARKER_OVERLAP_WARN,
+        circle_overlap_fraction=_circle_overlap_fraction,
+        overlap_severity=_overlap_severity,
+        max_reported_pairs=_MAX_REPORTED_PAIRS,
+    )
 
 
 def _text_axis_edge_proximity(ax: Axes, renderer: Any, axis_index: int) -> dict[str, Any]:

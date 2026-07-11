@@ -274,6 +274,12 @@ state, snapshot persistence, decision flow, and reporting aggregation into
 retains its existing private helper import and monkeypatch surface while keeping
 comparison algorithms in their established module.
 
+The next 2026-07-11 slice extracted display-space marker footprints,
+paintability handling, and severe marker-overlap reporting into
+`hub_core.geometry_marker_footprints`. The geometry-diagnostics façade retains
+the corresponding private helper names to preserve renderer and test patch
+contracts.
+
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.
 

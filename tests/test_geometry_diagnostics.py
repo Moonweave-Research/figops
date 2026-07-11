@@ -100,6 +100,15 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         self.assertIs(geometry_diagnostics._marker_style, geometry_marker_styles._marker_style)
         self.assertIs(geometry_diagnostics._style_diff, geometry_marker_styles._style_diff)
 
+    def test_marker_footprint_facade_preserves_paintability_patch_surface(self):
+        fig, ax = plt.subplots(figsize=(3, 3))
+        ax.scatter([0.5], [0.5], s=100)
+        _drawn(fig)
+
+        self.assertEqual(len(_marker_footprint_box_entries(ax, fig)), 1)
+        with patch.object(geometry_diagnostics, "_collection_marker_is_paintable", return_value=False):
+            self.assertEqual(_marker_footprint_box_entries(ax, fig), [])
+
     def test_geometry_diagnostics_keeps_style_check_compatibility_exports(self):
         self.assertIs(geometry_diagnostics._default_font_token_sizes, geometry_style_checks._default_font_token_sizes)
         self.assertIs(geometry_diagnostics._font_size_matches_token, geometry_style_checks._font_size_matches_token)

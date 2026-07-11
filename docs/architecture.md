@@ -75,7 +75,6 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 | `hub_core/mcp/tools/render_csv.py` | 991 |
 | `hub_core/config_parser.py` | 903 |
 | `hub_core/process_runner.py` | 893 |
-| `hub_core/geometry_diagnostics.py` | 850 |
 <!-- architecture-inventory:end -->
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
@@ -92,6 +91,12 @@ snapshot updates, baseline decision flow, and check-all summary aggregation to
 `hub_core/visual_regression_baselines.py`. Existing private helper names remain
 available from `hub_core.visual_regression` for downstream compatibility and
 monkeypatching.
+
+The geometry-diagnostics façade now delegates display-space marker footprints,
+paintability checks, and severe marker-overlap reporting to
+`hub_core/geometry_marker_footprints.py`. Its existing private helper names
+remain wrappers so renderer and test monkeypatch contracts continue to resolve
+through `hub_core.geometry_diagnostics`.
 
 The first `plotting.bridge_renderer` extraction wave moved box/violin
 distribution rendering into `plotting/renderers/distribution.py`, heatmap
