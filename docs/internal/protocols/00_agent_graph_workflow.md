@@ -20,7 +20,8 @@ Use Athena or another explicit toolbox only for a separate non-graph step such a
 6. Call `figops.render_project_figure` for configured `project_config.yaml` figures.
 7. Call `figops.render_csv_graph` for explicit structured CSV graph requests.
 8. Call `figops.collect_artifacts` after render.
-9. Inspect `manifest_path`, `status_path`, `failure_stage`, `resolution_hint`, `manual_review_needed`, `visual_preflight_status`, and `provenance`.
+9. Call `figops.evaluate_publication_readiness` with the completed render `job_id` when the user requests integrated QA triage.
+10. Inspect `manifest_path`, `status_path`, `failure_stage`, `resolution_hint`, `manual_review_needed`, `visual_preflight_status`, `provenance`, and any `readiness_report`.
 
 ## Required Agent Behavior
 
@@ -28,6 +29,7 @@ Use Athena or another explicit toolbox only for a separate non-graph step such a
 - Use `resolution_hint` as the next-action source.
 - Do not hide `manual_review_needed=true`.
 - Do not claim publication readiness from syntax-only render success.
+- Treat `needs_review` as automatic checks awaiting human review, not approval.
 - Do not read raw data, PDFs, images, or binary outputs into chat unless explicitly required.
 - Keep FigOps independent from Athena.
 

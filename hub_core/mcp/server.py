@@ -39,6 +39,7 @@ from .security import McpSecurityMixin, is_write_tool_name
 from .tools.batch_tools import McpBatchToolsMixin
 from .tools.project_tools import McpProjectToolsMixin
 from .tools.read_tools import McpReadToolsMixin
+from .tools.readiness_tools import McpReadinessToolsMixin
 from .tools.render_csv import McpRenderCsvMixin
 from .tools.render_project import McpRenderProjectMixin
 from .tools.render_tools import McpRenderToolsMixin
@@ -47,6 +48,7 @@ from .tools.render_validation import McpRenderValidationMixin
 
 class FigOpsMCPServer(
     McpReadToolsMixin,
+    McpReadinessToolsMixin,
     McpRenderToolsMixin,
     McpRenderProjectMixin,
     McpRenderCsvMixin,

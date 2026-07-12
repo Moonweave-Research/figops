@@ -66,10 +66,13 @@ def _assert_agent_consumability(surface: AgentConsumabilitySurface) -> None:
     canonical_tools = surface.registry.canonical_tools
     legacy_tools = surface.registry.legacy_tools
     all_tools = canonical_tools | legacy_tools
-    expected_legacy_tools = frozenset(name.replace("figops.", "graphhub.", 1) for name in canonical_tools)
+    frozen_legacy_tools = frozenset(
+        name.replace("figops.", "graphhub.", 1)
+        for name in list(TOOL_NAMES)[:13]
+    )
 
     assert all(name.startswith("figops.") for name in canonical_tools), "canonical tools must use figops.* names"
-    assert legacy_tools == expected_legacy_tools, "legacy aliases must be derived from canonical figops.* names"
+    assert legacy_tools == frozen_legacy_tools, "legacy aliases must remain the exact frozen pre-existing set"
 
     missing_handler_tools = all_tools - surface.registry.handler_tools
     assert not missing_handler_tools, f"handlers missing registered tools: {sorted(missing_handler_tools)}"
@@ -235,17 +238,16 @@ def test_guard_rejects_stale_render_csv_graph_example_keys() -> None:
 
 
 def test_guard_rejects_tool_without_agent_guidance() -> None:
+    frozen_aliases = frozenset(LEGACY_TOOL_NAMES)
     surface = AgentConsumabilitySurface(
         registry=RegistryNames(
             canonical_tools=frozenset({"figops.health", "figops.new_tool"}),
-            legacy_tools=frozenset({"graphhub.health", "graphhub.new_tool"}),
-            handler_tools=frozenset({"figops.health", "figops.new_tool", "graphhub.health", "graphhub.new_tool"}),
+            legacy_tools=frozen_aliases,
+            handler_tools=frozenset({"figops.health", "figops.new_tool"}) | frozen_aliases,
             definition_tools=frozenset({"figops.health", "figops.new_tool"}),
         ),
         discovery=DiscoveryNames(
-            server_handler_tools=frozenset(
-                {"figops.health", "figops.new_tool", "graphhub.health", "graphhub.new_tool"}
-            ),
+            server_handler_tools=frozenset({"figops.health", "figops.new_tool"}) | frozen_aliases,
             server_definition_tools=frozenset({"figops.health", "figops.new_tool"}),
             json_rpc_tools=frozenset({"figops.health", "figops.new_tool"}),
         ),
@@ -269,15 +271,16 @@ def test_guard_rejects_tool_without_agent_guidance() -> None:
 
 
 def test_guard_rejects_legacy_alias_without_handler() -> None:
+    frozen_aliases = frozenset(LEGACY_TOOL_NAMES)
     surface = AgentConsumabilitySurface(
         registry=RegistryNames(
             canonical_tools=frozenset({"figops.health"}),
-            legacy_tools=frozenset({"graphhub.health"}),
-            handler_tools=frozenset({"figops.health"}),
+            legacy_tools=frozen_aliases,
+            handler_tools=frozenset({"figops.health"}) | (frozen_aliases - {"graphhub.health"}),
             definition_tools=frozenset({"figops.health"}),
         ),
         discovery=DiscoveryNames(
-            server_handler_tools=frozenset({"figops.health"}),
+            server_handler_tools=frozenset({"figops.health"}) | (frozen_aliases - {"graphhub.health"}),
             server_definition_tools=frozenset({"figops.health"}),
             json_rpc_tools=frozenset({"figops.health"}),
         ),

@@ -4365,6 +4365,138 @@ Return artifact metadata for a completed MCP render job.
 }
 ```
 
+### `figops.evaluate_publication_readiness`
+
+Evaluate an existing render job manifest into a read-only publication-readiness report.
+
+**Input schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "job_id": {
+      "description": "Existing render job ID whose bounded manifest evidence will be evaluated.",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id"
+  ],
+  "type": "object"
+}
+```
+
+**Output schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact_resources": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "created_paths": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "error_category": {
+      "enum": [
+        "validation",
+        "not_found",
+        "internal",
+        "disabled"
+      ],
+      "type": "string"
+    },
+    "error_code": {
+      "type": "string"
+    },
+    "errors": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "failure_stage": {
+      "type": "string"
+    },
+    "is_dry_run": {
+      "type": "boolean"
+    },
+    "jsonrpc_code": {
+      "type": "integer"
+    },
+    "latest_alias": {
+      "type": "string"
+    },
+    "latest_dir": {
+      "type": "string"
+    },
+    "manifest_path": {
+      "type": "string"
+    },
+    "manual_review_needed": {
+      "type": "boolean"
+    },
+    "modified_paths": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "operation_id": {
+      "type": "string"
+    },
+    "readiness_report": {
+      "type": "object"
+    },
+    "resolution_hint": {
+      "type": "string"
+    },
+    "script_output": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "skipped_paths": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
+    "status_path": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}
+```
+
 ### `figops.scaffold_project`
 
 Plan or create a standard FigOps project scaffold.

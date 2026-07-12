@@ -283,10 +283,61 @@ def main():
             f"(nature, {INTERNAL_STYLE_TARGET_FORMAT}, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
         ),
     )
+    parser.add_argument(
+        "--readiness-manifest",
+        type=str,
+        metavar="FILE",
+        help="Evaluate publication readiness from a render-job JSON manifest and exit",
+    )
+    parser.add_argument(
+        "--readiness-format",
+        choices=["json", "markdown"],
+        default=None,
+        help="Output format for --readiness-manifest (default: markdown)",
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging on stderr")
 
     args = parser.parse_args()
     configure_logging(verbose=args.verbose)
+
+    if args.readiness_manifest:
+        conflicting_modes = {
+            "--project": bool(args.project),
+            "--list-projects/--status": args.list_projects or args.status,
+            "--init/--wizard": args.init or args.wizard,
+            "--check-all": args.check_all,
+            "--read-fingerprint": bool(args.read_fingerprint),
+            "--inject-fingerprint": args.inject_fingerprint,
+            "--sweep": args.sweep,
+            "--comparison": args.comparison,
+            "--freeze-golden": args.freeze_golden,
+            "--check-regression": args.check_regression,
+            "--docker": args.docker or args.docker_build,
+            "--reformat-journal": bool(args.reformat_journal),
+        }
+        conflicts = [name for name, active in conflicting_modes.items() if active]
+        if conflicts:
+            sys.stdout.write(
+                "Error: --readiness-manifest is an independent operational mode and cannot be combined with "
+                + ", ".join(conflicts)
+                + ".\n"
+            )
+            return 1
+        from hub_core.publication_cli import evaluate_readiness_manifest
+
+        try:
+            output, exit_code = evaluate_readiness_manifest(
+                args.readiness_manifest,
+                output_format=args.readiness_format or "markdown",
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            sys.stdout.write(f"Error: unable to evaluate readiness manifest: {exc}\n")
+            return 1
+        sys.stdout.write(output)
+        return exit_code
+    if args.readiness_format:
+        sys.stdout.write("Error: --readiness-format requires --readiness-manifest.\n")
+        return 1
 
     root_dir = inferred_root_dir
     hub_path = inferred_hub_path

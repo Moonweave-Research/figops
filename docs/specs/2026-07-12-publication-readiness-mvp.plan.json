@@ -1,0 +1,628 @@
+{
+  "schema_version": "0.5",
+  "plan_id": "figops-publication-readiness-mvp-2026-07-12",
+  "created_by": "depone",
+  "source_prompt": "FigOps의 다음 스펙을 문서화하고 작업 난이도에 따라 팀으로 진행한다. 첫 릴리스는 publication readiness MVP로 축소한다.",
+  "activation": {
+    "decision": "activate",
+    "matched_thresholds": [
+      "multi-surface-fanout",
+      "resumable-handoffs",
+      "planned-fanout",
+      "adversarial-verification"
+    ],
+    "downgrade_target": null,
+    "reason": "The MVP spans a new evidence contract, deterministic reporting, CLI and MCP public surfaces, generated documentation, and independent compatibility verification."
+  },
+  "objective": "Add an evidence-centered, read-only publication-readiness evaluation that consolidates existing FigOps validation results into blocked, needs_revision, or needs_review without claiming human approval.",
+  "surfaces": [
+    {
+      "id": "repo",
+      "kind": "repo",
+      "locator": "C:/dev/workspace/figops",
+      "access_mode": "write-approved"
+    },
+    {
+      "id": "readiness-domain",
+      "kind": "package",
+      "locator": "hub_core publication-readiness domain modules",
+      "access_mode": "write-approved"
+    },
+    {
+      "id": "cli",
+      "kind": "api",
+      "locator": "orchestrator.py and CLI-facing helpers",
+      "access_mode": "write-approved"
+    },
+    {
+      "id": "mcp",
+      "kind": "api",
+      "locator": "hub_core/mcp and generated MCP documentation",
+      "access_mode": "write-approved"
+    },
+    {
+      "id": "spec-and-tests",
+      "kind": "document",
+      "locator": "docs/specs, public docs, and tests",
+      "access_mode": "write-approved"
+    }
+  ],
+  "assumptions": [
+    {
+      "claim": "Existing data-contract, calculation, geometry, preflight, regression, and provenance outputs provide enough evidence for a useful first readiness decision.",
+      "verification": "Inventory live producer schemas and prove every MVP gate maps to an existing field or is reported as unavailable rather than inferred."
+    },
+    {
+      "claim": "Unknown or missing required evidence must never be treated as a passing check.",
+      "verification": "Add fixtures for absent, malformed, unsupported-version, and passed=null evidence and assert a blocked result with a stable diagnostic code."
+    },
+    {
+      "claim": "A single pure evaluator can serve CLI and MCP without duplicating policy.",
+      "verification": "Contract tests feed the same normalized evidence to both adapters and compare their readiness payloads."
+    },
+    {
+      "claim": "The MVP can remain read-only and therefore does not need approval storage, stale-state tracking, or Figure Pack output.",
+      "verification": "Public API and threat-model review confirms that evaluation reads an existing persisted render manifest and writes no report file."
+    }
+  ],
+  "patterns": [
+    "Pipeline",
+    "Parallel Fan-Out / Fan-In",
+    "Adversarial Verify",
+    "Resume And Cache"
+  ],
+  "phases": [
+    {
+      "id": "phase-0-contract-lock",
+      "name": "Evidence Inventory And Contract Lock",
+      "entry_criteria": ["The MVP scope and repository protocol are available."],
+      "exit_criteria": ["A reviewed contract defines evidence adapters, state precedence, stable finding codes, deterministic serialization, and explicit non-goals."],
+      "depends_on": [],
+      "worker_ids": ["worker-contract"],
+      "outputs": ["publication-readiness-contract.receipt.json"]
+    },
+    {
+      "id": "phase-1-domain",
+      "name": "Readiness Domain And Reports",
+      "entry_criteria": ["Phase 0 contract receipt is accepted."],
+      "exit_criteria": ["Normalization, pure evaluation, JSON and Markdown rendering pass deterministic contract tests."],
+      "depends_on": ["phase-0-contract-lock"],
+      "worker_ids": ["worker-domain"],
+      "outputs": ["publication-readiness-domain.receipt.json", "golden readiness fixtures"]
+    },
+    {
+      "id": "phase-2-surfaces",
+      "name": "CLI And Read-Only MCP Evaluation",
+      "entry_criteria": ["The domain contract is stable and tested."],
+      "exit_criteria": ["CLI and MCP expose the same evaluation semantics while preserving existing commands and trust boundaries."],
+      "depends_on": ["phase-1-domain"],
+      "worker_ids": ["worker-cli", "worker-mcp"],
+      "outputs": ["publication-readiness-surfaces.receipt.json"]
+    },
+    {
+      "id": "phase-3-verification",
+      "name": "Adversarial Verification And Documentation",
+      "entry_criteria": ["Implementation slices and focused test receipts exist."],
+      "exit_criteria": ["Independent verification cannot refute state precedence, fail-closed evidence handling, deterministic output, compatibility, or scope exclusions."],
+      "depends_on": ["phase-2-surfaces"],
+      "worker_ids": ["worker-verifier"],
+      "outputs": ["publication-readiness-verification.receipt.md"]
+    },
+    {
+      "id": "final",
+      "name": "Verified Handoff",
+      "entry_criteria": ["The adversarial verification receipt refutes no acceptance claim."],
+      "exit_criteria": ["The maintainer receives the implementation summary, test evidence, and residual risks without release actions."],
+      "depends_on": ["phase-3-verification"],
+      "worker_ids": ["worker-verifier"],
+      "outputs": ["verified MVP handoff"]
+    }
+  ],
+  "workers": [
+    {
+      "id": "worker-contract",
+      "role": "Deep contract architect for evidence normalization and decision semantics",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "Do not add approval, stale-state, or Figure Pack behavior.",
+        "Do not reinterpret missing evidence as success.",
+        "Do not alter existing producer schemas in this slice."
+      ],
+      "context_budget": {
+        "max_files": 20,
+        "max_tokens": 32000,
+        "must_include": [
+          "AGENTS.md",
+          "docs/architecture.md",
+          "existing quality-gate contracts",
+          "live evidence producer schemas"
+        ],
+        "must_exclude": [
+          "private research data",
+          "release credentials"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "repository path",
+          "MVP specification",
+          "evidence inventory"
+        ],
+        "required_output_schema": "contract receipt with state table, evidence map, stable finding codes, compatibility notes, and unresolved decisions",
+        "stop_conditions": [
+          "all required evidence is mapped",
+          "a producer ambiguity requires a product decision",
+          "scope expansion beyond read-only evaluation is requested"
+        ]
+      },
+      "ownership": [
+        "readiness contract",
+        "evidence normalization policy",
+        "state precedence"
+      ]
+    },
+    {
+      "id": "worker-domain",
+      "role": "Standard implementer for normalized evidence, pure evaluator, and deterministic reports",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "Do not import MCP modules into the domain layer.",
+        "Do not include absolute local paths or timestamps in deterministic report content.",
+        "Do not add state beyond blocked, needs_revision, and needs_review."
+      ],
+      "context_budget": {
+        "max_files": 18,
+        "max_tokens": 28000,
+        "must_include": [
+          "accepted contract receipt",
+          "current config and provenance helpers",
+          "existing deterministic JSON conventions"
+        ],
+        "must_exclude": [
+          "MCP transport implementation details",
+          "approval storage designs"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "accepted readiness contract",
+          "golden evidence fixtures"
+        ],
+        "required_output_schema": "patch plus focused test receipt covering normalization, evaluation, JSON, and Markdown",
+        "stop_conditions": [
+          "deterministic domain tests pass",
+          "an evidence producer cannot be normalized without changing its public schema",
+          "a forbidden state or write path is needed"
+        ]
+      },
+      "ownership": [
+        "readiness domain modules",
+        "JSON and Markdown report renderers",
+        "domain contract tests"
+      ]
+    },
+    {
+      "id": "worker-cli",
+      "role": "Standard CLI adapter implementer",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "Do not introduce an independent evaluator.",
+        "Do not change existing command meanings or exit codes.",
+        "Do not write report files; render JSON or Markdown to stdout only."
+      ],
+      "context_budget": {
+        "max_files": 14,
+        "max_tokens": 22000,
+        "must_include": [
+          "orchestrator CLI parser",
+          "readiness domain public interface",
+          "CLI compatibility tests"
+        ],
+        "must_exclude": [
+          "MCP handler internals"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "domain API",
+          "CLI contract",
+          "repository path"
+        ],
+        "required_output_schema": "CLI patch and test receipt with output examples and exit codes",
+        "stop_conditions": [
+          "CLI manifest evaluation and stdout-format tests pass",
+          "existing CLI regression fails",
+          "a new top-level executable is required"
+        ]
+      },
+      "ownership": [
+        "CLI evaluation adapter",
+        "CLI tests and help text"
+      ]
+    },
+    {
+      "id": "worker-mcp",
+      "role": "Deep MCP read-only surface and trust-boundary implementer",
+      "tool_permissions": {
+        "read": true,
+        "write": true,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "Do not require the MCP write-tools flag for evaluation.",
+        "Do not add graphhub compatibility aliases.",
+        "Do not widen allowed roots or expose absolute paths."
+      ],
+      "context_budget": {
+        "max_files": 20,
+        "max_tokens": 32000,
+        "must_include": [
+          "MCP trust model",
+          "tool registry and schema generation",
+          "readiness domain public interface",
+          "read-only MCP tests"
+        ],
+        "must_exclude": [
+          "external connectors",
+          "write-tool implementation"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "domain API",
+          "MCP tool contract",
+          "allowed-root policy"
+        ],
+        "required_output_schema": "MCP patch plus schema, handler, redaction, and read-only test receipt",
+        "stop_conditions": [
+          "MCP job_id evaluation works with write tools disabled and uses the existing safe runtime manifest lookup",
+          "tool docs and schema generation are synchronized",
+          "a trust-boundary widening would be required"
+        ]
+      },
+      "ownership": [
+        "figops.evaluate_publication_readiness MCP tool",
+        "MCP schema and handler tests",
+        "generated tool documentation updates"
+      ]
+    },
+    {
+      "id": "worker-verifier",
+      "role": "Deep independent adversarial verifier",
+      "tool_permissions": {
+        "read": true,
+        "write": false,
+        "shell": true,
+        "network": false,
+        "mcp_connectors": [],
+        "requires_escalation_for": []
+      },
+      "forbidden_actions": [
+        "Do not edit implementation or tests.",
+        "Do not accept producer receipts without reproducing key checks.",
+        "Do not classify skipped security tests as passing."
+      ],
+      "context_budget": {
+        "max_files": 32,
+        "max_tokens": 36000,
+        "must_include": [
+          "all changed files",
+          "all wave receipts",
+          "golden and hostile fixtures",
+          "public API documentation"
+        ],
+        "must_exclude": [
+          "unrelated historical worktrees"
+        ]
+      },
+      "prompt_contract": {
+        "inputs": [
+          "implementation receipts",
+          "changed-file list",
+          "MVP specification"
+        ],
+        "required_output_schema": "confirmed, refuted, and unverified claims with commands and evidence",
+        "stop_conditions": [
+          "all acceptance claims are classified",
+          "a claim is refuted",
+          "required evidence is missing"
+        ]
+      },
+      "ownership": [
+        "adversarial verification report",
+        "scope-exclusion audit",
+        "final compatibility assessment"
+      ]
+    }
+  ],
+  "handoffs": [
+    {
+      "from_phase": "phase-0-contract-lock",
+      "to_phase": "phase-1-domain",
+      "artifact": "publication-readiness-contract.receipt.json",
+      "artifact_schema": {
+        "format": "json",
+        "required_fields": [
+          "evidence_map",
+          "state_precedence",
+          "finding_codes",
+          "serialization_contract",
+          "open_decisions"
+        ],
+        "validation_command": "python -m json.tool publication-readiness-contract.receipt.json"
+      }
+    },
+    {
+      "from_phase": "phase-1-domain",
+      "to_phase": "phase-2-surfaces",
+      "artifact": "publication-readiness-domain.receipt.json",
+      "artifact_schema": {
+        "format": "json",
+        "required_fields": [
+          "changed_files",
+          "public_interface",
+          "tests_run",
+          "determinism_evidence",
+          "residual_risks"
+        ],
+        "validation_command": "python -m json.tool publication-readiness-domain.receipt.json"
+      }
+    },
+    {
+      "from_phase": "phase-2-surfaces",
+      "to_phase": "phase-3-verification",
+      "artifact": "publication-readiness-surfaces.receipt.json",
+      "artifact_schema": {
+        "format": "json",
+        "required_fields": [
+          "changed_files",
+          "cli_contract",
+          "mcp_contract",
+          "tests_run",
+          "compatibility_results"
+        ],
+        "validation_command": "python -m json.tool publication-readiness-surfaces.receipt.json"
+      }
+    },
+    {
+      "from_phase": "phase-3-verification",
+      "to_phase": "final",
+      "artifact": "publication-readiness-verification.receipt.md",
+      "artifact_schema": {
+        "format": "markdown",
+        "required_fields": [
+          "confirmed",
+          "refuted",
+          "unverified",
+          "commands",
+          "residual_risks"
+        ],
+        "validation_command": "python -c \"from pathlib import Path; p=Path('publication-readiness-verification.receipt.md'); t=p.read_text(encoding='utf-8').lower(); assert all(k in t for k in ['confirmed','refuted','unverified','commands','residual'])\""
+      }
+    }
+  ],
+  "parallelism": {
+    "shape": "hybrid",
+    "concurrency_cap": 3,
+    "fan_in_rule": "CLI and MCP fan in only after both receipts prove they call the same domain interface and preserve existing compatibility contracts.",
+    "barriers": [
+      "contract lock before domain implementation",
+      "domain determinism gate before public adapters",
+      "independent adversarial verification before completion"
+    ]
+  },
+  "verification": [
+    {
+      "claim_or_output": "State precedence is fail-closed and limited to blocked, needs_revision, and needs_review.",
+      "falsifier": "Provide missing, malformed, unsupported, passed=null, failed hard-gate, or major-finding evidence and observe needs_review or an undocumented state.",
+      "evidence_required": ["Parameterized state-table tests and golden JSON reports for every precedence branch."]
+    },
+    {
+      "claim_or_output": "JSON and Markdown reports are deterministic for identical normalized evidence.",
+      "falsifier": "Repeat evaluation across key order, path separator, locale, timezone, or CRLF/LF variations and observe semantic or byte drift in deterministic fields.",
+      "evidence_required": ["Cross-variation fixtures, byte comparisons for JSON, and snapshot comparisons for Markdown."]
+    },
+    {
+      "claim_or_output": "CLI and MCP use one evaluator and return equivalent readiness semantics.",
+      "falsifier": "Feed the same evidence through CLI and MCP and observe different state, gate, or finding-code results.",
+      "evidence_required": ["Shared persisted render-manifest fixture exercised through both adapters."]
+    },
+    {
+      "claim_or_output": "The MCP evaluation tool is read-only and does not widen trust boundaries.",
+      "falsifier": "Run with write tools disabled, escaping paths, symlinks, or secrets in evidence and observe a write, root escape, absolute-path disclosure, or secret disclosure.",
+      "evidence_required": ["Read-only job lookup, containment, symlink, and redaction tests with zero security skips in gating CI."]
+    },
+    {
+      "claim_or_output": "The MVP contains no approval, stale-state, or Figure Pack behavior.",
+      "falsifier": "Find public states, commands, MCP tools, storage, or package outputs implementing any excluded capability.",
+      "evidence_required": ["Changed-file review, public-surface inventory, and repository search in the final verification receipt."]
+    }
+  ],
+  "risk_gates": [
+    {
+      "trigger": "Repository write access outside the files owned by the active slice.",
+      "safe_default": "Stop before repository write and ask for approval",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "Shell command execution that mutates user data, installs software, or acts outside the repository and isolated test directories.",
+      "safe_default": "Stop before shell execution and ask for approval",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "Changing existing evidence producer schemas, existing CLI meanings, or existing MCP compatibility aliases.",
+      "safe_default": "Preserve existing contracts and ask before contract change",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "Adding a runtime dependency or changing lock files.",
+      "safe_default": "Stop before dependency change and ask for approval",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "Widening allowed roots, enabling writes by default, reading secrets, or accessing private external data.",
+      "safe_default": "Stop before trust boundary change and ask for approval",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "Adding approval, stale-state tracking, Figure Pack generation, or any other excluded feature.",
+      "safe_default": "Stop before scope expansion and ask for approval",
+      "requires_user_approval": true
+    },
+    {
+      "trigger": "Publishing, tagging, deploying, or sending external messages.",
+      "safe_default": "Stop before external action and ask for approval",
+      "requires_user_approval": true
+    }
+  ],
+  "budget": {
+    "max_agents": 5,
+    "max_rounds": 4,
+    "max_retries": 2,
+    "time_box": "180 minutes",
+    "file_touch_limit": "28 files"
+  },
+  "resume": {
+    "cacheable_outputs": [
+      "publication-readiness-contract.receipt.json",
+      "publication-readiness-domain.receipt.json",
+      "publication-readiness-surfaces.receipt.json",
+      "publication-readiness-verification.receipt.md",
+      "golden readiness fixtures"
+    ],
+    "invalidators": [
+      "Invalidate the contract receipt when an evidence producer schema or quality-gate policy changes.",
+      "Invalidate domain receipts when normalization, evaluator, report schema, or golden fixtures change.",
+      "Invalidate adapter receipts when the domain public interface, CLI parser, MCP registry, or generated tool docs change.",
+      "Invalidate final verification when any implementation or test file in the changed-file inventory changes."
+    ],
+    "restart_points": [
+      "phase-0-contract-lock",
+      "phase-1-domain",
+      "phase-2-surfaces",
+      "phase-3-verification"
+    ]
+  },
+  "execution_path": {
+    "mode": "subagent-plan",
+    "consumer": "codex-agent",
+    "first_slice": {
+      "instruction": "Inventory live FigOps evidence producers and write publication-readiness-contract.receipt.json defining the MVP evidence map, state precedence, finding codes, deterministic serialization contract, and zero open decisions without editing implementation files.",
+      "inputs": [
+        "repository path",
+        "docs/specs/2026-07-12-publication-readiness-mvp.plan.json",
+        "AGENTS.md",
+        "docs/architecture.md",
+        "current quality-gate and MCP contracts"
+      ],
+      "expected_output": "publication-readiness-contract.receipt.json",
+      "completion_check": "The receipt parses as JSON, maps each required gate to a live evidence producer, defines only three states, and contains an empty open_decisions array.",
+      "forbidden_actions": [
+        "Do not edit implementation files.",
+        "Do not invent passing evidence for missing producers.",
+        "Do not add approval, stale-state, or Figure Pack scope."
+      ]
+    },
+    "first_wave": {
+      "id": "wave-0-contract-lock",
+      "concurrency_cap": 2,
+      "slices": [
+        {
+          "id": "slice-evidence-inventory",
+          "instruction": "Inventory current data-contract, calculation, geometry, preflight, regression, and provenance producer schemas with exact source references.",
+          "inputs": [
+            "repository path: C:/dev/workspace/figops",
+            "MVP specification"
+          ],
+          "expected_output": "Evidence inventory section for publication-readiness-contract.receipt.json.",
+          "completion_check": "Every proposed required gate has a live producer reference or an explicit unavailable classification.",
+          "forbidden_actions": [
+            "Do not edit files.",
+            "Do not treat documentation claims as live schema evidence when source disagrees."
+          ]
+        },
+        {
+          "id": "slice-contract-threat-review",
+          "instruction": "Define and challenge state precedence, stable diagnostic codes, deterministic serialization, path redaction, persisted render-manifest input, safe runtime job lookup, and the read-only threat model.",
+          "inputs": [
+            "repository path: C:/dev/workspace/figops",
+            "MVP specification"
+          ],
+          "expected_output": "Decision and threat-review sections for publication-readiness-contract.receipt.json.",
+          "completion_check": "The proposed contract has exactly three states, fails closed on unknown evidence, and contains no excluded capability.",
+          "forbidden_actions": [
+            "Do not edit files.",
+            "Do not widen roots or propose write-enabled MCP evaluation."
+          ]
+        }
+      ],
+      "entry_gate": "Repository and canonical documentation are readable and no implementation mutation is required for inventory.",
+      "exit_gate": "The merged contract receipt parses, cites live evidence, has zero open decisions, and passes independent scope and threat review.",
+      "fan_in": "The coordinator merges inventory and threat review into one decision-complete contract receipt before unlocking implementation."
+    },
+    "waves": [
+      {
+        "id": "wave-1-domain",
+        "depends_on": [
+          "wave-0-contract-lock"
+        ],
+        "concurrency_cap": 2,
+        "slices": [
+          "worker-domain:normalization-and-evaluator",
+          "worker-domain:deterministic-json-and-markdown"
+        ],
+        "entry_gate": "wave-0 contract receipt is verified and open_decisions is empty.",
+        "exit_gate": "Domain contract, state table, fail-closed fixtures, and deterministic report tests pass."
+      },
+      {
+        "id": "wave-2-surfaces",
+        "depends_on": [
+          "wave-1-domain"
+        ],
+        "concurrency_cap": 2,
+        "slices": [
+          "worker-cli:evaluate-command",
+          "worker-mcp:read-only-evaluate-tool"
+        ],
+        "entry_gate": "wave-1 domain receipt exists, tests pass, and the public domain interface is stable.",
+        "exit_gate": "CLI and MCP contract fixtures agree, existing compatibility tests pass, and MCP read-only containment/redaction tests pass."
+      },
+      {
+        "id": "wave-3-verify",
+        "depends_on": [
+          "wave-2-surfaces"
+        ],
+        "concurrency_cap": 1,
+        "slices": [
+          "worker-verifier:adversarial-fan-in"
+        ],
+        "entry_gate": "All implementation receipts, changed-file lists, focused test logs, and generated-doc drift results are available.",
+        "exit_gate": "Verifier classifies every acceptance claim, refutes none, confirms excluded features are absent, and records full locked QA status."
+      }
+    ]
+  }
+}

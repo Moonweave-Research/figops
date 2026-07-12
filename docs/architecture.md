@@ -1,8 +1,8 @@
 # FigOps - Architecture
 
-> Companion to `docs/ROADMAP.md`. Describes the current v0.18.0 release-candidate source-line
-> architecture after the 0.5.0 MCP decomposition, polish-layer work, and the
-> 2026-06-29 large-module decomposition wave.
+> Companion to `docs/ROADMAP.md`. Describes the current v0.19.0 development
+> architecture after the v0.18.0 release and the addition of the read-only
+> Publication Readiness MVP.
 
 ## Layers and dependency direction
 
@@ -28,6 +28,7 @@ hub_core/mcp/server.py                # GraphHubMCPServer facade: registry + ser
         +-- hub_core/mcp/render_*     # render orchestration, geometry, error mapping
                 |
                 v
+hub_core/publication_*               # readiness evidence, decision, report, and CLI services
 hub_core/data_contract.py             # data-contract loading, validation, checks
 hub_core/config_parser.py             # project config validation and migration
 hub_core/process_runner.py            # pipeline execution helpers
@@ -56,7 +57,7 @@ The 800-line architecture budget is a split signal, not a hard failure threshold
 Inventory freshness is checked by `tests/test_architecture_inventory.py`, which
 compares the committed block below against live source. Import layering remains
 policy-only; there is no import-linter contract in `.github/workflows/ci.yml` as
-of v0.18.0. Remaining over-budget files should be handled as scoped maintenance
+of v0.19.0. Remaining over-budget files should be handled as scoped maintenance
 tracks rather than broad rewrites.
 
 Current files over the approximate 800-line budget, measured on 2026-07-11 with

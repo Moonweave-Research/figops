@@ -42,8 +42,9 @@ TOOL_NAMES = (
     "figops.scaffold_project",
     "figops.normalize_project_structure",
     "figops.batch_check",
+    "figops.evaluate_publication_readiness",
 )
-LEGACY_TOOL_NAMES = tuple(name.replace("figops.", "graphhub.", 1) for name in TOOL_NAMES)
+LEGACY_TOOL_NAMES = tuple(name.replace("figops.", "graphhub.", 1) for name in TOOL_NAMES[:13])
 MCP_BATCH_MAX_PROJECTS = 50
 
 TOOL_HANDLER_NAMES = {
@@ -60,11 +61,12 @@ TOOL_HANDLER_NAMES = {
     "figops.scaffold_project": "scaffold_project",
     "figops.normalize_project_structure": "normalize_project_structure",
     "figops.batch_check": "batch_check",
+    "figops.evaluate_publication_readiness": "evaluate_publication_readiness",
 }
 TOOL_HANDLER_NAMES.update(
     {
         legacy_name: TOOL_HANDLER_NAMES[primary_name]
-        for primary_name, legacy_name in zip(TOOL_NAMES, LEGACY_TOOL_NAMES, strict=True)
+        for primary_name, legacy_name in zip(TOOL_NAMES[:13], LEGACY_TOOL_NAMES, strict=True)
     }
 )
 
@@ -655,6 +657,21 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "baseline_comparison": {"type": "object"},
                 }
             ),
+        ),
+        ToolDefinition(
+            "figops.evaluate_publication_readiness",
+            "Evaluate an existing render job manifest into a read-only publication-readiness report.",
+            _object_schema(
+                {
+                    "job_id": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+                        "description": "Existing render job ID whose bounded manifest evidence will be evaluated.",
+                    }
+                },
+                required=["job_id"],
+            ),
+            _standard_output_schema({"readiness_report": {"type": "object"}}),
         ),
         ToolDefinition(
             "figops.scaffold_project",

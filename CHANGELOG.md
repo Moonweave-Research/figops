@@ -15,6 +15,21 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.19.0] - 2026-07-12
+
+### Added
+
+- Add the Publication Readiness MVP: a read-only, evidence-backed assessment that
+  consolidates existing calculation, geometry, regression, and provenance signals
+  into `blocked`, `needs_revision`, or `needs_review` outcomes.
+- Expose readiness reports through the source CLI and canonical MCP surface with
+  stable machine-readable findings and explicit manual-review requirements.
+
+### Changed
+
+- Begin the `0.19.0` development line while keeping `0.18.0` as the latest published
+  PyPI package and GitHub Release until a separate release promotion is approved.
+
 ## [0.18.0] - 2026-07-10
 
 ### Added

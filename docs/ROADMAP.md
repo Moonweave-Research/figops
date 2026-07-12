@@ -4,9 +4,11 @@
 > publication-quality plotting, self-describing MCP tools, and honest
 > operational guardrails.
 >
-> Status baseline: source checkout `0.18.0` release candidate after authentic
-> journal-style integration and runtime, packaging, and release hardening. The
-> latest published PyPI package and GitHub Release remain `0.17.11`. M1 through
+> Status baseline: source checkout `0.19.0` development line, adding the
+> Publication Readiness MVP—bounded automatic QA that requires cited hard-gate evidence and manual review—
+> after the `0.18.0` journal-style, runtime, packaging,
+> and release-hardening release. The latest published PyPI package and GitHub
+> Release remain `0.18.0`. M1 through
 > M5 have shipped across the 0.5.0+ release line. The
 > remaining roadmap is maintenance, scoped debt reduction, and bounded
 > polish-layer waves that preserve journal constraints.
@@ -36,7 +38,7 @@
   workflow is not the place to regenerate large render packs for unrelated
   changes.
 
-## Current-state scorecard (0.18.0 release-candidate source line, 2026-07-10)
+## Current-state scorecard (0.19.0 development source line, 2026-07-12)
 
 | Dimension | Score | Read |
 |---|---:|---|
@@ -62,8 +64,8 @@ Post-release total QA checkpoint:
   source-backed where possible and explicitly heuristic where the matrix says
   so. These documents do not claim current publisher compliance beyond their
   source dates and recorded limitations.
-- MCP agent surface is complete for the current contract: 13 canonical
-  `figops.*` tools, 13 legacy `graphhub.*` aliases, generated schemas, and
+- MCP agent surface is complete for the current contract: 14 canonical
+  `figops.*` tools, 13 frozen legacy `graphhub.*` aliases, generated schemas, and
   handler mappings are present.
 - Operational release controls are in place: latest checked `main` CI passed,
   publish is manual-only and main-branch guarded, and PyPI/TestPyPI/GitHub
@@ -71,6 +73,9 @@ Post-release total QA checkpoint:
 - Public claim wording remains publication-oriented; `manual_review_needed=false`
   is not by itself a publishable verdict. `publishable` or `journal-ready`
   wording requires cited hard-gate evidence and `manual_review_needed` not true.
+- The 0.19.0 Publication Readiness MVP is being added as a read-only synthesis
+  layer over existing evidence. It reports `blocked`, `needs_revision`, or
+  `needs_review`; approval lifecycle and submission packaging remain future work.
 - Current journal-style dogfood evidence for Todo 10 is recorded at
   `.omo/evidence/task-10-journal-style-real-use-hardening-final/render-pack/`;
   it supports review of rendered differences but is not a publisher acceptance

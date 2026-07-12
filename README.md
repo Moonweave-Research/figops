@@ -45,18 +45,18 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 
 | Item | Status |
 | --- | --- |
-| Source checkout | `0.18.0` release-candidate metadata (`pyproject.toml`); not yet published |
-| Published package | [`figops==0.17.11`](https://pypi.org/project/figops/0.17.11/) is the latest locally documented PyPI release |
-| TestPyPI dry run | [`figops==0.17.11`](https://test.pypi.org/project/figops/0.17.11/) was published and install-smoke verified |
+| Source checkout | `0.19.0` development metadata (`pyproject.toml`); not yet published |
+| Published package | [`figops==0.18.0`](https://pypi.org/project/figops/0.18.0/) is the latest published PyPI release |
+| TestPyPI dry run | [`figops==0.18.0`](https://test.pypi.org/project/figops/0.18.0/) was published and install-smoke verified |
 | Python | 3.12+ |
 | License | Apache-2.0 for public package distribution |
 | Commands | `figops`, `figops-mcp` |
 | Compatibility aliases | `graphhub`, `graphhub-mcp` |
-| GitHub Release | [`v0.17.11`](https://github.com/Moonweave-Research/figops/releases/tag/v0.17.11) is the latest locally documented release asset |
+| GitHub Release | [`v0.18.0`](https://github.com/Moonweave-Research/figops/releases/tag/v0.18.0) is the latest published release asset |
 
-The source checkout is prepared for `0.18.0`. The latest published PyPI package,
-TestPyPI dry run, and GitHub Release asset remain at `0.17.11` until an explicit
-publish workflow is approved and run.
+The source checkout is on the `0.19.0` development line. The latest published
+PyPI package, TestPyPI dry run, and GitHub Release asset remain at `0.18.0`
+until a separate release promotion is approved and run.
 
 ## Install
 
@@ -69,14 +69,14 @@ python -m pip install figops
 For a pinned, reproducible install:
 
 ```bash
-python -m pip install figops==0.17.11
+python -m pip install figops==0.18.0
 ```
 
 If you need the exact GitHub Release asset:
 
 ```bash
-gh release download v0.17.11 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.17.11-py3-none-any.whl
+gh release download v0.18.0 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.18.0-py3-none-any.whl
 figops-mcp --smoke
 ```
 
@@ -261,7 +261,7 @@ install path:
 
 ```bash
 python scripts/github_release_asset_smoke.py
-python -m pip install figops==0.17.11
+python -m pip install figops==0.18.0
 figops-mcp --smoke
 ```
 

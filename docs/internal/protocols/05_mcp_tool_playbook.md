@@ -23,6 +23,17 @@ surface.
 | `figops.scaffold_project` | Scaffold a new project only after the user asks for project creation; keep dry-run previews visible. |
 | `figops.normalize_project_structure` | Preview and then apply project folder normalization only after user approval. |
 | `figops.batch_check` | Review multiple active projects for graph readiness and quality-report generation. |
+| `figops.evaluate_publication_readiness` | Evaluate an existing render job's bounded manifest evidence; treat the result as an automatic QA triage that still requires human review. |
+
+## Publication Readiness Evaluation
+
+This is automatic evidence triage, not publication approval and not automatically publication-ready.
+A `needs_review` result still requires cited hard gates to pass and manual scientific review.
+
+After a render returns a `job_id`, call `figops.evaluate_publication_readiness`
+with that ID. The tool is read-only and remains available when MCP write tools
+are disabled. Inspect `readiness_report.readiness_status` and `findings`; never
+interpret `needs_review` as human approval or a publication guarantee.
 
 ## Explicit CSV Render
 
