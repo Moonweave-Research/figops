@@ -18,6 +18,8 @@ project:
 visual_style:
   target_format: nature
   profile: baseline
+data_contract:
+  require_figure_traceability: false
 figures:
   - id: FigReady
     script: hub_scripts/plot.py
@@ -104,6 +106,8 @@ project:
   name: Inventory Fixture
 visual_style:
   target_format: nature
+data_contract:
+  require_figure_traceability: false
 figures:
   - id: FigEntrypoint
     script: hub_scripts/plot.py::main
@@ -151,6 +155,8 @@ def test_build_inventory_reports_schema_invalid_configs(tmp_path: Path) -> None:
         """
 visual_style:
   target_format: nature
+data_contract:
+  require_figure_traceability: false
 figures:
   - id: FigReady
     script: hub_scripts/plot.py
@@ -168,7 +174,7 @@ figures:
     assert "project" in entries[0].config_error
 
 
-def test_build_inventory_does_not_mark_invalid_project_paths_as_candidates(tmp_path: Path) -> None:
+def test_build_inventory_rejects_invalid_project_paths_at_config_boundary(tmp_path: Path) -> None:
     project = _write_project(tmp_path, "project_a")
     config = project / "project_config.yaml"
     config.write_text(
@@ -177,6 +183,8 @@ project:
   name: Inventory Fixture
 visual_style:
   target_format: nature
+data_contract:
+  require_figure_traceability: false
 figures:
   - id: FigAbsoluteScript
     script: {project / "hub_scripts" / "plot.py"}
@@ -188,12 +196,13 @@ figures:
         encoding="utf-8",
     )
 
-    by_id = {entry.figure_id: entry for entry in build_inventory(tmp_path)}
+    entries = build_inventory(tmp_path)
 
-    assert by_id["FigAbsoluteScript"].render_candidate is False
-    assert by_id["FigAbsoluteScript"].invalid_paths[0].startswith("script: ")
-    assert by_id["FigTraversalOutput"].render_candidate is False
-    assert by_id["FigTraversalOutput"].invalid_paths == ("output: ../outside.png",)
+    assert len(entries) == 1
+    assert entries[0].figure_id == "(config error)"
+    assert entries[0].render_candidate is False
+    assert "figures[1].script must be a project-relative path" in entries[0].config_error
+    assert "figures[2].output must not contain path traversal '..'" in entries[0].config_error
 
 
 def test_build_inventory_does_not_mark_paths_escaping_project_root_as_candidates(tmp_path: Path) -> None:
@@ -208,6 +217,8 @@ project:
   name: Inventory Fixture
 visual_style:
   target_format: nature
+data_contract:
+  require_figure_traceability: false
 figures:
   - id: FigEscapes
     script: linked_scripts/plot.py

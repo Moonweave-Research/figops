@@ -11,12 +11,7 @@ from typing import Any, Callable
 from hub_core.redaction import redact_secrets, redact_text
 
 from .config import McpServerConfig
-from .errors import (
-    DISABLED_ERROR,
-    infer_tool_error_entry,
-    taxonomy_data,
-    taxonomy_entry_for_exception,
-)
+from .errors import infer_tool_error_entry, taxonomy_data, taxonomy_entry_for_exception
 from .prompts import McpPromptsMixin
 from .render_orchestration import McpRenderOrchestrationMixin
 from .resources import McpResourcesMixin
@@ -35,18 +30,25 @@ from .schemas import (
 from .schemas import (
     list_tool_definitions as schema_list_tool_definitions,
 )
-from .security import McpSecurityMixin, is_write_tool_name
+from .security import McpSecurityMixin
+from .surface_profiles import normalize_surface_profile
+from .tools.audit_tools import McpAuditToolsMixin
 from .tools.batch_tools import McpBatchToolsMixin
+from .tools.data_tools import McpDataToolsMixin
 from .tools.project_tools import McpProjectToolsMixin
 from .tools.read_tools import McpReadToolsMixin
 from .tools.readiness_tools import McpReadinessToolsMixin
 from .tools.render_csv import McpRenderCsvMixin
 from .tools.render_project import McpRenderProjectMixin
 from .tools.render_tools import McpRenderToolsMixin
+from .tools.render_v2 import McpRenderV2Mixin
 from .tools.render_validation import McpRenderValidationMixin
 
 
 class FigOpsMCPServer(
+    McpDataToolsMixin,
+    McpAuditToolsMixin,
+    McpRenderV2Mixin,
     McpReadToolsMixin,
     McpReadinessToolsMixin,
     McpRenderToolsMixin,
@@ -70,12 +72,21 @@ class FigOpsMCPServer(
         research_root: str | os.PathLike | None = None,
         runtime_root: str | os.PathLike | None = None,
         write_tools_enabled: bool | None = None,
+        surface_profile: str | None = None,
         require_initialize: bool = False,
     ) -> None:
         self.require_initialize = require_initialize
         self.initialized = False
+        if config is None:
+            resolved_config = McpServerConfig.from_env()
+        elif isinstance(config, McpServerConfig):
+            resolved_config = config
+        else:
+            resolved_config = McpServerConfig.from_mapping(config)
+        resolved_config = resolved_config.overlay(surface_profile=surface_profile)
+        self.surface_profile = normalize_surface_profile(resolved_config.surface_profile)
         self._init_security_state(
-            config=config,
+            config=resolved_config,
             hub_path=hub_path,
             research_root=research_root,
             runtime_root=runtime_root,
@@ -83,9 +94,11 @@ class FigOpsMCPServer(
         )
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = get_tool_handlers(self)
 
-    @staticmethod
-    def list_tool_definitions() -> list[dict[str, Any]]:
-        return schema_list_tool_definitions()
+    def list_tool_definitions(self) -> list[dict[str, Any]]:
+        return schema_list_tool_definitions(
+            profile=self.surface_profile,
+            write_tools_enabled=self.write_tools_enabled,
+        )
 
     @staticmethod
     def list_resource_definitions() -> list[dict[str, str]]:
@@ -95,25 +108,20 @@ class FigOpsMCPServer(
     def list_resource_templates() -> list[dict[str, str]]:
         return schema_list_resource_templates()
 
-    @staticmethod
-    def list_prompt_definitions() -> list[dict[str, Any]]:
-        return schema_list_prompt_definitions()
+    def list_prompt_definitions(self) -> list[dict[str, Any]]:
+        definitions = schema_list_prompt_definitions()
+        if self.surface_profile == "v2":
+            allowed = {"make_publication_graph_from_csv", "render_project_figure"}
+            return [definition for definition in definitions if definition["name"] in allowed]
+        return definitions
 
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = dict(arguments or {})
         handler = self._handlers.get(name)
         if handler is None:
             raise ValueError(f"Unknown FigOps MCP tool: {name}")
-        if is_write_tool_name(name) and not self.write_tools_enabled:
-            structured = self._envelope(
-                name,
-                arguments,
-                status="error",
-                summary=f"{name} is disabled by the FigOps MCP write-tool guard.",
-                errors=["Write tools are disabled for this FigOps MCP server."],
-                manual_review_needed=True,
-                error_category=DISABLED_ERROR.category,
-            )
+        structured = self._authorize_write_tool(name, arguments)
+        if structured is not None:
             return {
                 "content": [{"type": "text", "text": json.dumps(structured, ensure_ascii=False, sort_keys=True)}],
                 "structuredContent": structured,
@@ -133,6 +141,7 @@ class FigOpsMCPServer(
                 errors=[redact_text(str(exc))],
                 manual_review_needed=True,
                 error_category=entry.category,
+                error_code=getattr(exc, "code", None),
             )
             is_error = True
 
@@ -299,7 +308,8 @@ class FigOpsMCPServer(
             sanitized = sanitized.replace(f"{root_text}{os.sep}", child_label)
             if os.altsep:
                 sanitized = sanitized.replace(f"{root_text}{os.altsep}", child_label)
-            sanitized = sanitized.replace(root_text, label)
+            token_pattern = re.compile(rf"(?<![\w.-]){re.escape(root_text)}(?![\w.-])")
+            sanitized = token_pattern.sub(label, sanitized)
         return self._normalize_sanitized_uris(sanitized)
 
     @staticmethod
@@ -319,12 +329,14 @@ class FigOpsMCPServer(
         data_path = arguments.get("data_path")
         if isinstance(data_path, str) and data_path.strip():
             expanded_path = Path(data_path).expanduser()
-            replacements.append((str(expanded_path), "input://data_path"))
+            if expanded_path.is_absolute():
+                replacements.append((str(expanded_path), "input://data_path"))
             replacements.append((str(expanded_path.resolve()), "input://data_path"))
         project_path = arguments.get("project_path")
         if isinstance(project_path, str) and project_path.strip():
             expanded_project_path = Path(project_path).expanduser()
-            replacements.append((str(expanded_project_path), "input://project_path"))
+            if expanded_project_path.is_absolute():
+                replacements.append((str(expanded_project_path), "input://project_path"))
             replacements.append((str(expanded_project_path.resolve()), "input://project_path"))
 
         deduped: list[tuple[str, str]] = []
@@ -344,3 +356,22 @@ class FigOpsMCPServer(
 
     def _mcp_project_jobs_root(self) -> Path:
         return self.runtime_root / "mcp_project_jobs"
+
+
+class GraphHubMCPServer(FigOpsMCPServer):
+    """Historical Python class name selecting the compatibility profile."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        config = kwargs.get("config")
+        configured_profile = (
+            config.surface_profile
+            if isinstance(config, McpServerConfig)
+            else config.get("surface_profile") if isinstance(config, dict) else None
+        )
+        for requested_profile in (kwargs.get("surface_profile"), configured_profile):
+            if requested_profile is not None and normalize_surface_profile(requested_profile) != "compatibility":
+                raise ValueError("GraphHubMCPServer only supports surface_profile='compatibility'.")
+        # Make the historical class deterministic even if the process env asks
+        # the modern FigOps launcher for v2.
+        kwargs["surface_profile"] = "compatibility"
+        super().__init__(**kwargs)

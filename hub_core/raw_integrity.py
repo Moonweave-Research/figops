@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from .config_parser import DEFAULT_PROJECT_ROLE, project_role
+from .project_paths import (
+    normalize_project_relative_path,
+    open_verified_project_input,
+    project_path_has_symlink_component,
+    resolve_project_input,
+    snapshot_project_input,
+)
 
 DEFAULT_RAW_INTEGRITY = {
     "manifest": "raw/.raw_manifest.json",
@@ -39,6 +46,13 @@ def raw_integrity_config(config: dict[str, Any]) -> dict[str, Any] | None:
 def seal_raw_integrity(project_dir: str | Path, config: dict[str, Any]) -> dict[str, Any]:
     project_root = Path(project_dir).resolve()
     raw_cfg = raw_integrity_config(config) or dict(DEFAULT_RAW_INTEGRITY)
+    manifest_declaration = str(raw_cfg.get("manifest") or DEFAULT_RAW_INTEGRITY["manifest"])
+    if project_path_has_symlink_component(
+        project_root,
+        manifest_declaration,
+        purpose="raw_integrity manifest",
+    ):
+        raise ValueError("raw_integrity manifest must not contain symlink or reparse-point components")
     manifest_path = _manifest_path(project_root, raw_cfg)
     files = _collect_hashes(project_root, raw_cfg)
     sealed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -79,21 +93,45 @@ def verify_raw_integrity(project_dir: str | Path, config: dict[str, Any]) -> dic
         )
         return result
     if not manifest_path.exists():
+        mode = str(raw_cfg.get("mode", "warn"))
+        strict = mode == "strict"
         result = _empty_result(configured=True)
         result.update(
             {
                 "manifest_path": str(manifest_path),
-                "mode": str(raw_cfg.get("mode", "warn")),
+                "mode": mode,
                 "sealed": False,
-                "ok": True,
-                "errors": [],
+                "ok": False,
+                "errors": (
+                    ["raw_integrity strict mode requires a valid seal manifest"]
+                    if strict
+                    else ["raw_integrity is configured but no seal manifest exists"]
+                ),
             }
         )
         return result
 
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        manifest_declaration = str(raw_cfg.get("manifest") or DEFAULT_RAW_INTEGRITY["manifest"])
+        if project_path_has_symlink_component(
+            project_root,
+            manifest_declaration,
+            purpose="raw_integrity manifest",
+        ):
+            raise ValueError("raw_integrity manifest must not contain symlink components")
+        snapshot = snapshot_project_input(
+            project_root,
+            manifest_declaration,
+            purpose="raw_integrity manifest",
+        )
+        with open_verified_project_input(
+            project_root,
+            manifest_declaration,
+            expected_snapshot=snapshot,
+            purpose="raw_integrity manifest",
+        ) as stream:
+            manifest = json.loads(stream.read().decode("utf-8"))
+    except (OSError, ValueError) as exc:
         result = _empty_result(configured=True)
         result.update(
             {
@@ -175,7 +213,24 @@ def _configured_paths(project_root: Path, raw_cfg: dict[str, Any]) -> list[Path]
     raw_paths = raw_cfg.get("paths") or DEFAULT_RAW_INTEGRITY["paths"]
     if not isinstance(raw_paths, list):
         raw_paths = DEFAULT_RAW_INTEGRITY["paths"]
-    return [_project_relative_path(project_root, str(path)) for path in raw_paths]
+    configured: list[Path] = []
+    for raw_path in raw_paths:
+        declaration = normalize_project_relative_path(str(raw_path), purpose="raw_integrity path")
+        prospective = project_root / declaration
+        if not prospective.exists():
+            configured.append(prospective)
+            continue
+        if project_path_has_symlink_component(project_root, declaration, purpose="raw_integrity path"):
+            raise ValueError(f"raw_integrity path must not contain symlink components: {raw_path}")
+        configured.append(
+            resolve_project_input(
+                project_root,
+                declaration,
+                regular_file=False,
+                purpose="raw_integrity path",
+            )
+        )
+    return configured
 
 
 def _collect_hashes(project_root: Path, raw_cfg: dict[str, Any]) -> dict[str, str]:
@@ -191,8 +246,20 @@ def _collect_hashes(project_root: Path, raw_cfg: dict[str, Any]) -> dict[str, st
         for path in candidates:
             if path.resolve() == manifest_path:
                 continue
-            rel_path = _project_relative_name(project_root, path)
-            files[rel_path] = _sha256_file(path)
+            try:
+                rel_path = path.relative_to(project_root).as_posix()
+            except ValueError as exc:
+                raise ValueError(f"raw_integrity path escapes project root: {path}") from exc
+            if project_path_has_symlink_component(project_root, rel_path, purpose="raw_integrity file"):
+                raise ValueError(f"raw_integrity file must not contain symlink components: {rel_path}")
+            snapshot = snapshot_project_input(project_root, rel_path, purpose="raw_integrity file")
+            with open_verified_project_input(
+                project_root,
+                rel_path,
+                expected_snapshot=snapshot,
+                purpose="raw_integrity file",
+            ) as stream:
+                files[rel_path] = _sha256_stream(stream)
     return dict(sorted(files.items()))
 
 
@@ -216,11 +283,10 @@ def _project_relative_name(project_root: Path, path: Path) -> str:
         raise ValueError(f"raw_integrity path escapes project root: {path}") from exc
 
 
-def _sha256_file(path: Path) -> str:
+def _sha256_stream(handle: Any) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
     return digest.hexdigest()
 
 

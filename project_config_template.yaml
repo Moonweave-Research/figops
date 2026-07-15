@@ -70,7 +70,11 @@ experimental_conditions:
 # 3. 데이터 계약 (Data Contract & Semantic Integrity)
 # 파이프라인 가동 전 데이터의 '자격'을 검증합니다.
 data_contract:
+  # Bootstrap template has no sample/condition registry yet; remove this scoped
+  # opt-out after declaring claim, samples, and conditions for each figure.
+  require_figure_traceability: false
   cv_threshold: 0.10  # 변동계수(CV = std/mean) 경고 임계값 (기본 10%). 초과 시 주황색 경고 + 리포트 생성.
+  cv_columns: ["value"]  # CV 경고를 측정값으로 선언한 열에만 적용합니다.
   csv_checks:
     - path: "results/data/summary.csv"
       required_columns: ["time", "value", "molarity"]

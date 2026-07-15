@@ -15,7 +15,12 @@ def _default_user_cache_dir():
 
 
 def _abspath(value):
-    return os.path.abspath(os.path.expanduser(str(value)))
+    raw = str(value)
+    expanded = os.path.expanduser(raw)
+    if expanded == raw and raw.startswith("~"):
+        suffix = raw[1:].lstrip("/\\")
+        expanded = os.path.join(tempfile.gettempdir(), suffix)
+    return os.path.abspath(expanded)
 
 
 def _usable_runtime_dir(path):

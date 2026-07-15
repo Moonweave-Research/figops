@@ -15,6 +15,44 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.20.0] - 2026-07-15
+
+### Added
+
+- Add the AI-native v2 MCP profile: a compact, evidence-first default surface with
+  bounded inspection, one-call CSV/project rendering, explicit-policy audit, lazy
+  preview resources, raw-integrity evidence, and scientific-claim linkage.
+- Add generated references for the compact v2 and frozen compatibility profiles,
+  verified runtime-manifest reads, bounded raster/PDF preview conversion, and a
+  persisted live-model preview/revision witness.
+
+### Changed
+
+- Change launcher `tools/list` discovery to the `v2` profile by default. Existing
+  handlers, request payloads, canonical tool names, and legacy aliases remain
+  available; clients that require the complete pre-v2 discovery list must explicitly
+  select the `compatibility` profile. This is a breaking-adjacent discovery migration,
+  not a removal of the underlying wire contract.
+- Shift agent guidance from forced choreography and fixed revision counts to
+  outcome-based verification: FigOps supplies bounded evidence and catches omissions
+  while leaving planning, interpretation, and revision decisions to the model.
+- Keep journal policies as minimum-compliance constraints and explicit audit
+  projections without overwriting authored labels, raw data, or unsupported claims.
+- Use minor version `0.20.0` because the default discovery profile changes and new
+  backward-compatible capabilities are added, while compatibility discovery and the
+  existing handler/payload contracts remain available by explicit opt-in.
+
+### Validation
+
+- Pass the final repository gate with 2,005 tests passed, 45 skipped, 99 subtests
+  passed, 28 warnings, and zero failures; pass `ruff check .` and `git diff --check`.
+- Pass the architecture, generated-doc, profile, schema-budget, and post-count gates;
+  no tracked Python module in the architecture inventory exceeds 800 lines.
+- Complete an actual v2 model witness with two renders and two lazy preview reads,
+  including a targeted series/label revision with no invented statistics. Real local
+  R rendering remains unverified because `Rscript` is absent; Python and simulated-R
+  dispatch are verified.
+
 ## [0.19.0] - 2026-07-12
 
 ### Added

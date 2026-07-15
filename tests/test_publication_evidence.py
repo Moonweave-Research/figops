@@ -194,8 +194,22 @@ def test_loads_valid_manifest(tmp_path: Path) -> None:
         json.dumps({"artifact_status": "created", "provenance": {"output_sha256": SHA_B}}),
         encoding="utf-8",
     )
-    assert load_readiness_manifest(path) == {
+    evidence = load_readiness_manifest(path)
+    assert evidence == {
         "schema_version": "publication_evidence/1",
         "artifact_status": "created",
         "provenance": {"output_sha256": SHA_B},
+        "provenance_coverage": {
+            "status": "incomplete",
+            "hashes": {"output_sha256": SHA_B},
+            "missing": ["input_sha256", "config_sha256", "script_sha256", "environment_sha256"],
+        },
+        "artifact_integrity": {
+            "schema_version": "artifact_integrity/1",
+            "status": "failed",
+            "entries": [],
+            "errors": [
+                {"code": "ARTIFACT_DECLARATION_INVALID", "message": "manifest figures must be a list"}
+            ],
+        },
     }

@@ -105,7 +105,8 @@ def run_sweep(
             run_success = dependencies.validate_data_contract_preflight(
                 project_dir,
                 run_config,
-                require_existing=step == "plot",
+                # Full validation below performs the single guarded prefetch/read.
+                require_existing=False,
                 prefetcher=prefetcher,
             )
             if not run_success:
@@ -261,7 +262,8 @@ def run_comparison(
             run_success = dependencies.validate_data_contract_preflight(
                 project_dir,
                 run_config,
-                require_existing=step == "plot",
+                # Full validation below performs the single guarded prefetch/read.
+                require_existing=False,
                 prefetcher=prefetcher,
             )
             if not run_success:

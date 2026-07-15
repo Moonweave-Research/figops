@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+from .project_paths import ProjectPathError, normalize_project_relative_path
+
 
 def validate_experimental_conditions(errors: list[str], experimental_conditions: object) -> None:
     if experimental_conditions is None:
@@ -185,11 +187,10 @@ def validate_raw_integrity_config(
 
 
 def validate_relative_path_value(errors: list[str], field_name: str, path: str) -> None:
-    normalized = path.strip().replace("\\", "/")
-    if os.path.isabs(path):
-        errors.append(f"{field_name} must be a relative path, got absolute path '{path}'.")
-    elif ".." in normalized.split("/"):
-        errors.append(f"{field_name} must not contain path traversal '..': '{path}'.")
+    try:
+        normalize_project_relative_path(path, purpose=field_name)
+    except ProjectPathError as exc:
+        errors.append(str(exc))
 
 
 def validate_canonical_docs(errors: list[str], canonical_docs: object) -> None:

@@ -11,6 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.patches import Rectangle  # noqa: E402
 from matplotlib.transforms import Bbox  # noqa: E402
 
 from hub_core import (  # noqa: E402
@@ -35,6 +36,13 @@ from hub_core.geometry_diagnostics import (  # noqa: E402
     _marker_footprint_box_entries,
     diagnose_figure_geometry,
 )
+from hub_core.geometry_raw_contract import (  # noqa: E402
+    RawGeometryContractError,
+    normalize_geometry_payload,
+    raw_measurement,
+    validate_raw_geometry,
+)
+from hub_core.mcp.render_geometry_schemas import GEOMETRY_METRIC_NAMES  # noqa: E402
 from themes.journal_theme import _safe_geometry_diagnostics_inline  # noqa: E402
 
 
@@ -80,6 +88,203 @@ def _bbox_signature(box):
 class GeometryDiagnosticsUnitTest(unittest.TestCase):
     def tearDown(self):
         plt.close("all")
+
+    def test_raw_contract_rejects_recursive_policy_and_aggregate_fields(self):
+        base = {
+            "schema_version": "geometry_diagnostics/2",
+            "measurements": [
+                {
+                    "metric_id": "geometry.fact",
+                    "availability": "available",
+                    "value": {"count": 1},
+                    "unit": "count",
+                    "scope": "figure",
+                }
+            ],
+            "warnings": [],
+        }
+        for field in (
+            "threshold",
+            "severity",
+            "verdict",
+            "aggregate",
+            "nested_policy_id",
+            "min_distance",
+            "max_distance",
+            "limit",
+            "offender_count",
+            "passed",
+            "failed",
+        ):
+            with self.subTest(field=field):
+                payload = json.loads(json.dumps(base))
+                payload["measurements"][0]["value"] = {"nested": [{field: 1}]}
+                with self.assertRaisesRegex(RawGeometryContractError, "policy-owned field"):
+                    validate_raw_geometry(payload)
+
+    def test_raw_contract_enforces_availability_value_reason_discriminator(self):
+        common = {"metric_id": "geometry.fact", "unit": "count", "scope": "figure"}
+        invalid = (
+            {**common, "availability": "available", "reason": "not measured"},
+            {**common, "availability": "available", "value": 1, "reason": "conflict"},
+            {**common, "availability": "unavailable"},
+            {**common, "availability": "unavailable", "value": 1, "reason": "conflict"},
+        )
+        for measurement in invalid:
+            with self.subTest(measurement=measurement):
+                with self.assertRaises(RawGeometryContractError):
+                    validate_raw_geometry(
+                        {
+                            "schema_version": "geometry_diagnostics/2",
+                            "measurements": [measurement],
+                            "warnings": [],
+                        }
+                    )
+
+    def test_legacy_geometry_is_normalized_only_through_compatibility_adapter(self):
+        normalized = normalize_geometry_payload(
+            {
+                "schema_version": "geometry_diagnostics/1",
+                "passed": False,
+                "checks": [
+                    {
+                        "name": "tick_label_overlaps",
+                        "passed": False,
+                        "detail": "one pair",
+                        "data": {"axis_index": 0, "pairs": [[0, 1]], "threshold": 0},
+                    }
+                ],
+                "warnings": ["legacy"],
+            }
+        )
+        self.assertEqual(normalized["schema_version"], "geometry_diagnostics/2")
+        self.assertEqual(normalized["measurements"][0]["value"], {"axis_index": 0, "pairs": [[0, 1]]})
+        self.assertEqual(normalized["measurements"][0]["availability"], "available")
+        self.assertNotIn("passed", normalized)
+
+    def test_failed_legacy_outcome_cannot_make_computed_raw_fact_unavailable(self):
+        measurement = raw_measurement(
+            {
+                "name": "objective_ratio",
+                "passed": False,
+                "detail": "outside selected policy",
+                "data": {"ratio": 0.5},
+            },
+            0,
+        )
+        self.assertEqual(measurement["availability"], "available")
+        self.assertEqual(measurement["value"], {"ratio": 0.5})
+
+    def test_explicit_xlim_preserves_computed_outside_fraction_as_available(self):
+        fig, ax = plt.subplots(figsize=(4, 3))
+        ax.plot([0.0, 2.0], [0.0, 1.0])
+        ax.set_xlim(0.0, 1.0)
+        _drawn(fig)
+
+        legacy = diagnose_figure_geometry(fig, [ax], layout_locked=True)
+        legacy_check = _check(legacy, "artists_outside_axes")
+        self.assertIsNone(legacy_check["passed"])
+        self.assertAlmostEqual(legacy_check["data"]["outside_fraction"], 0.5)
+
+        raw = diagnose_figure_geometry(fig, [ax], layout_locked=True, contract_version="raw")
+        measurement = next(
+            item for item in raw["measurements"]
+            if item["metric_id"] == "artists_outside_axes[axis=0]"
+        )
+        self.assertEqual(measurement["availability"], "available")
+        self.assertAlmostEqual(measurement["value"]["outside_fraction"], 0.5)
+
+    def test_legacy_adapter_preserves_axis_scope_for_repeated_metric_names(self):
+        normalized = normalize_geometry_payload(
+            {
+                "schema_version": "geometry_diagnostics/1",
+                "passed": True,
+                "checks": [
+                    {
+                        "name": "blank_area_ratio",
+                        "passed": True,
+                        "detail": "measured",
+                        "data": {"axis_index": axis_index, "blank_ratio": 0.25},
+                    }
+                    for axis_index in (0, 1)
+                ],
+                "warnings": [],
+            }
+        )
+        self.assertEqual(
+            [item["metric_id"] for item in normalized["measurements"]],
+            ["blank_area_ratio[axis=0]", "blank_area_ratio[axis=1]"],
+        )
+
+    def test_raw_edge_distances_retain_near_and_far_candidates(self):
+        fig, ax = plt.subplots(figsize=(4, 3))
+        ax.text(0.0, 0.8, "near", transform=ax.transAxes)
+        ax.text(0.5, 0.6, "far", transform=ax.transAxes)
+        _drawn(fig)
+
+        raw = diagnose_figure_geometry(fig, [ax], layout_locked=True, contract_version="raw")
+        measurement = next(
+            item for item in raw["measurements"]
+            if item["metric_id"] == "text_axis_edge_distances[axis=0]"
+        )
+        left_distances = [item["distances_px"]["left"] for item in measurement["value"]["artists"]]
+        self.assertTrue(any(distance <= 3.0 for distance in left_distances))
+        self.assertTrue(any(distance > 3.0 for distance in left_distances))
+        self.assertNotIn("threshold", json.dumps(measurement))
+
+    def test_raw_discovery_metric_families_exactly_match_runtime_output(self):
+        fig, ax = plt.subplots(figsize=(4, 3))
+        ax.plot([0, 1], [0, 1])
+        ax.text(0.5, 0.5, "fact", transform=ax.transAxes)
+        _drawn(fig)
+
+        raw = diagnose_figure_geometry(fig, [ax], layout_locked=True, contract_version="raw")
+        runtime_families = {item["metric_id"].split("[", 1)[0] for item in raw["measurements"]}
+        self.assertEqual(runtime_families, set(GEOMETRY_METRIC_NAMES))
+
+    def test_raw_artist_iou_retains_below_and_above_old_warn_cutoff(self):
+        fig, ax = plt.subplots(figsize=(4, 3))
+        ax.text(0.1, 0.7, "high-a", transform=ax.transAxes)
+        ax.text(0.1, 0.7, "high-b", transform=ax.transAxes)
+        low_a = ax.text(0.1, 0.4, "low-a", transform=ax.transAxes)
+        _drawn(fig)
+        low_a_box = low_a.get_window_extent(fig.canvas.get_renderer())
+        low_b_x = ax.transAxes.inverted().transform((low_a_box.x1 - 0.5, low_a_box.y0))[0]
+        ax.text(low_b_x, 0.4, "low-b", transform=ax.transAxes)
+        _drawn(fig)
+
+        raw = diagnose_figure_geometry(fig, [ax], layout_locked=True, contract_version="raw")
+        measurement = next(
+            item for item in raw["measurements"]
+            if item["metric_id"] == "artist_pair_iou[axis=0]"
+        )
+        positive = [pair["iou"] for pair in measurement["value"]["pairs"] if pair["iou"] > 0]
+        self.assertTrue(any(0 < iou <= 0.05 for iou in positive), positive)
+        self.assertTrue(any(iou > 0.05 for iou in positive), positive)
+        self.assertIn("pairs_truncated", measurement["value"])
+
+    def test_raw_contrast_retains_below_and_above_old_warn_cutoff(self):
+        fig, ax = plt.subplots(figsize=(4, 3))
+        for x, color, label in ((0.05, "black", "low"), (0.55, "white", "high")):
+            overlay = Rectangle(
+                (x, 0.35), 0.35, 0.2, transform=ax.transAxes, facecolor=color, edgecolor="none"
+            )
+            overlay._graph_hub_overlay_role = "evidence-band"
+            overlay._graph_hub_overlay_label = label
+            ax.add_patch(overlay)
+            text = ax.text(x + 0.03, 0.42, label, color="black", transform=ax.transAxes)
+            text._graph_hub_annotation_text_role = "claim"
+        _drawn(fig)
+
+        raw = diagnose_figure_geometry(fig, [ax], layout_locked=True, contract_version="raw")
+        measurement = next(
+            item for item in raw["measurements"]
+            if item["metric_id"] == "annotation_overlay_contrast_ratios[axis=0]"
+        )
+        ratios = [pair["contrast_ratio"] for pair in measurement["value"]["pairs"]]
+        self.assertTrue(any(ratio < 3.0 for ratio in ratios), ratios)
+        self.assertTrue(any(ratio >= 3.0 for ratio in ratios), ratios)
+        self.assertNotIn("threshold", json.dumps(measurement))
 
     def test_geometry_diagnostics_keeps_primitive_compatibility_exports(self):
         self.assertIs(geometry_diagnostics._extent, geometry_primitives._extent)
@@ -873,6 +1078,7 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         ax.set_ylabel("y")
         ax.legend()
         compliance = {
+            "policy_id": "journal-nature/baseline",
             "target_format": "science",
             "min_font_size_pt": 5.0,
             "min_line_width_pt": 0.5,
@@ -897,6 +1103,7 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
         ax.xaxis.label.set_fontsize(4.0)
         ax.legend(fontsize=4.0)
         compliance = {
+            "policy_id": "journal-nature/baseline",
             "target_format": "science",
             "min_font_size_pt": 5.0,
             "min_line_width_pt": 0.5,
@@ -1087,22 +1294,20 @@ class GeometryDiagnosticsUnitTest(unittest.TestCase):
             # (a) deadline inside the 5 s floor -> skip
             os.environ["GEOMETRY_DIAGNOSTICS_DEADLINE"] = str(time.time() + 2.0)
             skipped = _safe_geometry_diagnostics_inline(fig)
-            self.assertIsNone(skipped["passed"])
             self.assertEqual(skipped["warnings"], ["skipped: render budget"])
-            self.assertEqual(skipped["checks"], [])
+            self.assertEqual(skipped["measurements"], [])
 
             # (b) generous deadline -> measurement runs
             os.environ["GEOMETRY_DIAGNOSTICS_DEADLINE"] = str(time.time() + 3600)
             measured = _safe_geometry_diagnostics_inline(fig)
-            self.assertIsInstance(measured["passed"], bool)
-            self.assertTrue(measured["checks"])
+            self.assertTrue(measured["measurements"])
 
             # (c) MCP_RENDER_TIMEOUT_SECONDS absent does not change either decision
             self.assertNotIn("MCP_RENDER_TIMEOUT_SECONDS", os.environ)
             os.environ["GEOMETRY_DIAGNOSTICS_DEADLINE"] = str(time.time() + 2.0)
-            self.assertIsNone(_safe_geometry_diagnostics_inline(fig)["passed"])
+            self.assertEqual(_safe_geometry_diagnostics_inline(fig)["measurements"], [])
             os.environ["GEOMETRY_DIAGNOSTICS_DEADLINE"] = str(time.time() + 3600)
-            self.assertIsInstance(_safe_geometry_diagnostics_inline(fig)["passed"], bool)
+            self.assertTrue(_safe_geometry_diagnostics_inline(fig)["measurements"])
         finally:
             if prior is None:
                 os.environ.pop("GEOMETRY_DIAGNOSTICS_DEADLINE", None)

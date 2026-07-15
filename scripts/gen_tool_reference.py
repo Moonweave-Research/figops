@@ -8,6 +8,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS_DOC = ROOT / "docs" / "tools.md"
+PROFILE_TOOL_DOCS = {
+    "v2": ROOT / "docs" / "tools-v2.md",
+    "compatibility": ROOT / "docs" / "tools-compatibility.md",
+}
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -42,18 +46,35 @@ def _redact_public_reference_payload(payload: Any) -> Any:
     return payload
 
 
-def render_tool_reference() -> str:
-    from hub_core.mcp.schemas import describe_figops_surface
+def render_tool_reference(profile: str | None = None) -> str:
+    from hub_core.mcp.schemas import describe_figops_surface, list_tool_definitions
 
-    surface = describe_figops_surface()
+    if profile is None:
+        surface = describe_figops_surface()
+        tools = surface["tools"]
+    else:
+        definitions = list_tool_definitions(profile=profile, write_tools_enabled=True)
+        tools = [
+            {
+                "name": tool["name"],
+                "purpose": tool["description"],
+                "inputSchema": tool["inputSchema"],
+                "outputSchema": tool["outputSchema"],
+            }
+            for tool in definitions
+            if profile != "compatibility" or tool["name"].startswith("figops.")
+        ]
+        surface = {"plot_types": [], "semantic_checks": []}
+    title_suffix = "" if profile is None else f" — {profile} profile"
+    profile_flag = "" if profile is None else f" --profile {profile}"
     lines = [
-        "# FigOps MCP Tool Reference",
+        f"# FigOps MCP Tool Reference{title_suffix}",
         "",
         "This file is generated from the live FigOps MCP registries.",
         "Regenerate it with:",
         "",
         "```bash",
-        "uv run python scripts/gen_tool_reference.py --write",
+        f"python hub_uv.py run python scripts/gen_tool_reference.py --write{profile_flag}",
         "```",
         "",
         "The freshness test fails if this committed file drifts from the registry output.",
@@ -62,7 +83,7 @@ def render_tool_reference() -> str:
         "",
     ]
 
-    for tool in surface["tools"]:
+    for tool in tools:
         lines.extend(
             [
                 f"### `{tool['name']}`",
@@ -79,6 +100,14 @@ def render_tool_reference() -> str:
                 "",
             ]
         )
+
+    if profile == "compatibility":
+        lines.extend(["## Frozen `graphhub.*` aliases", ""])
+        for definition in definitions:
+            name = definition["name"]
+            if name.startswith("graphhub."):
+                lines.append(f"- `{name}` → `{name.replace('graphhub.', 'figops.', 1)}`")
+        lines.append("")
 
     lines.extend(["## Plot Types", ""])
     for plot_type in surface["plot_types"]:
@@ -127,16 +156,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Generate docs/tools.md from live MCP registries")
     parser.add_argument("--write", action="store_true", help="Write docs/tools.md")
     parser.add_argument("--check", action="store_true", help="Fail if docs/tools.md is stale")
+    parser.add_argument("--profile", choices=("v2", "compatibility"), help="Generate one surface profile reference")
     args = parser.parse_args()
 
-    rendered = render_tool_reference()
+    rendered = render_tool_reference(args.profile)
+    output_path = PROFILE_TOOL_DOCS.get(args.profile, TOOLS_DOC)
     if args.write:
-        TOOLS_DOC.write_text(rendered, encoding="utf-8")
+        output_path.write_text(rendered, encoding="utf-8")
         return 0
     if args.check:
-        current = TOOLS_DOC.read_text(encoding="utf-8")
+        current = output_path.read_text(encoding="utf-8")
         if current != rendered:
-            raise SystemExit("docs/tools.md is stale; run `uv run python scripts/gen_tool_reference.py --write`.")
+            raise SystemExit(f"{output_path.relative_to(ROOT)} is stale; regenerate the selected profile.")
         return 0
     print(rendered, end="")
     return 0

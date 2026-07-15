@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
 
+from hub_core.calculation_evidence import verify_calculation_evidence
 from hub_core.geometry_diagnostics import _marker_footprint_box_entries, diagnose_figure_geometry
 from plotting.bridge_renderer import (
     BridgeFigureSpec,
@@ -38,6 +40,35 @@ from plotting.bridge_renderer import (
     render_bridge_figure,
 )
 from themes.journal_theme import apply_journal_theme, save_journal_fig
+
+_CLAIM_EVIDENCE = {
+    "schema_version": "figops_calculation_evidence/1",
+    "evidence_id": "calc:linear_fit:stress:0",
+    "producer": "test-analysis",
+    "assertion": {"metric": "p_value", "operator": "lt", "threshold": 0.01, "display_label": "p<0.01"},
+    "marker_binding": {"x1": 1.0, "x2": 4.0},
+    "test_metadata": {"test_name": "linear_fit", "model": "linear"},
+    "result": {"status": "passed", "p_value": 0.009},
+}
+
+
+def _claim_artifact(root: Path) -> tuple[Path, str]:
+    path = root / "calculation-evidence.json"
+    path.write_text(json.dumps(_CLAIM_EVIDENCE, sort_keys=True), encoding="utf-8")
+    return path, _sha256(path)
+
+
+def _linked_marker(*, artifact_sha256: str, **coordinates):
+    return {
+        **coordinates,
+        "calculation_evidence_id": _CLAIM_EVIDENCE["evidence_id"],
+        "analysis_artifact_sha256": artifact_sha256,
+        "test_metadata": {"test_name": "linear_fit", "model": "linear"},
+    }
+
+
+def _bind_claim_evidence(spec: BridgeFigureSpec, root: Path, artifact: Path) -> None:
+    object.__setattr__(spec, "calculation_evidence", (verify_calculation_evidence(root, artifact.name),))
 
 
 def _sha256(path: Path) -> str:
@@ -279,7 +310,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
     def test_display_label_uses_shared_compression_rules(self):
         raw = "Coated Sample_Noa_None_Aligned"
-        compressed = _display_label(raw)
+        compressed = _display_label(raw, compress_labels=True)
         self.assertEqual(compressed, "Coated, Noa, None, Aln.")
 
     def test_display_label_can_preserve_raw_text(self):
@@ -382,6 +413,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             x_column="condition",
             y_column="value",
             title="bar",
+            compress_labels=True,
         )
         points = [
             {"x": "Coated Sample_A_Aligned", "y": 1.0, "label": "", "series": "", "yerr": None},
@@ -431,7 +463,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             )
             observed = {}
 
-            def capture_figure(fig, output_path):
+            def capture_figure(fig, output_path, **_kwargs):
                 ax = fig.axes[0]
                 observed["line_labels"] = [line.get_label() for line in ax.lines]
                 observed["band_labels"] = [
@@ -463,7 +495,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             )
             observed = {}
 
-            def capture_figure(fig, output_path):
+            def capture_figure(fig, output_path, **_kwargs):
                 ax = fig.axes[0]
                 observed["heights"] = [bar.get_height() for bar in ax.patches]
                 observed["tick_labels"] = [label.get_text() for label in ax.get_xticklabels()]
@@ -507,7 +539,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             )
             observed = {}
 
-            def capture_figure(fig, output_path):
+            def capture_figure(fig, output_path, **_kwargs):
                 ax = fig.axes[0]
                 observed["heights"] = [bar.get_height() for bar in ax.patches]
                 observed["tick_labels"] = [label.get_text() for label in ax.get_xticklabels()]
@@ -552,6 +584,9 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 x_column="condition",
                 y_column="value",
                 title="Grouped-bar aggregate",
+                compliance_mode="clamp",
+                palette="Okabe-Ito",
+                label_transform="legacy_compress",
                 aggregate="mean",
             )
 
@@ -776,7 +811,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             )
             observed = {}
 
-            def capture_figure(fig, output_path):
+            def capture_figure(fig, output_path, **_kwargs):
                 ax = fig.axes[0]
                 observed["line_count"] = len(ax.lines)
                 observed["bar_count"] = len(ax.patches)
@@ -802,7 +837,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             )
             observed = {}
 
-            def capture_figure(fig, output_path):
+            def capture_figure(fig, output_path, **_kwargs):
                 ax = fig.axes[0]
                 observed["xtick_labels"] = [item.get_text() for item in ax.get_xticklabels()]
                 observed["collections"] = len(ax.collections)
@@ -834,7 +869,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             )
             observed = {}
 
-            def capture_figure(fig, output_path):
+            def capture_figure(fig, output_path, **_kwargs):
                 ax = fig.axes[0]
                 observed["xtick_labels"] = [item.get_text() for item in ax.get_xticklabels()]
                 observed["violin_bodies"] = [
@@ -872,6 +907,9 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 x_column="condition",
                 y_column="modulus",
                 title="Box distribution",
+                compliance_mode="clamp",
+                palette="Okabe-Ito",
+                label_transform="legacy_compress",
             )
 
             with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):
@@ -892,6 +930,9 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 x_column="condition",
                 y_column="modulus",
                 title="Violin distribution",
+                compliance_mode="clamp",
+                palette="Okabe-Ito",
+                label_transform="legacy_compress",
             )
 
             with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):
@@ -1001,6 +1042,8 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 y_column="stress",
                 title="Facet annotation",
                 facet_column="phase",
+                compliance_mode="clamp",
+                palette="Okabe-Ito",
                 annotations=({"x": 1.0, "y": 1.0, "text": "callout"},),
             )
             observed = {}
@@ -1028,10 +1071,12 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 y_column="stress",
                 title="Facet stress",
                 facet_column="phase",
+                compliance_mode="clamp",
+                palette="Okabe-Ito",
             )
             observed = {}
 
-            def capture_figure(fig, output_path):
+            def capture_figure(fig, output_path, **_kwargs):
                 axes = [ax for ax in fig.axes if ax.get_visible()]
                 observed["titles"] = [ax.get_title() for ax in axes]
                 observed["line_counts"] = [len(ax.lines) for ax in axes]
@@ -1468,6 +1513,9 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 y_column="stress",
                 title="Facet stress",
                 facet_column="phase",
+                compliance_mode="clamp",
+                palette="Okabe-Ito",
+                label_transform="legacy_compress",
             )
 
             with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):
@@ -1476,10 +1524,11 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
             _assert_visual_baseline(self, Path(out), baseline)
 
-    def test_statistical_overlays_render_fit_ci_and_significance_marker(self):
+    def test_statistical_overlays_render_descriptive_fit_and_evidence_linked_marker(self):
         with tempfile.TemporaryDirectory(prefix="bridge_stat_overlay_") as tmpdir:
             tmpdir_path = Path(tmpdir)
             csv_path = self._write_overlay_csv(tmpdir_path, "overlay.csv")
+            evidence_path, evidence_sha = _claim_artifact(tmpdir_path)
             spec = BridgeFigureSpec(
                 csv_path=str(csv_path),
                 output_path=str(tmpdir_path / "overlay.png"),
@@ -1488,12 +1537,15 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 y_column="stress",
                 title="Stat overlays",
                 fit_line=True,
-                ci_band=True,
-                significance_markers=({"x1": 1.0, "x2": 4.0, "y": 5.6, "label": "p<0.01"},),
+                ci_band=False,
+                significance_markers=(
+                    _linked_marker(artifact_sha256=evidence_sha, x1=1.0, x2=4.0, y=5.6, label="p<0.01"),
+                ),
             )
+            _bind_claim_evidence(spec, tmpdir_path, evidence_path)
             observed = {}
 
-            def capture_figure(fig, output_path):
+            def capture_figure(fig, output_path, **_kwargs):
                 ax = fig.axes[0]
                 observed["line_labels"] = [line.get_label() for line in ax.lines]
                 observed["collections"] = [type(collection).__name__ for collection in ax.collections]
@@ -1505,13 +1557,13 @@ class BridgeRendererUnitTest(unittest.TestCase):
 
             self.assertTrue(Path(out).exists())
             self.assertIn("Linear fit", observed["line_labels"])
-            self.assertTrue(any("PolyCollection" in name for name in observed["collections"]))
             self.assertIn("p<0.01", observed["texts"])
 
-    def test_fit_options_style_linear_fit_and_ci_band(self):
+    def test_quick_ci_band_is_rejected_without_independent_bounds(self):
         with tempfile.TemporaryDirectory(prefix="bridge_fit_options_") as tmpdir:
             tmpdir_path = Path(tmpdir)
             csv_path = self._write_overlay_csv(tmpdir_path, "overlay.csv")
+            evidence_path, evidence_sha = _claim_artifact(tmpdir_path)
             spec = BridgeFigureSpec(
                 csv_path=str(csv_path),
                 output_path=str(tmpdir_path / "overlay.png"),
@@ -1531,27 +1583,8 @@ class BridgeRendererUnitTest(unittest.TestCase):
                     "ci_label": "fit confidence",
                 },
             )
-            observed = {}
-
-            def capture_figure(fig, output_path):
-                ax = fig.axes[0]
-                fit_line = next(line for line in ax.lines if line.get_label() == "least-squares fit")
-                ci_band = next(
-                    collection for collection in ax.collections if collection.get_label() == "fit confidence"
-                )
-                observed["line_color"] = fit_line.get_color()
-                observed["line_style"] = fit_line.get_linestyle()
-                observed["line_width"] = fit_line.get_linewidth()
-                observed["ci_alpha"] = ci_band.get_alpha()
-                Path(output_path).write_bytes(b"png")
-
-            with patch("plotting.bridge_renderer.save_journal_fig", side_effect=capture_figure):
+            with self.assertRaisesRegex(ValueError, "ci_band is unavailable"):
                 render_bridge_figure(spec)
-
-            self.assertEqual(observed["line_color"], "tab:red")
-            self.assertEqual(observed["line_style"], "--")
-            self.assertAlmostEqual(observed["line_width"], 2.5)
-            self.assertAlmostEqual(observed["ci_alpha"], 0.2)
 
     def test_fit_options_rejects_unsupported_model(self):
         with tempfile.TemporaryDirectory(prefix="bridge_fit_options_bad_model_") as tmpdir:
@@ -1591,11 +1624,11 @@ class BridgeRendererUnitTest(unittest.TestCase):
             self.assertIn("significance_markers[0]", str(ctx.exception))
             self.assertIn("x2", str(ctx.exception))
 
-    def test_statistical_overlays_match_visual_regression_baseline(self):
-        baseline = Path(__file__).parent / "fixtures" / "visual_regression" / "m4_2_stat_overlays.png"
+    def test_statistical_overlay_baseline_with_unlinked_ci_is_rejected(self):
         with tempfile.TemporaryDirectory(prefix="bridge_stat_overlay_baseline_") as tmpdir:
             tmpdir_path = Path(tmpdir)
             csv_path = self._write_overlay_csv(tmpdir_path, "overlay.csv")
+            evidence_path, evidence_sha = _claim_artifact(tmpdir_path)
             spec = BridgeFigureSpec(
                 csv_path=str(csv_path),
                 output_path=str(tmpdir_path / "overlay.png"),
@@ -1603,16 +1636,19 @@ class BridgeRendererUnitTest(unittest.TestCase):
                 x_column="strain",
                 y_column="stress",
                 title="Statistical overlays",
+                compliance_mode="clamp",
+                palette="Okabe-Ito",
+                label_transform="legacy_compress",
                 fit_line=True,
                 ci_band=True,
-                significance_markers=({"x1": 1.0, "x2": 4.0, "y": 5.6, "label": "p<0.01"},),
+                significance_markers=(
+                    _linked_marker(artifact_sha256=evidence_sha, x1=1.0, x2=4.0, y=5.6, label="p<0.01"),
+                ),
             )
 
-            with patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "0"}):
-                out = render_bridge_figure(spec)
-
-            self.assertTrue(baseline.exists(), f"missing visual baseline: {baseline}")
-            _assert_visual_baseline(self, Path(out), baseline)
+            _bind_claim_evidence(spec, tmpdir_path, evidence_path)
+            with self.assertRaisesRegex(ValueError, "ci_band is unavailable"):
+                render_bridge_figure(spec)
 
     def test_multi_series_legend_uses_standard_props(self):
         spec = BridgeFigureSpec(
@@ -1959,7 +1995,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             )
             observed = {}
 
-            def capture_figure(fig, output_path):
+            def capture_figure(fig, output_path, **_kwargs):
                 ax = fig.axes[0]
                 fig.canvas.draw()
                 observed["geometry"] = diagnose_figure_geometry(
@@ -2014,7 +2050,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
             )
             observed = {}
 
-            def capture_figure(fig, output_path):
+            def capture_figure(fig, output_path, **_kwargs):
                 ax_top = [ax for ax in fig.axes if ax.get_visible()][0]
                 fig.canvas.draw()
                 observed["geometry"] = diagnose_figure_geometry(
@@ -2142,6 +2178,7 @@ class BridgeRendererUnitTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="bridge_multi_stat_overlay_") as tmpdir:
             tmpdir_path = Path(tmpdir)
             csv_path = self._write_overlay_csv(tmpdir_path, "overlay.csv")
+            evidence_path, evidence_sha = _claim_artifact(tmpdir_path)
             spec = MultiPanelSpec(
                 panels=(
                     BridgeFigureSpec(
@@ -2152,14 +2189,23 @@ class BridgeRendererUnitTest(unittest.TestCase):
                         y_column="stress",
                         title="",
                         fit_line=True,
-                        ci_band=True,
-                        significance_markers=({"x1": 1.0, "x2": 4.0, "y": 5.6, "label": "p<0.01"},),
+                        ci_band=False,
+                        significance_markers=(
+                            _linked_marker(
+                                artifact_sha256=evidence_sha,
+                                x1=1.0,
+                                x2=4.0,
+                                y=5.6,
+                                label="p<0.01",
+                            ),
+                        ),
                     ),
                 ),
                 output_path=str(tmpdir_path / "multi.png"),
                 rows=1,
                 cols=1,
             )
+            _bind_claim_evidence(spec.panels[0], tmpdir_path, evidence_path)
 
             with patch("plotting.bridge_renderer.save_journal_fig") as mock_save:
                 from plotting.bridge_renderer import render_multipanel_figure
@@ -2169,7 +2215,6 @@ class BridgeRendererUnitTest(unittest.TestCase):
             fig = mock_save.call_args.args[0]
             ax = fig.axes[0]
             self.assertIn("Linear fit", [line.get_label() for line in ax.lines])
-            self.assertTrue(any(isinstance(collection, PolyCollection) for collection in ax.collections))
             self.assertIn("p<0.01", [text.get_text() for text in ax.texts])
 
     def test_multipanel_shared_legend_keeps_secondary_y_single_series_labels(self):

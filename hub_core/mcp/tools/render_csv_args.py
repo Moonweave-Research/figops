@@ -4,6 +4,44 @@ import math
 from typing import Any
 
 LEGEND_LAYOUT_PRESETS = {"auto", "smart", "standard", "best", "top_outside", "right_outside"}
+_ANNOTATION_CLAIM_KEYS = {
+    "annotation_kind",
+    "calculation_evidence_id",
+    "analysis_artifact_sha256",
+    "test_metadata",
+}
+
+
+def _normalized_annotation_claim_fields(annotation: dict[str, Any], index: int) -> dict[str, Any]:
+    kind = str(annotation.get("annotation_kind") or "auto").strip().lower()
+    if kind not in {"auto", "literal", "statistical_claim"}:
+        raise ValueError(f"annotations[{index}].annotation_kind is unsupported.")
+    normalized: dict[str, Any] = {}
+    if "annotation_kind" in annotation:
+        normalized["annotation_kind"] = kind
+    for key in ("calculation_evidence_id", "analysis_artifact_sha256"):
+        if key not in annotation:
+            continue
+        value = annotation[key]
+        if not isinstance(value, str) or not value.strip() or len(value) > 256:
+            raise ValueError(f"annotations[{index}].{key} must be a bounded non-empty string.")
+        if key == "analysis_artifact_sha256" and (
+            len(value) != 64 or any(character not in "0123456789abcdefABCDEF" for character in value)
+        ):
+            raise ValueError(f"annotations[{index}].analysis_artifact_sha256 must be a SHA-256 hex digest.")
+        normalized[key] = value.lower() if key == "analysis_artifact_sha256" else value
+    if "test_metadata" in annotation:
+        metadata = annotation["test_metadata"]
+        if not isinstance(metadata, dict) or set(metadata) != {"test_name", "model"}:
+            raise ValueError(f"annotations[{index}].test_metadata must contain only test_name and model.")
+        normalized_metadata: dict[str, str] = {}
+        for key in ("test_name", "model"):
+            value = metadata[key]
+            if not isinstance(value, str) or not value.strip() or len(value) > 256:
+                raise ValueError(f"annotations[{index}].test_metadata.{key} must be bounded and non-empty.")
+            normalized_metadata[key] = value
+        normalized["test_metadata"] = normalized_metadata
+    return normalized
 
 
 def _validated_plot_argument_compatibility(
@@ -408,8 +446,11 @@ def _normalized_span_annotation_arg(
     if not isinstance(span, dict) or lower_key not in span or upper_key not in span:
         raise ValueError(f"annotations[{index}].{field} must contain {lower_key} and {upper_key}.")
     item: dict[str, Any] = {field: {lower_key: span[lower_key], upper_key: span[upper_key]}}
+    claim_fields = _normalized_annotation_claim_fields(annotation, index)
+    item.update(claim_fields)
     if annotation.get("text"):
-        item["text"] = str(annotation["text"]).strip()
+        raw_text = str(annotation["text"])
+        item["text"] = raw_text if claim_fields.get("annotation_kind") == "literal" else raw_text.strip()
     if "color" in annotation:
         item["color"] = str(annotation.get("color") or "black")
     if "alpha" in annotation:
@@ -536,6 +577,9 @@ def _normalized_fill_between_args(value: Any) -> tuple[dict[str, Any], ...]:
     for index, overlay in enumerate(value):
         if not isinstance(overlay, dict):
             raise ValueError(f"fill_between[{index}] must be an object.")
+        allowed = {"points", "x_column", "y1_column", "y2_column", "color", "alpha", "label", "zorder", "band_kind"}
+        if set(overlay) - allowed:
+            raise ValueError(f"fill_between[{index}] contains unsupported fields.")
         item: dict[str, Any] = {}
         if overlay.get("points") is not None:
             points = overlay["points"]
@@ -555,6 +599,11 @@ def _normalized_fill_between_args(value: Any) -> tuple[dict[str, Any], ...]:
             if key in overlay:
                 item[key] = overlay[key]
         item.setdefault("alpha", 0.2)
+        if "band_kind" in overlay:
+            band_kind = str(overlay["band_kind"]).strip().lower()
+            if band_kind not in {"literal", "confidence_interval"}:
+                raise ValueError(f"fill_between[{index}].band_kind is unsupported.")
+            item["band_kind"] = band_kind
         normalized.append(item)
     return tuple(normalized)
 
@@ -584,14 +633,24 @@ def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
     for index, annotation in enumerate(value):
         if not isinstance(annotation, dict):
             raise ValueError(f"annotations[{index}] must be an object.")
+        allowed = {
+            "x", "y", "text", "arrow_to", "arrowstyle", "connectionstyle", "xytext_offset",
+            "placement_preset", "avoid_overlap", "color", "alpha", "region", "hspan", "vspan",
+            *_ANNOTATION_CLAIM_KEYS,
+        }
+        if set(annotation) - allowed:
+            raise ValueError(f"annotations[{index}] contains unsupported fields.")
+        claim_fields = _normalized_annotation_claim_fields(annotation, index)
         if annotation.get("region") is not None:
             _reject_non_point_callout_args(annotation, index)
             region = annotation["region"]
             if not isinstance(region, dict) or any(key not in region for key in ("xmin", "xmax", "ymin", "ymax")):
                 raise ValueError(f"annotations[{index}].region must contain xmin, xmax, ymin, ymax.")
             region_item: dict[str, Any] = {"region": {key: region[key] for key in ("xmin", "xmax", "ymin", "ymax")}}
+            region_item.update(claim_fields)
             if annotation.get("text"):
-                region_item["text"] = str(annotation["text"]).strip()
+                raw_text = str(annotation["text"])
+                region_item["text"] = raw_text if claim_fields.get("annotation_kind") == "literal" else raw_text.strip()
             if "color" in annotation:
                 region_item["color"] = str(annotation.get("color") or "black")
             if "alpha" in annotation:
@@ -616,7 +675,12 @@ def _normalized_annotation_args(value: Any) -> tuple[dict[str, Any], ...]:
         item = {
             "x": annotation["x"],
             "y": annotation["y"],
-            "text": str(annotation.get("text") or "").strip(),
+            "text": (
+                str(annotation.get("text") or "")
+                if claim_fields.get("annotation_kind") == "literal"
+                else str(annotation.get("text") or "").strip()
+            ),
+            **claim_fields,
         }
         arrow_to = annotation.get("arrow_to")
         if not item["text"] and arrow_to is None:

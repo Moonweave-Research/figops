@@ -8,8 +8,14 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from hub_core.allowed_data import select_allowed_data_path
 from hub_core.mcp import render_orchestration as render_helpers
-from hub_core.mcp.manifest_io import read_json_object_file, resolve_runtime_manifest_file
+from hub_core.mcp.manifest_io import read_verified_runtime_json_object
+from hub_core.mcp.runtime_manifest_resolver import (
+    JobManifestResolutionError,
+    RuntimeManifestSelection,
+    resolve_unique_job_manifest,
+)
 from hub_core.mcp.schemas import MCP_BATCH_MAX_PROJECTS
 from hub_core.runtime_paths import runtime_root_lookup_candidates
 
@@ -50,20 +56,34 @@ class McpBatchToolsMixin:
 
     def collect_artifacts(self, arguments: dict[str, Any]) -> dict[str, Any]:
         job_id = self._render_job_id(arguments.get("job_id"))
-        manifest_path = self._find_job_manifest_path(job_id)
-        if not manifest_path.exists():
+        try:
+            selection = self._resolve_job_manifest(job_id)
+        except FileNotFoundError:
             return self._envelope(
                 "figops.collect_artifacts",
                 arguments,
                 status="error",
                 summary="Render job manifest was not found.",
-                errors=[f"Manifest not found: {self._runtime_uri(manifest_path)}"],
+                errors=["Render job manifest was not found."],
                 manual_review_needed=True,
                 artifact_status="failed",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
             )
+        except JobManifestResolutionError as exc:
+            return self._envelope(
+                "figops.collect_artifacts",
+                arguments,
+                status="error",
+                summary="Render job manifest selection is ambiguous.",
+                errors=[str(exc)],
+                error_code=exc.code,
+                manual_review_needed=True,
+                artifact_status="failed",
+                baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+            )
+        manifest_path = selection.path
         try:
-            manifest = read_json_object_file(manifest_path)
+            manifest = self._read_verified_job_manifest(job_id, selection)
         except ValueError:
             return self._envelope(
                 "figops.collect_artifacts",
@@ -195,6 +215,9 @@ class McpBatchToolsMixin:
         )
 
     def batch_check(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        guarded = self._authorize_write_tool("figops.batch_check", arguments)
+        if guarded is not None:
+            return guarded
         root = self._scan_root(arguments)
         max_depth = self._max_depth(arguments.get("max_depth", 4))
         max_projects = self._batch_max_projects(arguments.get("max_projects", 20))
@@ -230,7 +253,12 @@ class McpBatchToolsMixin:
                 )
             resumed_from = str(resume_path)
             try:
-                resume_manifest = read_json_object_file(resume_path)
+                selection = select_allowed_data_path(
+                    resume_path,
+                    allowed_roots=self.allowed_data_roots,
+                    relative_base=self.research_root,
+                )
+                resume_manifest = read_verified_runtime_json_object(selection.root, selection.candidate)
             except ValueError:
                 return self._batch_check_error(
                     arguments,
@@ -347,30 +375,35 @@ class McpBatchToolsMixin:
             log_paths=log_paths,
         )
 
-    def _find_job_manifest_path(self, job_id: str) -> Path:
-        candidate_roots = [self.runtime_root]
-        if not self._runtime_root_explicit:
-            candidate_roots.extend(Path(path) for path in runtime_root_lookup_candidates())
+    @staticmethod
+    def _read_verified_job_manifest(
+        job_id: str,
+        selection: RuntimeManifestSelection,
+    ) -> dict[str, Any]:
+        """Bind collection to one runtime root, descriptor, and manifest job id."""
 
-        seen = set()
-        unsafe_manifest_found = False
-        for root in candidate_roots:
-            resolved_root = Path(root).expanduser().resolve()
-            for jobs_dir_name in ("mcp_jobs", "mcp_project_jobs"):
-                manifest_path = resolved_root / jobs_dir_name / job_id / "manifest.json"
-                key = str(manifest_path)
-                if key in seen:
-                    continue
-                seen.add(key)
-                if manifest_path.exists():
-                    try:
-                        return resolve_runtime_manifest_file(resolved_root, manifest_path)
-                    except ValueError:
-                        unsafe_manifest_found = True
-                        continue
-        if unsafe_manifest_found:
-            return Path(candidate_roots[0]).expanduser().resolve() / "mcp_jobs" / ".manifest-unavailable.json"
-        return Path(candidate_roots[0]).expanduser().resolve() / "mcp_jobs" / job_id / "manifest.json"
+        return read_verified_runtime_json_object(
+            selection.root,
+            selection.path,
+            expected_job_id=job_id,
+        )
+
+    def _job_manifest_roots(self) -> list[Path]:
+        roots = [Path(self.runtime_root)]
+        if not self._runtime_root_explicit:
+            roots.extend(Path(path) for path in runtime_root_lookup_candidates())
+        return roots
+
+    def _resolve_job_manifest(self, job_id: str) -> RuntimeManifestSelection:
+        return resolve_unique_job_manifest(self._job_manifest_roots(), job_id)
+
+    def _find_job_manifest_path(self, job_id: str) -> Path:
+        """Compatibility path adapter; ambiguity still propagates fail-closed."""
+
+        try:
+            return self._resolve_job_manifest(job_id).path
+        except FileNotFoundError:
+            return Path(self.runtime_root).expanduser().resolve() / "mcp_jobs" / job_id / "manifest.json"
 
     @staticmethod
     def _max_depth(value: Any) -> int:

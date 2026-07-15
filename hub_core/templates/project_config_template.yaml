@@ -69,7 +69,11 @@ experimental_conditions:
 # 3. Data contract and semantic integrity
 # Validate data before analysis/plot steps run.
 data_contract:
+  # Bootstrap template has no sample/condition registry yet; remove this scoped
+  # opt-out after declaring claim, samples, and conditions for each figure.
+  require_figure_traceability: false
   cv_threshold: 0.10  # coefficient-of-variation warning threshold
+  cv_columns: ["value"]  # explicit measurement columns only; identifiers/time are not scanned
   csv_checks:
     - path: "results/data/summary.csv"
       required_columns: ["time", "value", "molarity"]

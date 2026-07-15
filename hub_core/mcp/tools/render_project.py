@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 from typing import Any
 
 from hub_core.adapters import select_adapters
@@ -8,6 +9,9 @@ from hub_core.attempt_provenance import build_attempt_provenance, update_attempt
 from hub_core.config_parser import master_execution_error, project_role, project_status, validate_config
 from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
 from hub_core.mcp import render_orchestration as render_helpers
+from hub_core.project_paths import resolve_project_input, resolve_project_output
+from hub_core.provenance_inputs import resolved_research_ops_evidence
+from hub_core.render_evidence import build_render_evidence
 from hub_core.research_ops_enforcement import validate_research_ops_contract
 
 
@@ -16,6 +20,9 @@ class McpRenderProjectMixin:
 
     def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
         arguments = dict(arguments)
+        guarded = self._authorize_write_tool("figops.render_project_figure", arguments)
+        if guarded is not None:
+            return guarded
         dry_run = bool(arguments.get("dry_run", False))
         overwrite = bool(arguments.get("overwrite", False))
         job_id = self._render_job_id(arguments.get("job_id"))
@@ -44,6 +51,11 @@ class McpRenderProjectMixin:
                 config_status="invalid" if config_errors else "valid",
             )
             if config_errors:
+                unsafe_figure_path = any(
+                    error.startswith(("figures[", "diagrams["))
+                    and any(token in error for token in ("project-relative", "traversal", "absolute", "UNC", "drive"))
+                    for error in config_errors
+                )
                 return self._project_render_error(
                     arguments,
                     dry_run=dry_run,
@@ -51,9 +63,9 @@ class McpRenderProjectMixin:
                     job_root=job_root,
                     summary="Project config is not valid for rendering.",
                     errors=config_errors,
-                    failure_stage="CONFIG",
+                    failure_stage="CONTRACT" if unsafe_figure_path else "CONFIG",
                     resolution_hint="Fix project_config.yaml before rendering this project figure.",
-                    persist_failure=True,
+                    persist_failure=not unsafe_figure_path,
                 )
             if project_role(config) == "master":
                 return self._project_render_error(
@@ -83,6 +95,7 @@ class McpRenderProjectMixin:
                     persist_failure=True,
                 )
             research_ops = validate_research_ops_contract(project_path, config)
+            research_ops_policy = resolved_research_ops_evidence(config)
             if research_ops["errors"]:
                 return self._project_render_error(
                     arguments,
@@ -94,12 +107,16 @@ class McpRenderProjectMixin:
                     failure_stage="CONFIG",
                     resolution_hint="Fix declared research-ops contracts or set an explicit opt-out before rendering.",
                     persist_failure=True,
+                    raw_integrity_status=research_ops["raw_integrity_status"],
+                    canonical_docs_registry=research_ops["canonical_docs_registry"],
+                    research_ops_policy=research_ops_policy,
                 )
             adapters = select_adapters(config)
             if not validate_data_contract_preflight(
                 project_path,
                 config,
-                require_existing=True,
+                # Full validation below performs the single guarded prefetch/read.
+                require_existing=False,
                 prefetcher=adapters.prefetcher,
             ):
                 return self._project_render_error(
@@ -119,13 +136,35 @@ class McpRenderProjectMixin:
                 prefetcher=adapters.prefetcher,
                 write_sidecar=False,
             ):
+                contract_paths = [
+                    check.get("path")
+                    for check in config.get("data_contract", {}).get("csv_checks", [])
+                    if isinstance(check, dict) and isinstance(check.get("path"), str)
+                ]
+                input_unavailable = False
+                for contract_path in contract_paths:
+                    try:
+                        resolve_project_input(
+                            project_path,
+                            contract_path,
+                            purpose="data_contract.csv_checks[].path",
+                        )
+                    except (FileNotFoundError, ValueError):
+                        input_unavailable = True
+                        break
                 return self._project_render_error(
                     arguments,
                     dry_run=dry_run,
                     job_id=job_id,
                     job_root=job_root,
                     summary="Project data contract failed before rendering.",
-                    errors=["Data contract validation failed for project render."],
+                    # Preserve the public failure distinction while the guarded
+                    # full validator owns the single prefetch/read operation.
+                    errors=[
+                        "Data contract preflight failed for project render."
+                        if input_unavailable
+                        else "Data contract validation failed for project render."
+                    ],
                     failure_stage="VALIDATE",
                     resolution_hint="Fix declared data_contract checks before rendering this project figure.",
                     persist_failure=True,
@@ -149,6 +188,44 @@ class McpRenderProjectMixin:
                     persist_failure=True,
                 )
             output_relpath = self._project_relative_path(selected.get("output"), "figures[].output").as_posix()
+            script_relpath = str(selected.get("script") or "").split("::", 1)[0]
+            script_path = resolve_project_input(
+                project_path,
+                script_relpath,
+                purpose="figures[].script",
+            )
+            script_suffix = script_path.suffix.lower()
+            if script_suffix not in {".py", ".r"}:
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project figure script runtime is unsupported.",
+                    errors=["Configured figure scripts must be project-local .py or .R files."],
+                    failure_stage="CONTRACT",
+                    resolution_hint="Declare a project-local Python or R figure script.",
+                    persist_failure=False,
+                    runtime_availability={"status": "unavailable", "reason": "SCRIPT_RUNTIME_UNSUPPORTED"},
+                )
+            if script_suffix == ".r" and shutil.which("Rscript") is None:
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="The declared R figure runtime is unavailable.",
+                    errors=["Rscript is unavailable; the .R figure script was not executed."],
+                    failure_stage="EXECUTE",
+                    resolution_hint="Install a trusted Rscript runtime or render a declared .py figure.",
+                    persist_failure=False,
+                    runtime_availability={"status": "unavailable", "reason": "RSCRIPT_UNAVAILABLE"},
+                )
+            resolve_project_output(
+                project_path,
+                output_relpath,
+                purpose="figures[].output",
+            )
             safe_output_path = True
             style_summary = self._selected_figure_style_summary(config, selected, arguments)
             style_errors = self._render_style_errors(
@@ -296,6 +373,16 @@ class McpRenderProjectMixin:
                 config_relpath=config_relpath,
                 selected_figure=selected,
             )
+            output_path = resolve_project_output(
+                snapshot_project_path,
+                output_relpath,
+                purpose="figures[].output",
+            )
+            pre_execution_hashes = self._mcp_project_pre_execution_hashes(
+                snapshot_project_path=snapshot_project_path,
+                config_path=config_path,
+                selected_figure=selected,
+            )
             self._run_project_figure_script(
                 snapshot_project_path=snapshot_project_path,
                 selected_figure=selected,
@@ -304,12 +391,25 @@ class McpRenderProjectMixin:
             geometry_diagnostics = render_helpers._read_geometry_sidecar(job_root)
             geometry_warnings = render_helpers._geometry_warnings(geometry_diagnostics)
             layout_report = render_helpers._layout_report_from_geometry(geometry_diagnostics)
-            if not output_path.is_file():
-                raise render_helpers.ProjectRenderExportError(
-                    f"Selected figure output was not created: {output_relpath}",
-                    script_output=self._read_project_script_output(job_root),
+            try:
+                output_path = resolve_project_output(
+                    snapshot_project_path,
+                    output_relpath,
+                    must_exist=True,
+                    purpose="figures[].output",
                 )
+            except (FileNotFoundError, ValueError) as exc:
+                raise render_helpers.ProjectRenderExportError(
+                    f"Selected figure output was not created safely: {output_relpath}: {exc}",
+                    script_output=self._read_project_script_output(job_root),
+                ) from exc
             figures_out = self._rendered_figure_artifacts(output_path)
+            preview_artifacts = render_helpers._build_preview_artifacts(
+                job_root=job_root,
+                output_path=output_path,
+                figures=figures_out,
+            )
+            preview_references = render_helpers._preview_resource_references(job_id, preview_artifacts)
             figure_metadata = self._project_figure_metadata(
                 output_path,
                 selected,
@@ -349,6 +449,7 @@ class McpRenderProjectMixin:
                 output_path=output_path,
                 selected_figure=selected,
                 style_summary=style_summary,
+                pre_execution_hashes=pre_execution_hashes,
             )
             provenance["attempt"] = attempt
             created_paths.extend([str(manifest_path), str(status_path)])
@@ -373,6 +474,25 @@ class McpRenderProjectMixin:
                 snapshot_project_path=str(snapshot_project_path),
                 selected_figure=selected_public,
                 figure_metadata=figure_metadata,
+                raw_integrity_status=research_ops["raw_integrity_status"],
+                canonical_docs_registry=research_ops["canonical_docs_registry"],
+                research_ops_policy=research_ops_policy,
+                data_contract={"schema_version": "data_contract_summary/1", "passed": True},
+                preview_artifacts=preview_artifacts,
+            )
+            manifest["evidence"] = build_render_evidence(
+                manifest,
+                job_root=job_root,
+                producer_kind="mcp-project-script-render",
+                producer_version=self._read_version(),
+                baseline_reference_sha256=(
+                    self._file_sha256(Path(baseline_comparison["baseline_path"]))
+                    if baseline_comparison.get("checked")
+                    and isinstance(baseline_comparison.get("baseline_path"), str)
+                    and Path(baseline_comparison["baseline_path"]).is_file()
+                    else None
+                ),
+                resolved_policy=research_ops_policy,
             )
             status_payload = self._render_status_payload(
                 job_id=job_id,
@@ -479,7 +599,8 @@ class McpRenderProjectMixin:
                 "Rendered project figure." if status == "ok" else "Rendered project figure with preflight warnings."
             ),
             created_paths=created_paths,
-            artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
+            artifact_resources=preview_references["artifact_resources"],
+            preview_resources=preview_references["preview_resources"],
             warnings=preflight_warnings + baseline_warnings + geometry_warnings + figure_format_warnings,
             manual_review_needed=manual_review_needed,
             is_dry_run=False,
@@ -503,6 +624,7 @@ class McpRenderProjectMixin:
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
             provenance=provenance,
+            evidence=manifest["evidence"],
             failure_stage="",
             resolution_hint="",
         )

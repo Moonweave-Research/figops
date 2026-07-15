@@ -45,17 +45,17 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 
 | Item | Status |
 | --- | --- |
-| Source checkout | `0.19.0` development metadata (`pyproject.toml`); not yet published |
-| Published package | [`figops==0.18.0`](https://pypi.org/project/figops/0.18.0/) is the latest published PyPI release |
-| TestPyPI dry run | [`figops==0.18.0`](https://test.pypi.org/project/figops/0.18.0/) was published and install-smoke verified |
+| Source checkout | `0.20.0` release-candidate metadata (`pyproject.toml`); not yet published |
+| Published package | [`figops==0.19.0`](https://pypi.org/project/figops/0.19.0/) is the latest published PyPI release |
+| TestPyPI | [`figops==0.19.0`](https://test.pypi.org/project/figops/0.19.0/) is the latest available build; rerun install smoke before 0.20.0 promotion |
 | Python | 3.12+ |
 | License | Apache-2.0 for public package distribution |
 | Commands | `figops`, `figops-mcp` |
 | Compatibility aliases | `graphhub`, `graphhub-mcp` |
-| GitHub Release | [`v0.18.0`](https://github.com/Moonweave-Research/figops/releases/tag/v0.18.0) is the latest published release asset |
+| GitHub Release | [`v0.19.0`](https://github.com/Moonweave-Research/figops/releases/tag/v0.19.0) is the latest published release asset |
 
-The source checkout is on the `0.19.0` development line. The latest published
-PyPI package, TestPyPI dry run, and GitHub Release asset remain at `0.18.0`
+The source checkout is a `0.20.0` release candidate. The latest published
+PyPI package, TestPyPI dry run, and GitHub Release asset remain at `0.19.0`
 until a separate release promotion is approved and run.
 
 ## Install
@@ -69,14 +69,14 @@ python -m pip install figops
 For a pinned, reproducible install:
 
 ```bash
-python -m pip install figops==0.18.0
+python -m pip install figops==0.19.0
 ```
 
 If you need the exact GitHub Release asset:
 
 ```bash
-gh release download v0.18.0 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.18.0-py3-none-any.whl
+gh release download v0.19.0 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install dist-release/figops-0.19.0-py3-none-any.whl
 figops-mcp --smoke
 ```
 
@@ -230,6 +230,18 @@ Use this before wiring FigOps into Claude, Codex, or another MCP-capable client.
 For compatibility with earlier local setups, `graphhub-mcp` remains available as
 an alias.
 
+### Migrating MCP discovery in 0.20.0
+
+The launcher now returns the compact AI-native `v2` profile from `tools/list` by
+default. Existing tool handlers and payload schemas were not removed. Clients that
+depend on the full pre-v2 list—including the frozen canonical tools and
+`graphhub.*` aliases—must explicitly select the `compatibility` surface profile.
+This opt-in preserves existing calls while keeping new-agent discovery small and
+evidence-first. Set `GRAPH_HUB_MCP_SURFACE_PROFILE=compatibility` in launcher
+configuration, or pass `surface_profile="compatibility"` when embedding
+`FigOpsMCPServer`. See [`docs/tools-v2.md`](./docs/tools-v2.md) and
+[`docs/tools-compatibility.md`](./docs/tools-compatibility.md).
+
 ## Troubleshooting
 
 | Symptom | What to try |
@@ -261,7 +273,7 @@ install path:
 
 ```bash
 python scripts/github_release_asset_smoke.py
-python -m pip install figops==0.18.0
+python -m pip install figops==0.19.0
 figops-mcp --smoke
 ```
 

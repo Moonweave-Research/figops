@@ -52,6 +52,18 @@ def list_resource_templates() -> list[dict[str, str]]:
             "description": "Sanitized render job manifest resolved by job ID.",
             "mimeType": "application/json",
         },
+        {
+            "uriTemplate": "figops://jobs/{job_id}/artifacts/{logical_role}/{artifact_index}",
+            "name": "FigOps Render Artifact Metadata",
+            "description": "Manifest-bound metadata for one verified render artifact; no artifact bytes are embedded.",
+            "mimeType": "application/json",
+        },
+        {
+            "uriTemplate": "figops://jobs/{job_id}/previews/{logical_role}/{artifact_index}",
+            "name": "FigOps Render Preview",
+            "description": "Lazy bounded raster preview for one manifest-bound render artifact.",
+            "mimeType": "image/png",
+        },
     ]
 
 
@@ -62,7 +74,7 @@ def list_prompt_definitions(supported_render_plot_types: Iterable[str]) -> list[
     return [
         {
             "name": "make_publication_graph_from_csv",
-            "description": "Workflow for rendering a publication-style graph from structured CSV data.",
+            "description": "Evidence-first guidance for a CSV-backed figure.",
             "arguments": [
                 {"name": "data_path", "description": "CSV input path.", "required": True},
                 {"name": "x_column", "description": "CSV x-axis column.", "required": True},
@@ -73,7 +85,7 @@ def list_prompt_definitions(supported_render_plot_types: Iterable[str]) -> list[
         },
         {
             "name": "inspect_graph_project_quality",
-            "description": "Workflow for inspecting a graph project without executing scripts.",
+            "description": "Optional guidance for inspecting a graph project without executing scripts.",
             "arguments": [
                 {"name": "project_id", "description": "Discovered FigOps project ID.", "required": False},
                 {"name": "project_path", "description": "Project path.", "required": False},
@@ -81,7 +93,7 @@ def list_prompt_definitions(supported_render_plot_types: Iterable[str]) -> list[
         },
         {
             "name": "standardize_existing_graph_project",
-            "description": "Workflow for planning safe FigOps project normalization.",
+            "description": "Approval-gated guidance for safe FigOps project normalization.",
             "arguments": [
                 {"name": "project_path", "description": "Existing graph project path.", "required": True},
                 {"name": "move_policy", "description": "copy, move, or symlink.", "required": False},
@@ -89,7 +101,7 @@ def list_prompt_definitions(supported_render_plot_types: Iterable[str]) -> list[
         },
         {
             "name": "render_project_figure",
-            "description": "Workflow for rendering one configured project figure through FigOps MCP.",
+            "description": "Evidence-first guidance for one configured project figure.",
             "arguments": [
                 {"name": "project_id", "description": "Discovered FigOps project ID.", "required": False},
                 {"name": "project_path", "description": "Project path.", "required": False},

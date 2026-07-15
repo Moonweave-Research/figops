@@ -36,6 +36,7 @@ class McpServerConfig:
     allowed_data_roots: tuple[str | os.PathLike, ...] = ()
     strict_roots: bool | None = None
     strict_data_roots: bool | None = None
+    surface_profile: str | None = None
 
     @classmethod
     def from_mapping(cls, values: dict[str, Any] | None) -> McpServerConfig:
@@ -60,6 +61,9 @@ class McpServerConfig:
         strict_data_roots = values.get("strict_data_roots")
         if strict_data_roots is not None and not isinstance(strict_data_roots, bool):
             raise TypeError("MCP server config strict_data_roots must be a boolean.")
+        surface_profile = values.get("surface_profile")
+        if surface_profile is not None and not isinstance(surface_profile, str):
+            raise TypeError("MCP server config surface_profile must be a string.")
 
         return cls(
             hub_path=values.get("hub_path"),
@@ -69,6 +73,7 @@ class McpServerConfig:
             allowed_data_roots=tuple(allowed_data_roots),
             strict_roots=strict_roots,
             strict_data_roots=strict_data_roots,
+            surface_profile=surface_profile,
         )
 
     @classmethod
@@ -87,6 +92,7 @@ class McpServerConfig:
             allowed_data_roots=allowed_data_roots,
             strict_roots=_env_bool("GRAPH_HUB_MCP_STRICT_ROOTS"),
             strict_data_roots=_env_bool("GRAPH_HUB_MCP_STRICT_DATA_ROOTS"),
+            surface_profile=os.environ.get("GRAPH_HUB_MCP_SURFACE_PROFILE"),
         )
 
     def overlay(self, **overrides: Any) -> McpServerConfig:
@@ -98,6 +104,7 @@ class McpServerConfig:
             "allowed_data_roots": self.allowed_data_roots,
             "strict_roots": self.strict_roots,
             "strict_data_roots": self.strict_data_roots,
+            "surface_profile": self.surface_profile,
         }
         for key, value in overrides.items():
             if value is not None:

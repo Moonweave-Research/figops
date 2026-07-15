@@ -70,6 +70,9 @@ from .geometry_primitives import _extent as _extent
 from .geometry_primitives import _inter_area as _inter_area
 from .geometry_primitives import _overlap_fraction as _overlap_fraction
 from .geometry_primitives import _overlap_severity as _overlap_severity
+from .geometry_raw_contract import raw_measurement as _raw_measurement
+from .geometry_raw_contract import threshold_neutral_geometry_measurements as _threshold_neutral_measurements
+from .geometry_raw_contract import validate_raw_geometry as _validate_raw_geometry
 from .geometry_style_checks import _append_linewidth_offender as _append_linewidth_offender
 from .geometry_style_checks import _default_font_token_sizes as _default_font_token_sizes
 from .geometry_style_checks import _font_size_matches_token as _font_size_matches_token
@@ -78,6 +81,7 @@ from .geometry_style_checks import _journal_compliance as _journal_compliance
 from .geometry_style_checks import _journal_font_offenders as _journal_font_offenders
 from .geometry_style_checks import _journal_line_offenders as _journal_line_offenders
 from .geometry_style_checks import _line_width_values as _line_width_values
+from .geometry_style_checks import _style_geometry_observations as _style_geometry_observations
 from .geometry_tick_labels import _axis_crowding as _axis_crowding_impl
 from .geometry_tick_labels import _axis_tick_overlaps as _axis_tick_overlaps_impl
 from .geometry_tick_labels import _tick_label_crowding as _tick_label_crowding_impl
@@ -90,6 +94,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 SCHEMA_VERSION = "geometry_diagnostics/1"
+RAW_SCHEMA_VERSION = "geometry_diagnostics/2"
 ALPHA_EPS = 0.01
 MAX_TEXT_ARTISTS = 200
 TICK_CROWDING_WARN = 0.90
@@ -138,13 +143,12 @@ def diagnose_figure_geometry(
     layout_locked: bool,
     font_token_sizes: list[float] | None = None,
     journal_compliance: dict[str, Any] | None = None,
+    contract_version: str = "legacy",
 ) -> dict[str, Any]:
     """Measure objective geometry facts on a fully-drawn, still-open Figure.
 
-    Returns a pure JSON-value tree (no numpy scalars, no matplotlib objects):
-        {"schema_version", "passed", "checks", "warnings"}
-    where each check is {"name", "passed", "detail", "data"} and pairs are
-    list[list[int]]. Raises TypeError/ValueError on bad input (no renderer
+    Returns severity-free raw measurements when ``contract_version='raw'``.
+    Raises TypeError/ValueError on bad input (no renderer
     obtainable, empty data_axes). NEVER raises for a geometry finding.
     """
     if not data_axes:
@@ -173,10 +177,34 @@ def diagnose_figure_geometry(
     checks.append(_figure_title_panel_title_overlap(fig, data_axes, renderer))
     checks.append(_label_offset_consistency(fig, data_axes, renderer))
     checks.append(_font_size_token_drift(data_axes, font_token_sizes))
+    checks.append(_style_geometry_observations(fig, data_axes))
     if journal_compliance:
         checks.append(_journal_compliance(fig, data_axes, journal_compliance))
 
-    # passed is None marks an informational skip (e.g. over-cap); never count it as a pass.
+    if contract_version == "raw":
+        policy_free_checks = {
+            "artists_outside_axes", "artists_outside_figure", "blank_area_ratio",
+            "colorbar_overlap", "label_offset_consistency", "legend_data_collision",
+            "style_geometry_observations", "tick_label_overlaps",
+        }
+        return _validate_raw_geometry({
+            "schema_version": RAW_SCHEMA_VERSION,
+            "measurements": [
+                _raw_measurement(check, index)
+                for index, check in enumerate(checks)
+                if check.get("name") in policy_free_checks
+            ] + _threshold_neutral_measurements(
+                data_axes,
+                renderer,
+                is_paintable=_is_paintable,
+                marker_footprint_box_entries=_marker_footprint_box_entries,
+                candidate_cap=MAX_TEXT_ARTISTS,
+                reported_cap=_MAX_REPORTED_PAIRS,
+            ),
+            "warnings": [],
+        })
+    if contract_version != "legacy":
+        raise ValueError("contract_version must be 'raw' or 'legacy'")
     evaluated = [c["passed"] for c in checks if c["name"] in _WARNING_ELIGIBLE and c["passed"] is not None]
     passed = None if not evaluated else all(evaluated)
     return {

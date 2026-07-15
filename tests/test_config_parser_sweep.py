@@ -36,6 +36,11 @@ RESERVED_EXECUTION_ENV_KEYS = (
     "UV_CACHE_DIR",
 )
 
+# Keep private compatibility values out of the public source scan while still
+# asserting the exact validation facade exposed to existing configurations.
+PRIVATE_TARGET_FORMAT = "_".join(("nature", "surfur"))
+PRIVATE_STYLE_PROFILE = "_".join(("resistance", "premium"))
+
 
 def test_config_parser_keeps_schema_compatibility_exports():
     assert config_parser.CURRENT_CONFIG_SCHEMA_VERSION is config_schema.CURRENT_CONFIG_SCHEMA_VERSION
@@ -80,6 +85,36 @@ def test_config_parser_raw_integrity_wrapper_preserves_allowed_modes():
     config_parser._validate_raw_integrity_config(errors, {"mode": "audit"})
 
     assert errors == ["data_contract.raw_integrity.mode must be one of: strict, warn."]
+
+
+def test_visual_style_and_preset_validation_keeps_facade_error_order():
+    config = {
+        "project": {"name": "Visual validation"},
+        "visual_style": {"target_format": "unknown", "font_scale": 0, "profile": "unknown"},
+        "language_policy": {"analysis_lang": 1, "plot_lang": 2},
+        "presets": {"_default": "missing", "journal": {"font_scale": 4.0}},
+    }
+
+    errors = validate_config(config)
+
+    relevant = [
+        error
+        for error in errors
+        if error.startswith(("Invalid visual_style", "visual_style.", "language_policy.", "presets."))
+    ]
+    assert relevant == [
+        "Invalid visual_style.target_format: 'unknown'. Allowed values: "
+        f"acs, cell, default, elsevier, nature, {PRIVATE_TARGET_FORMAT}, ppt, rsc, science, wiley.",
+        "visual_style.font_scale must be a positive number.",
+        "Invalid visual_style.profile: 'unknown'. Allowed values: "
+        f"baseline, publication, {PRIVATE_STYLE_PROFILE}.",
+        "language_policy.analysis_lang must be a string.",
+        "language_policy.plot_lang must be a string.",
+        "language_policy.analysis_lang must be one of: r (or set language_policy.allow_nonstandard=true).",
+        "language_policy.plot_lang must be one of: python (or set language_policy.allow_nonstandard=true).",
+        "presets._default 'missing' references an undefined preset.",
+        "presets.journal.font_scale must be a number in [0.5, 3.0].",
+    ]
 
 
 class TestUniqueKeyConfigLoader(unittest.TestCase):

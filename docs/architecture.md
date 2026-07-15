@@ -1,8 +1,8 @@
 # FigOps - Architecture
 
-> Companion to `docs/ROADMAP.md`. Describes the current v0.19.0 development
-> architecture after the v0.18.0 release and the addition of the read-only
-> Publication Readiness MVP.
+> Companion to `docs/ROADMAP.md`. Describes the current v0.20.0 release-candidate
+> architecture after the v0.19.0 release, including the AI-native v2 agent
+> surface and evidence-first render/audit path.
 
 ## Layers and dependency direction
 
@@ -16,7 +16,7 @@ figops_mcp_server.py                # entrypoint (stdio); --smoke; thin
 hub_core/mcp/transport.py             # JSON-RPC 2.0: framing, batch, lifecycle, dispatch
         |
         v
-hub_core/mcp/server.py                # GraphHubMCPServer facade: registry + service wiring
+hub_core/mcp/server.py                # FigOps facade + historical GraphHub Python alias
         |
         +-- hub_core/mcp/tools/*      # handler groups backed by live schemas
         +-- hub_core/mcp/resources.py # MCP resources
@@ -25,10 +25,18 @@ hub_core/mcp/server.py                # GraphHubMCPServer facade: registry + ser
         +-- hub_core/mcp/config.py    # trusted root/runtime/server config
         +-- hub_core/mcp/errors.py    # JSON-RPC / tool error envelopes
         +-- hub_core/mcp/schemas.py   # shared tool schema helpers
-        +-- hub_core/mcp/render_*     # render orchestration, geometry, error mapping
+        +-- hub_core/mcp/surface_profiles.py # v2/compatibility discovery projection
+        +-- hub_core/mcp/preview_*    # bounded, manifest-bound preview production
+        +-- hub_core/mcp/render_*     # render orchestration, evidence response, manifests
+        +-- hub_core/mcp/manifest_io.py # verified runtime-manifest reads
                 |
                 v
-hub_core/publication_*               # readiness evidence, decision, report, and CLI services
+hub_core/project_paths.py             # contained project input/output resolution
+hub_core/project_config_reader.py     # verified, bounded config discovery/read
+hub_core/evidence_*.py                # evidence envelope and semantic validation
+hub_core/artifact_*.py                # artifact integrity and explicit-policy audit
+hub_core/publication_*                # readiness evidence, policy projection, report, CLI
+hub_core/data_inspection*.py          # bounded data profiling worker/service
 hub_core/data_contract.py             # data-contract loading, validation, checks
 hub_core/config_parser.py             # project config validation and migration
 hub_core/process_runner.py            # pipeline execution helpers
@@ -57,10 +65,10 @@ The 800-line architecture budget is a split signal, not a hard failure threshold
 Inventory freshness is checked by `tests/test_architecture_inventory.py`, which
 compares the committed block below against live source. Import layering remains
 policy-only; there is no import-linter contract in `.github/workflows/ci.yml` as
-of v0.19.0. Remaining over-budget files should be handled as scoped maintenance
+of v0.20.0. Remaining over-budget files should be handled as scoped maintenance
 tracks rather than broad rewrites.
 
-Current files over the approximate 800-line budget, measured on 2026-07-11 with
+Current files over the approximate 800-line budget, measured on 2026-07-15 with
 the architecture inventory helper:
 
 ```bash
@@ -72,7 +80,10 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 |---|---:|
 <!-- architecture-inventory:end -->
 
-No tracked Python module currently exceeds the 800-line split signal.
+No Python module in the tracked architecture roots (`hub_core`, `plotting`, and
+`themes`) currently exceeds the 800-line split signal. Overlay
+normalization now lives in `plotting/renderers/annotation_normalization.py`,
+while the public overlay façade and compatibility imports remain stable.
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
 1000 lines while preserving compatibility shims:
@@ -117,6 +128,38 @@ figure-script supervision, output redaction, and failure-artifact persistence
 from `hub_core/mcp/render_project_runtime.py`. The façade continues to expose
 the project-render error types and supplies the live timeout value, preserving
 existing imports and timeout monkeypatch contracts.
+
+The AI-native hardening keeps security and evidence mechanics below the tool
+surface. `hub_core/project_paths.py` owns contained project inputs and verified
+descriptor reads. `hub_core/project_config_reader.py` applies that boundary to
+discovery, inspect, validate, batch, and config resources without reopening a
+validated pathname. `hub_core/mcp/manifest_io.py` does the same for collected,
+readiness, audit, and resource manifests, including duplicate-key, hardlink,
+job-ID, post-read identity, and duplicate root/kind ambiguity checks.
+`hub_core/evidence_contract.py`,
+`hub_core/evidence_artifact_section.py`, and `hub_core/evidence_semantics.py`
+own the closed `figops_evidence/2` envelope;
+the canonical selected-policy snapshot is the singular `resolved_policy`.
+Artifact verification and explicit-policy audit are separated into
+`hub_core/artifact_integrity.py` and `hub_core/artifact_audit.py`, while bounded
+data profiling is isolated in `hub_core/data_inspection.py` and its worker.
+
+Preview lookup, manifest membership, MIME/header checks, lazy base64, and worker
+limits live in `hub_core/mcp/preview_artifacts.py`; conversion work lives in
+`preview_worker.py`. Raster and PDF-first-page previews are bounded to 5 seconds,
+8 megapixels, 256 MiB worker memory, a 2,048-pixel longest edge, and 2 MiB raw
+output. SVG returns typed unavailable until a renderer passes the required
+Windows safety smoke; source vector bytes are never substituted for a preview.
+
+The primary touched façades remain below the 800-line split signal through
+focused modules in the 2026-07-15 working-tree inventory:
+`evidence_contract.py` is 680 lines after extracting the 204-line
+`evidence_artifact_section.py`; `schemas.py` is 750;
+`geometry_diagnostics.py` 782; `preview_artifacts.py` 781;
+`render_orchestration.py` 769; and `render_csv.py` 776. Overlay normalization
+now lives in the 230-line `annotation_normalization.py`, leaving
+`overlays.py` at 597 lines with compatibility exports intact. No Python module
+in the tracked architecture roots exceeds the 800-line split signal.
 
 The journal-theme façade now delegates its opt-in text/marker overlap nudge,
 leader-line targeting, axes-edge correction, and convergence reporting to
@@ -176,7 +219,25 @@ The MCP tool surface is registry-backed. Tool definitions, schemas, and handler
 wiring live under `hub_core/mcp/`, with grouped handlers in
 `hub_core/mcp/tools/`. This shared surface feeds `tools/list`,
 `figops.describe`, RPC validation, write-tool gating, and generated
-`docs/tools.md`.
+references. `docs/tools-v2.md` is the compact default-surface reference,
+`docs/tools-compatibility.md` documents the frozen migration surface without
+duplicating alias schemas, and `docs/tools.md` remains the full registry
+maintenance reference. All three are generated and freshness-tested.
+
+The stdio launcher now defaults to the AI-native `v2` discovery profile. It
+exposes at most seven concise tools and uses summary → kind → optional name
+progressive disclosure in `figops.describe`. A `compatibility` profile exposes
+the frozen pre-v2 contract of 14 canonical tools plus 13 `graphhub.*` aliases.
+The handler registry remains a superset so migration does not remove callability;
+profile selection only controls discovery. When writes are disabled, mutating
+and executing tools are omitted from `tools/list`, and the independent dispatch
+guard still rejects remembered canonical or alias names before side effects.
+
+`GraphHubMCPServer` remains a historical embedded-Python class name and selects
+the same truthful `compatibility` profile. New launcher and embedded clients
+should use `FigOpsMCPServer(surface_profile="v2" | "compatibility")` or the
+`GRAPH_HUB_MCP_SURFACE_PROFILE` launcher environment setting. Profile-aware
+references can be rendered from the live registry without duplicating alias schemas.
 
 ## Why this shape
 

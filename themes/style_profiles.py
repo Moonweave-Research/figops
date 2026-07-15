@@ -604,6 +604,18 @@ PROFILE_ALIASES = {
     "cell_press": "baseline",
 }
 
+PUBLIC_PROFILE_NAMES = frozenset({"baseline", "publication"})
+# Public aliases are an explicit discovery contract.  Do not derive this view
+# from PROFILE_ALIASES: a compatibility alias may point at a public profile
+# while its name is still private or repository-specific.
+PUBLIC_PROFILE_ALIASES = {
+    "base": "baseline",
+    "cell": "baseline",
+    "cell_press": "baseline",
+    "default": "baseline",
+    "wiley": "baseline",
+}
+
 
 def resolve_profile_name(profile_name=None):
     raw = profile_name
@@ -644,3 +656,8 @@ def get_profile_rc_overrides(profile_name=None):
 
 def list_profiles():
     return sorted(STYLE_PROFILES.keys())
+
+
+def list_public_profiles():
+    """Return profiles safe to advertise through public agent surfaces."""
+    return sorted(PUBLIC_PROFILE_NAMES)

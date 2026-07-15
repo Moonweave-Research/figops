@@ -50,6 +50,11 @@ def main() -> int:
     parser.add_argument("--research-root", help="Explicit research/project discovery root")
     parser.add_argument("--runtime-root", help="Explicit MCP runtime root")
     parser.add_argument(
+        "--surface-profile",
+        choices=("v2", "compatibility"),
+        help="MCP discovery surface (default: v2; compatibility exposes the frozen legacy contract)",
+    )
+    parser.add_argument(
         "--enable-write-tools",
         action="store_true",
         help="Enable MCP tools that write files or execute render jobs",
@@ -61,6 +66,7 @@ def main() -> int:
         research_root=args.research_root,
         runtime_root=args.runtime_root,
         write_tools_enabled=True if args.enable_write_tools else None,
+        surface_profile=args.surface_profile,
     )
     if args.smoke:
         return _run_smoke(config)

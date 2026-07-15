@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from plotting.utils import compress_sample_label
+from plotting.utils import compress_sample_label, normalize_label_map
 
 AVOID_OVERLAP_OFFSETS: tuple[tuple[float, float], ...] = (
     (8.0, 8.0),
@@ -15,11 +15,22 @@ AVOID_OVERLAP_OFFSETS: tuple[tuple[float, float], ...] = (
 )
 
 
-def display_label(value: object, *, compress_labels: bool = True) -> str:
+def display_label(
+    value: object,
+    *,
+    compress_labels: bool = False,
+    label_map: dict[str, str] | None = None,
+    label_transform: str = "raw",
+) -> str:
+    """Return display text without silently rewriting scientific identifiers."""
     text = str(value)
-    if not compress_labels:
-        return text
-    return compress_sample_label(text)
+    mapping = normalize_label_map(label_map)
+    if text in mapping:
+        return mapping[text]
+    transform = str(label_transform or "raw").strip().lower().replace("-", "_")
+    if transform not in {"raw", "legacy_compress"}:
+        raise ValueError("label_transform must be 'raw' or 'legacy_compress'")
+    return compress_sample_label(text) if compress_labels or transform == "legacy_compress" else text
 
 
 def normalized_point_label_options_dict(raw_options: dict | None) -> dict[str, object]:
@@ -76,13 +87,23 @@ def annotate_points(
     labels: list[str],
     *,
     compress_labels: bool,
+    label_map: dict[str, str] | None = None,
+    label_transform: str = "raw",
     point_label_options: dict | None = None,
     points: list[dict] | None = None,
 ) -> None:
     options = normalized_point_label_options_dict(point_label_options)
     candidates, skipped = point_label_candidates(xs, ys, labels, options=options, points=points)
     for display_index, item in enumerate(candidates):
-        draw_point_label(ax, item, options=options, display_index=display_index, compress_labels=compress_labels)
+        draw_point_label(
+            ax,
+            item,
+            options=options,
+            display_index=display_index,
+            compress_labels=compress_labels,
+            label_map=label_map,
+            label_transform=label_transform,
+        )
     if skipped:
         record_point_label_skips(ax, skipped=skipped, total=len(labels), shown=len(candidates))
 
@@ -138,13 +159,20 @@ def draw_point_label(
     options: dict[str, object],
     display_index: int,
     compress_labels: bool,
+    label_map: dict[str, str] | None = None,
+    label_transform: str = "raw",
 ) -> None:
     label = str(item["label"])
     if not label:
         return
     xytext = point_label_xytext(options, display_index)
     ax.annotate(
-        display_label(label, compress_labels=compress_labels),
+        display_label(
+            label,
+            compress_labels=compress_labels,
+            label_map=label_map,
+            label_transform=label_transform,
+        ),
         (item["x"], item["y"]),
         textcoords="offset points",
         xytext=xytext,

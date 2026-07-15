@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from hub_core.mcp.config import McpServerConfig, normalize_allowed_root
+from hub_core.mcp.errors import DISABLED_ERROR
 from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.runtime_paths import preview_runtime_root, resolve_runtime_root
 from hub_core.utils import get_hub_path, get_research_root
@@ -13,6 +14,8 @@ WRITE_TOOL_NAMES = (
     "figops.render_csv_graph",
     "figops.render_csv_multipanel",
     "figops.render_project_figure",
+    "figops.render_basic_csv",
+    "figops.render_project_script",
     "figops.scaffold_project",
     "figops.normalize_project_structure",
     "figops.batch_check",
@@ -32,6 +35,21 @@ class McpSecurityMixin:
     security_warnings: list[str]
     allowed_data_roots: tuple[Path, ...]
     write_tools_enabled: bool
+
+    def _authorize_write_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
+        """Fail closed at every mutating entry point, including direct calls."""
+
+        if not is_write_tool_name(name) or self.write_tools_enabled:
+            return None
+        return self._envelope(
+            name,
+            arguments,
+            status="error",
+            summary=f"{name} is disabled by the FigOps MCP write-tool guard.",
+            errors=["Write tools are disabled for this FigOps MCP server."],
+            manual_review_needed=True,
+            error_category=DISABLED_ERROR.category,
+        )
 
     def _init_security_state(
         self,

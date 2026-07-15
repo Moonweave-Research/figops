@@ -13,6 +13,8 @@ from collections.abc import Mapping
 from pathlib import Path, PureWindowsPath
 from typing import Any, Final
 
+from .artifact_integrity import inspect_manifest_artifacts
+from .provenance_inputs import provenance_hash_coverage
 from .redaction import redact_secrets
 
 MAX_READINESS_MANIFEST_BYTES: Final = 4 * 1024 * 1024
@@ -48,6 +50,12 @@ _EVIDENCE_FIELDS: Final = (
     "artifact_status",
     "failure_stage",
     "style_summary",
+    "raw_integrity_status",
+    "canonical_docs_registry",
+    "research_ops_policy",
+    "exact_reproducibility",
+    "visual_comparison",
+    "data_contract",
 )
 
 
@@ -166,7 +174,20 @@ def readiness_evidence_from_manifest(manifest: Mapping[str, Any]) -> dict[str, A
         hashes = _provenance_hashes(provenance)
         if hashes:
             normalized["provenance"] = hashes
+        normalized["provenance_coverage"] = provenance_hash_coverage(provenance)
     return normalized
+
+
+def readiness_evidence_from_verified_manifest(
+    manifest: Mapping[str, Any],
+    manifest_path: str | Path,
+) -> dict[str, Any]:
+    """Normalize already-verified manifest bytes without reopening the JSON file."""
+
+    evidence = readiness_evidence_from_manifest(manifest)
+    if "artifact_status" in manifest or manifest.get("figures"):
+        evidence["artifact_integrity"] = inspect_manifest_artifacts(manifest, manifest_path)
+    return evidence
 
 
 def load_readiness_manifest(path: str | Path) -> dict[str, Any]:
@@ -192,4 +213,4 @@ def load_readiness_manifest(path: str | Path) -> dict[str, Any]:
         raise ValueError("readiness manifest must contain valid JSON") from exc
     if not isinstance(manifest, dict):
         raise ValueError("readiness manifest must contain a JSON object")
-    return readiness_evidence_from_manifest(manifest)
+    return readiness_evidence_from_verified_manifest(manifest, manifest_path)

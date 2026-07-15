@@ -4,11 +4,11 @@
 > publication-quality plotting, self-describing MCP tools, and honest
 > operational guardrails.
 >
-> Status baseline: source checkout `0.19.0` development line, adding the
-> Publication Readiness MVP—bounded automatic QA that requires cited hard-gate evidence and manual review—
-> after the `0.18.0` journal-style, runtime, packaging,
+> Status baseline: source checkout `0.20.0` release-candidate line, with the
+> AI-native v2 surface and bounded evidence/policy-projection path
+> implemented after the `0.19.0` publication-readiness release and earlier journal-style, runtime, packaging,
 > and release-hardening release. The latest published PyPI package and GitHub
-> Release remain `0.18.0`. M1 through
+> Release remain `0.19.0` until promotion. M1 through
 > M5 have shipped across the 0.5.0+ release line. The
 > remaining roadmap is maintenance, scoped debt reduction, and bounded
 > polish-layer waves that preserve journal constraints.
@@ -38,15 +38,15 @@
   workflow is not the place to regenerate large render packs for unrelated
   changes.
 
-## Current-state scorecard (0.19.0 development source line, 2026-07-12)
+## Current-state scorecard (0.20.0 release candidate, 2026-07-15)
 
 | Dimension | Score | Read |
 |---|---:|---|
 | Vision and feature breadth | 9/10 | Data contracts, provenance, regression checks, geometry QA, semantic checks, journal styles, and domain helpers are deep for a lab tool. |
-| Fundamentals and security | 9/10 | Audit-fix issues #153-158 are resolved; MCP root/runtime trust, duplicate-key YAML loading, symlink guards, and runtime-root isolation are in place. |
-| Code maintainability | 8/10 | The MCP monolith is decomposed, data-contract IO/semantics are split, and the 2026-06-29 decomposition wave brought the prior primary hotspots below 1000 lines with compatibility shims intact. Remaining size debt is narrower and tracked as maintenance, not a blocking milestone. |
+| Fundamentals and security | 9/10 | Project/allowed-data inputs now share contained verified-descriptor paths; artifact, provenance, raw-integrity, claim-linkage, and write-gating checks fail closed. |
+| Code maintainability | 8/10 | Evidence, preview, render-manifest, schema, geometry-policy, inspection, and project-path responsibilities are focused modules; every touched Python façade remains below the 800-line split signal. |
 | Generality / portability | 7/10 | Prefetch, Athena, and conventions adapters are opt-in with generic defaults; project status and schema versioning are explicit. |
-| DX / docs / discoverability | 8/10 | Registry-backed `figops.describe`, generated `docs/tools.md`, `docs/mcp_errors.md`, and `figops.doctor` have shipped. |
+| DX / docs / discoverability | 9/10 | AI-native v2 discovery is compact and filterable; generated `tools-v2.md`, `tools-compatibility.md`, and the full maintenance reference keep the frozen surface available on demand. |
 
 Roadmap goal: keep fundamentals and DX >=8 while paying down concentrated module
 size debt without reintroducing broad refactors.
@@ -67,23 +67,32 @@ Post-release total QA checkpoint:
 - MCP agent surface is complete for the current contract: 14 canonical
   `figops.*` tools, 13 frozen legacy `graphhub.*` aliases, generated schemas, and
   handler mappings are present.
+- MCP discovery is now profile-aware. The launcher defaults to `v2` with at
+  most seven evidence-first tools; `compatibility` exposes the frozen 14 + 13
+  contract. Writes-disabled discovery omits denied operations while the
+  independent handler guard rejects remembered canonical and alias names.
 - Operational release controls are in place: latest checked `main` CI passed,
   publish is manual-only and main-branch guarded, and PyPI/TestPyPI/GitHub
   Release install-smoke evidence is documented.
 - Public claim wording remains publication-oriented; `manual_review_needed=false`
   is not by itself a publishable verdict. `publishable` or `journal-ready`
   wording requires cited hard-gate evidence and `manual_review_needed` not true.
-- The 0.19.0 Publication Readiness MVP is being added as a read-only synthesis
+- The 0.19.0 Publication Readiness MVP remains a read-only synthesis
   layer over existing evidence. It reports `blocked`, `needs_revision`, or
   `needs_review`; approval lifecycle and submission packaging remain future work.
 - Current journal-style dogfood evidence for Todo 10 is recorded at
   `.omo/evidence/task-10-journal-style-real-use-hardening-final/render-pack/`;
   it supports review of rendered differences but is not a publisher acceptance
   signal.
-- Remaining work is quality hardening rather than release repair: journal-track
-  fixture qualification, MCP agent-consumability guards, local operator
-  readiness around `uv`, diagnostic-to-rubric mapping, and maintenance
-  decomposition.
+- The AI-native rearchitecture is implemented in the working tree: bounded data
+  inspection, one-call basic/project rendering, explicit-policy audit, lazy
+  preview resources, raw-preserving authored output, and outcome-based agent
+  guidance are covered by runtime witnesses. The final automated repository
+  gate passed with zero failures, and an actual v2 live-model witness completed
+  two renders plus two lazy preview reads with a targeted series/label revision
+  and no invented statistics. The remaining host limitation is absent
+  `Rscript`; Python and mocked-R dispatch are verified without inferring a real
+  local R render.
 
 ---
 
@@ -94,15 +103,20 @@ figops_mcp_server.py        # thin stdio entrypoint and --smoke
 hub_core/
   mcp/                        # shipped decomposition of the former mcp_surface.py
     transport.py              # JSON-RPC framing, dispatch, batch, lifecycle
-    server.py                 # GraphHubMCPServer facade
+    server.py                 # FigOps facade + historical GraphHub Python alias
     config.py                 # trusted root/runtime/server config
     security.py               # path guards, write gating, env trust
     errors.py                 # MCP/tool error mapping
     schemas.py                # shared schema helpers
     tools/                    # grouped handlers backed by live schemas
     render_orchestration.py   # worker spawn, snapshots, geometry env wiring
+    render_manifest.py        # immutable job manifest and preview sealing
+    manifest_io.py            # verified, bounded runtime-manifest reads
+    preview_artifacts.py      # safe lazy preview/resource validation
+    preview_worker.py         # bounded raster/PDF conversion worker
     render_geometry.py        # render geometry helpers
     resources.py / prompts.py # MCP resources and prompts
+    surface_profiles.py       # compact v2 and frozen compatibility discovery
   adapters/                   # opt-in prefetch, Athena, and conventions adapters
   rendering/                  # plot-type registry and render backend surface
   domain_analysis.py          # registered domain analysis helpers
@@ -110,8 +124,18 @@ hub_core/
   data_contract_io.py         # table loading, supported formats, path collection
   data_contract_semantics.py  # compatibility surface for semantic validators
   data_contract_semantic_*    # focused semantic validator families
+  project_paths.py            # contained project I/O resolver
+  project_config_reader.py    # verified config discovery/resource reads
+  evidence_contract.py        # closed figops_evidence/2 validation
+  evidence_artifact_section.py # focused artifact/evidence validation
+  artifact_integrity.py       # verified artifact facts
+  artifact_audit.py           # integrity kernel + explicit policy packs
+  data_inspection*.py         # bounded data facts and worker limits
   process_runner.py           # pipeline execution helpers
 themes/                       # journal styles, palettes, font tokens
+plotting/renderers/
+  overlays.py                 # overlay rendering compatibility façade
+  annotation_normalization.py # bounded annotation/callout normalization
 docs/                         # quickstart, generated tool refs, specs, roadmap
 ```
 

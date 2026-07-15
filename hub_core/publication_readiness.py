@@ -16,37 +16,26 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal
 
-SCHEMA_VERSION: Final = "publication_readiness/1"
-ReadinessStatus = Literal["blocked", "needs_revision", "needs_review"]
-FindingSeverity = Literal["hard", "major", "info"]
-_RELATIVE_BACKSLASH_PATH_RE: Final = re.compile(
-    r"^(?!.*(?:^|\\)\.\.(?:\\|$))[A-Za-z0-9_.-]+(?:\\[A-Za-z0-9_.-]+)+$"
+from .evidence_contract import EvidenceContractError, normalize_evidence_envelope
+from .provenance_inputs import REQUIRED_PROVENANCE_HASHES, provenance_hash_coverage
+from .publication_geometry_readiness import (
+    geometry_findings as _geometry_findings,
+)
+from .publication_geometry_readiness import (
+    policy_projection_findings as _policy_projection_findings,
 )
 
-# Mirrors docs/specs/geometry-diagnostic-rubric-map.json.  Keeping the IDs in
-# findings makes the committed rubric the reviewable source of policy.
-_GEOMETRY_RUBRIC: Final[dict[str, tuple[str, str]]] = {
-    "tick_label_overlaps": ("FQ-H3", "blocked"),
-    "tick_label_crowding": ("FQ-A2", "review"),
-    "artists_outside_axes": ("FQ-H4", "blocked"),
-    "artists_outside_figure": ("FQ-H2", "blocked"),
-    "legend_data_collision": ("informational", "non_blocking"),
-    "axis_label_title_overlap": ("FQ-H3", "blocked"),
-    "figure_title_panel_title_overlap": ("FQ-H3", "blocked"),
-    "colorbar_overlap": ("FQ-H3", "blocked"),
-    "blank_area_ratio": ("FQ-H4", "blocked"),
-    "point_annotation_overlaps": ("FQ-H3", "blocked"),
-    "artist_overlaps": ("FQ-H3", "blocked"),
-    "legend_internal_overlaps": ("FQ-H3", "blocked"),
-    "marker_marker_overlaps": ("FQ-H4", "blocked"),
-    "text_axis_edge_proximity": ("FQ-A2", "review"),
-    "legend_marker_consistency": ("FQ-A1", "review"),
-    "label_offset_consistency": ("FQ-A4", "review"),
-    "point_label_skips": ("FQ-A2", "review"),
-    "annotation_overlay_contrast": ("FQ-A3", "review"),
-    "font_size_token_drift": ("FQ-H2", "blocked"),
-    "journal_compliance": ("FQ-H2", "blocked"),
-}
+SCHEMA_VERSION: Final = "publication_readiness/1"
+RENDER_JOB_REQUIRED_EVIDENCE: Final = (
+    "artifact_integrity",
+    "provenance_coverage",
+    "geometry_diagnostics",
+    "visual_preflight_status",
+    "layout_report",
+)
+ReadinessStatus = Literal["blocked", "needs_revision", "needs_review"]
+FindingSeverity = Literal["hard", "major", "info"]
+_RELATIVE_BACKSLASH_PATH_RE: Final = re.compile(r"^(?!.*(?:^|\\)\.\.(?:\\|$))[A-Za-z0-9_.-]+(?:\\[A-Za-z0-9_.-]+)+$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,138 +132,6 @@ def _finding(
     )
 
 
-def _geometry_findings(payload: Mapping[str, Any]) -> list[ReadinessFinding]:
-    findings: list[ReadinessFinding] = []
-    if payload.get("schema_version") != "geometry_diagnostics/1":
-        findings.append(
-            _finding(
-                code="GEOMETRY_SCHEMA_UNSUPPORTED",
-                severity="hard",
-                source="geometry_diagnostics",
-                message="Geometry evidence uses an unsupported or missing schema version.",
-                evidence_ref="geometry_diagnostics.schema_version",
-                action="Regenerate geometry diagnostics with schema geometry_diagnostics/1.",
-            )
-        )
-    checks = payload.get("checks")
-    if not isinstance(checks, list):
-        return [
-            _finding(
-                code="GEOMETRY_EVIDENCE_INVALID",
-                severity="hard",
-                source="geometry_diagnostics",
-                message="Geometry evidence does not contain a checks list.",
-                evidence_ref="geometry_diagnostics.checks",
-                action="Re-render the figure and regenerate geometry diagnostics.",
-            )
-        ]
-    seen_names: set[str] = set()
-    state_failure_seen = False
-    for index, check in enumerate(checks):
-        if not isinstance(check, Mapping) or not isinstance(check.get("name"), str):
-            findings.append(
-                _finding(
-                    code="GEOMETRY_CHECK_INVALID",
-                    severity="hard",
-                    source="geometry_diagnostics",
-                    message="A geometry check is malformed.",
-                    evidence_ref=f"geometry_diagnostics.checks[{index}]",
-                    action="Regenerate geometry diagnostics with a supported FigOps version.",
-                )
-            )
-            continue
-        name = check["name"]
-        if name in seen_names:
-            findings.append(
-                _finding(
-                    code="GEOMETRY_CHECK_DUPLICATE",
-                    severity="hard",
-                    source="geometry_diagnostics",
-                    message=f"Geometry check name is duplicated: {name}.",
-                    evidence_ref=f"geometry_diagnostics.checks[{index}]",
-                    action="Regenerate diagnostics with exactly one result per geometry check.",
-                )
-            )
-            continue
-        seen_names.add(name)
-        mapping = _GEOMETRY_RUBRIC.get(name)
-        if mapping is None:
-            findings.append(
-                _finding(
-                    code="GEOMETRY_CHECK_UNKNOWN",
-                    severity="hard",
-                    source="geometry_diagnostics",
-                    message=f"Unknown geometry check requires manual review: {name}.",
-                    evidence_ref=f"geometry_diagnostics.checks[{index}]",
-                    action="Map the diagnostic to the figure-quality rubric before relying on it.",
-                )
-            )
-            continue
-        rubric_id, policy = mapping
-        passed = check.get("passed")
-        if not isinstance(passed, bool):
-            findings.append(
-                _finding(
-                    code="GEOMETRY_CHECK_PASSED_INVALID",
-                    severity="hard",
-                    source="geometry_diagnostics",
-                    message=f"Geometry check {name} has a non-boolean passed value.",
-                    evidence_ref=f"geometry_diagnostics.checks[{index}].passed",
-                    action="Regenerate diagnostics with a literal boolean passed result for every check.",
-                    rubric_id=rubric_id,
-                )
-            )
-            state_failure_seen = True
-            continue
-        if passed is True:
-            continue
-        if policy == "non_blocking":
-            if passed is False:
-                findings.append(
-                    _finding(
-                        code=f"GEOMETRY_{name.upper()}",
-                        severity="info",
-                        source="geometry_diagnostics",
-                        message=str(check.get("detail") or f"Informational geometry check {name} failed."),
-                        evidence_ref=f"geometry_diagnostics.checks[{index}]",
-                        action="Review this informational diagnostic; it does not gate readiness.",
-                        panel=check.get("axis_index"),
-                        rubric_id=rubric_id,
-                    )
-                )
-            continue
-        state_failure_seen = True
-        severity: FindingSeverity = "hard" if policy == "blocked" else "major"
-        outcome = "was not measured" if passed is None else "failed"
-        detail = check.get("detail")
-        message = str(detail) if isinstance(detail, str) and detail.strip() else f"Geometry check {name} {outcome}."
-        findings.append(
-            _finding(
-                code=f"GEOMETRY_{name.upper()}",
-                severity=severity,
-                source="geometry_diagnostics",
-                message=message,
-                evidence_ref=f"geometry_diagnostics.checks[{index}]",
-                action="Correct the figure geometry and re-render the figure.",
-                panel=check.get("axis_index"),
-                rubric_id=rubric_id,
-            )
-        )
-    summary_passed = payload.get("passed")
-    if (summary_passed is True and state_failure_seen) or (summary_passed is not True and not state_failure_seen):
-        findings.append(
-            _finding(
-                code="GEOMETRY_SUMMARY_INCONSISTENT",
-                severity="hard",
-                source="geometry_diagnostics",
-                message="Geometry summary is not passed but no gating check explains the result.",
-                evidence_ref="geometry_diagnostics.passed",
-                action="Regenerate internally consistent geometry diagnostics.",
-            )
-        )
-    return findings
-
-
 def _calculation_findings(payload: Mapping[str, Any]) -> list[ReadinessFinding]:
     findings: list[ReadinessFinding] = []
     if payload.get("schema_version") != "1.0":
@@ -315,7 +172,7 @@ def _calculation_findings(payload: Mapping[str, Any]) -> list[ReadinessFinding]:
             )
             continue
         status = check.get("status")
-        if status not in {"passed", "failed", "skipped"}:
+        if status not in {"passed", "warning", "failed", "skipped"}:
             findings.append(
                 _finding(
                     code="CALCULATION_STATUS_INVALID",
@@ -323,7 +180,7 @@ def _calculation_findings(payload: Mapping[str, Any]) -> list[ReadinessFinding]:
                     source="calculation_checks",
                     message="Calculation check has an unknown or missing status.",
                     evidence_ref=f"calculation_checks.checks[{index}].status",
-                    action="Regenerate calculation evidence using passed, failed, or skipped status.",
+                    action="Regenerate calculation evidence using passed, warning, failed, or skipped status.",
                 )
             )
             continue
@@ -333,7 +190,13 @@ def _calculation_findings(payload: Mapping[str, Any]) -> list[ReadinessFinding]:
         name = str(check.get("name") or index)
         findings.append(
             _finding(
-                code="CALCULATION_REVIEW" if status == "passed" else f"CALCULATION_{status.upper()}",
+                code=(
+                    "CALCULATION_REVIEW"
+                    if status == "passed"
+                    else "CALCULATION_WARNING"
+                    if status == "warning"
+                    else f"CALCULATION_{status.upper()}"
+                ),
                 severity=severity,
                 source="calculation_checks",
                 message=str(check.get("message") or f"Calculation check {name} requires attention."),
@@ -345,17 +208,43 @@ def _calculation_findings(payload: Mapping[str, Any]) -> list[ReadinessFinding]:
 
 
 def _summary_findings(source: str, payload: Mapping[str, Any]) -> list[ReadinessFinding]:
-    if source == "layout_report" and payload.get("schema_version") != "layout_report/1":
-        return [
-            _finding(
-                code="LAYOUT_REPORT_SCHEMA_UNSUPPORTED",
-                severity="hard",
-                source=source,
-                message="Layout report uses an unsupported or missing schema version.",
-                evidence_ref="layout_report.schema_version",
-                action="Regenerate layout evidence with schema layout_report/1.",
-            )
-        ]
+    if source == "layout_report":
+        if payload.get("schema_version") != "layout_report/1":
+            return [
+                _finding(
+                    code="LAYOUT_REPORT_SCHEMA_UNSUPPORTED",
+                    severity="hard",
+                    source=source,
+                    message="Layout report uses an unsupported or missing schema version.",
+                    evidence_ref="layout_report.schema_version",
+                    action="Regenerate layout evidence with schema layout_report/1.",
+                )
+            ]
+        aggregate = payload.get("passed")
+        render_errors = payload.get("render_errors", [])
+        if aggregate not in (True, False, None) or not isinstance(render_errors, list):
+            return [
+                _finding(
+                    code="LAYOUT_REPORT_INVALID",
+                    severity="hard",
+                    source=source,
+                    message="Layout compatibility evidence is malformed.",
+                    evidence_ref="layout_report",
+                    action="Regenerate the layout compatibility projection.",
+                )
+            ]
+        if render_errors:
+            return [
+                _finding(
+                    code="LAYOUT_RENDER_ERROR",
+                    severity="hard",
+                    source=source,
+                    message="Layout evidence records a render execution error.",
+                    evidence_ref="layout_report.render_errors",
+                    action="Resolve the render error and regenerate the artifact.",
+                )
+            ]
+        return []
     if payload.get("passed") is True:
         return []
     code = source.upper().replace("-", "_") + "_FAILED"
@@ -371,12 +260,276 @@ def _summary_findings(source: str, payload: Mapping[str, Any]) -> list[Readiness
     ]
 
 
+def _integrity_findings(evidence: Mapping[str, Any]) -> list[ReadinessFinding]:
+    findings: list[ReadinessFinding] = []
+    artifact_status = evidence.get("artifact_status")
+    failure_stage = evidence.get("failure_stage")
+    normalized_status = str(artifact_status or "").strip().lower()
+    if normalized_status in {"failed", "error", "missing", "corrupt"}:
+        findings.append(
+            _finding(
+                code="ARTIFACT_STATUS_FAILED",
+                severity="hard",
+                source="artifact_integrity",
+                message=f"Artifact producer reported a failed state: {normalized_status}.",
+                evidence_ref="artifact_status",
+                action="Resolve the render/export failure and produce a verified artifact.",
+            )
+        )
+    if isinstance(failure_stage, str) and failure_stage.strip():
+        findings.append(
+            _finding(
+                code="FAILURE_STAGE_REPORTED",
+                severity="hard",
+                source="artifact_integrity",
+                message=f"The producer reported failure stage {failure_stage.strip()}.",
+                evidence_ref="failure_stage",
+                action="Resolve the producer failure before readiness evaluation.",
+            )
+        )
+
+    artifact_integrity = evidence.get("artifact_integrity")
+    if isinstance(artifact_integrity, Mapping):
+        errors = artifact_integrity.get("errors")
+        entries = artifact_integrity.get("entries")
+        integrity_valid = (
+            artifact_integrity.get("status") == "passed"
+            and isinstance(entries, list)
+            and bool(entries)
+            and isinstance(errors, list)
+            and not errors
+        )
+        if not integrity_valid:
+            findings.append(
+                _finding(
+                    code="ARTIFACT_INTEGRITY_FAILED",
+                    severity="hard",
+                    source="artifact_integrity",
+                    message="Artifact existence, media header, dimensions, or hash verification failed.",
+                    evidence_ref="artifact_integrity",
+                    action="Regenerate the declared artifact and its integrity evidence.",
+                )
+            )
+
+    completed_artifact = bool(
+        normalized_status
+        and normalized_status not in {"failed", "error", "missing", "corrupt", "skipped", "unavailable"}
+    ) or (isinstance(artifact_integrity, Mapping) and artifact_integrity.get("status") == "passed")
+    supplied_coverage = evidence.get("provenance_coverage")
+    coverage = provenance_hash_coverage(evidence.get("provenance")) if completed_artifact else None
+    if completed_artifact and isinstance(supplied_coverage, Mapping):
+        expected_coverage = {
+            "status": coverage["status"],
+            "hashes": coverage["hashes"],
+            "missing": coverage["missing"],
+        }
+        actual_coverage = {
+            "status": supplied_coverage.get("status"),
+            "hashes": supplied_coverage.get("hashes"),
+            "missing": supplied_coverage.get("missing"),
+        }
+        if actual_coverage != expected_coverage:
+            findings.append(
+                _finding(
+                    code="PROVENANCE_COVERAGE_INCONSISTENT",
+                    severity="hard",
+                    source="provenance",
+                    message="Provenance coverage summary conflicts with the supplied provenance hashes.",
+                    evidence_ref="provenance_coverage",
+                    action="Regenerate coverage from the allowlisted provenance hash fields.",
+                )
+            )
+    if isinstance(coverage, Mapping) and completed_artifact:
+        missing = coverage.get("missing")
+        if not isinstance(missing, list):
+            missing = list(REQUIRED_PROVENANCE_HASHES)
+        if missing:
+            findings.append(
+                _finding(
+                    code="PROVENANCE_HASHES_MISSING",
+                    severity="hard",
+                    source="provenance",
+                    message=f"Required provenance hashes are missing: {', '.join(map(str, missing))}.",
+                    evidence_ref="provenance_coverage.missing",
+                    action="Record input, config, script, environment, and output SHA-256 hashes.",
+                )
+            )
+
+    raw = evidence.get("raw_integrity_status")
+    if isinstance(raw, Mapping) and raw.get("configured") is True and raw.get("ok") is not True:
+        strict = str(raw.get("mode") or "").lower() == "strict"
+        findings.append(
+            _finding(
+                code="RAW_INTEGRITY_STRICT_FAILED" if strict else "RAW_INTEGRITY_WARNING",
+                severity="hard" if strict else "major",
+                source="raw_integrity",
+                message="Raw data integrity is unsealed or does not match its seal.",
+                evidence_ref="raw_integrity_status",
+                action="Seal or reconcile the declared raw inputs before continuing.",
+            )
+        )
+
+    canonical = evidence.get("canonical_docs_registry")
+    if isinstance(canonical, Mapping) and canonical.get("declared") is True and canonical.get("required") is True:
+        docs = canonical.get("docs")
+        valid = isinstance(docs, list) and bool(docs)
+        if valid:
+            valid = all(
+                isinstance(doc, Mapping)
+                and doc.get("exists") is True
+                and doc.get("contained") is True
+                and doc.get("regular_file") is True
+                and doc.get("symlinked") is False
+                and doc.get("status") == "ready"
+                for doc in docs
+            )
+        if not valid:
+            findings.append(
+                _finding(
+                    code="CANONICAL_DOC_EVIDENCE_INVALID",
+                    severity="hard",
+                    source="canonical_docs",
+                    message="Required canonical documentation lacks valid contained regular-file evidence.",
+                    evidence_ref="canonical_docs_registry.docs",
+                    action="Restore and revalidate every required canonical document.",
+                )
+            )
+    return findings
+
+
+def _v2_consistency_findings(evidence: Mapping[str, Any]) -> list[ReadinessFinding]:
+    if evidence.get("version") != "2.0":
+        return []
+    try:
+        normalized = normalize_evidence_envelope(evidence)
+    except EvidenceContractError as exc:
+        return [
+            _finding(
+                code=f"EVIDENCE_CONTRACT_{exc.code}",
+                severity="hard",
+                source="evidence_contract",
+                message=exc.message,
+                evidence_ref=exc.path,
+                action="Regenerate a valid figops_evidence/2 envelope.",
+            )
+        ]
+
+    findings: list[ReadinessFinding] = []
+    for index, projection in enumerate(normalized.get("policy_projections", [])):
+        if "status" in projection and projection["status"] not in {
+            "blocked",
+            "needs_revision",
+            "needs_review",
+            "informational",
+        }:
+            findings.append(
+                _finding(
+                    code="POLICY_PROJECTION_STATUS_INVALID",
+                    severity="hard",
+                    source="evidence_contract",
+                    message="Policy projection status is outside the closed outcome enum.",
+                    evidence_ref=f"policy_projections[{index}].status",
+                    action="Regenerate the policy projection with a supported status.",
+                )
+            )
+
+    exact = normalized.get("exact_reproducibility")
+    if isinstance(exact, Mapping) and exact.get("status") in {"same", "different"}:
+        same = exact.get("reference_sha256") == exact.get("candidate_sha256")
+        status_consistent = (exact.get("status") == "same") == same
+        if str(exact.get("algorithm") or "").lower() != "sha256" or not status_consistent:
+            findings.append(
+                _finding(
+                    code="EXACT_REPRODUCIBILITY_INCONSISTENT",
+                    severity="hard",
+                    source="evidence_contract",
+                    message="Exact reproducibility status conflicts with SHA-256 evidence.",
+                    evidence_ref="exact_reproducibility",
+                    action="Recompute exact-byte evidence using SHA-256.",
+                )
+            )
+
+    roles = {
+        entry.get("logical_role")
+        for entry in normalized.get("artifacts", {}).get("entries", [])
+        if isinstance(entry, Mapping)
+    }
+    visual = normalized.get("visual_comparison")
+    if isinstance(visual, Mapping) and visual.get("status") == "available":
+        refs = {visual.get("reference_artifact"), visual.get("candidate_artifact")}
+        if not refs <= roles:
+            findings.append(
+                _finding(
+                    code="VISUAL_ARTIFACT_REFERENCE_UNKNOWN",
+                    severity="hard",
+                    source="evidence_contract",
+                    message="Visual comparison references artifacts absent from the verified artifact set.",
+                    evidence_ref="visual_comparison",
+                    action="Reference verified logical artifact roles only.",
+                )
+            )
+    entries = normalized.get("artifacts", {}).get("entries", [])
+    output_hash = normalized.get("provenance", {}).get("output_sha256")
+    if entries and isinstance(output_hash, str) and output_hash != entries[0].get("sha256"):
+        findings.append(
+            _finding(
+                code="PROVENANCE_OUTPUT_HASH_MISMATCH",
+                severity="hard",
+                source="provenance",
+                message="Output provenance hash does not match the primary artifact entry.",
+                evidence_ref="provenance.output_sha256",
+                action="Regenerate provenance from the verified artifact bytes.",
+            )
+        )
+    return findings
+
+
+def _reproducibility_findings(evidence: Mapping[str, Any]) -> list[ReadinessFinding]:
+    findings: list[ReadinessFinding] = []
+    exact = evidence.get("exact_reproducibility", evidence.get("baseline_comparison"))
+    if isinstance(exact, Mapping):
+        checked = exact.get("checked") is True or exact.get("status") in {"same", "different"}
+        matched = exact.get("matched")
+        status = exact.get("status")
+        different = matched is False or status == "different"
+        if checked and different:
+            findings.append(
+                _finding(
+                    code="EXACT_BYTES_DIFFERENT",
+                    severity="info",
+                    source="exact_reproducibility",
+                    message="Candidate bytes differ from the exact SHA-256 reference.",
+                    evidence_ref=(
+                        "exact_reproducibility" if "exact_reproducibility" in evidence else "baseline_comparison"
+                    ),
+                    action="Treat this as exact non-identity, not as a visual-quality conclusion.",
+                )
+            )
+    visual = evidence.get("visual_comparison")
+    if isinstance(visual, Mapping) and visual.get("status") in {"unavailable", "skipped"}:
+        findings.append(
+            _finding(
+                code="VISUAL_COMPARISON_UNAVAILABLE",
+                severity="info",
+                source="visual_comparison",
+                message=str(visual.get("reason") or "Visual comparison was unavailable."),
+                evidence_ref="visual_comparison",
+                action=(
+                    "Supply a named reference/candidate and versioned algorithm only if visual comparison is needed."
+                ),
+            )
+        )
+    return findings
+
+
 def evaluate_publication_readiness(
     evidence: Mapping[str, Any],
     *,
     project_id: str | None = None,
     figure_id: str | None = None,
     required_evidence: Sequence[str] = (),
+    required_diagnostic_ids: Sequence[str] = (),
+    policy_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Evaluate evidence into one of three automatic readiness states.
 
@@ -388,6 +541,15 @@ def evaluate_publication_readiness(
     if not isinstance(normalized, dict):
         raise TypeError("readiness evidence must be an object")
     findings: list[ReadinessFinding] = []
+    validated_v2: dict[str, Any] | None = None
+    if normalized.get("version") == "2.0":
+        try:
+            validated_v2 = normalize_evidence_envelope(normalized)
+        except EvidenceContractError:
+            validated_v2 = None
+    findings.extend(_v2_consistency_findings(normalized))
+    findings.extend(_integrity_findings(normalized))
+    findings.extend(_reproducibility_findings(normalized))
     for source in required_evidence:
         if source not in normalized or not isinstance(normalized[source], dict):
             findings.append(
@@ -402,8 +564,45 @@ def evaluate_publication_readiness(
             )
 
     geometry = normalized.get("geometry_diagnostics")
+    if not isinstance(geometry, dict) and validated_v2 is not None:
+        geometry = {
+            "schema_version": "geometry_diagnostics/2",
+            "measurements": validated_v2.get("measurements", []),
+            "warnings": [],
+        }
+    geometry_measurements: dict[str, Mapping[str, Any]] = {}
     if isinstance(geometry, dict):
-        findings.extend(_geometry_findings(geometry))
+        geometry_findings, geometry_measurements = _geometry_findings(
+            geometry,
+            required_diagnostic_ids=required_diagnostic_ids,
+            finding=_finding,
+        )
+        findings.extend(geometry_findings)
+    requested_policies = tuple(
+        policy_id for policy_id in (policy_ids or ()) if isinstance(policy_id, str) and policy_id.strip()
+    )
+    applied_policies: list[str]
+    if validated_v2 is not None:
+        projection_findings, applied_policies = _policy_projection_findings(
+            validated_v2,
+            geometry_measurements,
+            policy_ids=requested_policies,
+            finding=_finding,
+        )
+        findings.extend(projection_findings)
+    else:
+        applied_policies = []
+        if requested_policies:
+            findings.append(
+                _finding(
+                    code="POLICY_SELECTION_UNVALIDATED",
+                    severity="hard",
+                    source="policy_projection",
+                    message="Requested policies lack a validated v2 projection and resolved_policy snapshot.",
+                    evidence_ref="policy_ids",
+                    action="Supply a valid v2 envelope with matching policy projection and resolved_policy.",
+                )
+            )
     calculation = normalized.get("calculation_checks")
     if isinstance(calculation, dict):
         findings.extend(_calculation_findings(calculation))
@@ -423,6 +622,8 @@ def evaluate_publication_readiness(
         status = "needs_review"
     sources = sorted(
         set(required_evidence)
+        | ({"geometry_diagnostics"} if isinstance(geometry, dict) else set())
+        | ({"policy_projection"} if applied_policies else set())
         | {
             source
             for source in (
@@ -431,16 +632,28 @@ def evaluate_publication_readiness(
                 "visual_preflight_status",
                 "layout_report",
                 "data_contract",
+                "artifact_integrity",
+                "provenance",
+                "raw_integrity",
+                "canonical_docs",
+                "evidence_contract",
+                "exact_reproducibility",
+                "policy_projection",
+                "visual_comparison",
             )
-            if source in normalized
+            if source in normalized or any(item.source == source for item in findings)
         }
     )
     gates = []
     for source in sources:
         related = [item for item in findings if item.source == source]
-        outcome = "blocked" if any(item.severity == "hard" for item in related) else "needs_revision" if any(
-            item.severity == "major" for item in related
-        ) else "passed"
+        outcome = (
+            "blocked"
+            if any(item.severity == "hard" for item in related)
+            else "needs_revision"
+            if any(item.severity == "major" for item in related)
+            else "passed"
+        )
         gates.append(
             {
                 "source": source,
@@ -460,6 +673,7 @@ def evaluate_publication_readiness(
         "target_format": target_format,
         "evidence_digest": evidence_digest(normalized),
         "manual_review_required": True,
+        "applied_policies": applied_policies,
         "gates": gates,
         "findings": [item.as_dict() for item in findings],
     }

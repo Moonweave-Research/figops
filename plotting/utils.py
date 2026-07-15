@@ -13,8 +13,89 @@
 """
 
 from collections.abc import Sequence
+from hashlib import sha256
 
 import matplotlib.pyplot as plt
+
+
+def normalize_label_map(raw: dict[str, str] | None) -> dict[str, str]:
+    """Validate and copy an exact original-to-display label map."""
+    if raw in (None, {}):
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("label_map must be an object mapping original labels to display labels")
+    normalized: dict[str, str] = {}
+    for original, display in raw.items():
+        if not isinstance(original, str) or not original:
+            raise ValueError("label_map keys must be non-empty strings")
+        if not isinstance(display, str) or not display:
+            raise ValueError(f"label_map[{original!r}] must be a non-empty string")
+        normalized[original] = display
+    return normalized
+
+
+def label_transformation_evidence(
+    values: Sequence[object],
+    *,
+    label_map: dict[str, str] | None = None,
+    label_transform: str = "raw",
+    compress_labels: bool = False,
+) -> dict[str, object]:
+    """Build deterministic mapping, collision, and mutation-ledger evidence."""
+    mapping = normalize_label_map(label_map)
+    transform = str(label_transform or "raw").strip().lower().replace("-", "_")
+    if transform not in {"raw", "legacy_compress"}:
+        raise ValueError("label_transform must be 'raw' or 'legacy_compress'")
+    effective_transform = "legacy_compress" if compress_labels or transform == "legacy_compress" else "raw"
+
+    seen: set[str] = set()
+    records: list[dict[str, str]] = []
+    displays: dict[str, list[str]] = {}
+    ledger: list[dict[str, str]] = []
+    for value in values:
+        original = str(value)
+        if original in seen:
+            continue
+        seen.add(original)
+        if original in mapping:
+            display = mapping[original]
+            applied_transform = "label_map"
+        elif effective_transform == "legacy_compress":
+            display = compress_sample_label(original)
+            applied_transform = "legacy_compress"
+        else:
+            display = original
+            applied_transform = "raw"
+        records.append({"original": original, "display": display, "transform": applied_transform})
+        displays.setdefault(display, []).append(original)
+        if display != original:
+            digest = sha256(f"{applied_transform}\0{original}\0{display}".encode("utf-8")).hexdigest()[:16]
+            ledger.append(
+                {
+                    "mutation_id": f"label-{digest}",
+                    "transform": applied_transform,
+                    "mode": "explicit" if applied_transform == "label_map" else "legacy_opt_in",
+                    "before": original,
+                    "after": display,
+                    "policy_id": "authored-labels/1",
+                    "reason": (
+                        "explicit label_map"
+                        if applied_transform == "label_map"
+                        else "legacy reproduction requested"
+                    ),
+                }
+            )
+    collisions = [
+        {"display": display, "originals": originals}
+        for display, originals in sorted(displays.items())
+        if len(originals) > 1
+    ]
+    return {
+        "mode": effective_transform,
+        "mappings": records,
+        "collisions": collisions,
+        "mutation_ledger": ledger,
+    }
 
 
 def add_smart_inset(ax, position="upper_right", size=0.3, padding=0.05, label_scale=0.8):

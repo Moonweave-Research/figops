@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from contextlib import redirect_stdout
 from typing import Any
@@ -221,10 +222,20 @@ def _validate_tool_arguments(
     arguments: dict[str, Any],
     definitions: list[dict[str, Any]] | None = None,
 ) -> list[str]:
+    validation_names = {tool_name}
+    if tool_name.startswith("graphhub."):
+        validation_names.add(tool_name.replace("graphhub.", "figops.", 1))
     if definitions is None:
         definitions = _tool_definitions_for(None)
+    elif not any(definition.get("name") in validation_names for definition in definitions):
+        # Discovery profiles intentionally omit tools to keep the LLM context
+        # bounded, while the compatibility handler registry remains callable.
+        # A guessed/compatibility-hidden canonical name must still be validated
+        # against its real schema before dispatch; omission is never a schema
+        # bypass.
+        definitions = _tool_definitions_for(None)
     for definition in definitions:
-        if definition["name"] != tool_name:
+        if definition["name"] not in validation_names:
             continue
         schema = definition.get("inputSchema", {})
         properties = schema.get("properties", {})
@@ -257,11 +268,7 @@ def _validate_tool_arguments(
         for key, value in arguments.items():
             prop_schema = properties.get(key)
             if isinstance(prop_schema, dict):
-                expected_type = prop_schema.get("type")
-                if not _matches_json_schema_type(value, expected_type):
-                    errors.append(f"Tool argument '{key}' must be {expected_type}.")
-                    continue
-                errors.extend(_validate_tool_argument_constraints(key, value, prop_schema))
+                errors.extend(_validate_schema_value(key, value, prop_schema))
         return errors
     return []
 
@@ -284,11 +291,36 @@ def _enum_contains(value: Any, enum: list[Any]) -> bool:
     if isinstance(value, str):
         normalized = value.strip().lower()
         return any(isinstance(option, str) and option.lower() == normalized for option in enum)
-    return value in enum
+    if isinstance(value, bool):
+        return any(isinstance(option, bool) and option is value for option in enum)
+    if isinstance(value, (int, float)):
+        return any(
+            isinstance(option, (int, float)) and not isinstance(option, bool) and option == value
+            for option in enum
+        )
+    return any(type(option) is type(value) and option == value for option in enum)
+
+
+def _validate_schema_value(key: str, value: Any, schema: dict[str, Any]) -> list[str]:
+    expected_type = schema.get("type")
+    if not _matches_json_schema_type(value, expected_type):
+        return [f"Tool argument '{key}' must be {expected_type}."]
+    return _validate_tool_argument_constraints(key, value, schema)
 
 
 def _validate_tool_argument_constraints(key: str, value: Any, prop_schema: dict[str, Any]) -> list[str]:
     errors: list[str] = []
+    any_of = prop_schema.get("anyOf")
+    if isinstance(any_of, list) and any_of:
+        branches = [branch for branch in any_of if isinstance(branch, dict)]
+        if not branches or not any(not _validate_schema_value(key, value, branch) for branch in branches):
+            errors.append(f"Tool argument '{key}' must match at least one allowed schema.")
+    one_of = prop_schema.get("oneOf")
+    if isinstance(one_of, list) and one_of:
+        branches = [branch for branch in one_of if isinstance(branch, dict)]
+        matches = sum(not _validate_schema_value(key, value, branch) for branch in branches)
+        if not branches or matches != 1:
+            errors.append(f"Tool argument '{key}' must match exactly one allowed schema.")
     enum = prop_schema.get("enum")
     if isinstance(enum, list) and not _enum_contains(value, enum):
         allowed = ", ".join(json.dumps(option, ensure_ascii=False) for option in enum)
@@ -300,6 +332,20 @@ def _validate_tool_argument_constraints(key: str, value: Any, prop_schema: dict[
         maximum = prop_schema.get("maximum")
         if isinstance(maximum, (int, float)) and not isinstance(maximum, bool) and value > maximum:
             errors.append(f"Tool argument '{key}' must be <= {maximum}.")
+        exclusive_minimum = prop_schema.get("exclusiveMinimum")
+        if (
+            isinstance(exclusive_minimum, (int, float))
+            and not isinstance(exclusive_minimum, bool)
+            and value <= exclusive_minimum
+        ):
+            errors.append(f"Tool argument '{key}' must be > {exclusive_minimum}.")
+        exclusive_maximum = prop_schema.get("exclusiveMaximum")
+        if (
+            isinstance(exclusive_maximum, (int, float))
+            and not isinstance(exclusive_maximum, bool)
+            and value >= exclusive_maximum
+        ):
+            errors.append(f"Tool argument '{key}' must be < {exclusive_maximum}.")
     if isinstance(value, str):
         min_length = prop_schema.get("minLength")
         if isinstance(min_length, int) and not isinstance(min_length, bool) and len(value) < min_length:
@@ -307,10 +353,55 @@ def _validate_tool_argument_constraints(key: str, value: Any, prop_schema: dict[
         max_length = prop_schema.get("maxLength")
         if isinstance(max_length, int) and not isinstance(max_length, bool) and len(value) > max_length:
             errors.append(f"Tool argument '{key}' must have length <= {max_length}.")
+        pattern = prop_schema.get("pattern")
+        if isinstance(pattern, str) and re.fullmatch(pattern, value) is None:
+            errors.append(f"Tool argument '{key}' does not match its required pattern.")
+    if isinstance(value, dict):
+        properties = prop_schema.get("properties")
+        properties = properties if isinstance(properties, dict) else {}
+        required = prop_schema.get("required")
+        if isinstance(required, list):
+            for child_key in required:
+                child_schema = properties.get(child_key, {})
+                if child_key not in value or not _required_tool_argument_present(value.get(child_key), child_schema):
+                    errors.append(f"Missing required tool argument(s): {key}.{child_key}")
+        additional = prop_schema.get("additionalProperties")
+        if additional is False:
+            unknown = sorted(set(value) - set(properties))
+            if unknown:
+                errors.append(f"Unknown tool argument(s): {', '.join(f'{key}.{item}' for item in unknown)}")
+        for child_key, child_value in value.items():
+            child_schema = properties.get(child_key)
+            if child_schema is None and isinstance(additional, dict):
+                child_schema = additional
+            if not isinstance(child_schema, dict):
+                continue
+            child_path = f"{key}.{child_key}"
+            errors.extend(_validate_schema_value(child_path, child_value, child_schema))
+    if isinstance(value, list):
+        min_items = prop_schema.get("minItems")
+        max_items = prop_schema.get("maxItems")
+        if isinstance(min_items, int) and len(value) < min_items:
+            errors.append(f"Tool argument '{key}' must contain at least {min_items} item(s).")
+        if isinstance(max_items, int) and len(value) > max_items:
+            errors.append(f"Tool argument '{key}' must contain at most {max_items} item(s).")
+        if prop_schema.get("uniqueItems") is True:
+            serialized = [json.dumps(item, sort_keys=True, ensure_ascii=False) for item in value]
+            if len(serialized) != len(set(serialized)):
+                errors.append(f"Tool argument '{key}' must contain unique items.")
+        item_schema = prop_schema.get("items")
+        if isinstance(item_schema, dict):
+            for index, child in enumerate(value):
+                child_path = f"{key}[{index}]"
+                errors.extend(_validate_schema_value(child_path, child, item_schema))
     return errors
 
 
 def _matches_json_schema_type(value: Any, expected_type: Any) -> bool:
+    if isinstance(expected_type, list):
+        return bool(expected_type) and all(isinstance(item, str) for item in expected_type) and any(
+            _matches_json_schema_type(value, item) for item in expected_type
+        )
     if expected_type == "string":
         return isinstance(value, str)
     if expected_type == "boolean":
@@ -323,6 +414,8 @@ def _matches_json_schema_type(value: Any, expected_type: Any) -> bool:
         return isinstance(value, dict)
     if expected_type == "array":
         return isinstance(value, list)
+    if expected_type == "null":
+        return value is None
     if expected_type is None:
         return True
     return False

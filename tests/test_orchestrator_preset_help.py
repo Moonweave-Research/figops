@@ -1,10 +1,10 @@
 import subprocess
 import sys
 
-from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
+from hub_core.config_parser import PUBLIC_TARGET_FORMATS
 
 
-def test_preset_help_lists_internal_project_target_format():
+def test_preset_help_lists_public_target_formats():
     result = subprocess.run(
         [sys.executable, "orchestrator.py", "--help"],
         check=True,
@@ -12,4 +12,4 @@ def test_preset_help_lists_internal_project_target_format():
         text=True,
     )
 
-    assert INTERNAL_STYLE_TARGET_FORMAT in result.stdout
+    assert all(target_format in result.stdout for target_format in PUBLIC_TARGET_FORMATS)

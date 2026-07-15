@@ -18,7 +18,7 @@ def _config(mode: str | None = "warn") -> dict:
     return {
         "project": {"name": "Raw Integrity Demo"},
         "visual_style": {"target_format": "nature"},
-        "data_contract": {"raw_integrity": raw_integrity},
+        "data_contract": {"raw_integrity": raw_integrity, "require_figure_traceability": False},
         "figures": [{"id": "fig1", "script": "plot.py", "output": "results/fig1.png"}],
     }
 
@@ -138,7 +138,7 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
         self.assertTrue(validated["valid"])
         self.assertTrue(any("raw_integrity drift" in warning for warning in validated["warnings"]))
 
-    def test_unsealed_raw_integrity_has_no_default_enforcement_effect(self):
+    def test_unsealed_raw_integrity_fails_module_default_strict_mode(self):
         with tempfile.TemporaryDirectory(prefix="graphhub_raw_integrity_") as tmpdir:
             project_dir = Path(tmpdir)
             config = _config(mode=None)
@@ -151,8 +151,8 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
                 {"project_path": project_dir.name},
             )["structuredContent"]
 
-        self.assertTrue(validated["valid"])
-        self.assertEqual(validated["config_errors"], [])
+        self.assertFalse(validated["valid"])
+        self.assertTrue(any("requires a valid seal" in error for error in validated["config_errors"]))
         self.assertFalse(validated["raw_integrity_status"]["sealed"])
 
     def test_master_raw_drift_is_not_enforced_by_module_default(self):

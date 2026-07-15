@@ -17,6 +17,18 @@ HUB_ROOT = Path(__file__).resolve().parent.parent
 
 
 class RuntimePathTest(unittest.TestCase):
+    def test_unresolved_home_marker_never_creates_repo_local_tilde_runtime(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch("hub_core.runtime_paths.os.path.expanduser", side_effect=lambda value: value),
+                patch("hub_core.runtime_paths.tempfile.gettempdir", return_value=tmpdir),
+            ):
+                resolved = resolve_runtime_root()
+
+            self.assertTrue(Path(resolved).is_relative_to(Path(tmpdir)))
+            self.assertNotIn("~", Path(resolved).parts)
+
     def test_preview_runtime_root_does_not_create_directory(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
             runtime_root = Path(tmpdir) / "preview-only"

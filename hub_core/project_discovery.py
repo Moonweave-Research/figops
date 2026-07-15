@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,7 +62,7 @@ class ProjectDiscoveryService:
         max_depth = max(1, int(max_depth or 1))
         discovered: dict[str, DiscoveredProject] = {}
 
-        for current_root, dirs, _files in os.walk(self.root_dir, followlinks=True):
+        for current_root, dirs, _files in os.walk(self.root_dir, followlinks=False):
             current_path = Path(current_root)
             rel_path = self._relative_path(current_path)
             depth = 0 if not rel_path else len(Path(rel_path).parts)
@@ -113,6 +114,12 @@ class ProjectDiscoveryService:
             if dirname == ".venv":
                 continue
             child = current_path / dirname
+            try:
+                attributes = getattr(child.lstat(), "st_file_attributes", 0)
+            except OSError:
+                continue
+            if child.is_symlink() or bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)):
+                continue
             rel_child = self._relative_path(child)
             if self.conventions.is_worktree_path(rel_child) and not self.include_worktrees:
                 continue
@@ -122,14 +129,11 @@ class ProjectDiscoveryService:
         return result
 
     def _build_project(self, project_path: Path, config_path: Path) -> DiscoveredProject:
-        from .config_parser import _load_project_metadata
-
         rel_project = self._relative_path(project_path)
         rel_config = Path(os.path.relpath(config_path, project_path)).as_posix()
-        metadata = _load_project_metadata(str(config_path), project_path.name)
+        metadata, target_format = self._read_verified_metadata(project_path, config_path)
         valid = bool(metadata["valid"])
         classification = self._classify(rel_project, rel_config, valid)
-        target_format = self._read_target_format(config_path)
 
         return DiscoveredProject(
             project_id=self._stable_project_id(project_path),
@@ -152,9 +156,23 @@ class ProjectDiscoveryService:
         max_depth: int,
         master_depth: int,
     ) -> list[DiscoveredProject]:
-        from .config_parser import folder_role_map, load_config, project_modules
+        from .config_parser import (
+            folder_role_map,
+            load_yaml_with_unique_keys,
+            migrate_config,
+            normalize_project_defaults,
+            project_modules,
+        )
+        from .project_config_reader import find_verified_project_config, read_verified_project_config
 
-        config, _config_path, _config_hash = load_config(str(master_path))
+        try:
+            declaration = find_verified_project_config(master_path)
+            if declaration is None:
+                return []
+            raw_text = read_verified_project_config(master_path, declaration)
+            config = normalize_project_defaults(migrate_config(load_yaml_with_unique_keys(raw_text)))
+        except Exception:
+            return []
         if not isinstance(config, dict):
             return []
         declared_roles = folder_role_map(config)
@@ -178,6 +196,12 @@ class ProjectDiscoveryService:
 
         for child in sorted(master_path.iterdir(), key=lambda path: path.name.lower()):
             if not child.is_dir():
+                continue
+            try:
+                attributes = getattr(child.lstat(), "st_file_attributes", 0)
+            except OSError:
+                continue
+            if child.is_symlink() or bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)):
                 continue
             if child.name in DEFAULT_EXCLUDED_DIRS or child.name in {".git", ".venv"}:
                 continue
@@ -282,20 +306,47 @@ class ProjectDiscoveryService:
         return None
 
     @staticmethod
-    def _read_target_format(config_path: Path) -> str:
-        from .config_parser import load_yaml_with_unique_keys
+    def _read_verified_metadata(project_path: Path, config_path: Path) -> tuple[dict, str]:
+        from .config_parser import (
+            migrate_config,
+            normalize_project_defaults,
+            project_role,
+            project_status,
+            validate_config,
+        )
+        from .config_schema import load_yaml_with_unique_keys
+        from .project_config_reader import read_verified_project_config
 
+        metadata = {
+            "name": project_path.name,
+            "role": "module",
+            "status": "active",
+            "valid": False,
+            "errors": [],
+        }
         try:
-            with config_path.open("r", encoding="utf-8") as f:
-                data = load_yaml_with_unique_keys(f.read()) or {}
-        except Exception:
-            return ""
-        if not isinstance(data, dict):
-            return ""
-        visual_style = data.get("visual_style") or {}
-        if not isinstance(visual_style, dict):
-            return ""
-        return str(visual_style.get("target_format") or "nature").strip().lower()
+            raw_text = read_verified_project_config(project_path, config_path)
+            data = normalize_project_defaults(migrate_config(load_yaml_with_unique_keys(raw_text)))
+        except Exception as exc:
+            metadata["errors"] = [str(exc)]
+            return metadata, ""
+        errors = validate_config(data)
+        project = data.get("project") if isinstance(data, dict) else None
+        project = project if isinstance(project, dict) else {}
+        metadata.update(
+            name=project.get("name") or project_path.name,
+            role=project_role(data),
+            status=project_status(data),
+            valid=not errors,
+            errors=errors,
+        )
+        visual_style = data.get("visual_style") if isinstance(data, dict) else None
+        target_format = (
+            str(visual_style.get("target_format") or "nature").strip().lower()
+            if isinstance(visual_style, dict)
+            else ""
+        )
+        return metadata, target_format
 
 
 def discover_projects_with_status(

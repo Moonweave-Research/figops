@@ -7,17 +7,13 @@ from typing import Literal
 
 from .publication_evidence import load_readiness_manifest
 from .publication_readiness import (
+    RENDER_JOB_REQUIRED_EVIDENCE,
     evaluate_publication_readiness,
     render_readiness_json,
     render_readiness_markdown,
 )
 
 ReadinessOutputFormat = Literal["json", "markdown"]
-RENDER_JOB_REQUIRED_EVIDENCE = (
-    "geometry_diagnostics",
-    "visual_preflight_status",
-    "layout_report",
-)
 _EXIT_CODES = {"needs_review": 0, "needs_revision": 2, "blocked": 1}
 
 

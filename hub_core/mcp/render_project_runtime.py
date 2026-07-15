@@ -14,6 +14,7 @@ from typing import Any
 from hub_core.mcp.render_errors import ProjectRenderExportError, ProjectRenderScriptError
 from hub_core.mcp.render_geometry import SCRIPT_OUTPUT_TAIL_LINES, _geometry_stub, _layout_report_from_geometry
 from hub_core.process_supervisor import supervise_process
+from hub_core.project_paths import resolve_project_input
 from hub_core.provenance_inputs import expand_project_input_files
 from hub_core.redaction import redact_text
 
@@ -125,9 +126,14 @@ class McpProjectRuntimeMixin:
             )
         except ValueError as exc:
             raise ProjectRenderExportError(str(exc)) from exc
-        script_path = snapshot_project_path / script_rel
-        if not script_path.is_file():
-            raise ProjectRenderExportError(f"Selected figure script not found: {script_rel.as_posix()}")
+        try:
+            script_path = resolve_project_input(
+                snapshot_project_path,
+                script_rel.as_posix(),
+                purpose="figures[].script",
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            raise ProjectRenderExportError(str(exc)) from exc
         # job_root is the snapshot parent; the sidecar must land OUTSIDE the snapshot
         # tree so it never enters environment_sha256 (which rglob-hashes the snapshot).
         job_root = snapshot_project_path.parent
@@ -155,8 +161,18 @@ class McpProjectRuntimeMixin:
             if len(output_lines) > SCRIPT_OUTPUT_TAIL_LINES:
                 del output_lines[:-SCRIPT_OUTPUT_TAIL_LINES]
 
+        suffix = script_path.suffix.lower()
+        if suffix == ".py":
+            command = [sys.executable, str(script_path)]
+        elif suffix == ".r":
+            rscript = shutil.which("Rscript")
+            if rscript is None:
+                raise ProjectRenderScriptError("Rscript is unavailable; the .R figure script was not executed.")
+            command = [rscript, str(script_path)]
+        else:
+            raise ProjectRenderScriptError("Configured figure scripts must use .py or .R.")
         completed = supervise_process(
-            [sys.executable, str(script_path)],
+            command,
             cwd=str(snapshot_project_path),
             env=env,
             timeout_seconds=self._project_render_timeout_seconds(),
@@ -297,6 +313,9 @@ class McpProjectRuntimeMixin:
         style_summary: dict[str, Any],
         script_output: list[str] | None = None,
         layout_report: dict[str, Any] | None = None,
+        raw_integrity_status: dict[str, Any] | None = None,
+        canonical_docs_registry: dict[str, Any] | None = None,
+        research_ops_policy: dict[str, Any] | None = None,
     ) -> list[str]:
         script_output = script_output or []
         layout_report = layout_report or _layout_report_from_geometry(
@@ -331,6 +350,9 @@ class McpProjectRuntimeMixin:
             "baseline_comparison": baseline_comparison,
             "manual_review_needed": True,
             "provenance": provenance,
+            "raw_integrity_status": raw_integrity_status or {},
+            "canonical_docs_registry": canonical_docs_registry or {},
+            "research_ops_policy": research_ops_policy or {},
         }
         status_payload = self._render_status_payload(
             job_id=job_id,

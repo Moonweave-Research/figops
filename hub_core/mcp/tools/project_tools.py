@@ -15,6 +15,9 @@ class McpProjectToolsMixin:
     """Project scaffold and normalization MCP tool handlers."""
 
     def scaffold_project(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        guarded = self._authorize_write_tool("figops.scaffold_project", arguments)
+        if guarded is not None:
+            return guarded
         project_name = self._required_string(arguments, "project_name")
         project_root = self._resolve_under_root(arguments.get("project_root"), field_name="project_root")
         target_format = str(arguments.get("target_format") or "nature").strip().lower()
@@ -89,6 +92,9 @@ class McpProjectToolsMixin:
         )
 
     def normalize_project_structure(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        guarded = self._authorize_write_tool("figops.normalize_project_structure", arguments)
+        if guarded is not None:
+            return guarded
         project_path = self._resolve_under_root(arguments.get("project_path"), field_name="project_path")
         dry_run = bool(arguments.get("dry_run", True))
         move_policy = str(arguments.get("move_policy") or "copy").strip().lower()

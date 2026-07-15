@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
+
+from .project_paths import ProjectPathError, normalize_project_relative_path
 
 NormalizeLang = Callable[[object], str]
 
@@ -37,9 +38,19 @@ def validate_visual_outputs(
         if lang != "athena":
             if not isinstance(script, str) or not script.strip():
                 errors.append(f"{section_name}[{i}].script is required.")
+            else:
+                try:
+                    normalize_project_relative_path(script.split("::", 1)[0], purpose=f"{section_name}[{i}].script")
+                except ProjectPathError as exc:
+                    errors.append(str(exc))
 
         if not isinstance(output, str) or not output.strip():
             errors.append(f"{section_name}[{i}].output is required for output verification.")
+        else:
+            try:
+                normalize_project_relative_path(output, purpose=f"{section_name}[{i}].output")
+            except ProjectPathError as exc:
+                errors.append(str(exc))
 
         claim = item.get("claim")
         if claim is not None and (not isinstance(claim, str) or not claim.strip()):
@@ -89,10 +100,7 @@ def validate_visual_outputs(
                         f"{', '.join(unknown_conditions)}."
                     )
 
-        has_traceability_declaration = any(
-            key in item and item.get(key) is not None for key in ("claim", "samples", "conditions")
-        )
-        if require_traceability and has_traceability_declaration:
+        if require_traceability:
             missing = []
             if not isinstance(claim, str) or not claim.strip():
                 missing.append("claim")
@@ -109,12 +117,16 @@ def validate_visual_outputs(
         if inputs is not None and not isinstance(inputs, list):
             errors.append(f"{section_name}[{i}].inputs must be a list.")
         elif isinstance(inputs, list):
-            for inp in inputs:
-                if isinstance(inp, str):
-                    if os.path.isabs(inp):
-                        errors.append(f"{section_name}[{i}].inputs: absolute path '{inp}' is not allowed.")
-                    elif ".." in inp.replace("\\", "/").split("/"):
-                        errors.append(f"{section_name}[{i}].inputs: path traversal '..' in '{inp}' is not allowed.")
+            for input_index, inp in enumerate(inputs, 1):
+                if not isinstance(inp, str) or not inp.strip():
+                    errors.append(
+                        f"{section_name}[{i}].inputs[{input_index}] must be a non-empty project-relative path."
+                    )
+                    continue
+                try:
+                    normalize_project_relative_path(inp, purpose=f"{section_name}[{i}].inputs[{input_index}]")
+                except ProjectPathError as exc:
+                    errors.append(str(exc))
         if "cache" in item and not isinstance(item.get("cache"), bool):
             errors.append(f"{section_name}[{i}].cache must be a boolean.")
         if "theme" in item:

@@ -1,12 +1,10 @@
-"""
-Reusable Graph Hub renderer for Athena bridge plots.
-"""
+"""Reusable Graph Hub renderer for Athena bridge plots."""
 
 from __future__ import annotations
 
 import os
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,6 +12,8 @@ import matplotlib.pyplot as plt
 
 from hub_core.rendering import PLOT_TYPES, render_plot
 from plotting.axis_break import _draw_break_marks
+from plotting.renderers.authored_output import verify_spec_calculation_evidence as _verify_spec_calculation_evidence
+from plotting.renderers.authored_output import write_authored_output_evidence as _write_authored_output_evidence
 from plotting.renderers.axes import apply_axis_limits as _apply_axis_limits  # noqa: F401
 from plotting.renderers.axes import apply_axis_limits_to_visible_axes as _apply_axis_limits_to_visible_axes
 from plotting.renderers.axes import apply_axis_scales as _apply_axis_scales  # noqa: F401
@@ -67,6 +67,7 @@ from plotting.renderers.figure_style import column_width_mm as _column_width_mm
 from plotting.renderers.figure_style import figsize_for_format as _figsize_for_format
 from plotting.renderers.figure_style import marker_tokens as _marker_tokens
 from plotting.renderers.figure_style import scatter_marker_area as _scatter_marker_area
+from plotting.renderers.figure_style import series_style as _series_style
 from plotting.renderers.heatmap import render_heatmap_plot as _render_heatmap_plot  # noqa: F401
 from plotting.renderers.labels import annotate_points as _annotate_points  # noqa: F401
 from plotting.renderers.labels import display_label as _display_label  # noqa: F401
@@ -136,10 +137,7 @@ from plotting.renderers.xy import XYRendererContext
 from plotting.renderers.xy import line_marker_color_kwargs as _line_marker_color_kwargs  # noqa: F401
 from plotting.renderers.xy import marker_color_kwargs as _marker_color_kwargs  # noqa: F401
 from plotting.renderers.xy import render_xy_plot as _render_xy_plot_impl
-from plotting.utils import (
-    apply_density_alpha,
-    auto_panel_tag,
-)
+from plotting.utils import apply_density_alpha, auto_panel_tag, normalize_label_map
 from themes.journal_theme import (
     PUBLICATION_LAYOUT_SPECS_MM,
     apply_journal_theme,
@@ -165,7 +163,6 @@ except Exception:
     )
 
 _PANEL_LABELS = tuple("abcdefghijklmnopqrstuvwxyz")
-
 
 def _deterministic_timestamp() -> str:
     if _reproducible_timestamp is not None:
@@ -239,7 +236,12 @@ class BridgeFigureSpec:
     yerr_column: str = ""
     yerr_cap_width: float = 3.0
     yerr_minus_column: str = ""
-    compress_labels: bool = True
+    compress_labels: bool = False
+    label_map: dict[str, str] | None = None
+    label_transform: str = "raw"
+    compliance_mode: str = "validate"
+    declutter_mode: str = "none"
+    palette: str | tuple[str, ...] | None = None
     legend_layout: str = "auto"
     legend_options: dict | None = None
     axis_limits: dict | None = None
@@ -263,6 +265,7 @@ class BridgeFigureSpec:
     ci_band: bool = False
     fit_options: dict | None = None
     significance_markers: tuple[dict, ...] = ()
+    calculation_evidence: tuple[dict, ...] = field(default=(), init=False, repr=False)
     series_styles: dict[str, dict] | None = None
     guide_curves: tuple[dict, ...] = ()
     fill_between: tuple[dict, ...] = ()
@@ -276,6 +279,8 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
             target_format=spec.target_format,
             font_scale=spec.font_scale,
             profile_name=spec.profile_name,
+            compliance_mode=spec.compliance_mode,
+            palette=spec.palette,
         )
 
         csv_path = Path(spec.csv_path)
@@ -283,6 +288,9 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         points = _load_points(csv_path, spec)
+        _verify_spec_calculation_evidence(spec)
+        normalize_label_map(spec.label_map)
+        _write_authored_output_evidence(points, spec)
         _validate_bar_aggregate(spec)
         _validate_manual_overlays(spec)
         _validate_statistical_overlays(points, spec)
@@ -291,7 +299,7 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
         _normalized_tick_style(spec)
         _normalized_point_label_options(spec)
         _normalized_legend_options(spec)
-        _normalized_annotations(spec.annotations)
+        _normalized_annotations(spec.annotations, calculation_evidence=spec.calculation_evidence)
         fig, ax = plt.subplots(figsize=_figsize_for_format(spec.target_format))
         try:
             if spec.y_break_range is not None:
@@ -320,7 +328,12 @@ def render_bridge_figure(spec: BridgeFigureSpec) -> str:
                 _draw_annotations_on_visible_axes(fig, ax, spec)
                 _apply_layout(fig, ax, spec)
                 _separate_top_legend_title(ax, spec)
-            save_journal_fig(fig, output_path)
+            save_options = {}
+            if spec.compliance_mode != "validate":
+                save_options["compliance_mode"] = spec.compliance_mode
+            if spec.declutter_mode != "none":
+                save_options["declutter_mode"] = spec.declutter_mode
+            save_journal_fig(fig, output_path, **save_options)
         finally:
             plt.close(fig)
     finally:
@@ -418,13 +431,14 @@ def _panel_geometry_mm(panel: BridgeFigureSpec | PanelImageSpec) -> tuple[float,
 def _render_csv_panel(fig, ax, panel: BridgeFigureSpec) -> None:
     """Render a single CSV-based panel into *ax* (multipanel helper)."""
     points = _load_points(Path(panel.csv_path), panel)
+    _verify_spec_calculation_evidence(panel)
     _validate_axis_scales(points, panel)
     _validate_axis_limits(points, panel)
     _normalized_tick_style(panel)
     _normalized_legend_options(panel)
     _validate_manual_overlays(panel)
     _validate_statistical_overlays(points, panel)
-    _normalized_annotations(panel.annotations)
+    _normalized_annotations(panel.annotations, calculation_evidence=panel.calculation_evidence)
     if panel.secondary_y:
         _render_secondary_y_plot(ax, points, panel)
     else:
@@ -446,73 +460,13 @@ def _render_image_panel(ax, panel: PanelImageSpec) -> None:
     _render_image_panel_impl(ax, panel)
 
 
-def _series_style_override(spec: BridgeFigureSpec, series_name: object) -> dict[str, object]:
-    styles = spec.series_styles or {}
-    if not isinstance(styles, dict):
-        return {}
-    style = styles.get(str(series_name))
-    if style is None and series_name == "__single__":
-        style = styles.get("__single__") or styles.get("default")
-    return dict(style) if isinstance(style, dict) else {}
-
-
-def _style_float(sty: dict[str, object], key: str) -> float | None:
-    if key not in sty:
-        return None
-    try:
-        return float(sty[key])
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"series_styles {key} must be numeric") from exc
-
-
-def _series_style(spec: BridgeFigureSpec, series_index: int, series_name: object) -> dict[str, object]:
-    style = dict(get_series_style(series_index))
-    override = _series_style_override(spec, series_name)
-    if "marker" in override:
-        marker = str(override.get("marker") or "").strip()
-        if marker:
-            style["marker"] = marker
-            style["_marker_overridden"] = True
-    if "linestyle" in override:
-        style["linestyle"] = str(override.get("linestyle") or style.get("linestyle") or "-")
-    if "hatch" in override:
-        style["hatch"] = str(override.get("hatch") or "")
-    if "color" in override:
-        color = str(override.get("color") or "").strip()
-        if color:
-            style["color"] = color
-    if "label" in override:
-        label = str(override.get("label") or "").strip()
-        if label:
-            style["label"] = label
-    for numeric_key in ("alpha", "size", "linewidth", "zorder"):
-        if numeric_key in override:
-            style[numeric_key] = _style_float(override, numeric_key)
-    fill = str(override.get("fill") or "").strip().lower()
-    markerfacecolor = override.get("facecolor", override.get("markerfacecolor"))
-    markeredgecolor = override.get("edgecolor", override.get("markeredgecolor"))
-    if markerfacecolor is None and "color" in style and fill not in {"none", "open"}:
-        markerfacecolor = style["color"]
-    if markeredgecolor is None and "color" in style:
-        markeredgecolor = style["color"]
-    if fill in {"none", "open"}:
-        markerfacecolor = "none"
-    elif fill in {"filled", "full"} and markerfacecolor is None:
-        markerfacecolor = None
-    if markerfacecolor is not None:
-        style["markerfacecolor"] = str(markerfacecolor)
-    if markeredgecolor is not None:
-        style["markeredgecolor"] = str(markeredgecolor)
-    return style
-
-
 def _render_xy_plot(ax, points: list[dict], spec: BridgeFigureSpec, *, line: bool, small_panel: bool = False) -> None:
     context = XYRendererContext(
         marker_tokens=_marker_tokens,
         scatter_marker_area=_scatter_marker_area,
         series_style=_series_style,
-        display_label=_display_label,
-        annotate_points=_annotate_points,
+        display_label=_display_label_for_spec(spec),
+        annotate_points=_annotate_points_for_spec(spec),
         apply_legend=_apply_legend,
         apply_marker_axis_margin=_apply_marker_axis_margin,
         apply_axis_limits=_apply_axis_limits,
@@ -615,7 +569,7 @@ def _render_broken_axis_plot(fig, points: list[dict], spec: BridgeFigureSpec) ->
     if not plot_type_entry.capabilities.get("supports_broken_axis"):
         raise ValueError(f"plot_type {plot_type!r} does not support y_break_range")
 
-    ax_top, ax_bot = _make_broken_y_axes(fig, points, spec.y_break_range)
+    ax_top, ax_bot = _make_broken_y_axes(fig, points, spec.y_break_range, spec)
     _draw_grouped_broken_xy(ax_top, ax_bot, points, spec, line=plot_type != "scatter")
     _draw_overlay_baselines(ax_top, spec.overlay_baselines)
     ax_bot.set_xlabel(spec.x_axis_label or spec.x_column)
@@ -625,27 +579,76 @@ def _render_broken_axis_plot(fig, points: list[dict], spec: BridgeFigureSpec) ->
     _separate_top_legend_title(ax_top, spec)
 
 
-def _broken_axis_context() -> BrokenAxisRendererContext:
+def _display_label_for_spec(spec: BridgeFigureSpec):
+    def _display(value, *, compress_labels=False):
+        return _display_label(
+            value,
+            compress_labels=bool(compress_labels),
+            label_map=spec.label_map,
+            label_transform=spec.label_transform,
+        )
+
+    return _display
+
+
+def _annotate_points_for_spec(spec: BridgeFigureSpec):
+    def _annotate(ax, xs, ys, labels, *, compress_labels, point_label_options=None, points=None):
+        return _annotate_points(
+            ax,
+            xs,
+            ys,
+            labels,
+            compress_labels=bool(compress_labels),
+            label_map=spec.label_map,
+            label_transform=spec.label_transform,
+            point_label_options=point_label_options,
+            points=points,
+        )
+
+    return _annotate
+
+
+def _draw_point_label_for_spec(spec: BridgeFigureSpec):
+    def _draw(ax, item, *, options, display_index, compress_labels):
+        return _draw_point_label(
+            ax,
+            item,
+            options=options,
+            display_index=display_index,
+            compress_labels=bool(compress_labels),
+            label_map=spec.label_map,
+            label_transform=spec.label_transform,
+        )
+
+    return _draw
+
+
+def _broken_axis_context(spec: BridgeFigureSpec) -> BrokenAxisRendererContext:
     return BrokenAxisRendererContext(
         draw_break_marks=_draw_break_marks,
         marker_tokens=_marker_tokens,
         scatter_marker_area=_scatter_marker_area,
         series_style=_series_style,
-        display_label=_display_label,
+        display_label=_display_label_for_spec(spec),
         normalized_point_label_options=_normalized_point_label_options,
         point_label_candidates=_point_label_candidates,
-        draw_point_label=_draw_point_label,
+        draw_point_label=_draw_point_label_for_spec(spec),
         record_point_label_skips=_record_point_label_skips,
         apply_legend=_apply_legend,
     )
 
 
-def _make_broken_y_axes(fig, points: list[dict], break_range: tuple[float, float] | None):
-    return _make_broken_y_axes_impl(fig, points, break_range, context=_broken_axis_context())
+def _make_broken_y_axes(
+    fig,
+    points: list[dict],
+    break_range: tuple[float, float] | None,
+    spec: BridgeFigureSpec,
+):
+    return _make_broken_y_axes_impl(fig, points, break_range, context=_broken_axis_context(spec))
 
 
 def _draw_grouped_broken_xy(ax_top, ax_bot, points: list[dict], spec: BridgeFigureSpec, *, line: bool) -> None:
-    _draw_grouped_broken_xy_impl(ax_top, ax_bot, points, spec, line=line, context=_broken_axis_context())
+    _draw_grouped_broken_xy_impl(ax_top, ax_bot, points, spec, line=line, context=_broken_axis_context(spec))
 
 
 def _draw_broken_xy_series(
@@ -668,25 +671,25 @@ def _draw_broken_xy_series(
         label=label,
         spec=spec,
         line=line,
-        context=_broken_axis_context(),
+        context=_broken_axis_context(spec),
     )
 
 
 def _annotate_broken_axis_points(ax_top, ax_bot, series_points: list[dict], spec: BridgeFigureSpec) -> None:
-    _annotate_broken_axis_points_impl(ax_top, ax_bot, series_points, spec, context=_broken_axis_context())
+    _annotate_broken_axis_points_impl(ax_top, ax_bot, series_points, spec, context=_broken_axis_context(spec))
 
 
-def _facet_renderer_context() -> FacetRendererContext:
+def _facet_renderer_context(spec: BridgeFigureSpec) -> FacetRendererContext:
     return FacetRendererContext(
         render_xy_plot=_render_xy_plot,
-        display_label=_display_label,
+        display_label=_display_label_for_spec(spec),
         marker_tokens=_marker_tokens,
         apply_facet_headroom=_apply_facet_headroom,
     )
 
 
 def _render_facet_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
-    _render_facet_plot_impl(ax, points, spec, context=_facet_renderer_context())
+    _render_facet_plot_impl(ax, points, spec, context=_facet_renderer_context(spec))
 
 
 def _resolve_facet_grid(n_facets: int, spec: BridgeFigureSpec) -> tuple[int, int]:
@@ -698,7 +701,7 @@ def _optional_positive_int(value: int | None, name: str) -> int | None:
 
 
 def _expand_shared_facet_limits_for_markers(axes, spec: BridgeFigureSpec) -> None:
-    _expand_shared_facet_limits_impl(axes, spec, context=_facet_renderer_context())
+    _expand_shared_facet_limits_impl(axes, spec, context=_facet_renderer_context(spec))
 
 
 def _group_facet_points(points: list[dict]) -> dict[str, list[dict]]:
@@ -707,9 +710,9 @@ def _group_facet_points(points: list[dict]) -> dict[str, list[dict]]:
 
 def _render_bar_plot(ax, points: list[dict], spec: BridgeFigureSpec) -> None:
     context = BarRendererContext(
-        display_label=_display_label,
+        display_label=_display_label_for_spec(spec),
         series_style=_series_style,
-        annotate_points=_annotate_points,
+        annotate_points=_annotate_points_for_spec(spec),
         apply_legend=_apply_legend,
     )
     _render_bar_plot_impl(ax, points, spec, context=context)
@@ -776,7 +779,6 @@ def _apply_layout(fig, ax, spec: BridgeFigureSpec, *, allow_figure_layout: bool 
     if legend is None:
         fig.tight_layout()
         return
-    # smart 및 기타: tight_layout (pad=0.5로 여백 확보)
     try:
         fig.tight_layout(pad=0.5)
     except Exception:

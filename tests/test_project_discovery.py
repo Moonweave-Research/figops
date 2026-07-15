@@ -17,6 +17,7 @@ project:
 visual_style:
   target_format: {target_format}
 data_contract:
+  require_figure_traceability: false
   csv_checks:
     - path: "results/data/summary.csv"
       required_columns: ["x", "y"]

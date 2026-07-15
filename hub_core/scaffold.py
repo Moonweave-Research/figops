@@ -292,7 +292,7 @@ def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
 
 def scaffold_wizard(hub_path):
     """대화형 위저드를 통해 프로젝트를 생성합니다."""
-    from .config_parser import ALLOWED_TARGET_FORMATS
+    from .config_parser import PUBLIC_TARGET_FORMATS
     from .ui_utils import ui_confirm, ui_panel, ui_print, ui_prompt
     from .utils import get_research_root
 
@@ -315,7 +315,7 @@ def scaffold_wizard(hub_path):
             ui_print("[yellow]Aborted.[/yellow]")
             return None
 
-    allowed_target_formats = sorted(ALLOWED_TARGET_FORMATS)
+    allowed_target_formats = sorted(PUBLIC_TARGET_FORMATS)
     target_format_input = ui_prompt(
         f"Journal Target Format ({', '.join(allowed_target_formats)})",
         default=DEFAULT_WIZARD_TARGET_FORMAT,

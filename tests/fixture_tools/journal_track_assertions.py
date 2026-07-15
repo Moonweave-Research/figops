@@ -120,7 +120,8 @@ def assert_expected_summary_has_schema(summary: JsonObject, expected_track: str,
     layout_report = summary["layout_report"]
     assert isinstance(geometry_diagnostics, dict)
     assert isinstance(layout_report, dict)
-    assert geometry_diagnostics["schema_version"] == "geometry_diagnostics/1"
+    assert geometry_diagnostics["schema_version"] == "geometry_diagnostics/2"
+    assert geometry_diagnostics["required_keys"] == ["schema_version", "measurements", "warnings"]
     assert layout_report["schema_version"] == "layout_report/1"
 
 

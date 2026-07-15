@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from hub_core.mcp.render_geometry_schemas import GEOMETRY_METRIC_NAMES
+from hub_core.mcp.render_geometry_schemas import LEGACY_GEOMETRY_METRIC_NAMES as GEOMETRY_METRIC_NAMES
 from scripts.check_geometry_rubric_map import (
     CheckPassed,
     RubricMapPaths,

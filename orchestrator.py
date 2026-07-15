@@ -69,7 +69,6 @@ from hub_core.redaction import redact_text
 from hub_core.research_ops_enforcement import validate_research_ops_contract
 
 logger = get_logger(__name__)
-INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
 
 
 def _refresh_visual_output_signatures(project_dir: str, config: dict, build_state: dict) -> None:
@@ -93,7 +92,7 @@ def _refresh_visual_output_signatures(project_dir: str, config: dict, build_stat
 
 
 def _apply_cli_preset(config: dict, preset_name: str) -> None:
-    from hub_core.config_parser import ALLOWED_TARGET_FORMATS
+    from hub_core.config_parser import PUBLIC_TARGET_FORMATS
 
     presets = config.get("presets") or {}
     preset_key = preset_name.lower()
@@ -105,7 +104,7 @@ def _apply_cli_preset(config: dict, preset_name: str) -> None:
             if key in allowed_keys:
                 visual[key] = val
         logger.info("   --preset '%s' applied: %s", preset_name, presets[matching_name])
-    elif preset_key in ALLOWED_TARGET_FORMATS:
+    elif preset_key in PUBLIC_TARGET_FORMATS:
         config.setdefault("visual_style", {})["target_format"] = preset_key
         logger.info("   --preset → target_format='%s'", preset_key)
     else:
@@ -280,7 +279,7 @@ def main():
         help=(
             "Override visual_style for this run without editing project_config.yaml.\n"
             "Accepts a named preset from the config's presets: section, or a target_format\n"
-            f"(nature, {INTERNAL_STYLE_TARGET_FORMAT}, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
+            "(nature, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
         ),
     )
     parser.add_argument(
@@ -859,7 +858,8 @@ def main():
                 success = validate_data_contract_preflight(
                     project_path,
                     config,
-                    require_existing=args.step == "plot",
+                    # Full contract validation below performs the single guarded prefetch/read.
+                    require_existing=False,
                     prefetcher=adapters.prefetcher,
                 )
                 if not success:

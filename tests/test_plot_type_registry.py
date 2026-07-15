@@ -168,9 +168,10 @@ def test_describe_surfaces_bar_aggregate_arg():
     assert described["bar"]["capabilities"]["supports_replicate_aggregation"] is True
     assert described["bar"]["capabilities"]["supports_category_order"] is True
     assert described["bar"]["capabilities"]["supports_single_series_error_column"] is True
-    assert described["bar"]["worked_example"]["arguments"]["aggregate"] == "mean"
-    assert described["bar"]["worked_example"]["arguments"]["bar_error_column"] == "sem"
-    assert described["bar"]["worked_example"]["arguments"]["category_order"] == ["day 0", "day 7", "day 14", "day 28"]
+    example = described["bar"]["worked_example"]["arguments"]
+    assert "aggregate" not in example
+    assert "bar_error_column" not in example
+    assert "category_order" not in example
 
 
 def test_render_csv_schema_accepts_bar_aggregate_arg():
@@ -413,7 +414,11 @@ def test_render_csv_multipanel_schema_accepts_panel_specs():
     assert panel_properties["fit_line"] == {"type": "boolean"}
     assert panel_properties["ci_band"] == {"type": "boolean"}
     assert panel_properties["fit_options"]["properties"]["model"]["enum"] == ["linear"]
-    assert panel_properties["significance_markers"] == {"type": "array", "items": {"type": "object"}}
+    assert panel_properties["significance_markers"]["items"]["required"][-3:] == [
+        "calculation_evidence_id",
+        "analysis_artifact_sha256",
+        "test_metadata",
+    ]
     assert panel_properties["secondary_y"]["properties"]["scale"]["enum"] == ["linear", "log"]
     panel_annotation_branches = panel_properties["annotations"]["items"]["anyOf"]
     assert panel_annotation_branches[3]["properties"]["hspan"]["required"] == ["ymin", "ymax"]
@@ -506,10 +511,10 @@ def test_describe_surfaces_statistical_overlay_args_for_xy_plot_types():
         assert props["fit_options"]["properties"]["model"]["enum"] == ["linear"]
         assert props["significance_markers"] == {"type": "array"}
         example_args = described[name]["worked_example"]["arguments"]
-        assert example_args["fit_line"] is True
-        assert example_args["ci_band"] is True
-        assert example_args["fit_options"] == {"model": "linear", "label": "Linear fit"}
-        assert example_args["significance_markers"][0]["label"] == "p<0.05"
+        assert "fit_line" not in example_args
+        assert "ci_band" not in example_args
+        assert "fit_options" not in example_args
+        assert "significance_markers" not in example_args
 
 
 def test_render_csv_schema_accepts_statistical_overlay_args():
@@ -524,7 +529,11 @@ def test_render_csv_schema_accepts_statistical_overlay_args():
         "inputSchema"
     ]["properties"]["panels"]["items"]["properties"]
     assert panel_properties["fit_options"] == properties["fit_options"]
-    assert properties["significance_markers"] == {"type": "array", "items": {"type": "object"}}
+    assert properties["significance_markers"]["items"]["required"][-3:] == [
+        "calculation_evidence_id",
+        "analysis_artifact_sha256",
+        "test_metadata",
+    ]
 
     with tempfile.TemporaryDirectory(prefix="graphhub_stat_overlay_schema_") as tmpdir:
         data_path = Path(tmpdir) / "overlay.csv"
@@ -544,4 +553,8 @@ def test_render_csv_schema_accepts_statistical_overlay_args():
             definitions,
         )
 
-    assert errors == []
+    assert errors == [
+        "Missing required tool argument(s): significance_markers[0].calculation_evidence_id",
+        "Missing required tool argument(s): significance_markers[0].analysis_artifact_sha256",
+        "Missing required tool argument(s): significance_markers[0].test_metadata",
+    ]

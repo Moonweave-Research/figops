@@ -119,7 +119,7 @@ class FigureTraceabilityValidationTest(unittest.TestCase):
 
         self.assertEqual(validate_config(config), [])
 
-    def test_module_default_does_not_require_undeclared_traceability_chain(self):
+    def test_module_default_requires_complete_traceability_chain(self):
         config = _minimal_config()
         config["sample_registry"] = _sample_registry()
         config["experimental_conditions"] = _experimental_conditions()
@@ -131,7 +131,10 @@ class FigureTraceabilityValidationTest(unittest.TestCase):
             }
         ]
 
-        self.assertEqual(validate_config(config), [])
+        errors = validate_config(config)
+        self.assertTrue(any("missing claim" in error for error in errors))
+        self.assertTrue(any("missing samples" in error for error in errors))
+        self.assertTrue(any("missing conditions" in error for error in errors))
 
     def test_master_traceability_is_not_enforced_by_module_default(self):
         config = _minimal_config()
@@ -153,8 +156,9 @@ class FigureTraceabilityValidationTest(unittest.TestCase):
         self.assertTrue(any("project.role 'master' must not define figures" in error for error in errors))
         self.assertFalse(any("missing samples" in error or "missing conditions" in error for error in errors))
 
-    def test_figure_without_traceability_fields_is_unchanged_by_default(self):
+    def test_explicit_opt_out_allows_figure_without_traceability_fields(self):
         config = _minimal_config()
+        config["data_contract"] = {"require_figure_traceability": False}
         config["figures"] = [
             {
                 "id": "fig3c",

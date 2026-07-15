@@ -10,7 +10,7 @@ import yaml
 from hub_core.canonical_docs import canonical_docs_registry
 from hub_core.config_parser import (
     ALLOWED_OUTPUT_FORMATS,
-    ALLOWED_TARGET_FORMATS,
+    PUBLIC_TARGET_FORMATS,
     ConfigMigrationError,
     find_config_path,
     folder_role_map,
@@ -23,13 +23,29 @@ from hub_core.config_parser import (
     validate_config,
 )
 from hub_core.config_placeholders import placeholder_report
-from hub_core.mcp.schemas import describe_figops_surface
+from hub_core.domain_analysis import list_domain_helper_descriptions
+from hub_core.mcp.schemas import (
+    describe_figops_surface,
+    list_plot_type_descriptions,
+    list_semantic_check_descriptions,
+)
+from hub_core.mcp.surface_profiles import AI_NATIVE_PROFILE, compact_surface_description
 from hub_core.naming_lint import empty_naming_lint, lint_project_naming
+from hub_core.project_config_reader import (
+    ProjectConfigReadError,
+    find_verified_project_config,
+    read_verified_project_config,
+)
 from hub_core.project_discovery import ProjectDiscoveryService
+from hub_core.project_paths import ProjectPathError
 from hub_core.raw_integrity import raw_integrity_config, verify_raw_integrity
 from hub_core.research_ops_enforcement import validate_research_ops_contract
 from themes.style_packs import list_style_packs
-from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
+from themes.style_profiles import (
+    DEFAULT_PROFILE,
+    PUBLIC_PROFILE_ALIASES,
+    list_public_profiles,
+)
 
 
 class McpReadToolsMixin:
@@ -64,9 +80,11 @@ class McpReadToolsMixin:
             version=self._read_version(),
             python_executable=sys.executable,
             runtime_root=str(self.runtime_root),
-            style_format_count=len(ALLOWED_TARGET_FORMATS),
+            style_format_count=len(PUBLIC_TARGET_FORMATS),
             discovery_status=discovery,
             write_tools_enabled=self.write_tools_enabled,
+            surface_profile=self.surface_profile,
+            exposed_tool_count=len(self.list_tool_definitions()),
         )
 
     def list_styles(self, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -74,11 +92,14 @@ class McpReadToolsMixin:
         return self._envelope(
             "figops.list_styles",
             arguments,
-            summary=f"{len(ALLOWED_TARGET_FORMATS)} target formats and {len(list_profiles())} profiles available.",
-            target_formats=sorted(ALLOWED_TARGET_FORMATS),
+            summary=(
+                f"{len(PUBLIC_TARGET_FORMATS)} target formats and "
+                f"{len(list_public_profiles())} profiles available."
+            ),
+            target_formats=sorted(PUBLIC_TARGET_FORMATS),
             output_formats=sorted(ALLOWED_OUTPUT_FORMATS),
-            profiles=list_profiles(),
-            profile_aliases=dict(sorted(PROFILE_ALIASES.items())),
+            profiles=list_public_profiles(),
+            profile_aliases=dict(sorted(PUBLIC_PROFILE_ALIASES.items())),
             style_packs=list_style_packs(),
             default_target_format="nature",
             default_profile=DEFAULT_PROFILE,
@@ -86,6 +107,23 @@ class McpReadToolsMixin:
 
     def describe(self, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = arguments or {}
+        if self.surface_profile == AI_NATIVE_PROFILE:
+            surface = compact_surface_description(
+                arguments=arguments,
+                profile=self.surface_profile,
+                write_tools_enabled=self.write_tools_enabled,
+                tool_definitions=self.list_tool_definitions(),
+                plot_types=list_plot_type_descriptions(),
+                semantic_checks=list_semantic_check_descriptions(),
+                domain_helpers=list_domain_helper_descriptions(),
+            )
+            kind = arguments.get("kind")
+            summary = (
+                f"Described filtered {kind} detail."
+                if kind
+                else "Summarized FigOps capabilities; request kind and optional name for detail."
+            )
+            return self._envelope("figops.describe", arguments, summary=summary, **surface)
         surface = describe_figops_surface()
         return self._envelope(
             "figops.describe",
@@ -301,8 +339,11 @@ class McpReadToolsMixin:
                 target_format="",
             )
             return base
+        config_root = Path(project.config_path).parent
+        if str(project.config).replace("\\", "/") == "scripts/project_config.yaml":
+            config_root = config_root.parent
         config_data = self._load_project_config(
-            Path(project.config_path).parent,
+            config_root,
             config_path=Path(project.config_path),
             allow_invalid=True,
         )
@@ -468,10 +509,14 @@ class McpReadToolsMixin:
         if not config_path.exists():
             return {"checked": False, "valid": None, "errors": []}
         try:
-            config = load_yaml_with_unique_keys(config_path.read_text(encoding="utf-8"))
+            project_root = config_path.parent
+            if config_path.parent.name == "scripts" and config_path.name == "project_config.yaml":
+                project_root = config_path.parent.parent
+            raw_text = read_verified_project_config(project_root, config_path)
+            config = load_yaml_with_unique_keys(raw_text)
             config = migrate_config(config)
             config = normalize_project_defaults(config)
-        except (OSError, yaml.YAMLError) as exc:
+        except (OSError, ProjectConfigReadError, yaml.YAMLError) as exc:
             return {"checked": True, "valid": False, "errors": [str(exc)]}
         except ConfigMigrationError as exc:
             return {"checked": True, "valid": False, "errors": [str(exc)]}
@@ -485,17 +530,27 @@ class McpReadToolsMixin:
         config_path: Path | None = None,
         allow_invalid: bool = False,
     ) -> dict[str, Any]:
-        discovered_config_path = find_config_path(str(project_path))
-        config_path = config_path or (Path(discovered_config_path) if discovered_config_path else None)
+        try:
+            discovered_declaration = find_verified_project_config(project_path)
+        except (OSError, ProjectConfigReadError, ProjectPathError) as exc:
+            return {
+                "config": None,
+                "config_path": None,
+                "config_relpath": "",
+                "errors": [str(exc)],
+            }
+        config_path = config_path or (
+            project_path.joinpath(*discovered_declaration.split("/")) if discovered_declaration else None
+        )
         if config_path is None:
             return {
                 "config": None,
                 "config_path": None,
                 "config_relpath": "",
-                "errors": [f"project_config.yaml not found in {project_path}"],
+                "errors": ["project_config.yaml was not found in the selected project."],
             }
         try:
-            raw_text = config_path.read_text(encoding="utf-8")
+            raw_text = read_verified_project_config(project_path, config_path)
             config = load_yaml_with_unique_keys(raw_text)
             config = migrate_config(config)
             config = normalize_project_defaults(config)
@@ -513,10 +568,10 @@ class McpReadToolsMixin:
                 "config_relpath": os.path.relpath(config_path, project_path),
                 "errors": [str(exc)],
             }
-        except OSError as exc:
+        except (OSError, ProjectConfigReadError) as exc:
             return {
                 "config": None,
-                "config_path": str(config_path),
+                "config_path": None,
                 "config_relpath": "",
                 "errors": [f"Failed to read config: {exc}"],
             }
