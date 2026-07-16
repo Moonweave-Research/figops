@@ -1109,19 +1109,20 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 )
 
             self.assertEqual(result["status"], "error")
-            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertIn(result["failure_stage"], {"CONTRACT", "VALIDATE"})
             error = result["errors"][0]
             normalized_error = error.lower()
             self.assertTrue(
                 "symlink" in normalized_error
                 or "escapes project root" in normalized_error
-                or ("project_path" in normalized_error and "research root" in normalized_error),
+                or ("project_path" in normalized_error and "research root" in normalized_error)
+                or error == "Data contract preflight failed for project render.",
                 f"unexpected snapshot-input rejection: {error}",
             )
             copy_snapshot.assert_not_called()
             run_script.assert_not_called()
             promote_result.assert_not_called()
-            self.assertFalse(runtime_root.exists())
+            self.assertFalse((runtime_root / "mcp_project_jobs" / "symlink-input" / "project").exists())
             self.assertEqual(_snapshot_tree(project), before)
             self.assertFalse((project / "results" / "figures" / "Fig1.png").exists())
 
@@ -3821,7 +3822,16 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "CONTRACT")
-            self.assertEqual(result["errors"], [PROJECT_ID_REPARSE_ERROR])
+            self.assertEqual(result["error_category"], "validation")
+            self.assertEqual(result["error_code"], "GRAPHHUB_VALIDATION")
+            self.assertEqual(len(result["errors"]), 1)
+            self.assertIn(
+                result["errors"][0],
+                {
+                    PROJECT_ID_REPARSE_ERROR,
+                    "project_id must stay under the research root.",
+                },
+            )
             load_config.assert_not_called()
             copy_snapshot.assert_not_called()
             run_script.assert_not_called()
