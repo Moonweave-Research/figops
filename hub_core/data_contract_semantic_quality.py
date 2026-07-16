@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from .runtime_paths import resolve_diagnostics_dir
+
 
 def check_statistical_quality(
     df: Any,
@@ -59,8 +61,7 @@ def check_statistical_quality(
 
     # Preserve historical best-effort diagnostics behavior.
     try:
-        project_path = Path(project_dir).expanduser().resolve()
-        diag_dir = project_path / "results" / "diagnostics"
+        diag_dir = Path(resolve_diagnostics_dir(project_dir)) / "data_contract"
         diag_dir.mkdir(parents=True, exist_ok=True)
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         ts_iso = datetime.now(timezone.utc).isoformat()

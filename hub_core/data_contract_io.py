@@ -12,6 +12,7 @@ from .project_paths import (
     open_verified_project_input,
     revalidate_project_input,
 )
+from .runtime_paths import resolve_temp_dir
 
 logger = get_logger(__name__)
 
@@ -96,7 +97,9 @@ def _read_hdf_path(data_path, pd, hdf_key: str):
 def _read_hdf_verified_stream(data_stream, pd, hdf_key: str):
     """Materialize an already-verified descriptor without reopening its source path."""
 
-    with tempfile.TemporaryDirectory(prefix="figops_verified_hdf_") as temp_dir:
+    with tempfile.TemporaryDirectory(
+        prefix="figops_verified_hdf_", dir=resolve_temp_dir("materialized_hdf")
+    ) as temp_dir:
         os.chmod(temp_dir, 0o700)
         materialized = Path(temp_dir) / "input.h5"
         data_stream.seek(0)

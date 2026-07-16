@@ -6,6 +6,7 @@ from typing import Any
 
 from hub_core.artifact_audit import SUPPORTED_POLICY_PACKS
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, PUBLIC_TARGET_FORMATS
+from hub_core.journal_specs import list_supported_preflight_targets
 from hub_core.mcp.tool_schema_common import ToolDefinition, object_schema
 
 
@@ -41,10 +42,22 @@ def build_v2_tool_definitions(
     return [
         ToolDefinition(
             "figops.inspect_data",
-            "Inspect bounded facts for an allowed CSV or TSV without returning rows by default.",
+            (
+                "Inspect an allowed CSV or TSV under declared sensitivity policy; undeclared, unspecified, "
+                "and restricted data return metadata only."
+            ),
             object_schema(
                 {
                     "data_path": {"type": "string", "minLength": 1, "maxLength": 4096},
+                    "external_raw_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "description": (
+                            "Required for value samples from a declared external_raw source; "
+                            "must match the descriptor id bound to its launcher-approved root."
+                        ),
+                    },
                     "columns": {
                         "type": "array",
                         "items": {"type": "string", "minLength": 1, "maxLength": 512},
@@ -59,10 +72,37 @@ def build_v2_tool_definitions(
                 {
                     "schema_version": {"type": "string"},
                     "status": {"type": "string", "enum": ["available", "unavailable"]},
+                    "status_code": {"type": "string"},
                     "availability": {"type": "object"},
+                    "access_policy": {
+                        "type": "object",
+                        "properties": {
+                            "classification": {
+                                "type": "string",
+                                "enum": ["public", "internal", "restricted", "unspecified", "unknown"],
+                            },
+                            "declaration_source": {"type": "string"},
+                            "mode": {"type": "string", "enum": ["metadata_only", "bounded_values"]},
+                            "samples_requested": {"type": "boolean"},
+                            "samples_allowed": {"type": "boolean"},
+                            "reason_code": {"type": "string"},
+                            "external_raw_identity": {"type": "object"},
+                            "materialized_sha256_verified": {"type": "boolean"},
+                        },
+                        "required": [
+                            "classification",
+                            "declaration_source",
+                            "mode",
+                            "samples_requested",
+                            "samples_allowed",
+                            "reason_code",
+                        ],
+                        "additionalProperties": False,
+                    },
                     "source": {"type": "object"},
                     "scan": {"type": ["object", "null"]},
                     "columns": {"type": "array", "items": {"type": "object"}},
+                    "sample_columns": {"type": "array", "items": {"type": "string"}},
                     "samples": {"type": "array", "items": {"type": "array"}},
                     "truncation": {"type": "object"},
                     "warnings": {"type": "array", "items": {"type": "object"}},
@@ -91,7 +131,13 @@ def build_v2_tool_definitions(
                     "style_policy": {
                         "type": "string",
                         "enum": sorted(PUBLIC_TARGET_FORMATS),
-                        "default": "nature",
+                        "default": "neutral",
+                    },
+                    "validation_target": {
+                        "type": "string",
+                        "enum": sorted(
+                            set(list_supported_preflight_targets()) & PUBLIC_TARGET_FORMATS
+                        ),
                     },
                     "output_format": {
                         "type": "string",
@@ -115,6 +161,17 @@ def build_v2_tool_definitions(
                         "project_path": project_path_arg,
                         "figure_id": {"type": "string", "minLength": 1, "maxLength": 512},
                         "figure_output": {"type": "string", "minLength": 1, "maxLength": 4096},
+                        "style_policy": {
+                            "type": "string",
+                            "enum": sorted(PUBLIC_TARGET_FORMATS),
+                            "default": "neutral",
+                        },
+                        "validation_target": {
+                            "type": "string",
+                            "enum": sorted(
+                                set(list_supported_preflight_targets()) & PUBLIC_TARGET_FORMATS
+                            ),
+                        },
                         "job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,80}$", "maxLength": 80},
                         "overwrite": {"type": "boolean", "default": False},
                     }

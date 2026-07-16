@@ -123,10 +123,11 @@ def validate_visual_outputs(
                         f"{section_name}[{i}].inputs[{input_index}] must be a non-empty project-relative path."
                     )
                     continue
-                try:
-                    normalize_project_relative_path(inp, purpose=f"{section_name}[{i}].inputs[{input_index}]")
-                except ProjectPathError as exc:
-                    errors.append(str(exc))
+                if not inp.startswith("external_raw:"):
+                    try:
+                        normalize_project_relative_path(inp, purpose=f"{section_name}[{i}].inputs[{input_index}]")
+                    except ProjectPathError as exc:
+                        errors.append(str(exc))
         if "cache" in item and not isinstance(item.get("cache"), bool):
             errors.append(f"{section_name}[{i}].cache must be a boolean.")
         if "theme" in item:

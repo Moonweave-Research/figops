@@ -42,7 +42,7 @@ from plotting.bridge_renderer import (
 from themes.journal_theme import apply_journal_theme, save_journal_fig
 
 _CLAIM_EVIDENCE = {
-    "schema_version": "figops_calculation_evidence/1",
+    "schema_version": "figops_calculation_artifact/1",
     "evidence_id": "calc:linear_fit:stress:0",
     "producer": "test-analysis",
     "assertion": {"metric": "p_value", "operator": "lt", "threshold": 0.01, "display_label": "p<0.01"},
@@ -53,9 +53,52 @@ _CLAIM_EVIDENCE = {
 
 
 def _claim_artifact(root: Path) -> tuple[Path, str]:
-    path = root / "calculation-evidence.json"
-    path.write_text(json.dumps(_CLAIM_EVIDENCE, sort_keys=True), encoding="utf-8")
-    return path, _sha256(path)
+    script = root / "hub_scripts" / "analysis" / "calculate.py"
+    config = root / "project_config.yaml"
+    source = root / "results" / "data" / "source" / "observations.csv"
+    calculation = root / "results" / "evidence" / "calculation-result.json"
+    for artifact in (script, config, source, calculation):
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("# deterministic fixture calculation\n", encoding="utf-8")
+    config.write_text("project: {name: bridge-fixture}\n", encoding="utf-8")
+    source.write_text("strain,stress\n1,2\n4,5\n", encoding="utf-8")
+    calculation.write_text(json.dumps(_CLAIM_EVIDENCE, sort_keys=True), encoding="utf-8")
+
+    def descriptor(path: Path, artifact_id: str, role: str) -> dict[str, str]:
+        return {
+            "artifact_id": artifact_id,
+            "role": role,
+            "path": path.relative_to(root).as_posix(),
+            "sha256": _sha256(path),
+        }
+
+    calculation_descriptor = descriptor(calculation, "calc:linear-fit:stress", "result.evidence")
+    evidence = root / "calculation-evidence.json"
+    evidence.write_text(
+        json.dumps(
+            {
+                "schema_version": "figops_calculation_evidence/2",
+                "figops_version": "0.20.0",
+                "run_id": "bridge-renderer-fixture",
+                "timestamp": "2026-07-15T00:00:00Z",
+                "git_sha256": "1" * 64,
+                "environment_lock_sha256": "2" * 64,
+                "claim_ids": [_CLAIM_EVIDENCE["evidence_id"]],
+                "calculation_artifact": calculation_descriptor,
+                "producer": {
+                    "script": descriptor(script, "script:calculate", "script.analysis"),
+                    "config": descriptor(config, "config:project", "config"),
+                },
+                "input_artifacts": [
+                    descriptor(source, "source:observations", "result.source_data")
+                ],
+                "output_artifacts": [calculation_descriptor],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return evidence, _sha256(calculation)
 
 
 def _linked_marker(*, artifact_sha256: str, **coordinates):

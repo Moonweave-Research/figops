@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -72,6 +73,22 @@ def test_raster_blob_is_bounded_and_memory_limited(tmp_path: Path) -> None:
     assert blob.encoded_byte_size is not None and blob.encoded_byte_size <= previews.MAX_PREVIEW_BASE64_BYTES
     assert blob.width is not None and blob.width <= previews.MAX_PREVIEW_EDGE
     assert blob.height is not None and blob.height <= previews.MAX_PREVIEW_EDGE
+
+
+def test_preview_worker_temp_is_scoped_below_runtime(monkeypatch, tmp_path: Path) -> None:
+    runtime, _, _ = _job(tmp_path, _image_bytes(tmp_path))
+    observed: list[Path] = []
+    real_temporary_directory = tempfile.TemporaryDirectory
+
+    def scoped_temp(*args, **kwargs):
+        observed.append(Path(kwargs["dir"]).resolve())
+        return real_temporary_directory(*args, **kwargs)
+
+    monkeypatch.setattr(previews.tempfile, "TemporaryDirectory", scoped_temp)
+    blob = previews.read_job_preview_blob(runtime, "preview-job", logical_role="primary", artifact_index=0)
+
+    assert blob.available
+    assert observed == [(runtime / "previews" / "temp").resolve()]
 
 
 def test_preview_read_does_not_modify_primary_artifact(tmp_path: Path) -> None:

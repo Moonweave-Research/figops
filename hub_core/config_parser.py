@@ -6,7 +6,9 @@ import yaml
 
 from . import config_schema as _config_schema
 from . import config_visual_style as _config_visual_style
+from .config_adapter_validation import validate_named_adapter as _validate_named_adapter
 from .config_assemblies import validate_assemblies as _validate_assemblies_impl
+from .config_language_policy import ALLOWED_LANGUAGE_POLICY_MODES as ALLOWED_LANGUAGE_POLICY_MODES
 from .config_language_policy import get_language_policy as _get_language_policy_impl
 from .config_language_policy import normalize_lang as normalize_lang
 from .config_project_registry import load_registry_operational_states as _load_registry_operational_states
@@ -57,6 +59,7 @@ from .project_roles import normalize_project_defaults as normalize_project_defau
 from .project_roles import project_modules as project_modules
 from .project_roles import project_role as project_role
 from .project_roles import project_status as project_status
+from .project_structure_contract import validate_project_structure_config as _validate_project_structure_config
 
 CURRENT_CONFIG_SCHEMA_VERSION = _config_schema.CURRENT_CONFIG_SCHEMA_VERSION
 SUPPORTED_CONFIG_SCHEMA_VERSIONS = _config_schema.SUPPORTED_CONFIG_SCHEMA_VERSIONS
@@ -69,6 +72,7 @@ load_yaml_with_unique_keys = _config_schema.load_yaml_with_unique_keys
 _schema_version_key = _config_schema.schema_version_key
 _schema_version = _config_schema.schema_version
 _migrate_0_9_to_1_0 = _config_schema.migrate_0_9_to_1_0
+_migrate_1_0_to_1_1 = _config_schema.migrate_1_0_to_1_1
 _CONFIG_MIGRATIONS = _config_schema.CONFIG_MIGRATIONS
 migrate_config = _config_schema.migrate_config
 
@@ -90,24 +94,6 @@ def _validate_raw_integrity_config(errors: list[str], raw_integrity: object) -> 
     from .config_research_metadata import validate_raw_integrity_config
 
     return validate_raw_integrity_config(errors, raw_integrity, allowed_modes=ALLOWED_RAW_INTEGRITY_MODES)
-
-
-def _validate_named_adapter(
-    errors: list[str],
-    adapters: dict,
-    key: str,
-    allowed_values: set[str],
-) -> None:
-    if key not in adapters:
-        return
-    raw_value = adapters.get(key)
-    if not isinstance(raw_value, str) or not raw_value.strip():
-        errors.append(f"environment.adapters.{key} must be a non-empty string.")
-        return
-    value = raw_value.strip().lower()
-    if value not in allowed_values:
-        allowed = ", ".join(sorted(allowed_values))
-        errors.append(f"environment.adapters.{key} '{raw_value}' is invalid. Allowed: {allowed}.")
 
 
 def get_language_policy(config):
@@ -195,13 +181,14 @@ def _validate_assemblies(errors: list[str], assemblies) -> None:
     )
 
 
-def validate_config(config):
+def validate_config(config, *, project_root=None):
     errors = []
 
     if not isinstance(config, dict):
         return ["Config root must be a YAML mapping/object."]
 
     _validate_top_level_key_near_misses(errors, config)
+    errors.extend(_validate_project_structure_config(config, project_root=project_root))
 
     schema_version = config.get("schema_version")
     if schema_version is not None:
@@ -331,6 +318,11 @@ def validate_config(config):
             errors.append("language_policy.plot_lang must be a string.")
         if "allow_nonstandard" in language_policy and not isinstance(language_policy.get("allow_nonstandard"), bool):
             errors.append("language_policy.allow_nonstandard must be a boolean.")
+        if "mode" in language_policy:
+            raw_mode = language_policy.get("mode")
+            if not isinstance(raw_mode, str) or raw_mode.strip().lower() not in ALLOWED_LANGUAGE_POLICY_MODES:
+                allowed = ", ".join(sorted(ALLOWED_LANGUAGE_POLICY_MODES))
+                errors.append(f"language_policy.mode must be one of: {allowed}.")
 
     norm_policy = get_language_policy(config)
     if not norm_policy["allow_nonstandard"]:
@@ -399,11 +391,12 @@ def validate_config(config):
                                 "project-relative path."
                             )
                             continue
-                        _validate_relative_path_value(
-                            errors,
-                            f"pipeline.analysis[{i}].inputs[{input_index}]",
-                            inp,
-                        )
+                        if not inp.startswith("external_raw:"):
+                            _validate_relative_path_value(
+                                errors,
+                                f"pipeline.analysis[{i}].inputs[{input_index}]",
+                                inp,
+                            )
                 outputs = step.get("outputs", None)
                 if outputs is not None and not isinstance(outputs, list):
                     errors.append(f"pipeline.analysis[{i}].outputs must be a list.")
@@ -674,7 +667,7 @@ def load_config(project_dir):
         return None, None, None
     config = normalize_project_defaults(config)
 
-    errors = validate_config(config)
+    errors = validate_config(config, project_root=project_dir)
     if errors:
         logger.error("❌ Error: Invalid config schema in %s", config_path)
         for err in errors:

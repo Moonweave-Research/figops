@@ -13,7 +13,6 @@ from hub_core.mcp.schemas import (
     LEGACY_TOOL_NAMES,
     TOOL_HANDLER_NAMES,
     TOOL_NAMES,
-    get_tool_handlers,
     list_prompt_definitions,
     list_tool_definitions,
 )
@@ -76,17 +75,22 @@ def _assert_agent_consumability(surface: AgentConsumabilitySurface) -> None:
 
     missing_handler_tools = all_tools - surface.registry.handler_tools
     assert not missing_handler_tools, f"handlers missing registered tools: {sorted(missing_handler_tools)}"
-    missing_server_handlers = all_tools - surface.discovery.server_handler_tools
-    assert not missing_server_handlers, f"server handlers missing registered tools: {sorted(missing_server_handlers)}"
-
     assert surface.registry.definition_tools == canonical_tools, "list_tool_definitions must match canonical tools"
     if canonical_tools == frozenset(TOOL_NAMES):
         compatibility_tools = frozenset(list(TOOL_NAMES)[:14]) | legacy_tools
+        assert surface.discovery.server_handler_tools == compatibility_tools, (
+            "GraphHubMCPServer handlers must match the frozen compatibility profile"
+        )
         assert surface.discovery.server_definition_tools == compatibility_tools, (
             "GraphHubMCPServer must expose the frozen compatibility profile"
         )
         assert surface.discovery.json_rpc_tools == compatibility_tools, (
             "JSON-RPC tools/list must expose the selected compatibility profile"
+        )
+    else:
+        missing_server_handlers = all_tools - surface.discovery.server_handler_tools
+        assert not missing_server_handlers, (
+            f"server handlers missing registered tools: {sorted(missing_server_handlers)}"
         )
 
     committed_reference = surface.docs.tool_reference_text
@@ -217,7 +221,7 @@ def _live_surface() -> AgentConsumabilitySurface:
             definition_tools=_definition_names(list_tool_definitions()),
         ),
         discovery=DiscoveryNames(
-            server_handler_tools=frozenset(get_tool_handlers(server)),
+            server_handler_tools=frozenset(server._handlers),
             server_definition_tools=_definition_names(server.list_tool_definitions()),
             json_rpc_tools=_definition_names(listed["result"]["tools"]),
         ),

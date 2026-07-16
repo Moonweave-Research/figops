@@ -109,6 +109,8 @@ def assert_expected_summary_has_schema(summary: JsonObject, expected_track: str,
     style_summary = summary["style_summary"]
     assert isinstance(style_summary, dict)
     assert style_summary["target_format"] == expected_track
+    assert style_summary["render_policy"] == f"render-{expected_track}"
+    assert style_summary["validation_target"] == expected_track
     assert style_summary["profile"] == "baseline"
 
     token_floors = summary["selected_token_floors"]

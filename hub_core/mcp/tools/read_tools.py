@@ -40,6 +40,7 @@ from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.project_paths import ProjectPathError
 from hub_core.raw_integrity import raw_integrity_config, verify_raw_integrity
 from hub_core.research_ops_enforcement import validate_research_ops_contract
+from hub_core.structure_audit import audit_project_structure
 from themes.style_packs import list_style_packs
 from themes.style_profiles import (
     DEFAULT_PROFILE,
@@ -108,6 +109,8 @@ class McpReadToolsMixin:
     def describe(self, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = arguments or {}
         if self.surface_profile == AI_NATIVE_PROFILE:
+            if arguments.get("kind") == "project_structure":
+                return self._describe_project_structure(arguments)
             surface = compact_surface_description(
                 arguments=arguments,
                 profile=self.surface_profile,
@@ -135,6 +138,52 @@ class McpReadToolsMixin:
             ),
             **surface,
         )
+
+    def _describe_project_structure(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        if arguments.get("name") is not None:
+            raise ValueError("figops.describe project_structure does not accept name.")
+        project_path = self._resolve_project_path(arguments)
+        loaded = self._load_project_config(project_path)
+        if loaded["errors"]:
+            return self._envelope(
+                "figops.describe",
+                arguments,
+                status="error",
+                summary="Project structure could not be inspected.",
+                errors=loaded["errors"],
+                error_category="validation",
+                error_code="PROJECT_STRUCTURE_CONFIG_INVALID",
+                status_code="PROJECT_STRUCTURE_CONFIG_INVALID",
+                manual_review_needed=True,
+            )
+        audit = self._structure_audit_payload(project_path, loaded["config"])
+        review_needed = bool(audit["findings"] or audit["unknowns"])
+        return self._envelope(
+            "figops.describe",
+            arguments,
+            status="warning" if review_needed else "ok",
+            summary=(
+                "Project structure has findings or unknown files that require review."
+                if review_needed
+                else "Project structure is declared and has no current findings."
+            ),
+            manual_review_needed=review_needed,
+            **audit,
+        )
+
+    @staticmethod
+    def _structure_audit_payload(project_path: Path, config: dict[str, Any]) -> dict[str, Any]:
+        audit = audit_project_structure(project_path, config)
+        review_needed = bool(audit["findings"] or audit["unknowns"])
+        return {
+            "schema_version": "figops.project-structure-audit.v1",
+            "status_code": "PROJECT_STRUCTURE_REVIEW_REQUIRED" if review_needed else "PROJECT_STRUCTURE_OK",
+            "roles": audit["roles"],
+            "graph": audit["graph"],
+            "findings": audit["findings"],
+            "unknowns": audit["unknowns"],
+            "proposed_changes": audit["proposed_changes"],
+        }
 
     def list_projects(self, arguments: dict[str, Any]) -> dict[str, Any]:
         root = self._scan_root(arguments)
@@ -189,6 +238,7 @@ class McpReadToolsMixin:
         naming_lint = self._naming_lint(project_path, enabled=bool(arguments.get("include_naming_lint", False)))
         canonical_registry = canonical_docs_registry(project_path, config)
         placeholders = placeholder_report(config)
+        structure_audit = self._structure_audit_payload(project_path, config)
 
         return self._envelope(
             "figops.inspect_project",
@@ -231,6 +281,7 @@ class McpReadToolsMixin:
             naming_lint=naming_lint,
             canonical_docs_registry=canonical_registry,
             placeholder_report=placeholders,
+            structure_audit=structure_audit,
             normalization_needed=loaded["config_relpath"] == "scripts/project_config.yaml",
         )
 

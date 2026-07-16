@@ -6,9 +6,11 @@
 >
 > Status baseline: source checkout `0.20.0` release-candidate line, with the
 > AI-native v2 surface and bounded evidence/policy-projection path
-> implemented after the `0.19.0` publication-readiness release and earlier journal-style, runtime, packaging,
-> and release-hardening release. The latest published PyPI package and GitHub
-> Release remain `0.19.0` until promotion. M1 through
+> implemented after the `0.19.0` publication-readiness release. PR #224 adds
+> the `figops-project-v1.1` role contract, external runtime/durable-result
+> boundary, receipt/claim/raw-integrity corrections, and reviewed copy-only
+> organization workflow. The latest published PyPI package and GitHub Release
+> remain `0.19.0` until a separate approved promotion. M1 through
 > M5 have shipped across the 0.5.0+ release line. The
 > remaining roadmap is maintenance, scoped debt reduction, and bounded
 > polish-layer waves that preserve journal constraints.
@@ -38,22 +40,25 @@
   workflow is not the place to regenerate large render packs for unrelated
   changes.
 
-## Current-state scorecard (0.20.0 release candidate, 2026-07-15)
+## Current-state scorecard (0.20.0 release candidate, 2026-07-16)
 
 | Dimension | Score | Read |
 |---|---:|---|
 | Vision and feature breadth | 9/10 | Data contracts, provenance, regression checks, geometry QA, semantic checks, journal styles, and domain helpers are deep for a lab tool. |
-| Fundamentals and security | 9/10 | Project/allowed-data inputs now share contained verified-descriptor paths; artifact, provenance, raw-integrity, claim-linkage, and write-gating checks fail closed. |
-| Code maintainability | 8/10 | Evidence, preview, render-manifest, schema, geometry-policy, inspection, and project-path responsibilities are focused modules; every touched Python façade remains below the 800-line split signal. |
-| Generality / portability | 7/10 | Prefetch, Athena, and conventions adapters are opt-in with generic defaults; project status and schema versioning are explicit. |
+| Fundamentals and security | 9/10 | Project/allowed-data inputs share contained descriptors; v1.1 roles, runtime/result disjointness, native no-replace promotion, durable receipts, raw-integrity, dynamic-claim review, and write gating fail closed. |
+| Code maintainability | 8/10 | Structure contract/layout/inventory/audit/plan/role-binding/apply, runtime boundary/result promotion/receipt, external-raw execution, claim inspection, preview, schema, and inspection responsibilities are focused modules guarded by the live architecture inventory. |
+| Generality / portability | 8/10 | Declared roles replace mandatory folder names; legacy projects resolve in memory, external raw stays launcher-authorized, and bespoke adapters remain opt-in. |
 | DX / docs / discoverability | 9/10 | AI-native v2 discovery is compact and filterable; generated `tools-v2.md`, `tools-compatibility.md`, and the full maintenance reference keep the frozen surface available on demand. |
 
 Roadmap goal: keep fundamentals and DX >=8 while paying down concentrated module
 size debt without reintroducing broad refactors.
 
-Post-release total QA checkpoint:
+Current release-candidate checkpoint:
 
-- Current checkpoint: `docs/specs/2026-07-04-post-release-total-qa-plan.md`.
+- Current checkpoint: PR #224 and
+  `docs/specs/2026-07-15-project-structure-runtime-integrity-plan.md`. That
+  corrective SSOT governs the remaining acceptance matrix, actual-R gate,
+  independent review, approvals, and promotion sequence.
 - Journal tracks are implemented as encoded minimum-compliance token
   differences, not only labels:
   Nature, Science, ACS, RSC, Elsevier, Wiley, and Cell resolve distinct width,
@@ -84,15 +89,28 @@ Post-release total QA checkpoint:
   `.omo/evidence/task-10-journal-style-real-use-hardening-final/render-pack/`;
   it supports review of rendered differences but is not a publisher acceptance
   signal.
-- The AI-native rearchitecture is implemented in the working tree: bounded data
+- The AI-native rearchitecture remains implemented in the working tree: bounded data
   inspection, one-call basic/project rendering, explicit-policy audit, lazy
   preview resources, raw-preserving authored output, and outcome-based agent
-  guidance are covered by runtime witnesses. The final automated repository
-  gate passed with zero failures, and an actual v2 live-model witness completed
-  two renders plus two lazy preview reads with a targeted series/label revision
-  and no invented statistics. The remaining host limitation is absent
-  `Rscript`; Python and mocked-R dispatch are verified without inferring a real
-  local R render.
+  guidance are covered by runtime witnesses. The newer corrective implementation
+  adds the v1.1 declared-role contract, one shared layout, semantic structure
+  inventory/audit/plan/role-binding/apply, launcher-authorized external-raw
+  execution, native no-replace result promotion, durable receipts, measured
+  policy evidence, and verified project-script claims including conservative
+  dynamic-annotation discovery. The definitive v4 non-R technical matrix is
+  green: full pytest passed with 2,201 tests, 48 skips, and 104 subtests; the
+  independent durable-rollback suite passed 34 tests with two platform skips;
+  Ruff, compile, diff, generated docs, architecture, exact SSOT nodes, public
+  inspection, package validation, and clean consumer smoke passed. Installed
+  discovery remains 7 v2 tools and 27 compatibility tools. This host still lacks
+  `Rscript`, so the mandatory actual-R gate has not run; human/legal approvals,
+  merge, tag, package publication, GitHub Release, and release promotion remain
+  open.
+
+- Local v4 package witnesses are not published releases: wheel 617,113 bytes,
+  SHA-256 `31618238DE39845A0647F3B43B9776592630D9A5832B2F084A671A366ED6B920`;
+  sdist 516,938 bytes, SHA-256
+  `500AEBDE826779FE81D191358F898E52B57CCA6CBEF4DBE2821FBB3179C699E3`.
 
 ---
 
@@ -126,6 +144,24 @@ hub_core/
   data_contract_semantic_*    # focused semantic validator families
   project_paths.py            # contained project I/O resolver
   project_config_reader.py    # verified config discovery/resource reads
+  project_structure_contract.py # v1.1 role/DAG/alias resolution
+  legacy_structure_resolver.py  # legacy 1.0 in-memory compatibility view
+  project_layout.py             # shared scaffold/normalization inventory
+  structure_inventory.py / structure_audit.py / structure_plan.py
+                               # read-only semantic discovery and reviewed plan
+  structure_role_binding.py    # approved destinations bound to declared roots
+  structure_apply.py           # write-gated copy-only apply transaction
+  runtime_boundary.py          # project/result/runtime disjointness
+  atomic_no_clobber.py         # native consuming same-FS no-replace publication
+  durable_promotion.py         # staged same-filesystem result promotion
+  durable_receipt.py           # runtime-independent lineage receipt
+  result_promotion.py          # production eligibility/admission integration
+  external_raw.py / external_raw_execution.py
+                               # trusted identity and verified runtime materialization
+  calculation_evidence.py / claim_inventory.py / claim_script_inspection.py
+                               # durable lineage and conservative dynamic-claim review
+  artifact_policy_measurement.py / render_evidence.py
+                               # artifact-derived policy measurements
   evidence_contract.py        # closed figops_evidence/2 validation
   evidence_artifact_section.py # focused artifact/evidence validation
   artifact_integrity.py       # verified artifact facts

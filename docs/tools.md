@@ -914,6 +914,51 @@ Summarize one project config without running analysis, plotting, or report write
     "status_path": {
       "type": "string"
     },
+    "structure_audit": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "graph": {
+          "type": "object"
+        },
+        "proposed_changes": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "roles": {
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string"
+        },
+        "status_code": {
+          "type": "string"
+        },
+        "unknowns": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status_code",
+        "roles",
+        "graph",
+        "findings",
+        "unknowns",
+        "proposed_changes"
+      ],
+      "type": "object"
+    },
     "style_summary": {
       "type": "object"
     },
@@ -2335,6 +2380,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
         "default",
         "elsevier",
         "nature",
+        "neutral",
         "ppt",
         "rsc",
         "science",
@@ -4096,6 +4142,7 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
         "default",
         "elsevier",
         "nature",
+        "neutral",
         "ppt",
         "rsc",
         "science",
@@ -4544,6 +4591,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
         "default",
         "elsevier",
         "nature",
+        "neutral",
         "ppt",
         "rsc",
         "science",
@@ -4575,6 +4623,9 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
       "type": "string"
     },
     "baseline_comparison": {
+      "type": "object"
+    },
+    "claim_inventory": {
       "type": "object"
     },
     "config_path": {
@@ -4821,8 +4872,18 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
     "project_id": {
       "type": "string"
     },
+    "promotion_eligible": {
+      "type": "boolean"
+    },
     "provenance": {
       "type": "object"
+    },
+    "publication_status": {
+      "enum": [
+        "verified",
+        "unverified"
+      ],
+      "type": "string"
     },
     "resolution_hint": {
       "type": "string"
@@ -5276,6 +5337,7 @@ Plan or create a standard FigOps project scaffold.
         "default",
         "elsevier",
         "nature",
+        "neutral",
         "ppt",
         "rsc",
         "science",
@@ -5432,7 +5494,7 @@ Plan or create a standard FigOps project scaffold.
 
 ### `figops.normalize_project_structure`
 
-Plan or apply migration of an existing graph folder into standard FigOps structure.
+Propose migration mappings or apply an explicitly reviewed copy-only structure plan.
 
 **Input schema**
 
@@ -5440,18 +5502,60 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
 {
   "additionalProperties": false,
   "properties": {
+    "approved_mappings": {
+      "description": "Explicit mappings accepted by the user after reviewing an adopt proposal.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "destination": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "destination",
+          "role"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "config_diff": {
+      "description": "Reviewed typed project_config.yaml compare-and-swap edits.",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "confirmation_token": {
+      "description": "Exact token returned by the reviewed copy-only dry-run.",
+      "type": "string"
+    },
     "dry_run": {
       "default": true,
       "description": "Preview without writing files. Defaults True like scaffold_project and batch_check; the two render tools default dry_run False.",
       "type": "boolean"
+    },
+    "hardcoded_unresolved_references": {
+      "description": "Unresolved dependencies that intentionally block apply.",
+      "items": {},
+      "type": "array"
     },
     "include_raw": {
       "default": false,
       "type": "boolean"
     },
     "move_policy": {
-      "default": "copy",
+      "default": "adopt",
+      "description": "adopt returns read-only proposals; copy requires approved_mappings. move and symlink remain accepted only to return a stable deprecation error.",
       "enum": [
+        "adopt",
         "copy",
         "move",
         "symlink"
@@ -5460,6 +5564,7 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
     },
     "overwrite": {
       "default": false,
+      "description": "Deprecated compatibility argument; true always fails closed.",
       "type": "boolean"
     },
     "project_path": {
@@ -5486,6 +5591,9 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
       "type": "array"
     },
     "config_path": {
+      "type": "string"
+    },
+    "confirmation_token": {
       "type": "string"
     },
     "created_paths": {
@@ -5545,6 +5653,12 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
     "operation_id": {
       "type": "string"
     },
+    "originals_preserved": {
+      "type": "boolean"
+    },
+    "plan_digest": {
+      "type": "string"
+    },
     "planned_paths": {
       "items": {
         "type": "string"
@@ -5554,8 +5668,20 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
     "project_root": {
       "type": "string"
     },
+    "proposed_mappings": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "provenance_receipt": {
+      "type": "object"
+    },
     "resolution_hint": {
       "type": "string"
+    },
+    "rollback_journal": {
+      "type": "object"
     },
     "script_output": {
       "items": {
@@ -5585,6 +5711,12 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
     },
     "summary": {
       "type": "string"
+    },
+    "unresolved_proposals": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
     },
     "validation": {
       "type": "object"
@@ -5796,7 +5928,7 @@ Run a bounded project discovery and validation batch check with optional runtime
 
 ### `figops.inspect_data`
 
-Inspect bounded facts for an allowed CSV or TSV without returning rows by default.
+Inspect an allowed CSV or TSV under declared sensitivity policy; undeclared, unspecified, and restricted data return metadata only.
 
 **Input schema**
 
@@ -5815,6 +5947,12 @@ Inspect bounded facts for an allowed CSV or TSV without returning rows by defaul
     },
     "data_path": {
       "maxLength": 4096,
+      "minLength": 1,
+      "type": "string"
+    },
+    "external_raw_id": {
+      "description": "Required for value samples from a declared external_raw source; must match the descriptor id bound to its launcher-approved root.",
+      "maxLength": 128,
       "minLength": 1,
       "type": "string"
     },
@@ -5842,6 +5980,55 @@ Inspect bounded facts for an allowed CSV or TSV without returning rows by defaul
 {
   "additionalProperties": false,
   "properties": {
+    "access_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": [
+            "public",
+            "internal",
+            "restricted",
+            "unspecified",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "declaration_source": {
+          "type": "string"
+        },
+        "external_raw_identity": {
+          "type": "object"
+        },
+        "materialized_sha256_verified": {
+          "type": "boolean"
+        },
+        "mode": {
+          "enum": [
+            "metadata_only",
+            "bounded_values"
+          ],
+          "type": "string"
+        },
+        "reason_code": {
+          "type": "string"
+        },
+        "samples_allowed": {
+          "type": "boolean"
+        },
+        "samples_requested": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "classification",
+        "declaration_source",
+        "mode",
+        "samples_requested",
+        "samples_allowed",
+        "reason_code"
+      ],
+      "type": "object"
+    },
     "availability": {
       "type": "object"
     },
@@ -5853,6 +6040,12 @@ Inspect bounded facts for an allowed CSV or TSV without returning rows by defaul
     },
     "limits": {
       "type": "object"
+    },
+    "sample_columns": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
     },
     "samples": {
       "items": {
@@ -5877,6 +6070,9 @@ Inspect bounded facts for an allowed CSV or TSV without returning rows by defaul
         "available",
         "unavailable"
       ],
+      "type": "string"
+    },
+    "status_code": {
       "type": "string"
     },
     "truncation": {
@@ -5964,14 +6160,27 @@ Render one quick CSV chart with raw labels and no statistics DSL.
       "type": "string"
     },
     "style_policy": {
-      "default": "nature",
+      "default": "neutral",
       "enum": [
         "acs",
         "cell",
         "default",
         "elsevier",
         "nature",
+        "neutral",
         "ppt",
+        "rsc",
+        "science",
+        "wiley"
+      ],
+      "type": "string"
+    },
+    "validation_target": {
+      "enum": [
+        "acs",
+        "cell",
+        "elsevier",
+        "nature",
         "rsc",
         "science",
         "wiley"
@@ -6115,6 +6324,34 @@ Render one configured project-local .py or .R figure; code and command strings a
     },
     "project_path": {
       "description": "Project path; mutually exclusive with project_id, supply exactly one.",
+      "type": "string"
+    },
+    "style_policy": {
+      "default": "neutral",
+      "enum": [
+        "acs",
+        "cell",
+        "default",
+        "elsevier",
+        "nature",
+        "neutral",
+        "ppt",
+        "rsc",
+        "science",
+        "wiley"
+      ],
+      "type": "string"
+    },
+    "validation_target": {
+      "enum": [
+        "acs",
+        "cell",
+        "elsevier",
+        "nature",
+        "rsc",
+        "science",
+        "wiley"
+      ],
       "type": "string"
     }
   },

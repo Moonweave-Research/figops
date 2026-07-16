@@ -431,7 +431,8 @@ class McpBatchToolsMixin:
         max_depth: int,
         timeout_seconds: float,
     ) -> tuple[list[Any], bool, list[str]]:
-        with tempfile.TemporaryDirectory(prefix="figops_mcp_batch_worker_") as tmpdir:
+        temp_root = Path(render_helpers.resolve_temp_dir("mcp_batch_worker"))
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_batch_worker_", dir=temp_root) as tmpdir:
             result_path = Path(tmpdir) / "result.json"
             process = multiprocessing.Process(
                 target=render_helpers._batch_discovery_worker,

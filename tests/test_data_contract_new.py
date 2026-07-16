@@ -1,6 +1,7 @@
 """Unit tests for _read_data_safe in hub_core.data_contract."""
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -19,6 +20,7 @@ from hub_core.data_contract import (
     validate_data_contract,
     validate_data_contract_preflight,
 )
+from hub_core.runtime_paths import resolve_diagnostics_dir
 
 
 class TestReadDataSafe(unittest.TestCase):
@@ -860,6 +862,26 @@ class TestLogErrorbarCalculationChecks(unittest.TestCase):
 
 
 class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
+    def setUp(self):
+        self._runtime_tmp = tempfile.TemporaryDirectory(prefix="dcp_runtime_")
+        self._runtime_root = Path(self._runtime_tmp.name)
+        self._runtime_env = patch.dict(
+            os.environ,
+            {"RESEARCH_HUB_RUNTIME_ROOT": str(self._runtime_root)},
+            clear=False,
+        )
+        self._runtime_env.start()
+
+    def tearDown(self):
+        self._runtime_env.stop()
+        self._runtime_tmp.cleanup()
+
+    def _calculation_sidecar(self, project_dir: str) -> Path:
+        sidecar = Path(resolve_diagnostics_dir(project_dir)) / "data_contract" / "calculation_checks.json"
+        self.assertTrue(sidecar.is_relative_to(self._runtime_root))
+        self.assertFalse((Path(project_dir) / "results" / "diagnostics" / "calculation_checks.json").exists())
+        return sidecar
+
     def test_validate_config_accepts_final_calculation_checks(self):
         config = {
             "project": {"name": "Fit Demo"},
@@ -972,7 +994,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
             }
 
             self.assertFalse(validate_data_contract(tmpdir, config))
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar = self._calculation_sidecar(tmpdir)
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             self.assertEqual(payload["checks"][0]["name"], "linear_fit")
             self.assertEqual(payload["checks"][0]["violations"][0]["row"], "2")
@@ -1005,7 +1027,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
             }
 
             self.assertFalse(validate_data_contract(tmpdir, config))
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar = self._calculation_sidecar(tmpdir)
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             self.assertIn("r2", payload["checks"][0]["violations"][0])
 
@@ -1122,7 +1144,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
 
             with patch("hub_core.data_contract._PINT_AVAILABLE", False):
                 self.assertTrue(validate_data_contract(tmpdir, config))
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar = self._calculation_sidecar(tmpdir)
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             self.assertEqual(payload["checks"][0]["name"], "axis_unit")
             self.assertEqual(payload["checks"][0]["status"], "skipped")
@@ -1251,7 +1273,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
             }
 
             self.assertFalse(validate_data_contract(tmpdir, config))
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar = self._calculation_sidecar(tmpdir)
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             self.assertEqual(payload["checks"][0]["name"], "mean_sem")
             self.assertEqual(payload["checks"][0]["violations"][0]["row"], "0")
@@ -1276,7 +1298,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
             }
 
             self.assertFalse(validate_data_contract(tmpdir, config))
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar = self._calculation_sidecar(tmpdir)
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             self.assertEqual(payload["checks"][0]["name"], "mean_sem")
             self.assertFalse(payload["quality_passed"])
@@ -1327,7 +1349,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
             }
 
             self.assertFalse(validate_data_contract(tmpdir, config))
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar = self._calculation_sidecar(tmpdir)
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             self.assertEqual(payload["checks"][0]["name"], "error_bar_source")
             self.assertEqual(payload["checks"][0]["status"], "failed")
@@ -1374,7 +1396,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
             }
 
             self.assertTrue(validate_data_contract(tmpdir, config))
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar = self._calculation_sidecar(tmpdir)
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
 
             self.assertFalse(payload["quality_passed"])
@@ -1468,7 +1490,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
             }
 
             self.assertTrue(validate_data_contract(tmpdir, warning_config))
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar = self._calculation_sidecar(tmpdir)
             self.assertTrue(sidecar.exists())
             self.assertFalse(validate_data_contract(tmpdir, missing_column_config))
             self.assertFalse(sidecar.exists())
@@ -1503,7 +1525,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
             }
 
             self.assertTrue(validate_data_contract(tmpdir, warning_config))
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar = self._calculation_sidecar(tmpdir)
             self.assertTrue(sidecar.exists())
             self.assertTrue(validate_data_contract(tmpdir, plain_config))
             self.assertFalse(sidecar.exists())
@@ -1528,7 +1550,7 @@ class TestLinearOutlierAxisCalculationChecks(unittest.TestCase):
             }
 
             self.assertTrue(validate_data_contract(tmpdir, config))
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "calculation_checks.json"
+            sidecar = self._calculation_sidecar(tmpdir)
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             groups = [violation["group"] for violation in payload["checks"][0]["violations"]]
 

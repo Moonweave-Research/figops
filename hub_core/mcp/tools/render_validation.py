@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from hub_core.calculation_evidence import MAX_EVIDENCE_FILES, verify_calculation_evidence_bundle
+from hub_core.claim_inventory import evaluate_project_claim_inventory
 from hub_core.project_paths import normalize_project_relative_path
 from hub_core.rendering import PLOT_TYPES
 
@@ -55,6 +56,12 @@ def _optional_positive_int_arg(value: Any, name: str) -> int | None:
 
 class McpRenderValidationMixin:
     """Shared argument-validation helpers for MCP render tools."""
+
+    @staticmethod
+    def _project_claim_inventory(root: Any, selected_figure: dict[str, Any]) -> dict[str, Any]:
+        """Evaluate the mandatory project-script publication claim inventory."""
+
+        return evaluate_project_claim_inventory(root, selected_figure)
 
     @staticmethod
     def _statistical_overlay_arg_errors(

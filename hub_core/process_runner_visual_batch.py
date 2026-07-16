@@ -20,6 +20,7 @@ def run_visual_artifact_batch(
     raw_inputs,
     expand_mode,
     declared_inputs,
+    external_input_signatures,
     declared_outputs,
     env_vars,
     timeout_seconds,
@@ -47,6 +48,7 @@ def run_visual_artifact_batch(
     signature = {
         "script": file_signature(script_full_path, project_dir),
         "inputs": collect_signatures(project_dir, declared_inputs),
+        "external_inputs": external_input_signatures,
         "runner": runner,
         "lang": lang,
         "theme": {

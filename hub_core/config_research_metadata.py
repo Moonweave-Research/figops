@@ -185,6 +185,24 @@ def validate_raw_integrity_config(
             continue
         validate_relative_path_value(errors, f"data_contract.raw_integrity.paths[{index}]", path)
 
+    no_raw_inputs = raw_integrity.get("no_raw_inputs")
+    if no_raw_inputs is None:
+        return
+    if not isinstance(no_raw_inputs, dict):
+        errors.append("data_contract.raw_integrity.no_raw_inputs must be a typed mapping.")
+        return
+    extra = set(no_raw_inputs) - {"type", "reason"}
+    if extra:
+        errors.append(
+            "data_contract.raw_integrity.no_raw_inputs contains unsupported fields: "
+            f"{', '.join(sorted(extra))}."
+        )
+    if no_raw_inputs.get("type") != "no_raw_inputs":
+        errors.append("data_contract.raw_integrity.no_raw_inputs.type must equal 'no_raw_inputs'.")
+    reason = no_raw_inputs.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        errors.append("data_contract.raw_integrity.no_raw_inputs.reason must be a non-empty string.")
+
 
 def validate_relative_path_value(errors: list[str], field_name: str, path: str) -> None:
     try:

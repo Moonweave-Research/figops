@@ -5,6 +5,7 @@ from __future__ import annotations
 INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
 
 PUBLIC_TARGET_FORMATS = {
+    "neutral",
     "nature",
     "science",
     "ppt",

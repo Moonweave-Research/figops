@@ -64,6 +64,8 @@ from hub_core.adapters import select_adapters
 from hub_core.attempt_provenance import render_attempt_provenance, update_attempt_provenance
 from hub_core.cache_manager import collect_signatures
 from hub_core.config_parser import find_config_path
+from hub_core.external_raw import ExternalRawError
+from hub_core.external_raw_execution import parse_cli_external_raw_roots
 from hub_core.logging import configure_logging, get_logger
 from hub_core.redaction import redact_text
 from hub_core.research_ops_enforcement import validate_research_ops_contract
@@ -207,6 +209,16 @@ def main():
     )
     parser.add_argument("--force", action="store_true", help="Force rerun all steps and bypass smart build cache")
     parser.add_argument("--strict-lock", action="store_true", help="Fail-fast when environment lockfiles are missing")
+    parser.add_argument(
+        "--external-raw-root",
+        action="append",
+        default=[],
+        metavar="ID=ABSOLUTE_PATH",
+        help=(
+            "Grant one launcher-owned external_raw allowed-root mapping for this run. "
+            "Repeat for multiple roots; project_config.yaml cannot grant this authority."
+        ),
+    )
     parser.add_argument("--list-projects", "-l", action="store_true", help="List configured projects")
     parser.add_argument(
         "--list-root-only", action="store_true", help="With --list-projects, show only immediate root folders"
@@ -279,7 +291,7 @@ def main():
         help=(
             "Override visual_style for this run without editing project_config.yaml.\n"
             "Accepts a named preset from the config's presets: section, or a target_format\n"
-            "(nature, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
+            "(neutral, nature, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
         ),
     )
     parser.add_argument(
@@ -297,6 +309,10 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging on stderr")
 
     args = parser.parse_args()
+    try:
+        external_raw_allowed_roots = parse_cli_external_raw_roots(args.external_raw_root)
+    except ExternalRawError as exc:
+        parser.error(str(exc))
     configure_logging(verbose=args.verbose)
 
     if args.readiness_manifest:
@@ -876,6 +892,7 @@ def main():
                     force=args.force,
                     prefetcher=adapters.prefetcher,
                     athena=adapters.athena,
+                    external_raw_allowed_roots=external_raw_allowed_roots,
                 )
                 if not success:
                     failure_stage = "EXECUTE"
@@ -914,6 +931,7 @@ def main():
                     force=args.force,
                     prefetcher=adapters.prefetcher,
                     athena=adapters.athena,
+                    external_raw_allowed_roots=external_raw_allowed_roots,
                 )
                 if not success:
                     failure_stage = "EXECUTE"
@@ -932,6 +950,7 @@ def main():
                     force=args.force,
                     prefetcher=adapters.prefetcher,
                     athena=adapters.athena,
+                    external_raw_allowed_roots=external_raw_allowed_roots,
                 )
                 if not success:
                     failure_stage = "EXECUTE"

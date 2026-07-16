@@ -19,20 +19,22 @@ class McpPromptsMixin:
             data_path = self._prompt_quote(arguments["data_path"])
             x_column = self._prompt_quote(arguments["x_column"])
             y_column = self._prompt_quote(arguments["y_column"])
-            target_format = self._prompt_quote(arguments.get("target_format", "nature"))
+            effective_style = arguments.get("target_format", "neutral" if self.surface_profile == "v2" else "nature")
+            target_format = self._prompt_quote(effective_style)
             plot_type = self._prompt_quote(arguments.get("plot_type", "scatter"))
             v2 = self.surface_profile == "v2"
             render_tool = "figops.render_basic_csv" if v2 else "figops.render_csv_graph"
             x_argument = "x" if v2 else "x_column"
             y_argument = "y" if v2 else "y_column"
             style_argument = "style_policy" if v2 else "target_format"
-            render_arguments = {
+            render_arguments: dict[str, Any] = {
                 "data_path": str(arguments["data_path"]),
                 x_argument: str(arguments["x_column"]),
                 y_argument: str(arguments["y_column"]),
                 "plot_type": str(arguments.get("plot_type", "scatter")),
-                style_argument: str(arguments.get("target_format", "nature")),
             }
+            if "target_format" in arguments or not v2:
+                render_arguments[style_argument] = str(effective_style)
             discovery_guidance = (
                 "figops.inspect_data is optional when schema facts are uncertain; figops.list_styles is optional "
                 "when style support is uncertain."
@@ -50,8 +52,8 @@ class McpPromptsMixin:
                 f"{json.dumps(render_arguments, ensure_ascii=False, sort_keys=True)}\n\n"
                 f"The columns are known, so {render_tool} can render in one call; no dry-run or collect call is a "
                 f"prerequisite. {discovery_guidance} "
-                "Inspect the returned evidence and preview URI, use visual judgment, and make only targeted "
-                "revisions. If manual_review_needed=true, do not claim publication approval."
+                "Inspect the returned evidence and preview URI, use visual judgment, and make revisions "
+                "proportional to the observed issue. If manual_review_needed=true, do not claim publication approval."
             )
             return self._prompt_payload(
                 "Workflow for rendering a publication-style graph from structured CSV data.",
@@ -75,9 +77,12 @@ class McpPromptsMixin:
             text = (
                 "Inspect FigOps project quality without executing analysis or plotting scripts.\n"
                 f"- {selector}\n\n"
-                "Use figops.inspect_project or figops.validate_project according to the evidence needed. "
+                "On the compact v2 surface, call figops.describe with kind=project_structure and the project "
+                "selector. On the compatibility surface, use figops.inspect_project or figops.validate_project "
+                "according to the evidence needed. "
                 "Inspect config_errors, data_contract_errors, style_errors, missing_inputs, missing_outputs, "
-                "and normalization_needed. Avoid rendering or normalization unless the user asks."
+                "normalization_needed, roles, graph, findings, unknowns, and proposed_changes. Avoid rendering "
+                "or normalization unless the user asks."
             )
             return self._prompt_payload("Workflow for inspecting graph project quality.", text)
 
@@ -114,7 +119,7 @@ class McpPromptsMixin:
                 "figops.render_project_script" if self.surface_profile == "v2" else "figops.render_project_figure"
             )
             optional_views = (
-                "Use figops.describe only when capability detail is needed."
+                "Use figops.describe kind=project_structure only when declared-role or dependency detail is needed."
                 if self.surface_profile == "v2"
                 else "figops.inspect_project, figops.validate_project, and figops.collect_artifacts are optional "
                 "compatibility views."
@@ -122,7 +127,7 @@ class McpPromptsMixin:
             text = (
                 f"Render configured selector {selector!r} with {render_tool} in one call; a dry run or collect call "
                 f"is not a prerequisite. {optional_views} "
-                "Inspect returned evidence and preview, then make a targeted revision if needed. Preserve "
+                "Inspect returned evidence and preview, then make revisions proportional to observed issues. Preserve "
                 "provenance, failure_stage, resolution_hint, and manual_review_needed; never treat automatic QA "
                 "as publication approval."
             )

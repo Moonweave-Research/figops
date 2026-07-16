@@ -2,13 +2,13 @@ import json
 import os
 import shlex
 import sys
-import tempfile
 from argparse import Namespace
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .logging import get_logger
 from .provenance import _build_environment_hash, _readable_git_commit, _readable_tool_version
+from .runtime_boundary import RuntimeBoundaryError, safe_runtime_segment
 from .runtime_paths import (
     ensure_runtime_dirs,
     resolve_execution_artifacts_dir,
@@ -90,7 +90,7 @@ def build_execution_log_record(
     job_id = _infer_job_id(project_dir)
     normalized_engine_target = _normalize_engine_target(engine_target)
     artifacts_dir = resolve_execution_artifacts_dir(project_dir, normalized_engine_target)
-    latest_dir = resolve_latest_publish_dir(normalized_engine_target, job_id)
+    latest_dir = resolve_latest_publish_dir(normalized_engine_target, job_id, project_root=project_dir)
     raw_request = raw_request or _default_raw_request(args)
     project_name = None
     project = config.get("project", {})
@@ -141,26 +141,28 @@ def append_execution_log(hub_path, record, *, log_dirname=DEFAULT_LOG_DIRNAME, f
     if not isinstance(record, dict):
         raise RuntimeError("Execution log record must be a dict.")
 
-    runtime_root = resolve_runtime_root()
+    project_root = record.get("project_dir") if isinstance(record.get("project_dir"), str) else None
+    runtime_root = Path(resolve_runtime_root(project_root=project_root)).resolve()
     if log_dirname is None:
         log_dir = resolve_hub_logs_dir()
     elif os.path.isabs(log_dirname):
         log_dir = log_dirname
     else:
         log_dir = os.path.join(runtime_root, log_dirname)
+    log_dir_path = Path(log_dir).expanduser().resolve()
+    try:
+        log_dir_path.relative_to(runtime_root)
+    except ValueError as exc:
+        raise RuntimeBoundaryError("Execution logs must stay inside the configured runtime root.") from exc
+    filename = safe_runtime_segment(filename, fallback=DEFAULT_LOG_FILENAME)
+    log_dir = str(log_dir_path)
     log_path = os.path.join(log_dir, filename)
 
     try:
         log_path = _append_jsonl(log_dir, filename, record)
     except OSError as exc:
-        fallback_dir = os.path.join(tempfile.gettempdir(), "figops", DEFAULT_LOG_DIRNAME)
-        logger.warning("⚠️  Execution logging failed at primary path: %s\n   └─ %s", log_path, exc)
-        logger.info("   ↪ Retrying with fallback log dir: %s", fallback_dir)
-        try:
-            log_path = _append_jsonl(fallback_dir, filename, record)
-        except OSError as fallback_exc:
-            logger.error("❌ Execution logging failed: %s\n   └─ %s", fallback_dir, fallback_exc)
-            raise RuntimeError(f"failed to append execution log: {fallback_dir}") from fallback_exc
+        logger.error("❌ Execution logging failed inside the runtime root: %s\n   └─ %s", log_path, exc)
+        raise RuntimeError("failed to append execution log inside the configured runtime root") from exc
 
     logger.info("🗂️  Execution log appended: %s", log_path)
     return log_path

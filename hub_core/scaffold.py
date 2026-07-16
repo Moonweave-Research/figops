@@ -16,7 +16,7 @@ DEFAULT_ANALYZE_R = """suppressPackageStartupMessages({
   library(dplyr)
 })
 
-output_dir <- file.path(getwd(), "results", "data")
+output_dir <- file.path(getwd(), "results", "data", "source")
 output_path <- file.path(output_dir, "summary.csv")
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -106,14 +106,14 @@ from themes.journal_theme import apply_journal_theme, font_tokens
 
 
 def theme_font_tokens(target_format=None, font_scale=None, profile_name=None):
-    target = target_format or os.environ.get("THEME_FORMAT", "nature")
+    target = target_format or os.environ.get("THEME_FORMAT", "neutral")
     scale = float(font_scale if font_scale is not None else os.environ.get("THEME_SCALE", "1.0"))
     profile = profile_name or os.environ.get("THEME_PROFILE", "baseline")
     return font_tokens(target, scale, profile)
 
 
 def apply_project_theme(target_format=None, font_scale=None, profile_name=None):
-    target = target_format or os.environ.get("THEME_FORMAT", "nature")
+    target = target_format or os.environ.get("THEME_FORMAT", "neutral")
     scale = float(font_scale if font_scale is not None else os.environ.get("THEME_SCALE", "1.0"))
     profile = profile_name or os.environ.get("THEME_PROFILE", "baseline")
     apply_journal_theme(target_format=target, font_scale=scale, profile_name=profile)
@@ -147,7 +147,7 @@ from themes.journal_theme import (
 
 
 def main():
-    target_format = os.environ.get("THEME_FORMAT", "nature")
+    target_format = os.environ.get("THEME_FORMAT", "neutral")
     font_scale = float(os.environ.get("THEME_SCALE", "1.0"))
     profile_name = os.environ.get("THEME_PROFILE", "baseline")
 
@@ -158,7 +158,7 @@ def main():
     )
     FONT = font_tokens(target_format, font_scale)
 
-    csv_path = os.path.join(os.getcwd(), "results", "data", "summary.csv")
+    csv_path = os.path.join(os.getcwd(), "results", "data", "source", "summary.csv")
     output_path = os.path.join(os.getcwd(), "results", "figures", "Fig1.png")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
@@ -201,7 +201,7 @@ from themes.journal_theme import apply_journal_theme, font_tokens, panel_label, 
 
 
 def main():
-    target_format = os.environ.get("THEME_FORMAT", "nature")
+    target_format = os.environ.get("THEME_FORMAT", "neutral")
     font_scale = float(os.environ.get("THEME_SCALE", "1.0"))
     profile_name = os.environ.get("THEME_PROFILE", "baseline")
 
@@ -242,50 +242,60 @@ if __name__ == "__main__":
 """
 
 
-def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
+def scaffold_project(
+    project_dir,
+    hub_path,
+    project_name=None,
+    overwrite=False,
+    *,
+    target_format="neutral",
+    font_scale=1.0,
+):
+    """Create a project through the same canonical manifest path used by MCP."""
+
+    from .adapters import select_adapters
+    from .project_normalization import apply_scaffold_project, plan_scaffold_project
+
     project_path = Path(project_dir).expanduser().resolve()
     hub_root = Path(hub_path).expanduser().resolve()
+    name = _normalize_project_name(project_name, project_path)
+    manifest = plan_scaffold_project(
+        project_root=project_path,
+        hub_path=hub_root,
+        project_name=name,
+        target_format=target_format,
+        template="standard",
+        conventions=select_adapters({}).conventions,
+        font_scale=font_scale,
+    )
+    try:
+        applied = apply_scaffold_project(manifest, overwrite=overwrite)
+    except FileExistsError as exc:
+        raise RuntimeError(f"Scaffold aborted: {exc}") from exc
 
     config_path = project_path / "project_config.yaml"
-    if config_path.exists() and not overwrite:
-        raise RuntimeError(f"Scaffold aborted: config already exists: {config_path}")
-
-    name = _normalize_project_name(project_name, project_path)
-    config_text = _render_config_template(load_config_template_text(hub_root), name)
-
-    created_paths = []
-    _ensure_dir(project_path, created_paths)
-
-    required_dirs = [
-        project_path / "raw",
-        project_path / "results" / "data",
-        project_path / "results" / "figures",
-        project_path / "hub_scripts",
-        project_path / "hub_scripts" / "diagrams",
+    created_paths = [Path(path) for path in applied["created_paths"]]
+    directory_entries = [
+        project_path / entry["destination"]
+        for entry in applied["manifest"]["entries"]
+        if entry.get("kind") == "directory" and entry.get("status") == "created"
     ]
-    for path in required_dirs:
-        _ensure_dir(path, created_paths)
-
-    _write_text(config_path, config_text)
-    _write_text(project_path / "raw" / "example_input.csv", DEFAULT_RAW_CSV)
-    _write_text(project_path / "hub_scripts" / "analyze.R", DEFAULT_ANALYZE_R)
-    _write_text(project_path / "hub_scripts" / "project_context.py", DEFAULT_PROJECT_CONTEXT_PY)
-    _write_text(project_path / "hub_scripts" / "plot.py", DEFAULT_PLOT_PY)
-    _write_text(project_path / "hub_scripts" / "diagrams" / "device_cross_section.py", DEFAULT_DIAGRAM_PY)
+    file_entries = [
+        project_path / entry["destination"]
+        for entry in applied["manifest"]["entries"]
+        if entry.get("kind") == "file" and entry.get("status") == "created"
+    ]
 
     return {
         "project_dir": str(project_path),
         "project_name": name,
         "config_path": str(config_path),
-        "created_dirs": [str(path) for path in created_paths],
-        "created_files": [
-            str(config_path),
-            str(project_path / "raw" / "example_input.csv"),
-            str(project_path / "hub_scripts" / "analyze.R"),
-            str(project_path / "hub_scripts" / "project_context.py"),
-            str(project_path / "hub_scripts" / "plot.py"),
-            str(project_path / "hub_scripts" / "diagrams" / "device_cross_section.py"),
-        ],
+        "created_dirs": [str(path) for path in directory_entries],
+        "created_files": [str(path) for path in file_entries],
+        "created_paths": [str(path) for path in created_paths],
+        "modified_paths": applied["modified_paths"],
+        "skipped_paths": applied["skipped_paths"],
+        "manifest": applied["manifest"],
         "overwrite": overwrite,
     }
 
@@ -293,7 +303,7 @@ def scaffold_project(project_dir, hub_path, project_name=None, overwrite=False):
 def scaffold_wizard(hub_path):
     """대화형 위저드를 통해 프로젝트를 생성합니다."""
     from .config_parser import PUBLIC_TARGET_FORMATS
-    from .ui_utils import ui_confirm, ui_panel, ui_print, ui_prompt
+    from .ui_utils import ui_panel, ui_print, ui_prompt
     from .utils import get_research_root
 
     ui_panel(
@@ -310,10 +320,9 @@ def scaffold_wizard(hub_path):
     research_root = get_research_root()
     target_dir = os.path.join(research_root, folder_name)
 
-    if os.path.exists(target_dir):
-        if not ui_confirm(f"Directory '{folder_name}' already exists. Overwrite?"):
-            ui_print("[yellow]Aborted.[/yellow]")
-            return None
+    if os.path.exists(target_dir) and any(Path(target_dir).iterdir()):
+        ui_print("[yellow]Aborted: scaffolding never overwrites an existing project.[/yellow]")
+        return None
 
     allowed_target_formats = sorted(PUBLIC_TARGET_FORMATS)
     target_format_input = ui_prompt(
@@ -327,19 +336,13 @@ def scaffold_wizard(hub_path):
         return None
     font_scale = ui_prompt("Font Scale", default="1.0")
 
-    res = scaffold_project(target_dir, hub_path, project_name=project_name, overwrite=True)
-
-    # 생성된 config 수정
-    import yaml
-    with open(res["config_path"], 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
-
-    config['project']['name'] = project_name
-    config['visual_style']['target_format'] = target_format
-    config['visual_style']['font_scale'] = float(font_scale)
-
-    with open(res["config_path"], 'w', encoding='utf-8') as f:
-        yaml.safe_dump(config, f, sort_keys=False, allow_unicode=True)
+    res = scaffold_project(
+        target_dir,
+        hub_path,
+        project_name=project_name,
+        target_format=target_format,
+        font_scale=float(font_scale),
+    )
 
     ui_print(f"\n✅ [bold green]Project '{project_name}' successfully initialized![/bold green]")
     ui_print(f"   Location: {target_dir}")

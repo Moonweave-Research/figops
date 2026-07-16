@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_PROJECT_STATUSES, PUBLIC_TARGET_FORMATS
+from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, PUBLIC_TARGET_FORMATS
 from hub_core.domain_analysis import list_domain_helper_descriptions
 from hub_core.mcp import tool_schema_common as _schema_common
 from hub_core.mcp.discovery_schemas import list_prompt_definitions as _list_prompt_definitions
@@ -24,6 +24,10 @@ from hub_core.mcp.render_input_schemas import SECONDARY_Y_SCHEMA as _SECONDARY_Y
 from hub_core.mcp.render_input_schemas import SERIES_STYLES_SCHEMA as _SERIES_STYLES_SCHEMA
 from hub_core.mcp.render_input_schemas import SHARED_LEGEND_OPTIONS_SCHEMA as _SHARED_LEGEND_OPTIONS_SCHEMA
 from hub_core.mcp.render_input_schemas import TICK_STYLE_SCHEMA as _TICK_STYLE_SCHEMA
+from hub_core.mcp.structure_schemas import (
+    build_normalize_project_structure_definition,
+    build_project_structure_schemas,
+)
 from hub_core.mcp.surface_profiles import select_tool_definitions
 from hub_core.mcp.surface_schemas import list_plot_type_descriptions, list_semantic_check_descriptions
 from hub_core.mcp.surface_schemas import supported_render_plot_types as _supported_render_plot_types
@@ -45,8 +49,7 @@ __all__ = [
     "LEGACY_TOOL_NAMES", "MCP_BATCH_MAX_PROJECTS", "TOOL_HANDLER_NAMES", "TOOL_NAMES",
     "describe_figops_surface", "describe_graphhub_surface", "get_tool_handlers", "list_tool_definitions",
     "list_plot_type_descriptions", "list_semantic_check_descriptions", "list_prompt_definitions",
-    "list_resource_definitions", "list_resource_templates", "_open_object_schema", "_tool_annotations",
-]
+    "list_resource_definitions", "list_resource_templates", "_open_object_schema", "_tool_annotations"]
 
 _SIGNIFICANCE_MARKER_SCHEMA = {
     "type": "object",
@@ -127,53 +130,9 @@ def list_tool_definitions(
         "description": "Optional baseline figure path to compare the rendered output against.",
     }
     job_id_arg = {"type": "string", "description": "Stable render job ID; auto-generated when omitted."}
-    project_role_schema = {"type": "string", "enum": ["master", "module"]}
-    project_status_schema = {"type": "string", "enum": sorted(ALLOWED_PROJECT_STATUSES)}
-    discovery_classification_schema = {
-        "type": "string",
-        "enum": ["ephemeral", "folder_role", "invalid", "legacy", "official", "quarantine", "unclassified"],
-    }
-    discovery_role_schema = {
-        "type": "string",
-        "enum": [
-            "archive",
-            "docs",
-            "exploratory",
-            "master",
-            "module",
-            "raw_reservoir",
-            "reference",
-            "support",
-            "theory",
-            "unclassified",
-        ],
-    }
-    listed_project_schema = {
-        "type": "object",
-        "properties": {
-            "project_id": {"type": "string"},
-            "project_root": {"type": "string"},
-            "config_path": {"type": "string"},
-            "role": discovery_role_schema,
-            "status": {"type": "string"},
-            "project_status": project_status_schema,
-            "classification": discovery_classification_schema,
-            "errors": {"type": "array", "items": {"type": "string"}},
-            "declared_figures": {"type": "integer"},
-            "declared_diagrams": {"type": "integer"},
-            "target_format": {"type": "string"},
-        },
-    }
-    project_metadata_schema = {
-        "type": "object",
-        "properties": {
-            "name": {"type": "string"},
-            "role": project_role_schema,
-            "status": project_status_schema,
-            "project_root": {"type": "string"},
-            "config_path": {"type": "string"},
-        },
-    }
+    listed_project_schema, project_metadata_schema, project_status_schema, structure_audit_schema = (
+        build_project_structure_schemas()
+    )
     selector_one_of = [{"required": ["project_id"]}, {"required": ["project_path"]}]
     project_selector = {
         "project_id": project_id_arg,
@@ -277,6 +236,7 @@ def list_tool_definitions(
                     "naming_lint": {"type": "object"},
                     "canonical_docs_registry": {"type": "object"},
                     "placeholder_report": {"type": "object"},
+                    "structure_audit": structure_audit_schema,
                     "normalization_needed": {"type": "boolean"},
                 }
             ),
@@ -580,6 +540,9 @@ def list_tool_definitions(
                     "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
                     "layout_report": _LAYOUT_REPORT_SCHEMA,
                     "figure_metadata": {"type": "object"},
+                    "claim_inventory": {"type": "object"},
+                    "publication_status": {"type": "string", "enum": ["verified", "unverified"]},
+                    "promotion_eligible": {"type": "boolean"},
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
                     "provenance": {"type": "object"},
@@ -660,37 +623,7 @@ def list_tool_definitions(
                 }
             ),
         ),
-        ToolDefinition(
-            "figops.normalize_project_structure",
-            "Plan or apply migration of an existing graph folder into standard FigOps structure.",
-            _object_schema(
-                {
-                    "project_path": {"type": "string"},
-                    "dry_run": {
-                        "type": "boolean",
-                        "default": True,
-                        "description": (
-                            "Preview without writing files. Defaults True like scaffold_project and "
-                            "batch_check; the two render tools default dry_run False."
-                        ),
-                    },
-                    "move_policy": {"type": "string", "enum": ["copy", "move", "symlink"], "default": "copy"},
-                    "include_raw": {"type": "boolean", "default": False},
-                    "overwrite": {"type": "boolean", "default": False},
-                },
-                required=["project_path"],
-            ),
-            _standard_output_schema(
-                {
-                    "project_root": {"type": "string"},
-                    "planned_paths": {"type": "array", "items": {"type": "string"}},
-                    "manifest": {"type": "object"},
-                    "config_path": {"type": "string"},
-                    "style_summary": {"type": "object"},
-                    "validation": {"type": "object"},
-                }
-            ),
-        ),
+        build_normalize_project_structure_definition(),
         ToolDefinition(
             "figops.batch_check",
             "Run a bounded project discovery and validation batch check with optional runtime manifest logging.",

@@ -2,7 +2,6 @@ import glob as glob_module
 import logging
 import os
 import subprocess
-from pathlib import Path
 
 from .adapters import select_adapters
 from .cache_manager import (
@@ -21,6 +20,8 @@ from .execution_security import (
     execution_timeout_seconds,
     resolve_contained_project_path,
 )
+from .external_raw import ExternalRawError
+from .external_raw_execution import external_raw_signatures
 from .logging import get_logger
 from .process_runner_commands import build_r_cmd as _build_r_cmd
 from .process_runner_commands import fallback_sanitize_path as _fallback_sanitize_path
@@ -28,6 +29,13 @@ from .process_runner_commands import join_config_path as _join_config_path
 from .process_runner_commands import prefix_uv_if_needed as _prefix_uv_if_needed
 from .process_runner_commands import resolve_runner as _resolve_runner
 from .process_runner_commands import sanitize_script_path as _sanitize_script_path
+from .process_runner_inputs import contained_input_groups as _contained_input_groups
+from .process_runner_inputs import partition_input_declarations as _partition_input_declarations
+from .process_runner_inputs import (  # noqa: F401 - compatibility alias
+    prefetch_and_revalidate_inputs as _prefetch_and_revalidate_inputs,
+)
+from .process_runner_inputs import project_relative_inputs as _project_relative_inputs
+from .process_runner_inputs import resolve_execution_inputs as _resolve_execution_inputs
 from .process_runner_runtime import run_command_env_overlay as _run_command_env_overlay
 from .process_runner_runtime import run_command_runtime as _run_command_runtime
 from .process_runner_variants import VariantDependencies
@@ -40,11 +48,8 @@ from .project_paths import (
     ProjectPathError,
     resolve_project_input,
     resolve_project_output,
-    resolve_project_root,
-    revalidate_project_input,
-    snapshot_project_input,
 )
-from .provenance_inputs import expand_project_input_groups
+from .runtime_boundary import RuntimeBoundaryError
 from .utils import (
     flatten_glob_results,
     is_executable_available,
@@ -109,36 +114,6 @@ def _resolve_athena(config: dict, athena=None):
     return athena if athena is not None else select_adapters(config).athena
 
 
-def _contained_input_groups(project_dir, declarations):
-    return expand_project_input_groups(project_dir, declarations)
-
-
-def _project_relative_inputs(project_dir, absolute_paths):
-    root = resolve_project_root(project_dir)
-    return [Path(path).resolve(strict=True).relative_to(root).as_posix() for path in absolute_paths]
-
-
-def _prefetch_and_revalidate_inputs(project_dir, declared_inputs, prefetcher):
-    resolved = [
-        resolve_project_input(project_dir, declaration, purpose="declared execution input")
-        for declaration in declared_inputs
-    ]
-    prefetcher.ensure_local([str(path) for path in resolved])
-    snapshots = [
-        snapshot_project_input(project_dir, declaration, purpose="declared execution input")
-        for declaration in declared_inputs
-    ]
-    return [
-        revalidate_project_input(
-            project_dir,
-            declaration,
-            expected_snapshot=snapshot,
-            purpose="declared execution input",
-        )
-        for declaration, snapshot in zip(declared_inputs, snapshots, strict=True)
-    ]
-
-
 def _resolve_output_path(project_dir, declaration):
     return str(resolve_project_output(project_dir, declaration, purpose="declared execution output"))
 
@@ -189,6 +164,7 @@ def run_analysis(
     force=False,
     prefetcher=None,
     athena=None,
+    external_raw_allowed_roots=None,
 ):
     _log(f"\n🚀 [Analysis Step] {config['project']['name']}")
     prefetcher = _resolve_prefetcher(config, prefetcher)
@@ -210,9 +186,11 @@ def run_analysis(
             raw_inputs = normalize_string_list(step.get("inputs"))
             expand_mode = step.get("expand", "batch")
             try:
-                glob_results = _contained_input_groups(project_dir, raw_inputs)
+                project_input_patterns, external_input_declarations = _partition_input_declarations(raw_inputs)
+                glob_results = _contained_input_groups(project_dir, project_input_patterns)
                 declared_inputs = _project_relative_inputs(project_dir, flatten_glob_results(glob_results))
-            except (FileNotFoundError, ProjectPathError, ValueError) as exc:
+                external_input_signature = external_raw_signatures(config, external_input_declarations)
+            except (ExternalRawError, FileNotFoundError, ProjectPathError, ValueError) as exc:
                 _log(f"      ❌ {exc}")
                 return False
             declared_outputs = normalize_string_list(step.get("outputs"))
@@ -223,13 +201,14 @@ def run_analysis(
                 _log(f"      ❌ {exc}")
                 return False
 
-            if raw_inputs and not declared_inputs:
+            if project_input_patterns and not declared_inputs:
                 _log(f"      ❌ Glob patterns matched zero files: {raw_inputs}")
                 return False
 
             signature = {
                 "domain_helper": domain_helper,
                 "inputs": collect_signatures(project_dir, declared_inputs),
+                "external_inputs": external_input_signature,
                 "input_patterns": raw_inputs,
                 "outputs": declared_outputs,
                 "params": step.get("params", {}) or {},
@@ -263,8 +242,15 @@ def run_analysis(
                 continue
 
             try:
-                input_abs_paths = _prefetch_and_revalidate_inputs(project_dir, declared_inputs, prefetcher)
-            except (FileNotFoundError, ProjectPathError) as exc:
+                input_abs_paths = _resolve_execution_inputs(
+                    project_dir,
+                    config,
+                    declared_inputs,
+                    external_input_declarations,
+                    prefetcher,
+                    external_raw_allowed_roots,
+                )
+            except (ExternalRawError, FileNotFoundError, ProjectPathError, RuntimeBoundaryError) as exc:
                 _log(f"      ❌ {exc}")
                 return False
             scan_csv_export_anomalies(project_dir, declared_inputs)
@@ -328,9 +314,11 @@ def run_analysis(
         raw_inputs = normalize_string_list(step.get("inputs"))
         expand_mode = step.get("expand", "batch")
         try:
-            glob_results = _contained_input_groups(project_dir, raw_inputs)
+            project_input_patterns, external_input_declarations = _partition_input_declarations(raw_inputs)
+            glob_results = _contained_input_groups(project_dir, project_input_patterns)
             declared_inputs = _project_relative_inputs(project_dir, flatten_glob_results(glob_results))
-        except (FileNotFoundError, ProjectPathError, ValueError) as exc:
+            external_input_signature = external_raw_signatures(config, external_input_declarations)
+        except (ExternalRawError, FileNotFoundError, ProjectPathError, ValueError) as exc:
             _log(f"      ❌ {exc}")
             return False
         declared_outputs = normalize_string_list(step.get("outputs"))
@@ -343,16 +331,11 @@ def run_analysis(
             _log(f"      ❌ {exc}")
             return False
 
-        if raw_inputs and not declared_inputs:
+        if project_input_patterns and not declared_inputs:
             _log(f"      ❌ Glob patterns matched zero files: {raw_inputs}")
             return False
 
         additional_env = {}
-        if declared_inputs:
-            additional_env["GRAPH_HUB_INPUTS"] = os.pathsep.join(
-                str(resolve_project_input(project_dir, p, purpose="declared execution input"))
-                for p in declared_inputs
-            )
 
         solve_env = athena.load_solve_context_env()
         additional_env.update(solve_env)
@@ -360,6 +343,7 @@ def run_analysis(
         signature = {
             "script": file_signature(script_full_path, project_dir),
             "inputs": collect_signatures(project_dir, declared_inputs),
+            "external_inputs": external_input_signature,
             "runner": runner,
             "lang": lang,
             "input_patterns": raw_inputs,
@@ -393,7 +377,14 @@ def run_analysis(
             continue
 
         try:
-            _prefetch_and_revalidate_inputs(project_dir, declared_inputs, prefetcher)
+            input_abs_paths = _resolve_execution_inputs(
+                project_dir,
+                config,
+                declared_inputs,
+                external_input_declarations,
+                prefetcher,
+                external_raw_allowed_roots,
+            )
             script_full_path = str(
                 resolve_project_input(
                     project_dir,
@@ -401,9 +392,11 @@ def run_analysis(
                     purpose=f"pipeline.analysis[{i}].script",
                 )
             )
-        except (FileNotFoundError, ProjectPathError) as exc:
+        except (ExternalRawError, FileNotFoundError, ProjectPathError, RuntimeBoundaryError) as exc:
             _log(f"      ❌ {exc}")
             return False
+        if input_abs_paths:
+            additional_env["GRAPH_HUB_INPUTS"] = os.pathsep.join(str(path) for path in input_abs_paths)
         scan_csv_export_anomalies(project_dir, declared_inputs)
         _log(f"   [RUN] analysis {i}: {script} ({stale_reason})")
         if lang == "r":
@@ -452,6 +445,7 @@ def _run_visual_artifacts(
     force=False,
     prefetcher=None,
     athena=None,
+    external_raw_allowed_roots=None,
 ):
     _log(f"\n{step_header} {config['project']['name']}")
     prefetcher = _resolve_prefetcher(config, prefetcher)
@@ -523,17 +517,29 @@ def _run_visual_artifacts(
         raw_inputs = normalize_string_list(artifact.get("inputs"))
         expand_mode = artifact.get("expand", "batch")
         try:
-            glob_results = _contained_input_groups(project_dir, raw_inputs if raw_inputs else list(default_inputs))
+            effective_inputs = raw_inputs if raw_inputs else list(default_inputs)
+            project_input_patterns, external_input_declarations = _partition_input_declarations(effective_inputs)
+            if external_input_declarations and expand_mode == "each":
+                raise ExternalRawError("external raw inputs do not support expand='each'")
+            glob_results = _contained_input_groups(project_dir, project_input_patterns)
             declared_inputs = _project_relative_inputs(project_dir, flatten_glob_results(glob_results))
-        except (FileNotFoundError, ProjectPathError, ValueError) as exc:
+            external_input_signature = external_raw_signatures(config, external_input_declarations)
+        except (ExternalRawError, FileNotFoundError, ProjectPathError, ValueError) as exc:
             _log(f"      ❌ {exc}")
             return False
-        if not declared_inputs:
+        if not declared_inputs and not external_input_declarations:
             declared_inputs = list(default_inputs)
         declared_outputs = [output]
 
         try:
-            input_abs_paths = _prefetch_and_revalidate_inputs(project_dir, declared_inputs, prefetcher)
+            input_abs_paths = _resolve_execution_inputs(
+                project_dir,
+                config,
+                declared_inputs,
+                external_input_declarations,
+                prefetcher,
+                external_raw_allowed_roots,
+            )
             script_full_path = str(
                 resolve_project_input(
                     project_dir,
@@ -541,11 +547,11 @@ def _run_visual_artifacts(
                     purpose=f"{section_name}[{i}].script",
                 )
             )
-        except (FileNotFoundError, ProjectPathError) as exc:
+        except (ExternalRawError, FileNotFoundError, ProjectPathError, RuntimeBoundaryError) as exc:
             _log(f"      ❌ {exc}")
             return False
 
-        if declared_inputs:
+        if input_abs_paths:
             env_vars["GRAPH_HUB_INPUTS"] = os.pathsep.join(str(path) for path in input_abs_paths)
 
         has_glob_patterns = any(glob_module.has_magic(p) for p in raw_inputs) if raw_inputs else False
@@ -611,6 +617,7 @@ def _run_visual_artifacts(
             raw_inputs=raw_inputs,
             expand_mode=expand_mode,
             declared_inputs=declared_inputs,
+            external_input_signatures=external_input_signature,
             declared_outputs=declared_outputs,
             env_vars=env_vars,
             timeout_seconds=timeout_seconds,
@@ -648,6 +655,7 @@ def run_plots(
     force=False,
     prefetcher=None,
     athena=None,
+    external_raw_allowed_roots=None,
 ):
     contract_paths = get_data_contract_paths(config)
     success = _run_visual_artifacts(
@@ -666,6 +674,7 @@ def run_plots(
         force=force,
         prefetcher=prefetcher,
         athena=athena,
+        external_raw_allowed_roots=external_raw_allowed_roots,
     )
     if success:
         _log("   ✅ Plotting step completed.")
@@ -681,6 +690,7 @@ def run_diagrams(
     force=False,
     prefetcher=None,
     athena=None,
+    external_raw_allowed_roots=None,
 ):
     success = _run_visual_artifacts(
         project_dir,
@@ -698,6 +708,7 @@ def run_diagrams(
         force=force,
         prefetcher=prefetcher,
         athena=athena,
+        external_raw_allowed_roots=external_raw_allowed_roots,
     )
     if success:
         _log("   ✅ Diagram step completed.")

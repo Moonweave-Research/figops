@@ -57,8 +57,26 @@ TOOL_HANDLER_NAMES.update(
 )
 
 
-def get_tool_handlers(server: Any) -> dict[str, Callable[[dict[str, Any]], dict[str, Any]]]:
-    return {name: getattr(server, handler_name) for name, handler_name in TOOL_HANDLER_NAMES.items()}
+def get_tool_handlers(
+    server: Any,
+    *,
+    profile: str | None = None,
+) -> dict[str, Callable[[dict[str, Any]], dict[str, Any]]]:
+    """Bind only handlers callable on the selected server profile.
+
+    With no explicit profile, a server's ``surface_profile`` is honored. Plain
+    registry fixtures without a profile retain the module-level full registry
+    used by schema inventory checks.
+    """
+
+    selected_profile = profile or getattr(server, "surface_profile", None)
+    if selected_profile is None:
+        names = tuple(TOOL_HANDLER_NAMES)
+    else:
+        from hub_core.mcp.surface_profiles import callable_tool_names
+
+        names = callable_tool_names(selected_profile)
+    return {name: getattr(server, TOOL_HANDLER_NAMES[name]) for name in names}
 
 
 @dataclass(frozen=True)

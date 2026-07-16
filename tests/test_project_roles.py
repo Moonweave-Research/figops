@@ -5,6 +5,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+import yaml
+
 import hub_core.project_roles as project_roles
 import orchestrator
 from hub_core import config_parser
@@ -42,6 +45,24 @@ def _minimal_master_config(name: str = "Master Demo") -> list[str]:
         "visual_style:",
         "  target_format: nature",
     ]
+
+
+def test_migration_apply_blocks_unresolved_hard_coded_dependency(tmp_path: Path) -> None:
+    from hub_core.structure_apply import apply_structure_plan
+    from hub_core.structure_plan import build_structure_plan, confirmation_token
+
+    source = tmp_path / "legacy" / "input.csv"
+    source.parent.mkdir()
+    source.write_bytes(b"x\n1\n")
+    plan = build_structure_plan(
+        tmp_path,
+        [{"source": "legacy/input.csv", "destination": "raw/input.csv", "role": "raw"}],
+        hardcoded_unresolved_references=["scripts/analyze.py: legacy/input.csv"],
+    )
+
+    with pytest.raises(RuntimeError, match="hard-coded"):
+        apply_structure_plan(plan, confirmation_token=confirmation_token(plan))
+    assert not (tmp_path / "raw" / "input.csv").exists()
 
 
 def _master_config_with_folder_roles(name: str = "Master Demo") -> list[str]:
@@ -394,12 +415,15 @@ class ProjectRoleExecutionBoundaryTest(unittest.TestCase):
         self.assertIn("master project root, not an execution module", log_text)
 
     def test_mcp_render_project_figure_refuses_master_project(self):
-        with tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir:
+        with (
+            tempfile.TemporaryDirectory(prefix="graphhub_project_role_") as tmpdir,
+            tempfile.TemporaryDirectory(prefix="graphhub_project_role_runtime_") as runtime_dir,
+        ):
             root = Path(tmpdir)
             project_dir = root / "study_master"
             project_dir.mkdir()
             _write_config(project_dir, _minimal_master_config())
-            server = GraphHubMCPServer(research_root=root, runtime_root=root / "runtime", write_tools_enabled=True)
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_dir, write_tools_enabled=True)
 
             response = server.call_tool(
                 "figops.render_project_figure",
@@ -444,3 +468,100 @@ class ProjectRoleRegressionTest(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         run_analysis.assert_called_once()
+
+
+def test_scaffold_and_normalizer_share_v11_layout(tmp_path: Path) -> None:
+    from hub_core.adapters import select_adapters
+    from hub_core.project_normalization import plan_scaffold_project
+    from hub_core.raw_integrity import verify_raw_integrity
+    from hub_core.scaffold import scaffold_project
+
+    hub_path = Path(__file__).resolve().parents[1]
+    project_root = tmp_path / "unified_scaffold"
+    cli_result = scaffold_project(project_root, hub_path, project_name="Unified Scaffold")
+    normalizer_plan = plan_scaffold_project(
+        project_root=project_root,
+        hub_path=hub_path,
+        project_name="Unified Scaffold",
+        target_format="neutral",
+        template="standard",
+        conventions=select_adapters({}).conventions,
+    )
+
+    cli_manifest = cli_result["manifest"]
+    assert cli_manifest["structure"] == normalizer_plan["structure"]
+    assert [entry["destination"] for entry in cli_manifest["entries"][:-1]] == [
+        entry["destination"] for entry in normalizer_plan["entries"]
+    ]
+    planned = {entry["destination"] for entry in normalizer_plan["entries"]}
+    assert "hub_scripts/analysis/analyze.R" in planned
+    assert "hub_scripts/figures/plot.py" in planned
+    assert "hub_scripts/shared/project_context.py" in planned
+    assert "results/data/source" in planned
+    assert "results/evidence" in planned
+    assert "results/publication" in planned
+    assert not ({"work", "results/final", "runtime", ".figops_runtime"} & planned)
+    assert normalizer_plan["boundaries"]["runtime"]["included_in_project"] is False
+
+    config, _, _ = config_parser.load_config(str(project_root))
+    assert config is not None
+    assert verify_raw_integrity(project_root, config)["ok"] is True
+
+    config_path = project_root / "project_config.yaml"
+    config_path.write_text("project: {name: user-owned}\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="project_config.yaml"):
+        scaffold_project(project_root, hub_path, project_name="Replacement", overwrite=True)
+    assert config_path.read_text(encoding="utf-8") == "project: {name: user-owned}\n"
+
+
+def test_normalizer_routes_proposals_to_declared_custom_role_roots(tmp_path: Path) -> None:
+    from hub_core.project_normalization import plan_normalize_project
+    from hub_core.structure_contract_types import CURRENT_CONTRACT, DEFAULT_V11_ROOTS
+
+    roots = dict(DEFAULT_V11_ROOTS)
+    roots.update(
+        {
+            "raw": "inputs/original",
+            "scripts": "code",
+            "analysis_scripts": "code/analysis",
+            "figure_scripts": "code/visuals",
+            "shared_scripts": "code/shared",
+            "results": "outputs",
+            "intermediate": "outputs/data/intermediate",
+            "source_data": "outputs/data/source",
+            "tables": "outputs/tables",
+            "figures": "outputs/figures",
+            "evidence": "outputs/evidence",
+            "publication": "outputs/publication",
+        }
+    )
+    (tmp_path / "project_config.yaml").write_text(
+        yaml.safe_dump(
+            {"project": {"name": "Custom roots"}, "structure": {"contract": CURRENT_CONTRACT, "roots": roots}},
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "scripts" / "nested").mkdir(parents=True)
+    (tmp_path / "scripts" / "nested" / "plot.py").write_text("print('plot')\n", encoding="utf-8")
+    (tmp_path / "analysis.py").write_text("print('analysis')\n", encoding="utf-8")
+    (tmp_path / "summary.csv").write_text("x\n1\n", encoding="utf-8")
+    (tmp_path / "figure.png").write_bytes(b"png")
+
+    plan = plan_normalize_project(project_path=tmp_path, include_raw=True)
+    destinations = {item["source"]: item["destination"] for item in plan["proposed_mappings"]}
+
+    assert destinations == {
+        "analysis.py": "code/analysis/analysis.py",
+        "figure.png": "outputs/figures/figure.png",
+        "scripts/nested/plot.py": "code/visuals/nested/plot.py",
+        "summary.csv": "inputs/original/summary.csv",
+    }
+    assert all(not path.startswith(("hub_scripts/", "raw/", "results/")) for path in destinations.values())
+
+    (tmp_path / "code" / "visuals").mkdir(parents=True)
+    (tmp_path / "code" / "visuals" / "already.py").write_text("print('owned')\n", encoding="utf-8")
+    replanned = plan_normalize_project(project_path=tmp_path, include_raw=True)
+    assert "code/visuals/already.py" not in {
+        item["source"] for item in replanned["proposed_mappings"] + replanned["unresolved_proposals"]
+    }

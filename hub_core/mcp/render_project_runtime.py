@@ -8,13 +8,20 @@ import shutil
 import sys
 import time
 import traceback
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from hub_core.adapters import select_adapters
+from hub_core.external_raw_execution import is_external_raw_declaration
 from hub_core.mcp.render_errors import ProjectRenderExportError, ProjectRenderScriptError
 from hub_core.mcp.render_geometry import SCRIPT_OUTPUT_TAIL_LINES, _geometry_stub, _layout_report_from_geometry
 from hub_core.process_supervisor import supervise_process
-from hub_core.project_paths import resolve_project_input
+from hub_core.project_paths import (
+    open_verified_project_input,
+    resolve_project_input,
+    snapshot_project_input,
+)
 from hub_core.provenance_inputs import expand_project_input_files
 from hub_core.redaction import redact_text
 
@@ -33,6 +40,7 @@ class McpProjectRuntimeMixin:
         snapshot_project: Path,
         config_relpath: str,
         selected_figure: dict[str, Any],
+        claim_inventory: Mapping[str, Any] | None = None,
     ) -> list[str]:
         if snapshot_project.exists():
             shutil.rmtree(snapshot_project)
@@ -66,19 +74,119 @@ class McpProjectRuntimeMixin:
         if script_rel:
             copy_relative_path(script_rel)
         try:
+            project_declarations = [
+                declaration
+                for declaration in self._selected_figure_declared_inputs(selected_figure)
+                if not is_external_raw_declaration(declaration)
+            ]
             input_paths = expand_project_input_files(
                 source_project,
-                self._selected_figure_declared_inputs(selected_figure),
+                project_declarations,
                 require_matches=True,
             )
         except (FileNotFoundError, ValueError) as exc:
             raise ProjectRenderExportError(str(exc)) from exc
         for input_path in input_paths:
             copy_relative_path(input_path.relative_to(source_project.resolve()).as_posix())
+        for declaration in self._verified_claim_snapshot_declarations(
+            source_project,
+            selected_figure,
+            claim_inventory,
+        ):
+            copy_relative_path(declaration)
         for standard_folder in ("hub_scripts", "results/data"):
             if (source_project / standard_folder).is_dir():
                 copy_relative_path(standard_folder)
         return [str(path) for path in snapshot_project.rglob("*") if path.is_file()]
+
+    @staticmethod
+    def _verified_claim_snapshot_declarations(
+        source_project: Path,
+        selected_figure: Mapping[str, Any],
+        claim_inventory: Mapping[str, Any] | None,
+    ) -> list[str]:
+        """Discover verified claim-lineage membership for immutable snapshot replay.
+
+        This is intentionally gated by the already verified inventory decision.
+        Invalid or review-only inventories remain non-promotable and do not widen
+        the execution snapshot.  Promotion later recomputes the full inventory
+        from these copied bytes and requires an exact canonical match.
+        """
+
+        if not isinstance(claim_inventory, Mapping) or claim_inventory.get("status") != "verified":
+            return []
+        inventory_ref = claim_inventory.get("artifact_ref")
+        configured_ref = selected_figure.get("claim_inventory")
+        if not isinstance(inventory_ref, str) or inventory_ref != configured_ref:
+            raise ProjectRenderExportError(
+                "Verified claim inventory binding disagrees with figures[].claim_inventory"
+            )
+
+        def read_json(declaration: str, *, purpose: str, limit: int) -> dict[str, Any]:
+            resolved = resolve_project_input(source_project, declaration, purpose=purpose)
+            select_adapters({}).prefetcher.ensure_local([str(resolved)])
+            identity = snapshot_project_input(source_project, declaration, purpose=purpose)
+            with open_verified_project_input(
+                source_project,
+                declaration,
+                expected_snapshot=identity,
+                purpose=purpose,
+            ) as handle:
+                payload = handle.read(limit + 1)
+            if len(payload) > limit:
+                raise ProjectRenderExportError(f"{purpose} exceeds its bounded snapshot limit")
+
+            def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+                result: dict[str, Any] = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError(f"duplicate JSON key: {key}")
+                    result[key] = value
+                return result
+
+            try:
+                loaded = json.loads(
+                    payload.decode("utf-8"),
+                    object_pairs_hook=reject_duplicate_keys,
+                )
+            except (UnicodeError, ValueError) as exc:
+                raise ProjectRenderExportError(f"{purpose} changed after claim verification") from exc
+            if not isinstance(loaded, dict):
+                raise ProjectRenderExportError(f"{purpose} must remain a JSON object")
+            return loaded
+
+        inventory = read_json(inventory_ref, purpose="claim inventory snapshot", limit=256 * 1024)
+        raw_evidence = inventory.get("calculation_evidence_paths")
+        if not isinstance(raw_evidence, list) or len(raw_evidence) > 32 or any(
+            not isinstance(item, str) for item in raw_evidence
+        ):
+            raise ProjectRenderExportError(
+                "Verified claim inventory calculation evidence membership changed before snapshot"
+            )
+
+        declarations: list[str] = [inventory_ref]
+        for evidence_ref in raw_evidence:
+            lineage = read_json(
+                evidence_ref,
+                purpose="calculation evidence snapshot",
+                limit=1024 * 1024,
+            )
+            declarations.append(evidence_ref)
+            descriptors = [lineage.get("calculation_artifact")]
+            producer = lineage.get("producer")
+            if isinstance(producer, Mapping):
+                descriptors.extend([producer.get("script"), producer.get("config")])
+            for field in ("input_artifacts", "output_artifacts"):
+                values = lineage.get(field)
+                if isinstance(values, list):
+                    descriptors.extend(values)
+            for descriptor in descriptors:
+                if not isinstance(descriptor, Mapping) or not isinstance(descriptor.get("path"), str):
+                    raise ProjectRenderExportError(
+                        "Verified calculation evidence lineage changed before snapshot"
+                    )
+                declarations.append(str(descriptor["path"]))
+        return list(dict.fromkeys(declarations))
 
     @staticmethod
     def _copy_project_snapshot_directory(source_dir: Path, destination_dir: Path, copied: list[str]) -> None:
@@ -118,6 +226,7 @@ class McpProjectRuntimeMixin:
         snapshot_project_path: Path,
         selected_figure: dict[str, Any],
         style_summary: dict[str, str],
+        input_paths: list[Path] | None = None,
     ) -> None:
         try:
             script_rel = self._project_relative_path(
@@ -153,6 +262,8 @@ class McpProjectRuntimeMixin:
                 "MPLCONFIGDIR": env.get("MPLCONFIGDIR", str(job_root / ".matplotlib")),
             }
         )
+        if input_paths:
+            env["GRAPH_HUB_INPUTS"] = os.pathsep.join(str(path) for path in input_paths)
         Path(env["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
         output_lines: list[str] = []
 

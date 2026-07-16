@@ -30,7 +30,10 @@ def list_resource_definitions() -> list[dict[str, str]]:
         {
             "uri": "figops://projects",
             "name": "FigOps Projects",
-            "description": "Discovered FigOps project metadata using default discovery rules.",
+            "description": (
+                "Discovered FigOps project metadata. Use figops.describe kind=project_structure for a "
+                "read-only role and dependency audit."
+            ),
             "mimeType": "application/json",
         },
     ]
@@ -85,7 +88,7 @@ def list_prompt_definitions(supported_render_plot_types: Iterable[str]) -> list[
         },
         {
             "name": "inspect_graph_project_quality",
-            "description": "Optional guidance for inspecting a graph project without executing scripts.",
+            "description": "Read-only guidance for project quality and declared-structure inspection.",
             "arguments": [
                 {"name": "project_id", "description": "Discovered FigOps project ID.", "required": False},
                 {"name": "project_path", "description": "Project path.", "required": False},

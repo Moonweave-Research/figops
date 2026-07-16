@@ -96,15 +96,11 @@ def _complete_provenance() -> dict[str, Any]:
     }
 
 
-def _incomplete_provenance(
-    status: str, *, present_fields: tuple[str, ...] = ()
-) -> dict[str, Any]:
+def _incomplete_provenance(status: str, *, present_fields: tuple[str, ...] = ()) -> dict[str, Any]:
     record: dict[str, Any] = {
         "status": status,
         "reason": f"provenance collection completed with {status}",
-        "unavailable_fields": [
-            field for field in _PROVENANCE_HASH_FIELDS if field not in present_fields
-        ],
+        "unavailable_fields": [field for field in _PROVENANCE_HASH_FIELDS if field not in present_fields],
     }
     for index, field in enumerate(present_fields, start=1):
         record[field] = f"{index:x}" * 64
@@ -244,9 +240,7 @@ def test_normalized_summary_must_be_a_mapping(field: str) -> None:
 
 @pytest.mark.parametrize("field", ["data_contract_summary", "calculation_summary"])
 @pytest.mark.parametrize("status", ["ok", "unavailable", "unknown", 1])
-def test_normalized_summary_rejects_status_outside_closed_enum(
-    field: str, status: object
-) -> None:
+def test_normalized_summary_rejects_status_outside_closed_enum(field: str, status: object) -> None:
     envelope = _minimal_envelope()
     envelope[field]["status"] = status
 
@@ -265,9 +259,7 @@ def test_normalized_summary_requires_checks_list(field: str) -> None:
 
 @pytest.mark.parametrize("field", ["data_contract_summary", "calculation_summary"])
 @pytest.mark.parametrize("reason", [None, "", "   "])
-def test_skipped_normalized_summary_requires_nonempty_reason(
-    field: str, reason: str | None
-) -> None:
+def test_skipped_normalized_summary_requires_nonempty_reason(field: str, reason: str | None) -> None:
     envelope = _minimal_envelope()
     if reason is None:
         envelope[field].pop("reason")
@@ -299,9 +291,7 @@ def test_normalized_summary_accepts_consistent_aggregate_and_check_statuses(
 
 @pytest.mark.parametrize("field", ["data_contract_summary", "calculation_summary"])
 @pytest.mark.parametrize("missing", ["id", "status", "message"])
-def test_normalized_summary_check_requires_closed_fields(
-    field: str, missing: str
-) -> None:
+def test_normalized_summary_check_requires_closed_fields(field: str, missing: str) -> None:
     envelope = _minimal_envelope()
     summary = _normalized_summary("passed", ["passed"])
     summary["checks"][0].pop(missing)
@@ -324,9 +314,7 @@ def test_normalized_summary_check_rejects_unknown_fields(field: str) -> None:
 
 @pytest.mark.parametrize("field", ["data_contract_summary", "calculation_summary"])
 @pytest.mark.parametrize("check_status", ["ok", "unavailable", "unknown", 1])
-def test_normalized_summary_check_rejects_status_outside_closed_enum(
-    field: str, check_status: object
-) -> None:
+def test_normalized_summary_check_rejects_status_outside_closed_enum(field: str, check_status: object) -> None:
     envelope = _minimal_envelope()
     summary = _normalized_summary("passed", ["passed"])
     summary["checks"][0]["status"] = check_status
@@ -489,9 +477,7 @@ def test_failed_producer_with_failure_stage_is_valid() -> None:
         ("skipped", "unavailable"),
     ],
 )
-def test_producer_artifact_state_matrix_accepts_consistent_pairs(
-    producer_status: str, artifact_status: str
-) -> None:
+def test_producer_artifact_state_matrix_accepts_consistent_pairs(producer_status: str, artifact_status: str) -> None:
     validate_evidence_envelope(_state_envelope(producer_status, artifact_status))
 
 
@@ -512,9 +498,7 @@ def test_producer_artifact_state_matrix_accepts_consistent_pairs(
         ("skipped", "failed"),
     ],
 )
-def test_producer_artifact_state_matrix_rejects_inconsistent_pairs(
-    producer_status: str, artifact_status: str
-) -> None:
+def test_producer_artifact_state_matrix_rejects_inconsistent_pairs(producer_status: str, artifact_status: str) -> None:
     with pytest.raises(EvidenceContractError):
         validate_evidence_envelope(_state_envelope(producer_status, artifact_status))
 
@@ -622,9 +606,7 @@ def test_duplicate_measurement_id_is_rejected() -> None:
 
 def test_available_measurement_requires_value() -> None:
     envelope = _minimal_envelope()
-    envelope["measurements"] = [
-        {"id": "geometry.clipping", "availability": "available"}
-    ]
+    envelope["measurements"] = [{"id": "geometry.clipping", "availability": "available"}]
 
     with pytest.raises(EvidenceContractError) as raised:
         validate_evidence_envelope(envelope)
@@ -720,13 +702,9 @@ def test_policy_projection_cannot_reference_unknown_measurement() -> None:
         ("informational", "informational"),
     ],
 )
-def test_policy_finding_accepts_closed_severity_and_outcome_enums(
-    severity: str, outcome: str
-) -> None:
+def test_policy_finding_accepts_closed_severity_and_outcome_enums(severity: str, outcome: str) -> None:
     envelope = _minimal_envelope()
-    envelope["measurements"] = [
-        {"id": "geometry.clipping", "availability": "available", "value": 1}
-    ]
+    envelope["measurements"] = [{"id": "geometry.clipping", "availability": "available", "value": 1}]
     envelope["policy_projections"] = [
         {
             "id": "publication-readiness-v2",
@@ -750,9 +728,7 @@ def test_policy_finding_accepts_closed_severity_and_outcome_enums(
 @pytest.mark.parametrize("field", ["code", "metric_id", "message", "severity", "outcome"])
 def test_policy_finding_requires_every_contract_field(field: str) -> None:
     envelope = _minimal_envelope()
-    envelope["measurements"] = [
-        {"id": "geometry.clipping", "availability": "available", "value": 1}
-    ]
+    envelope["measurements"] = [{"id": "geometry.clipping", "availability": "available", "value": 1}]
     finding = {
         "code": "CLIPPING_DETECTED",
         "metric_id": "geometry.clipping",
@@ -777,9 +753,7 @@ def test_policy_finding_requires_every_contract_field(field: str) -> None:
 @pytest.mark.parametrize("severity", ["major", "info", "critical", "human"])
 def test_policy_finding_rejects_severity_outside_closed_enum(severity: str) -> None:
     envelope = _minimal_envelope()
-    envelope["measurements"] = [
-        {"id": "geometry.clipping", "availability": "available", "value": 1}
-    ]
+    envelope["measurements"] = [{"id": "geometry.clipping", "availability": "available", "value": 1}]
     envelope["policy_projections"] = [
         {
             "id": "publication-readiness-v2",
@@ -804,9 +778,7 @@ def test_policy_finding_rejects_severity_outside_closed_enum(severity: str) -> N
 @pytest.mark.parametrize("outcome", ["approved", "review", "pass", "failed"])
 def test_policy_finding_rejects_outcome_outside_closed_enum(outcome: str) -> None:
     envelope = _minimal_envelope()
-    envelope["measurements"] = [
-        {"id": "geometry.clipping", "availability": "available", "value": 1}
-    ]
+    envelope["measurements"] = [{"id": "geometry.clipping", "availability": "available", "value": 1}]
     envelope["policy_projections"] = [
         {
             "id": "publication-readiness-v2",
@@ -979,9 +951,7 @@ def test_artifact_size_must_be_a_positive_integer(byte_size: object) -> None:
 
 @pytest.mark.parametrize("field", ["width", "height"])
 @pytest.mark.parametrize("dimension", [0, -1, True, 1.5, "640"])
-def test_artifact_dimensions_must_be_positive_integers(
-    field: str, dimension: object
-) -> None:
+def test_artifact_dimensions_must_be_positive_integers(field: str, dimension: object) -> None:
     artifact = _available_artifact()
     artifact[field] = dimension
 
@@ -991,9 +961,7 @@ def test_artifact_dimensions_must_be_positive_integers(
 
 @pytest.mark.parametrize("field", ["header_valid", "dimensions_valid"])
 @pytest.mark.parametrize("value", [False, None, 1, "true"])
-def test_artifact_integrity_flags_must_be_literal_true(
-    field: str, value: object
-) -> None:
+def test_artifact_integrity_flags_must_be_literal_true(field: str, value: object) -> None:
     artifact = _available_artifact()
     artifact[field] = value
 
@@ -1107,9 +1075,7 @@ def test_nonproducing_provenance_requires_reason_and_complete_unavailable_fields
 
 @pytest.mark.parametrize("status", ["skipped", "unavailable"])
 @pytest.mark.parametrize("reason", [None, "", "   "])
-def test_nonproducing_provenance_requires_nonempty_reason(
-    status: str, reason: str | None
-) -> None:
+def test_nonproducing_provenance_requires_nonempty_reason(status: str, reason: str | None) -> None:
     envelope = _state_envelope("skipped", "unavailable")
     record = _incomplete_provenance(status)
     if reason is None:
@@ -1125,9 +1091,7 @@ def test_nonproducing_provenance_requires_nonempty_reason(
 @pytest.mark.parametrize("status", ["warning", "failed", "skipped", "unavailable"])
 def test_incomplete_provenance_accepts_exact_missing_hash_accounting(status: str) -> None:
     envelope = _state_envelope("skipped", "unavailable")
-    envelope["provenance"] = _incomplete_provenance(
-        status, present_fields=("input_sha256",)
-    )
+    envelope["provenance"] = _incomplete_provenance(status, present_fields=("input_sha256",))
 
     validate_evidence_envelope(envelope)
 
@@ -1660,9 +1624,7 @@ def test_legacy_passed_and_other_policy_keys_are_stripped_from_raw_measurement()
         "availability": "available",
         "value": 0,
     }
-    assert not {"passed", "hard", "blocked", "severity", "outcome"}.intersection(
-        measurement
-    )
+    assert not {"passed", "hard", "blocked", "severity", "outcome"}.intersection(measurement)
 
 
 def test_legacy_baseline_maps_only_to_exact_reproducibility() -> None:
@@ -1702,3 +1664,69 @@ def test_contract_error_exposes_stable_code_path_and_message() -> None:
     assert isinstance(first.message, str) and first.message
     assert str(first) == first.message
     assert (first.code, first.path, first.message) == (second.code, second.path, second.message)
+
+
+def _wp0_durable_diagnostics() -> dict[str, object]:
+    output = {"artifact_id": "calc-1", "role": "result.source_data", "sha256": "9" * 64}
+    return {
+        "figops_version": "0.20.0",
+        "run_id": "run-1",
+        "timestamp": "2026-07-15T00:00:00Z",
+        "git_sha256": "1" * 64,
+        "config_sha256": "2" * 64,
+        "script_sha256": "3" * 64,
+        "environment_lock_sha256": "4" * 64,
+        "durable_artifact": output,
+        "input_artifacts": [{"artifact_id": "raw-1", "role": "raw", "sha256": "5" * 64}],
+        "output_artifacts": [output],
+        "claim_ids": ["claim:figure-1:p-value"],
+        "manifest_id": "manifest-a1b2",
+        "manifest_sha256": "6" * 64,
+        "logs": ["C:/Users/researcher/runtime/job.log"],
+        "sample_rows": [{"restricted": "secret"}],
+    }
+
+
+def test_durable_receipt_normalizes_diagnostics_and_hides_runtime_root() -> None:
+    from hub_core.durable_receipt import DurableReceipt
+
+    serialized = DurableReceipt.from_runtime_diagnostics(_wp0_durable_diagnostics()).canonical_bytes()
+
+    assert b"C:/Users" not in serialized
+    assert b"sample_rows" not in serialized
+    assert b"logs" not in serialized
+
+
+def test_calculation_receipt_binds_durable_artifact_and_lineage() -> None:
+    from hub_core.durable_receipt import DurableReceipt
+
+    receipt = DurableReceipt.from_runtime_diagnostics(_wp0_durable_diagnostics())
+    payload = receipt.to_dict()
+
+    assert payload["durable_artifact"] == payload["output_artifacts"][0]
+    assert payload["producer"] == {
+        "config_sha256": "2" * 64,
+        "script_sha256": "3" * 64,
+        "environment_lock_sha256": "4" * 64,
+    }
+    assert payload["input_artifacts"][0]["role"] == "raw"
+    assert payload["input_artifacts"][0]["sha256"] == "5" * 64
+    assert payload["input_artifacts"][0]["artifact_id"].startswith("raw:")
+    assert payload["claim_ids"][0].startswith("claim:")
+    assert "durable_receipt_sha256" not in payload
+
+
+def test_receipt_verifies_after_runtime_tree_deletion(tmp_path) -> None:
+    import shutil
+
+    from hub_core.durable_receipt import DurableReceipt, receipt_sha256, verify_receipt
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "manifest.json").write_text("disposable detail", encoding="utf-8")
+    receipt = DurableReceipt.from_runtime_diagnostics(_wp0_durable_diagnostics())
+    digest = receipt_sha256(receipt)
+
+    shutil.rmtree(runtime)
+
+    assert verify_receipt(receipt, digest)

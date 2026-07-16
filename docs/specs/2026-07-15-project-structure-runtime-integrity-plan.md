@@ -1,0 +1,643 @@
+# FigOps Project Structure and Runtime Integrity Plan
+
+**Status:** implementation and definitive non-R technical gates are green in the
+working tree; the actual-R, human/legal, merge, tag, and publication gates remain open
+
+**Contract target:** `figops-project-v1.1`
+
+**Release target:** PR #224 / `v0.20.0`; do not merge, tag, publish, or create a GitHub Release until every P1 gate below is green
+**Date:** 2026-07-15
+
+## 1. Purpose
+
+FigOps must help an LLM organize and verify research work without replacing the
+LLM's planning, interpretation, or visual judgment. The tool owns invariants the
+model can easily miss: immutable inputs, declared roles, complete lineage,
+reproducible outputs, publication minima, and a hard boundary between disposable
+runtime state and durable research results.
+
+This document is the single source of truth for the corrective work included in
+PR #224 and `v0.20.0`. It replaces ad-hoc structure proposals for this work. For
+the requirements, sequencing, and acceptance gates named here, this document
+takes priority over `docs/architecture.md`, `docs/ROADMAP.md`,
+`Research_Central_Architecture.md`, `task.md`, and the earlier AI-native plan.
+Those documents remain authoritative outside this scope. Before PR #224 leaves
+Draft, implementation agents update their current-state descriptions to point to
+this document; after merge, `docs/architecture.md` and `docs/ROADMAP.md` become
+the durable current-state summaries and retain a history link back here. No
+second plan may restate or silently supersede these requirements.
+
+The governing rule is:
+
+> Runtime enables an execution and must be safely deletable. A result has
+> research meaning and must remain explainable after runtime deletion.
+
+## 2. Non-goals
+
+- FigOps does not prescribe scientific interpretation, chart composition, a
+  programming language, or a fixed number of revision passes.
+- FigOps does not silently move existing projects into a preferred layout.
+- Folder names are defaults, not meaning. Declared roles are the contract.
+- Compatibility mode does not weaken integrity checks or expose internal names.
+- This plan does not introduce DVC or make a cloud provider mandatory.
+
+## 3. Priority and severity
+
+| Severity | Meaning | Release effect |
+|---|---|---|
+| P0 | Data loss, trust-boundary escape, or false verified publication | Stop all mutation and release |
+| P1 | Core promise can be bypassed or gives materially false assurance | Must be fixed before merge/release |
+| P2 | Inconsistent behavior, incomplete UX, or avoidable migration risk | May follow only with an explicit issue and owner |
+| P3 | Ergonomics or documentation improvement | Normal backlog |
+
+This plan begins with seven P1 corrections. They are part of PR #224 and
+`v0.20.0`, not deferred follow-up. Structure v1.1 work may proceed in parallel
+only where file ownership does not overlap, but PR #224 may not merge and
+`v0.20.0` may not be tagged or released while a P1 remains open.
+
+## 4. Project role model
+
+The human-facing model retains the useful three-way split—raw data, hub scripts,
+and figures/results—while adding the derived-data boundary needed for honest
+lineage.
+
+```text
+project/
+├─ project_config.yaml
+├─ raw/                         # immutable inputs or references
+├─ hub_scripts/                 # tracked analysis and figure code
+│  ├─ analysis/
+│  ├─ figures/
+│  └─ shared/
+└─ results/                     # durable research outputs only
+   ├─ data/
+   │  ├─ intermediate/
+   │  └─ source/
+   ├─ tables/
+   ├─ figures/
+   ├─ evidence/                 # compact durable receipts
+   └─ publication/              # validated promoted bundles
+```
+
+The canonical roles are:
+
+| Role | Meaning | Mutability |
+|---|---|---|
+| `raw` | Irreplaceable or externally governed input | Read-only during a run |
+| `script.analysis` | Code producing derived data/statistics | Tracked source |
+| `script.figure` | Code producing visual outputs | Tracked source |
+| `script.shared` | Reusable project code | Tracked source |
+| `result.intermediate` | Reproducible analysis output | Replace atomically |
+| `result.source_data` | Data directly supporting a table/figure | Replace atomically, retain for publication |
+| `result.table` | Durable research table | Replace atomically |
+| `result.figure` | Reviewable research figure | Replace atomically |
+| `result.evidence` | Compact verified lineage receipt | Append/promote atomically |
+| `result.publication` | Frozen, validated submission bundle | Immutable after promotion |
+| `runtime.*` | Job state, cache, snapshot, log, preview, diagnostics, temp | Disposable |
+
+Role, not extension, determines classification. A CSV may be raw, intermediate,
+source data, or a table. An image may be a raw microscopy input, a reference, a
+working figure, or a publication figure.
+
+## 5. Runtime/result boundary
+
+Runtime lives below the resolved external FigOps runtime root, never below the
+project or `results/` tree:
+
+```text
+RESEARCH_HUB_RUNTIME_ROOT/
+├─ jobs/
+├─ snapshots/
+├─ materialized/
+├─ cache/
+├─ logs/
+├─ previews/
+├─ diagnostics/
+├─ manifests/
+└─ temp/
+```
+
+### 5.1 Hard invariants
+
+1. After symlink, junction, reparse-point, case, drive, and UNC normalization,
+   the resolved runtime root is ancestor/descendant disjoint from the project
+   root and every durable result root; equality or overlap is a fail-fast startup
+   error. Durable roots remain inside the project and obey the role DAG and alias
+   rules in section 6.1 rather than being pairwise disjoint from their project.
+2. A final declared output resolving under a runtime root is invalid.
+3. Runtime files may not be copied into `results/` merely to preserve execution
+   detail; they must be reduced to a durable receipt.
+4. Publication artifacts may not depend on runtime paths.
+5. Deleting the runtime tree after success must not invalidate the durable
+   lineage graph.
+6. Logs, caches, previews, failure dumps, detailed job manifests, snapshots, and
+   materialized cloud inputs are runtime, not results.
+7. Inputs materialized for a run retain their source identity and hash; the
+   materialized copy does not become raw data.
+8. A runtime producer may compute bytes anywhere below runtime, but promotion
+   first copies them to a uniquely named sibling staging path on the destination
+   filesystem. FigOps fsyncs the staged file and its parent as supported, hashes
+   the staged bytes against the producer output, and only then performs an atomic
+   same-filesystem, no-replace namespace move into the declared result path.
+   The move consumes the private stage name; a destination race winner is
+   preserved, and platforms without a native no-replace move fail closed. Direct
+   cross-volume "atomic" promotion is forbidden; cross-volume rename semantics
+   must never be assumed.
+9. Resolved paths must remain inside their declared role root after symlink,
+   junction, and reparse-point resolution.
+10. A durable artifact may refer to runtime only through an opaque manifest ID or
+    a runtime-root-relative manifest ID. Absolute runtime paths, `file:` URIs,
+    user-home paths, and runtime-root identities never enter durable output.
+
+### 5.2 Runtime manifest versus durable receipt
+
+The detailed runtime manifest may contain logs, diagnostics, environment detail,
+job states, and preview references. It remains external and disposable.
+
+The durable receipt stored under `results/evidence/` is produced through one
+normalized DTO owned by WP0. The DTO accepts detailed runtime diagnostics and
+emits a closed, versioned, allow-listed representation; callers may not serialize
+runtime manifests directly. It contains only:
+
+- schema and FigOps versions;
+- run ID and timestamp;
+- Git, config, script, environment-lock, input, and output SHA-256 values;
+- declared role and logical artifact IDs;
+- dependency edges from raw/script/config through derived data to outputs;
+- statistical claim evidence references and calculation artifact hashes;
+- policy profile and measured publication-minimum outcomes;
+- an opaque or runtime-root-relative manifest identifier and SHA-256, explicitly
+  marked optional for later inspection rather than required for reproduction.
+
+No sample rows, secrets, absolute user-home paths, or restricted input contents
+are included in a durable receipt.
+
+Calculation artifacts are durable research artifacts, not disposable receipt
+payloads. The calculation result itself is promoted as `result.source_data`,
+`result.table`, or a dedicated typed `result.evidence` artifact. Its lineage
+binds the producer script SHA, config SHA, every input artifact ID/SHA, every
+output artifact ID/SHA, and the stable claim IDs it supports. A receipt hashes
+that independently stored artifact; it never hashes itself or treats an evidence
+JSON document as the calculation result merely because both share a schema.
+
+## 6. `figops-project-v1.1` contract
+
+Projects may declare role roots in `project_config.yaml`:
+
+```yaml
+structure:
+  contract: figops-project-v1.1
+  roots:
+    raw: raw
+    scripts: hub_scripts
+    analysis_scripts: hub_scripts/analysis
+    figure_scripts: hub_scripts/figures
+    shared_scripts: hub_scripts/shared
+    results: results
+    intermediate: results/data/intermediate
+    source_data: results/data/source
+    tables: results/tables
+    figures: results/figures
+    evidence: results/evidence
+    publication: results/publication
+  discovery: declared_first
+  undeclared_files: warn
+```
+
+### 6.1 Contract rules
+
+- Every configured path is project-relative, normalized, and contained by the
+  resolved project root.
+- Role nesting follows the explicit DAG below; any edge not listed is forbidden:
+
+  ```text
+  project
+  ├─ raw
+  ├─ scripts ─┬─ analysis_scripts
+  │           ├─ figure_scripts
+  │           └─ shared_scripts
+  └─ results ─┬─ intermediate
+              ├─ source_data
+              ├─ tables
+              ├─ figures
+              ├─ evidence
+              └─ publication
+  external runtime root                         # never in this DAG
+  ```
+
+- Alias matrix: `raw`, `scripts`, `results`, and `runtime` may never equal,
+  contain, or be contained by one another. Leaf script roles may nest only under
+  `scripts`; leaf result roles may nest only under `results`. Sibling leaves may
+  not equal or contain one another. `publication` may contain its own frozen
+  bundle copies but may not be an alias of `figures`, `source_data`, `tables`, or
+  `evidence`. External descriptors do not grant a nesting exception.
+- Runtime root is configured by trusted launcher/CLI/operator policy, never by a
+  project-controlled `structure.roots` value.
+- `declared_first` means explicit config and recorded provenance win over
+  heuristics. Heuristics may propose, never silently decide.
+- Undeclared files default to warning during exploration and fail only during
+  publication if they are dependencies of a promoted artifact.
+- The contract records logical roles; it does not require the default names.
+
+### 6.2 Compatibility
+
+- Projects without `structure.contract` retain current paths through a generated
+  in-memory legacy mapping. No file moves occur.
+- Legacy `results/data` maps to both intermediate and source-data discovery until
+  the project explicitly separates them; publication must report this ambiguity.
+- Existing config keys remain readable through at least the next minor release
+  after `v0.20.0`; removal requires a later minor release, release-note notice,
+  and a previously emitted actionable deprecation warning.
+- Compatibility warnings include an actionable dry-run command and never change
+  execution output solely because the project has an older layout.
+- The v2 compact MCP surface remains compact. Structure inspection is initially
+  exposed as a `figops.describe` kind; a separate read-only audit tool requires
+  evidence that the response no longer fits that contract.
+- Default v2 discovery exposes at most 8 tools after this work. Compatibility
+  discovery is separately budgeted and may expose the documented legacy surface.
+- Internal/private style identifiers remain unavailable from public schemas,
+  documentation, and package artifacts.
+
+### 6.3 External raw descriptors
+
+Raw data outside the project is declared separately from role roots. A descriptor
+contains a logical input ID, normalized path or URI, the trusted allowed-root ID,
+source version/ETag when available, immutable SHA-256, and optional access class.
+The project cannot widen allowed roots. Local descriptors must resolve beneath a
+launcher-approved root; URI schemes require an enabled adapter. Materialization
+records the descriptor identity and observed hash but never rewrites the
+descriptor to a runtime path. Missing version/hash, an unapproved root, mutable
+identity, or observed-hash mismatch fails before execution in strict/publication
+mode.
+
+```yaml
+external_raw:
+  - id: instrument-export-2026-07-15
+    uri: gdrive://lab/exports/run-042.csv
+    allowed_root: lab-exports
+    version: "etag-or-source-version"
+    sha256: "<64 lowercase hex characters>"
+```
+
+### 6.4 Contract-version resolution
+
+- A config with no `structure.contract` is identified as legacy contract `1.0`.
+- Loading `1.0` resolves an in-memory `1.1` view and advances only the in-memory
+  effective-version field to `1.1`; it never rewrites the project file.
+- The legacy resolver is a separate adapter module. The `1.1` parser does not
+  accumulate aliases or conditionals for historical shapes.
+- Diagnostics report both declared version (`1.0` when schema-less) and effective
+  version (`1.1`) plus every inferred mapping.
+- A reviewed migration may later write `1.1`, but normal execution, describe,
+  validation, and dry-run discovery are read-only with respect to config files.
+
+## 7. Organization workflow
+
+Organization is a reviewable transaction, not an eager formatter.
+
+1. **Discover read-only:** inventory files, config references, script imports,
+   provenance, and existing outputs.
+2. **Classify provisionally:** emit proposed role, reason, confidence, conflicts,
+   and dependents for each item.
+3. **Plan:** create a deterministic dry-run manifest containing source, proposed
+   destination, expected hash, config edits, collisions, and unresolved items.
+4. **Confirm:** require explicit user acceptance of role mappings and destination
+   roots.
+5. **Apply copy-only:** copy into a destination-filesystem sibling staging path,
+   verify containment/hash, fsync as supported, then atomically move with native
+   no-replace semantics. The move consumes the private stage and preserves any
+   destination race winner; unsupported platforms fail closed.
+   Never delete or move raw inputs.
+6. **Rewrite declared references:** update config only when its original value and
+   expected edit match the reviewed plan. Do not rewrite arbitrary script text.
+7. **Verify:** run config, lineage, raw-integrity, pipeline smoke, and output-hash
+   checks in the new structure.
+8. **Report:** retain rollback manifest. Original cleanup is always a separate,
+   user-authorized operation outside the organizer.
+
+Low-confidence, multi-role, content-sensitive, unreferenced, and collision cases
+stay unresolved. Extension-only classification may not cross a role boundary.
+Any hard-coded script/import/config dependency that cannot be represented as a
+reviewed compare-and-swap edit remains an `unresolved_dependency`. Migration
+apply is blocked while even one such dependency can affect a copied artifact;
+warnings are insufficient and the tool may not guess or rewrite arbitrary source.
+
+## 8. Seven P1 corrections
+
+### P1-1 Calculation evidence binds to the real artifact
+
+`analysis_artifact_sha256` must hash the declared analysis artifact, not the
+evidence document itself. Verification resolves the artifact, checks containment,
+hashes its bytes, and rejects missing, mismatched, malformed, or self-referential
+evidence. The calculation artifact is first promoted as durable source data,
+table, or typed evidence and is bound to producer script/config/input/output
+hashes and stable claim IDs. Receipt verification traverses those edges; a bare
+hash with no producer lineage is unverified.
+
+### P1-2 Project-script renders cannot bypass claim validation
+
+Every publication-mode project-script render must emit a structured claim
+inventory, including an explicit empty inventory when no claim exists. Each claim
+has a stable ID, kind, displayed text/region, supporting calculation artifact ID,
+and source-data/table dependencies. Text/image detection is conservative discovery
+only. If a script is uninspectable, inventory is missing, a claim is detected but
+undeclared, or an inventory edge cannot be verified, publication status is
+`unverified` and blocks promotion. Explicit no-claim declarations are recorded
+and auditable but do not override detected contradictions.
+
+### P1-3 Strict raw integrity rejects vacuous seals
+
+Strict mode requires at least one valid manifest entry when raw inputs are
+declared, canonical relative paths, valid SHA-256 digests, existing regular files,
+containment, and exact set/hash agreement. An empty seal cannot validate a
+dependency graph. The dependency graph must be nonempty and terminate in at least
+one raw or external-raw descriptor. The only exception is a typed, explicit
+`no_raw_inputs` declaration with a reason and a graph containing only genuinely
+input-free producers; absence, an empty list, or an inferred "no raw" state is
+not an exception.
+
+### P1-4 Journal minima are measured and persisted
+
+Render evidence must populate policy projections with the selected validation
+target, measured geometry/text/resolution/color outcomes, rule version,
+measurement implementation/version, artifact SHA-256, pass/fail status, and any
+inapplicable reason. Measurements are derived only from rendered artifact bytes
+and metadata and must be reproducible from the recorded artifact SHA plus rule
+and measurement versions. A profile name or renderer intent is not proof.
+
+### P1-5 Neutral style is the implicit default
+
+For v2 and the new v1.1 contract, omitting render style selects `neutral`,
+preserving authored choices. An explicitly selected compatibility profile retains
+the legacy Nature default for backward compatibility. Nature, Science, and other
+publication render policies otherwise apply only when explicitly requested.
+`render_policy` controls rendering; `validation_target` independently selects
+which publication rules to measure. A validator never restyles or rerenders an
+artifact and measures only the supplied artifact. Publication validation may
+therefore assess a neutral render against an explicit journal target without
+changing it.
+
+### P1-6 One structure SSOT and one scaffold path
+
+Scaffolding and normalization share one structure-contract module and one
+template inventory. `scaffold.py` and `project_normalization.py` may coordinate
+but may not independently define directory layouts.
+
+### P1-7 Classification is semantic and reference-safe
+
+Normalization uses declarations, provenance, config references, and script/output
+relationships before names or extensions. A reviewed plan includes config edits;
+apply refuses stale config, destination collisions, ambiguous roles, or reference
+breakage.
+
+## 9. Work packages, ownership, and dependencies
+
+The main session orchestrates only: assigns disjoint ownership, reviews agent
+evidence, integrates in dependency order, and owns final go/no-go. Agents must not
+edit outside their package without reassignment.
+
+| WP | Exclusive scope and primary files | Depends on / serial handoff | Acceptance |
+|---|---|---|---|
+| WP0 | Freeze this SSOT and requirement matrix; own the new normalized receipt DTO module `hub_core/durable_receipt.py` and its tests. Architecture agent. | None; DTO API freezes before WP1/WP3/WP8 | Every requirement maps to an exact test/gate; runtime diagnostics cannot bypass the DTO allow-list. |
+| WP1 | P1-1/P1-2: `hub_core/calculation_evidence.py`, `hub_core/claim_inventory.py`, `hub_core/claim_script_inspection.py`, and project-render call sites only. Evidence agent. | WP0 DTO; hands frozen claim API to WP8/WP9 | Forged/self-hashed evidence, missing lineage, uninspectable or dynamically claim-bearing script, and claim bypass fail closed. |
+| WP2 | P1-3: `hub_core/raw_integrity.py`, `hub_core/external_raw.py`, and the descriptor-integrity API consumed by execution. Integrity agent. | WP0; hands frozen raw graph API to WP4/WP8 | Empty/malformed/escape/mismatch fail; typed `no_raw_inputs` alone permits an input-free graph. |
+| WP3 | P1-4/P1-5: `hub_core/render_evidence.py`, new `hub_core/artifact_policy_measurement.py`, v2 schema/default call sites. Rendering agent. | WP0; hands frozen measurement DTO to WP8/WP9 | Neutral/new default and explicit legacy default are observable; validation never mutates rendering. |
+| WP4 | New `hub_core/project_structure_contract.py` and `hub_core/legacy_structure_resolver.py`; config schema/template docs. Contract agent. | WP0, then consumes frozen external-raw shape from WP2 | v1.1 valid/invalid/schema-less fixtures pass; root/DAG/alias rules fail fast; no file rewrite. |
+| WP5 | P1-6: new `hub_core/project_layout.py`; then serially refactor `hub_core/scaffold.py` and only the layout constants in `hub_core/project_normalization.py`. Scaffold agent. | WP4 API freeze; hands those files to WP6 after merge | Both entry points use one layout inventory and produce identical declared structure. |
+| WP6 | P1-7 read-only inventory/classifier and deterministic dry-run in `hub_core/structure_inventory.py`, `hub_core/structure_audit.py`, and `hub_core/structure_plan.py`; destination-to-role binding lives in `hub_core/structure_role_binding.py`. Discovery agent. | WP4, then exclusive serial handoff from WP5 | Semantic precedence, ambiguity, hard-coded dependency, collision, declared custom-root binding, and stable-plan tests pass. |
+| WP7 | `hub_core/structure_apply.py` plus `hub_core/atomic_no_clobber.py`: copy-only apply, destination-filesystem sibling staging, config CAS, rollback, and a native consuming same-filesystem no-replace namespace move. Migration agent. | WP6 API freeze; no shared-file edits | Failure injection leaves originals unchanged; destination races preserve the competing file; unsupported no-replace primitives fail closed; unresolved dependencies block; raw is never moved/deleted. |
+| WP8 | Runtime externalization/integration across `hub_core/runtime_boundary.py`, `runtime_paths.py`, `execution_log.py`, `error_dumper.py`, `cache_manager.py`, `external_raw_execution.py`, `durable_promotion.py`, `result_promotion.py`, process/data-contract call sites, and MCP runtime/security/render call sites. Runtime agent. | Serial after WP0/WP1/WP2/WP3/WP4 APIs freeze; those owners make no further edits until WP8 returns files | Roots are disjoint, all transient diagnostics remain runtime, CLI and MCP consume verified external raw, eligible results alone are promoted with native same-FS no-replace publication, and deletion drill preserves durable verification. |
+| WP9 | MCP/CLI integration and generated tool docs; may edit interface files only after WP1/WP3/WP8 handoff. Interface agent. | WP4, WP6, WP7, then serial handoff from WP1/WP3/WP8 | No surface sprawl, installed budget and compatibility tests pass, output contains no absolute runtime path. |
+| WP10 | End-to-end fixtures, packaging, release notes, migration guide only; no production logic. Release agent. | WP1-WP9 merged | All DoD/release gates pass from clean install and exact release commit. |
+
+No file has two simultaneous owners. A listed serial handoff requires the first
+owner to commit or otherwise freeze its diff, report exact tests, and explicitly
+transfer ownership in the orchestration log before the next agent edits it. New
+cross-cutting behavior goes into the named new modules rather than being copied
+into existing call sites.
+
+### 9.1 Implementation checkpoint (2026-07-16)
+
+This checkpoint records working-tree integration, not merge, release, human
+approval, or fulfillment of the complete Definition of Done.
+
+| Work package | Current state | Working-tree evidence |
+|---|---|---|
+| WP0 | implementation complete | `durable_receipt.py` owns the closed receipt DTO and canonical verification. |
+| WP1 | implementation complete | Durable calculation lineage and structured project claim inventory are integrated into project-render evidence; conservative script inspection blocks undeclared dynamic statistical annotations without treating unrelated dynamic labels as claims. |
+| WP2 | implementation complete | Strict raw graphs reject vacuous seals; typed external-raw descriptors preserve trusted source identity and are verified before both CLI and MCP producer execution. |
+| WP3 | implementation complete | Neutral v1.1/v2 defaults, independent validation targets, and artifact-derived policy measurements are integrated. |
+| WP4 | implementation complete | v1.1 role/DAG/alias validation and legacy 1.0 in-memory resolution are integrated with config parsing and templates. |
+| WP5 | implementation complete | Scaffolding and normalization consume the shared `project_layout.py` inventory. |
+| WP6 | implementation complete | `structure_inventory`, `structure_audit`, `structure_plan`, and `structure_role_binding` use semantic/reference precedence and bind approved destinations to declared roots. |
+| WP7 | implementation complete | Reviewed application is copy-only, token/CAS guarded, rollback-aware, and publishes a verified sibling stage only through the native consuming no-replace primitive; race winners are preserved. |
+| WP8 | implementation complete; independent adversarial gate green | Runtime containment, pre-execution external-raw verification, eligible-result promotion, staged durable publication, and runtime-independent receipt verification are integrated across CLI and MCP producers. Handle-bound rollback deletion closes the hash-to-unlink swap window; the independent rollback suite passed 34 tests with two platform skips. |
+| WP9 | implementation complete | v2 exposes structure detail through `figops.describe`; compatibility apply remains write-gated without expanding the seven-tool default surface. |
+| WP10 | non-R technical gates complete; release transition open | Live references and the v2 baseline fixture are current. Full Python, public-release, docs/architecture, package build/check/scan, clean consumer install, and installed-surface gates are green. Actual R, approvals, merge, tag, and publication remain open. |
+
+The definitive v4 non-R technical gate on the final working tree passed 2,201
+tests with 48 skips, 104 subtests, and zero failures. Full Ruff, compile, diff,
+generated-doc freshness, architecture inventory, public-release inspection, and
+the then-current SSOT exact-node matrix also passed; that definitive run reported
+43 passed and four subtests. Independent durable-rollback verification passed 34
+tests with two platform skips, including both hash-then-inode-swap witnesses
+below. After those two exact witnesses were added to this matrix, the augmented
+documented matrix reran with 45 passed and four subtests.
+
+The package build produced local release-candidate witnesses only: a 617,113-byte
+wheel with SHA-256
+`31618238DE39845A0647F3B43B9776592630D9A5832B2F084A671A366ED6B920` and a
+516,938-byte sdist with SHA-256
+`500AEBDE826779FE81D191358F898E52B57CCA6CBEF4DBE2821FBB3179C699E3`.
+Twine validation, package-surface inspection, and clean consumer smoke completed
+four of four checks; installed discovery exposed 7 v2 tools and 27 compatibility
+tools. These artifacts are not published release artifacts. `Rscript` remains
+unavailable on this host, so the mandatory actual-R gate is unexecuted;
+repository-required human/legal approvals, merge, tag, package publication, and
+GitHub Release also remain open.
+
+### 9.2 Token-efficient agent routing
+
+- **Small/fast agent (WP0 docs/matrix, WP10 docs/fixtures):** inventory,
+  documentation drift, fixture generation, mechanical schema updates, focused
+  lint; target one context slice and under 25k input tokens.
+- **Standard agent (WP5, WP6, WP9):** bounded module implementation with explicit
+  tests; read only its owned modules, public interfaces, and mapped test files.
+- **Deep-reasoning agent (WP0 DTO, WP1-WP4, WP7-WP8):** trust boundaries, path
+  containment, evidence semantics, version resolution, migration transactions,
+  and adversarial cases; split author and verifier contexts.
+- **Independent verifier:** read-only cross-WP review after integration; it must not
+  be the author of the reviewed package.
+- Prefer targeted tests during a WP. Run global gates once at integration points,
+  not independently in every agent.
+- Agent reports contain changed files, commands/results, remaining risks, and no
+  pasted large diffs. The main session makes no implementation edits.
+
+## 10. Test plan and acceptance matrix
+
+Every named node below must exist; renaming it requires updating this SSOT in the
+same change. The focused command is `python hub_uv.py run python -m pytest -q
+<node>` and success means exit 0 with the named node collected and passed.
+
+| Requirement | Exact test file/node | Release gate |
+|---|---|---|
+| PR #224 P1 release block | `tests/test_release_discipline.py::test_v020_release_requires_structure_p1_gate` | full pytest + human approvals |
+| Calculation artifact/lineage, no self-hash | `tests/test_evidence_contract.py::test_calculation_receipt_binds_durable_artifact_and_lineage` | full pytest |
+| Structured claims/uninspectable script | `tests/test_claim_boundaries.py::test_publication_project_script_requires_verified_claim_inventory` | full pytest |
+| Strict nonempty raw graph/typed exception | `tests/test_raw_integrity.py::test_strict_graph_rejects_vacuous_seal_unless_no_raw_inputs` | full pytest |
+| Neutral new default/legacy compatibility | `tests/test_mcp_surface_profiles.py::test_new_contract_is_neutral_and_compatibility_keeps_nature` | installed consumer smoke |
+| Render-policy/validation separation | `tests/test_render_evidence.py::test_validator_measures_artifact_without_render_mutation` | journal fixture gate |
+| Recomputable policy projection | `tests/test_render_evidence.py::test_policy_projection_binds_artifact_rule_and_measurement_versions` | journal fixture gate |
+| One layout/scaffold path | `tests/test_project_roles.py::test_scaffold_and_normalizer_share_v11_layout` | full pytest |
+| Runtime/project-result boundary | `tests/test_runtime_paths.py::RuntimePathTest::test_runtime_root_is_disjoint_from_project_and_durable_roots` | full pytest |
+| Same-FS staged atomic promotion | `tests/test_durable_promotion.py::test_result_promotion_stages_on_destination_filesystem` | Windows + POSIX CI |
+| Native consuming no-replace move | `tests/test_atomic_no_clobber.py::test_atomic_move_consumes_source_name` | Windows + POSIX CI |
+| Destination race winner preserved | `tests/test_atomic_no_clobber.py::test_atomic_move_preserves_race_winner` and `tests/test_structure_apply.py::test_apply_race_never_clobbers_competing_destination` | Windows + POSIX CI |
+| Promotion race winner preserved | `tests/test_durable_promotion.py::test_promotion_race_never_clobbers_competing_destination` | Windows + POSIX CI |
+| Artifact rollback swap preserves competitor | `tests/test_durable_promotion.py::test_artifact_rollback_hash_then_inode_swap_preserves_competitor` | Windows + POSIX CI |
+| Receipt rollback swap preserves competitor | `tests/test_durable_promotion.py::test_receipt_rollback_hash_then_inode_swap_preserves_competitor` | Windows + POSIX CI |
+| Unsupported atomic primitive fails closed | `tests/test_atomic_no_clobber.py::test_unsupported_native_primitive_fails_before_publication` | full pytest |
+| Receipt DTO/opaque manifest ID | `tests/test_durable_receipt.py::test_durable_receipt_normalizes_diagnostics_and_hides_runtime_root` | public/package scan |
+| External raw descriptor | `tests/test_raw_integrity.py::test_external_raw_requires_allowed_root_version_and_sha` | full pytest |
+| External raw reaches MCP producer only after verification | `tests/test_external_raw_execution.py::test_mcp_project_render_consumes_verified_external_raw_from_runtime` | MCP integration gate |
+| External raw reaches CLI producer only after verification | `tests/test_external_raw_execution.py::test_cli_external_raw_root_grant_reaches_actual_producer` | CLI integration gate |
+| Dynamic claim cannot bypass empty inventory | `tests/test_claim_boundaries.py::test_dynamic_claim_annotations_cannot_bypass_explicit_empty_inventory` | full pytest |
+| Eligible result promotion production caller | `tests/test_result_promotion_integration.py::test_project_render_production_caller_promotes_only_after_clean_gates` | end-to-end gate |
+| DAG/forbidden alias matrix | `tests/test_project_structure_contract.py::test_v11_role_nesting_dag_rejects_forbidden_aliases` | full pytest |
+| Legacy 1.0 in-memory advance | `tests/test_config_parser_sweep.py::test_schema_less_structure_resolves_in_memory_without_rewrite` | config sweep |
+| Hard-coded unresolved dependency | `tests/test_project_roles.py::test_migration_apply_blocks_unresolved_hard_coded_dependency` | full pytest |
+| Runtime leakage across WP8 scope | `tests/test_runtime_paths.py::RuntimePathTest::test_all_runtime_producers_stay_external_and_disposable` | deletion drill |
+| Runtime deletion durability | `tests/test_durable_receipt.py::test_receipt_verifies_after_runtime_tree_deletion` | end-to-end gate |
+| Public surface and private-name hygiene | `tests/test_public_package_surface.py::test_installed_ai_native_surface_budget` | public scan + clean install |
+
+### 10.1 Unit and property tests
+
+- Role-root normalization, overlap, containment, traversal, symlink/junction, case
+  normalization, and Windows drive/UNC edge cases.
+- Strict raw manifest non-vacuity, digest syntax, exact membership, regular-file
+  identity, and mutation between validation/use.
+- Evidence artifact binding, receipt canonicalization, sensitive-field exclusion,
+  and output/input hash relationships.
+- Neutral implicit style and explicit policy selection.
+- Semantic classification precedence and deterministic dry-run serialization.
+- Copy verification, atomic promotion, stale-plan/config compare-and-swap, and
+  rollback under injected failures.
+
+### 10.2 Integration tests
+
+- Fresh v1.1 scaffold through analysis, plot, evidence, and publication promotion.
+- Legacy project runs without relocation; audit proposes a mapping.
+- Existing `results/data` ambiguity is warned and blocks only publication evidence
+  that requires an unambiguous source-data role.
+- Project-script statistical annotation without calculation evidence cannot be
+  marked publication-ready.
+- Journal render persists measured minimum-rule outcomes.
+- Prefetched cloud input retains source URI/hash while materialization stays in
+  external runtime.
+- Runtime root deletion after a successful run leaves result hashes and durable
+  receipt verification intact.
+- Copy-only migration followed by smoke execution; originals remain byte-identical.
+
+### 10.3 Repository and release gates
+
+- `python hub_uv.py run python -m pytest -q`
+- `python hub_uv.py run ruff check .`
+- `python scripts/check_public_release.py --root .`
+- Generated schema/tool documentation is current.
+- Package build, Twine check, clean-environment install, installed-surface budget,
+  and consumer smoke pass.
+- No Python module exceeds the repository size policy.
+- `git diff --check` is clean.
+- Actual R integration/render is executed in an R-capable environment; absence of
+  `Rscript` is a release blocker for this structure release, not a silent skip.
+  The exact CI gate is `Rscript -e "suppressPackageStartupMessages(library(readr))"`
+  followed by `python hub_uv.py run python -m pytest -q
+  tests/test_smoke.py::HubSmokeTest::test_scaffold_all_and_cache
+  tests/test_process_runner_new.py::TestScaffoldRAnalysisInputContract::test_scaffold_r_analysis_reads_real_data_from_normalized_raw_dir`;
+  acceptance is exactly two passed nodes and zero skipped nodes.
+
+## 11. Rollback and safety
+
+- Organizer application is disabled by default and separately write-gated.
+- Every apply consumes an immutable reviewed plan ID and emits a rollback manifest.
+- Raw inputs are copy-only; automatic cleanup is forbidden.
+- Result promotion always uses a sibling staging path on the destination
+  filesystem, fsync/hash verification, then a same-filesystem atomic no-replace
+  move that consumes the private stage name and preserves a destination race winner.
+  A runtime-to-destination cross-volume copy may populate that sibling stage, but
+  direct cross-volume rename/promotion is forbidden.
+- Config edits use compare-and-swap against the reviewed original hash.
+- On any failure, new promoted paths are removed only when their hashes match the
+  rollback manifest and deletion remains bound to that same file identity.
+  Windows performs file-ID/hash verification and delete disposition through one
+  non-write-shared handle. POSIX never uses check-then-unlink; when ownership
+  cannot be proven atomically, the path is preserved and a typed manual-cleanup
+  error is emitted. Pre-existing, racing, or user-modified files are never deleted.
+- Feature flags permit disabling v1.1 organization/apply while leaving read-only
+  audit and existing orchestration intact.
+- Rollback of the release means disabling new mutation paths and restoring prior
+  config interpretation; it never reverses user data movement automatically.
+
+## 12. Release sequence
+
+1. Land and verify P1-1 through P1-7.
+2. Land v1.1 contract and shared scaffold behind non-mutating defaults.
+3. Land read-only discovery/dry-run; publish migration examples.
+4. Land write-gated copy-only apply and failure-injection evidence.
+5. Externalize remaining runtime leakage and validate durable receipts.
+6. Run independent adversarial review and the complete gate matrix.
+7. Merge only after CI and repository-required human/legal approvals.
+8. Tag, build, publish, and create the GitHub release from the approved release
+   commit according to repository release policy.
+
+Existing Draft PR #224 must not be presented as released merely because tests or
+packaging pass. Tag, package publication, and GitHub Release are separate verified
+events.
+
+## 13. Definition of Done
+
+The work is complete only when all statements below are true and every command
+exits 0 from a clean checkout of the exact release commit: `python hub_uv.py run
+python -m pytest -q`; `python hub_uv.py run ruff check .`; `python
+scripts/check_public_release.py --root .`; `python hub_uv.py run python -m build`;
+`python hub_uv.py run python -m twine check dist/*`; `python
+scripts/consumer_install_smoke.py --root .`; and `git diff --check`. Generated
+tool/schema docs must reproduce byte-identically, the installed v2/compatibility
+surface budget tests must pass, and an R-capable CI job must execute (not skip)
+the real R integration/render gate. Independent review must report zero P0/P1,
+all repository-required approvals must be recorded, and the release commit/tag
+and built artifact hashes must agree before publication.
+
+- All seven P1 corrections have regression tests and no open blocker.
+- One v1.1 role contract drives config validation, scaffold, normalization, audit,
+  and migration; no duplicate layout constants remain.
+- Raw, scripts, derived data, figures, publication, and runtime have explicit,
+  non-overlapping semantics.
+- Runtime is externally rooted and deletable; durable results remain verifiable
+  after a deletion drill.
+- Organization defaults to read-only dry-run, reports ambiguity, and applies only
+  an explicitly accepted copy-only plan.
+- No automatic operation moves or deletes raw data.
+- Legacy projects run unchanged and receive actionable compatibility diagnostics.
+- Neutral is the implicit v2/v1.1 render policy; explicit compatibility retains
+  its legacy Nature default. Validation targets are independent and their
+  measured minima are persisted without mutating the artifact.
+- Statistical claims and raw-integrity seals cannot obtain verified status through
+  missing, empty, self-referential, or forged evidence.
+- Full Python and actual R gates, public-release checks, generated docs, package
+  build/install, installed surface, and end-to-end fixtures pass.
+- Independent review reports no P0/P1 issue.
+- Release notes state migrations, compatibility behavior, runtime/result boundary,
+  remaining limitations, exact commit/tag, and artifact hashes.
+
+## 14. Decision log
+
+- Keep the user's three-part mental model at the top level, but distinguish
+  intermediate/source data within durable results.
+- Encode meaning as declared roles rather than mandatory folder names.
+- Treat runtime/detail manifests as disposable and durable receipts as research
+  results.
+- Prefer explicit policy selection and evidence-backed enforcement over defaults
+  that reduce LLM discretion.
+- Favor read-only discovery and reversible copy-only migration over automatic
+  cleanup.

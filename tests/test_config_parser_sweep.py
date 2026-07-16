@@ -1,5 +1,6 @@
 """Unit tests for parse_sweep_config(), _validate_sweep(), and targeted config validation."""
 
+import copy
 import tempfile
 import unittest
 from pathlib import Path
@@ -87,6 +88,26 @@ def test_config_parser_raw_integrity_wrapper_preserves_allowed_modes():
     assert errors == ["data_contract.raw_integrity.mode must be one of: strict, warn."]
 
 
+def test_schema_less_structure_resolves_in_memory_without_rewrite(tmp_path: Path):
+    from hub_core.project_structure_contract import resolve_project_structure
+
+    config_path = tmp_path / "project_config.yaml"
+    original = "project:\n  name: Legacy structure\n"
+    config_path.write_text(original, encoding="utf-8")
+
+    config, loaded_path, _config_hash = load_config(tmp_path)
+
+    assert loaded_path == str(config_path)
+    assert config_path.read_text(encoding="utf-8") == original
+    assert config["schema_version"] == "1.1"
+    assert "structure" not in config
+    before = copy.deepcopy(config)
+    resolved = resolve_project_structure(config)
+    assert config == before
+    assert resolved.declared_version == "1.0"
+    assert resolved.effective_version == "1.1"
+
+
 def test_visual_style_and_preset_validation_keeps_facade_error_order():
     config = {
         "project": {"name": "Visual validation"},
@@ -104,7 +125,7 @@ def test_visual_style_and_preset_validation_keeps_facade_error_order():
     ]
     assert relevant == [
         "Invalid visual_style.target_format: 'unknown'. Allowed values: "
-        f"acs, cell, default, elsevier, nature, {PRIVATE_TARGET_FORMAT}, ppt, rsc, science, wiley.",
+        f"acs, cell, default, elsevier, nature, {PRIVATE_TARGET_FORMAT}, neutral, ppt, rsc, science, wiley.",
         "visual_style.font_scale must be a positive number.",
         "Invalid visual_style.profile: 'unknown'. Allowed values: "
         f"baseline, publication, {PRIVATE_STYLE_PROFILE}.",

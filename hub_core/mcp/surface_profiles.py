@@ -1,8 +1,9 @@
-"""Profile-aware MCP discovery for the AI-native and compatibility surfaces.
+"""Profile-aware MCP discovery and callable boundaries.
 
-The handler registry intentionally remains a superset of discovery.  A surface
-profile controls how much contract is placed in an agent's initial context; it
-does not weaken the lower-layer write guard or any kernel validation.
+A profile controls both the contract placed in an agent's context and the
+names that the server will dispatch.  Write-disabled servers may retain their
+profile's write handlers only so the independent write guard can return its
+stable disabled response; names from another profile are never callable.
 """
 
 from __future__ import annotations
@@ -48,7 +49,13 @@ COMPATIBILITY_CANONICAL_NAMES = (
     "figops.evaluate_publication_readiness",
 )
 
-DESCRIBE_KINDS = ("tools", "plot_types", "semantic_checks", "domain_helpers")
+DESCRIBE_KINDS = (
+    "tools",
+    "plot_types",
+    "semantic_checks",
+    "domain_helpers",
+    "project_structure",
+)
 
 
 def normalize_surface_profile(value: Any, *, default: str = AI_NATIVE_PROFILE) -> str:
@@ -68,6 +75,19 @@ def normalize_surface_profile(value: Any, *, default: str = AI_NATIVE_PROFILE) -
             f"Unknown MCP surface profile {value!r}; expected one of: {', '.join(SURFACE_PROFILES)}."
         )
     return normalized
+
+
+def callable_tool_names(profile: str) -> tuple[str, ...]:
+    """Return the complete, ordered dispatch boundary for one profile."""
+
+    normalized = normalize_surface_profile(profile)
+    if normalized == AI_NATIVE_PROFILE:
+        return V2_TOOL_NAMES
+    aliases = tuple(
+        name.replace("figops.", "graphhub.", 1)
+        for name in COMPATIBILITY_CANONICAL_NAMES[:COMPATIBILITY_ALIAS_COUNT]
+    )
+    return (*COMPATIBILITY_CANONICAL_NAMES, *aliases)
 
 
 def select_tool_definitions(
@@ -97,8 +117,8 @@ def select_tool_definitions(
             selected.append(alias)
 
     # Omission is less ambiguous than an annotation extension that older MCP
-    # clients may ignore.  Dispatch still fails closed if a hidden name is
-    # guessed, because the handler registry and write guard remain independent.
+    # clients may ignore. The server's dispatch registry is independently
+    # restricted to callable_tool_names(profile).
     if not write_tools_enabled:
         selected = [item for item in selected if not is_write_tool_name(str(item["name"]))]
     return selected
@@ -128,6 +148,15 @@ def compact_surface_description(
         "plot_types": plot_types,
         "semantic_checks": semantic_checks,
         "domain_helpers": domain_helpers,
+        "project_structure": [
+            {
+                "name": "project_structure",
+                "purpose": (
+                    "Read declared project roles, dependency graph, findings, unknowns, and "
+                    "non-mutating proposed changes for one project."
+                ),
+            }
+        ],
     }
     summaries = [
         {
@@ -166,13 +195,15 @@ def _compact_describe_definition(definition: dict[str, Any]) -> dict[str, Any]:
     if definition.get("name") != "figops.describe":
         return definition
     definition["description"] = (
-        "Summarize available capabilities, then fetch filtered kind/name detail on demand."
+        "Summarize capabilities or inspect one project's declared structure without writing files."
     )
     definition["inputSchema"] = {
         "type": "object",
         "properties": {
             "kind": {"type": "string", "enum": list(DESCRIBE_KINDS)},
             "name": {"type": "string", "minLength": 1, "maxLength": 256},
+            "project_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "project_path": {"type": "string", "minLength": 1, "maxLength": 4096},
         },
         "additionalProperties": False,
     }
@@ -186,6 +217,13 @@ def _compact_describe_definition(definition: dict[str, Any]) -> dict[str, Any]:
             "write_tools_enabled": {"type": "boolean"},
             "kinds": {"type": "array", "items": {"type": "object"}},
             "detail": {"type": ["object", "null"]},
+            "schema_version": {"type": "string"},
+            "status_code": {"type": "string"},
+            "roles": {"type": "object"},
+            "graph": {"type": "object"},
+            "findings": {"type": "array", "items": {"type": "object"}},
+            "unknowns": {"type": "array", "items": {"type": "object"}},
+            "proposed_changes": {"type": "array", "items": {"type": "object"}},
         },
         "additionalProperties": True,
     }
@@ -225,6 +263,7 @@ __all__ = [
     "DESCRIBE_KINDS",
     "SURFACE_PROFILES",
     "V2_TOOL_NAMES",
+    "callable_tool_names",
     "compact_surface_description",
     "normalize_surface_profile",
     "select_tool_definitions",

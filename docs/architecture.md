@@ -2,7 +2,7 @@
 
 > Companion to `docs/ROADMAP.md`. Describes the current v0.20.0 release-candidate
 > architecture after the v0.19.0 release, including the AI-native v2 agent
-> surface and evidence-first render/audit path.
+> surface and the PR #224 declared-project/runtime-result integrity path.
 
 ## Layers and dependency direction
 
@@ -33,8 +33,26 @@ hub_core/mcp/server.py                # FigOps facade + historical GraphHub Pyth
                 v
 hub_core/project_paths.py             # contained project input/output resolution
 hub_core/project_config_reader.py     # verified, bounded config discovery/read
+hub_core/project_structure_contract.py # v1.1 role/DAG/alias contract
+hub_core/legacy_structure_resolver.py  # schema-less 1.0 -> in-memory 1.1 view
+hub_core/project_layout.py             # one scaffold/normalization layout inventory
+hub_core/structure_inventory.py         # read-only semantic inventory
+hub_core/structure_audit.py             # findings, graph, unresolved classification
+hub_core/structure_plan.py              # deterministic reviewed copy plan
+hub_core/structure_role_binding.py       # destination -> declared role-root binding
+hub_core/structure_apply.py              # token/CAS-guarded copy-only transaction
+hub_core/runtime_boundary.py           # project/result/runtime disjointness
+hub_core/atomic_no_clobber.py          # native consuming no-replace namespace move
+hub_core/durable_promotion.py          # destination-filesystem staged promotion
+hub_core/durable_receipt.py            # closed runtime-independent receipt DTO
+hub_core/result_promotion.py            # eligible project-render result admission
 hub_core/evidence_*.py                # evidence envelope and semantic validation
 hub_core/artifact_*.py                # artifact integrity and explicit-policy audit
+hub_core/calculation_evidence.py       # durable calculation artifact lineage
+hub_core/claim_inventory.py            # publication claim verification
+hub_core/claim_script_inspection.py    # conservative dynamic-claim discovery
+hub_core/external_raw.py               # trusted external-input descriptor verification
+hub_core/external_raw_execution.py     # authorized materialization before producer use
 hub_core/publication_*                # readiness evidence, policy projection, report, CLI
 hub_core/data_inspection*.py          # bounded data profiling worker/service
 hub_core/data_contract.py             # data-contract loading, validation, checks
@@ -68,7 +86,7 @@ policy-only; there is no import-linter contract in `.github/workflows/ci.yml` as
 of v0.20.0. Remaining over-budget files should be handled as scoped maintenance
 tracks rather than broad rewrites.
 
-Current files over the approximate 800-line budget, measured on 2026-07-15 with
+Current files over the approximate 800-line budget, measured on 2026-07-16 with
 the architecture inventory helper:
 
 ```bash
@@ -84,6 +102,9 @@ No Python module in the tracked architecture roots (`hub_core`, `plotting`, and
 `themes`) currently exceeds the 800-line split signal. Overlay
 normalization now lives in `plotting/renderers/annotation_normalization.py`,
 while the public overlay façade and compatibility imports remain stable.
+Structure-plan destination binding now lives in
+`hub_core/structure_role_binding.py`; `hub_core/structure_apply.py` retains its
+private compatibility aliases while focusing on transactional execution.
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
 1000 lines while preserving compatibility shims:
@@ -112,10 +133,14 @@ The config-parser façade now delegates multi-panel assembly validation to
 wrapper so callers that patch `config_parser.normalize_lang` retain their
 existing behavior.
 
-The process-runner façade now delegates non-expanded visual artifacts and
-per-input `expand: each` visual execution to focused helper modules. It passes
-its cache, command, path, and output-verification collaborators at invocation
-time so existing `hub_core.process_runner` monkeypatch paths remain effective.
+The process-runner façade now delegates non-expanded visual artifacts,
+per-input `expand: each` visual execution, and contained/external input
+resolution to focused helper modules. `process_runner_inputs.py` owns the
+prefetch/revalidation and launcher-authorized external-raw materialization
+sequence, while the façade preserves its historical private helper aliases. It
+passes visual cache, command, path, and output-verification collaborators at
+invocation time so existing `hub_core.process_runner` monkeypatch paths remain
+effective.
 
 The CSV render mixin now delegates the complete multipanel tool envelope to
 `hub_core/mcp/tools/render_csv_multipanel_handler.py`, passing its renderer
@@ -151,15 +176,48 @@ limits live in `hub_core/mcp/preview_artifacts.py`; conversion work lives in
 output. SVG returns typed unavailable until a renderer passes the required
 Windows safety smoke; source vector bytes are never substituted for a preview.
 
-The primary touched façades remain below the 800-line split signal through
-focused modules in the 2026-07-15 working-tree inventory:
-`evidence_contract.py` is 680 lines after extracting the 204-line
-`evidence_artifact_section.py`; `schemas.py` is 750;
-`geometry_diagnostics.py` 782; `preview_artifacts.py` 781;
-`render_orchestration.py` 769; and `render_csv.py` 776. Overlay normalization
-now lives in the 230-line `annotation_normalization.py`, leaving
-`overlays.py` at 597 lines with compatibility exports intact. No Python module
-in the tracked architecture roots exceeds the 800-line split signal.
+The AI-native façade split remains intact after the structure work. Shared tool
+schema primitives live in `hub_core/mcp/tool_schema_common.py`, and the v1.1
+project-structure tool schema lives in `hub_core/mcp/structure_schemas.py`,
+while the registry façade continues to feed validation, discovery, and
+generated references. Overlay normalization remains in
+`plotting/renderers/annotation_normalization.py`, with compatibility exports in
+the public overlay façade.
+
+The PR #224 corrective structure is organized around explicit lower-level
+contracts. `project_structure_contract.py` validates v1.1 role roots, nesting,
+aliases, and external-raw references; `legacy_structure_resolver.py` provides a
+read-only in-memory view for schema-less projects. `project_layout.py` is the
+single layout inventory consumed by scaffolding and normalization. Read-only
+classification and planning are separated into `structure_inventory.py`,
+`structure_audit.py`, and `structure_plan.py`; `structure_role_binding.py` binds
+every approved destination back to its declared semantic root. Reviewed
+mutation is isolated in `structure_apply.py` and remains copy-only.
+
+Runtime and durable-result mechanics are separate from structure discovery.
+`runtime_boundary.py` enforces project/result/runtime disjointness,
+`atomic_no_clobber.py` provides the only publication primitive: Windows
+`os.rename`, Linux `renameat2(RENAME_NOREPLACE)`, or macOS
+`renamex_np(RENAME_EXCL)`. It consumes the private stage name, never replaces a
+race winner, and fails closed where the native guarantee is unavailable.
+Rollback deletion is identity-bound: Windows verifies file ID and SHA-256
+through one non-write-shared handle before applying delete disposition to that
+same object. POSIX does not attempt check-then-unlink; ambiguous or still-owned
+paths remain in place and produce `FIGOPS_DURABLE_MANUAL_CLEANUP_REQUIRED` for
+review instead of risking deletion of a competing inode.
+`durable_promotion.py` stages verified bytes on the destination filesystem, and
+`result_promotion.py` is the production admission boundary that checks the
+persisted runtime manifest, eligibility, policy, and claim gates before invoking
+that primitive. `durable_receipt.py` emits the closed receipt DTO that survives
+runtime deletion. `external_raw.py` validates trusted source identity;
+`external_raw_execution.py` binds launcher authority, materializes below runtime,
+and rechecks bytes before CLI or MCP producers receive them. Calculation
+artifacts and publication claims are bound through `calculation_evidence.py` and
+`claim_inventory.py`; `claim_script_inspection.py` conservatively identifies
+dynamic statistical annotation candidates without rejecting unrelated dynamic
+author labels. `artifact_policy_measurement.py` and `render_evidence.py` persist
+measured render-policy and validation-target outcomes without restyling the
+artifact.
 
 The journal-theme façade now delegates its opt-in text/marker overlap nudge,
 leader-line targeting, axes-edge correction, and convergence reporting to

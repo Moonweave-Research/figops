@@ -5,14 +5,20 @@ from pathlib import Path
 from typing import Any
 
 from hub_core.adapters import select_adapters
+from hub_core.artifact_policy_measurement import resolve_render_validation_policies
 from hub_core.attempt_provenance import build_attempt_provenance, update_attempt_provenance
 from hub_core.config_parser import master_execution_error, project_role, project_status, validate_config
 from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
+from hub_core.external_raw_execution import (
+    is_external_raw_declaration,
+    materialize_external_raw_inputs,
+)
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.project_paths import resolve_project_input, resolve_project_output
-from hub_core.provenance_inputs import resolved_research_ops_evidence
+from hub_core.provenance_inputs import expand_project_input_files, resolved_research_ops_evidence
 from hub_core.render_evidence import build_render_evidence
 from hub_core.research_ops_enforcement import validate_research_ops_contract
+from hub_core.result_promotion import promote_eligible_project_result
 
 
 class McpRenderProjectMixin:
@@ -228,6 +234,12 @@ class McpRenderProjectMixin:
             )
             safe_output_path = True
             style_summary = self._selected_figure_style_summary(config, selected, arguments)
+            validation_target, render_policy = resolve_render_validation_policies(
+                arguments,
+                target_format=style_summary["target_format"],
+            )
+            style_summary["render_policy"] = render_policy["id"]
+            style_summary["validation_target"] = validation_target or None
             style_errors = self._render_style_errors(
                 style_summary["target_format"],
                 style_summary["output_format"],
@@ -297,6 +309,8 @@ class McpRenderProjectMixin:
                 failure_stage="",
                 resolution_hint="",
             )
+        claim_inventory = self._project_claim_inventory(project_path, selected)
+        claim_warnings = [f"Claim inventory: {message}" for message in claim_inventory["errors"]]
         job_root = self._mcp_project_jobs_root() / job_id
         snapshot_project_path = job_root / "project"
         output_path = snapshot_project_path / output_relpath
@@ -372,21 +386,45 @@ class McpRenderProjectMixin:
                 snapshot_project=snapshot_project_path,
                 config_relpath=config_relpath,
                 selected_figure=selected,
+                claim_inventory=claim_inventory,
             )
             output_path = resolve_project_output(
                 snapshot_project_path,
                 output_relpath,
                 purpose="figures[].output",
             )
+            input_declarations = self._selected_figure_declared_inputs(selected)
+            project_input_declarations = [
+                item for item in input_declarations if not is_external_raw_declaration(item)
+            ]
+            execution_input_paths = expand_project_input_files(
+                snapshot_project_path,
+                project_input_declarations,
+                require_matches=True,
+            )
+            external_inputs = materialize_external_raw_inputs(
+                # Authority/boundary checks bind to the durable source project.
+                # The snapshot is itself disposable runtime state and must not
+                # be treated as a durable project root overlapping runtime.
+                project_root=project_path,
+                config=config,
+                declarations=input_declarations,
+                prefetcher=adapters.prefetcher,
+                allowed_roots=self.allowed_data_roots,
+                runtime_root=self.runtime_root,
+            )
+            execution_input_paths.extend(item.path for item in external_inputs)
             pre_execution_hashes = self._mcp_project_pre_execution_hashes(
                 snapshot_project_path=snapshot_project_path,
                 config_path=config_path,
+                config=config,
                 selected_figure=selected,
             )
             self._run_project_figure_script(
                 snapshot_project_path=snapshot_project_path,
                 selected_figure=selected,
                 style_summary=style_summary,
+                input_paths=execution_input_paths,
             )
             geometry_diagnostics = render_helpers._read_geometry_sidecar(job_root)
             geometry_warnings = render_helpers._geometry_warnings(geometry_diagnostics)
@@ -424,10 +462,19 @@ class McpRenderProjectMixin:
                 path_text = str(figure["path"])
                 if path_text not in created_paths:
                     created_paths.append(path_text)
-            preflight = self._visual_preflight_with_geometry_overlaps(
-                output_path,
-                style_summary["target_format"],
-                geometry_diagnostics,
+            preflight = (
+                self._visual_preflight_with_geometry_overlaps(
+                    output_path,
+                    validation_target,
+                    geometry_diagnostics,
+                )
+                if validation_target
+                else {
+                    "passed": True,
+                    "checks": [],
+                    "warnings": ["publication validation target not selected"],
+                    "target": None,
+                }
             )
             preflight_warnings = self._preflight_warnings(preflight)
             baseline_comparison = self._baseline_comparison(output_path, arguments.get("baseline_path"))
@@ -438,6 +485,7 @@ class McpRenderProjectMixin:
                 or (baseline_comparison["checked"] and not baseline_comparison["matched"])
                 or geometry_diagnostics.get("passed") is False
                 or bool(figure_format_warnings)
+                or bool(claim_inventory["manual_review_needed"])
             )
             status = "warning" if manual_review_needed else "ok"
             artifact_status = self._artifact_status(preflight, baseline_comparison)
@@ -480,6 +528,10 @@ class McpRenderProjectMixin:
                 data_contract={"schema_version": "data_contract_summary/1", "passed": True},
                 preview_artifacts=preview_artifacts,
             )
+            manifest["claim_inventory"] = claim_inventory
+            manifest["publication_status"] = (
+                "verified" if claim_inventory["status"] == "verified" else "unverified"
+            )
             manifest["evidence"] = build_render_evidence(
                 manifest,
                 job_root=job_root,
@@ -492,7 +544,22 @@ class McpRenderProjectMixin:
                     and Path(baseline_comparison["baseline_path"]).is_file()
                     else None
                 ),
-                resolved_policy=research_ops_policy,
+                render_policy=render_policy,
+                validation_target=validation_target or None,
+            )
+            policy_projections = manifest["evidence"]["policy_projections"]
+            projection_ready = (
+                len(policy_projections) == 1
+                and policy_projections[0].get("status") == "informational"
+            )
+            policy_review_needed = bool(validation_target) and not projection_ready
+            manual_review_needed = manual_review_needed or policy_review_needed
+            status = "warning" if manual_review_needed else "ok"
+            manifest["manual_review_needed"] = manual_review_needed
+            manifest["promotion_eligible"] = bool(
+                claim_inventory["promotion_eligible"]
+                and validation_target
+                and projection_ready
             )
             status_payload = self._render_status_payload(
                 job_id=job_id,
@@ -510,7 +577,29 @@ class McpRenderProjectMixin:
             status_payload["provenance"] = provenance
             status_payload["layout_report"] = layout_report
             status_payload["figure_metadata"] = figure_metadata
+            status_payload["claim_inventory"] = claim_inventory
+            status_payload["publication_status"] = manifest["publication_status"]
+            status_payload["promotion_eligible"] = manifest["promotion_eligible"]
             render_helpers._write_manifest_and_status(manifest, manifest_path, status_payload, status_path, latest_dir)
+            try:
+                promoted = promote_eligible_project_result(
+                    project_root=project_path,
+                    config=config,
+                    runtime_root=self.runtime_root,
+                    runtime_artifact=output_path,
+                    output_relpath=output_relpath,
+                    manifest=manifest,
+                    manifest_path=manifest_path,
+                    figure_id=str(selected.get("id") or "figure"),
+                    selected_figure=selected,
+                )
+            except Exception as exc:
+                raise render_helpers.ProjectRenderExportError(
+                    f"Eligible result promotion failed: {exc}",
+                    script_output=self._read_project_script_output(job_root),
+                ) from exc
+            if promoted is not None:
+                created_paths.extend(str(item.path) for item in promoted)
         except Exception as exc:
             if isinstance(exc, TimeoutError):
                 failure_stage = "TIMEOUT"
@@ -601,7 +690,13 @@ class McpRenderProjectMixin:
             created_paths=created_paths,
             artifact_resources=preview_references["artifact_resources"],
             preview_resources=preview_references["preview_resources"],
-            warnings=preflight_warnings + baseline_warnings + geometry_warnings + figure_format_warnings,
+            warnings=(
+                preflight_warnings
+                + baseline_warnings
+                + geometry_warnings
+                + figure_format_warnings
+                + claim_warnings
+            ),
             manual_review_needed=manual_review_needed,
             is_dry_run=False,
             job_id=job_id,
@@ -625,6 +720,9 @@ class McpRenderProjectMixin:
             baseline_comparison=baseline_comparison,
             provenance=provenance,
             evidence=manifest["evidence"],
+            claim_inventory=claim_inventory,
+            publication_status=manifest["publication_status"],
+            promotion_eligible=manifest["promotion_eligible"],
             failure_stage="",
             resolution_hint="",
         )

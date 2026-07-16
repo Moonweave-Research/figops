@@ -7,6 +7,7 @@ from typing import Any
 from hub_core.mcp.config import McpServerConfig, normalize_allowed_root
 from hub_core.mcp.errors import DISABLED_ERROR
 from hub_core.project_discovery import ProjectDiscoveryService
+from hub_core.runtime_boundary import validate_runtime_location
 from hub_core.runtime_paths import preview_runtime_root, resolve_runtime_root
 from hub_core.utils import get_hub_path, get_research_root
 
@@ -105,7 +106,7 @@ class McpSecurityMixin:
     @staticmethod
     def _resolve_runtime_root(runtime_root: str | os.PathLike | None = None) -> Path:
         if runtime_root:
-            return Path(runtime_root).expanduser().resolve()
+            return validate_runtime_location(runtime_root)
         return Path(preview_runtime_root()).expanduser().resolve()
 
     @staticmethod
@@ -201,6 +202,8 @@ class McpSecurityMixin:
                 # Reject only when neither side is contained by the other — a true escape.
                 if not self._is_relative_to(target, trusted_root) and not self._is_relative_to(trusted_root, target):
                     raise ValueError(f"{field_name} must not include symlinked path components.")
+        if field_name == "project_path":
+            validate_runtime_location(self.runtime_root, project_root=path)
         return path
 
     def _resolve_allowed_data_path(self, raw_path: Any, *, field_name: str) -> Path:
@@ -253,5 +256,7 @@ class McpSecurityMixin:
         )
         for project in service.discover(max_depth=self._max_depth(arguments.get("max_depth", 4))):
             if project.project_id == project_id:
-                return (root / project.path).resolve()
+                resolved = (root / project.path).resolve()
+                validate_runtime_location(self.runtime_root, project_root=resolved)
+                return resolved
         raise ValueError(f"Project id not found: {project_id}")

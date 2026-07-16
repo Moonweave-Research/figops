@@ -30,9 +30,28 @@ from themes.declutter import _declutter_text_artists  # noqa: E402
 from themes.journal_theme import apply_journal_theme, save_journal_fig  # noqa: E402
 
 
-def _calculation_artifact(path: Path) -> tuple[Path, str, dict]:
-    payload = {
-        "schema_version": "figops_calculation_evidence/1",
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _descriptor(path: Path, root: Path, artifact_id: str, role: str) -> dict[str, str]:
+    return {
+        "artifact_id": artifact_id,
+        "role": role,
+        "path": path.relative_to(root).as_posix(),
+        "sha256": _sha256(path),
+    }
+
+
+def _calculation_artifact(
+    path: Path,
+    *,
+    root: Path | None = None,
+    payload: dict | None = None,
+) -> tuple[Path, str, dict]:
+    root = root or path.parent
+    payload = payload or {
+        "schema_version": "figops_calculation_artifact/1",
         "evidence_id": "analysis:t-test:group-a-v-b",
         "producer": "analysis.py@sha256:fixture",
         "assertion": {"metric": "p_value", "operator": "lt", "threshold": 0.05, "display_label": "p=0.012"},
@@ -40,8 +59,62 @@ def _calculation_artifact(path: Path) -> tuple[Path, str, dict]:
         "test_metadata": {"test_name": "welch_t_test", "model": "two-sided"},
         "result": {"status": "passed", "p_value": 0.012},
     }
-    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
-    return path, hashlib.sha256(path.read_bytes()).hexdigest(), payload
+    fixture_root = path.parent / f".{path.stem}-lineage"
+    script = fixture_root / "calculate.py"
+    config = fixture_root / "project_config.yaml"
+    source = fixture_root / "observations.csv"
+    calculation = fixture_root / "calculation-result.json"
+    fixture_root.mkdir(parents=True, exist_ok=True)
+    script.write_text("# deterministic fixture calculation\n", encoding="utf-8")
+    config.write_text("project: {name: authored-output-fixture}\n", encoding="utf-8")
+    source.write_text("group,value\na,1\nb,2\n", encoding="utf-8")
+    calculation.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    calculation_descriptor = _descriptor(
+        calculation,
+        root,
+        f"calc:{path.stem}",
+        "result.evidence",
+    )
+    lineage = {
+        "schema_version": "figops_calculation_evidence/2",
+        "figops_version": "0.20.0",
+        "run_id": f"authored-output-{path.stem}",
+        "timestamp": "2026-07-15T00:00:00Z",
+        "git_sha256": "1" * 64,
+        "environment_lock_sha256": "2" * 64,
+        "claim_ids": [payload["evidence_id"]],
+        "calculation_artifact": calculation_descriptor,
+        "producer": {
+            "script": _descriptor(script, root, f"script:{path.stem}", "script.analysis"),
+            "config": _descriptor(config, root, f"config:{path.stem}", "config"),
+        },
+        "input_artifacts": [
+            _descriptor(source, root, f"source:{path.stem}", "result.source_data")
+        ],
+        "output_artifacts": [calculation_descriptor],
+    }
+    path.write_text(json.dumps(lineage, sort_keys=True), encoding="utf-8")
+    return path, _sha256(calculation), payload
+
+
+def _rewrite_calculation_artifact(
+    evidence_path: Path,
+    payload: dict,
+    *,
+    root: Path | None = None,
+) -> str:
+    root = root or evidence_path.parent
+    lineage = json.loads(evidence_path.read_text(encoding="utf-8"))
+    calculation_path = root / lineage["calculation_artifact"]["path"]
+    calculation_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    calculation_sha = _sha256(calculation_path)
+    lineage["claim_ids"] = [payload["evidence_id"]]
+    lineage["calculation_artifact"]["sha256"] = calculation_sha
+    for output in lineage["output_artifacts"]:
+        if output["artifact_id"] == lineage["calculation_artifact"]["artifact_id"]:
+            output["sha256"] = calculation_sha
+    evidence_path.write_text(json.dumps(lineage, sort_keys=True), encoding="utf-8")
+    return calculation_sha
 
 
 def _marker(sha256: str, payload: dict) -> dict:
@@ -298,6 +371,47 @@ def test_significance_requires_and_accepts_verified_independent_artifact(tmp_pat
     assert "does not match" in json.dumps(rejected)
 
 
+def test_legacy_self_hashed_evidence_is_unverified_and_requires_manual_review(tmp_path: Path) -> None:
+    data_path = tmp_path / "data.csv"
+    data_path.write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
+    legacy_path = tmp_path / "legacy-calculation.json"
+    legacy_payload = {
+        "schema_version": "figops_calculation_evidence/1",
+        "evidence_id": "analysis:t-test:legacy",
+        "producer": "analysis.py@sha256:legacy",
+        "assertion": {
+            "metric": "p_value",
+            "operator": "lt",
+            "threshold": 0.05,
+            "display_label": "p<0.05",
+        },
+        "marker_binding": {"x1": 0, "x2": 1},
+        "test_metadata": {"test_name": "welch_t_test", "model": "two-sided"},
+        "result": {"status": "passed", "p_value": 0.012},
+    }
+    legacy_path.write_text(json.dumps(legacy_payload, sort_keys=True), encoding="utf-8")
+    server = GraphHubMCPServer(research_root=tmp_path, runtime_root=tmp_path / "runtime")
+
+    response = server.call_tool(
+        "figops.render_csv_graph",
+        {
+            "data_path": data_path.name,
+            "x_column": "x",
+            "y_column": "y",
+            "significance_markers": [_marker(_sha256(legacy_path), legacy_payload)],
+            "calculation_evidence_path": legacy_path.name,
+            "dry_run": True,
+        },
+    )
+    result = response["structuredContent"]
+
+    assert response["isError"] is True
+    assert result["status"] == "error"
+    assert result["manual_review_needed"] is True
+    assert "unverified" in json.dumps(result).lower()
+    assert "self-hashes" in json.dumps(result).lower()
+
+
 def test_direct_significance_without_contained_artifact_is_rejected(tmp_path: Path) -> None:
     data_path = tmp_path / "data.csv"
     data_path.write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
@@ -339,7 +453,7 @@ def test_calculation_evidence_rejects_oversize_and_malformed_result(tmp_path: Pa
     malformed = tmp_path / "malformed.json"
     _path, _sha, payload = _calculation_artifact(malformed)
     payload["result"]["p_value"] = float("nan")
-    malformed.write_text(json.dumps(payload), encoding="utf-8")
+    _rewrite_calculation_artifact(malformed, payload)
     with pytest.raises(ValueError, match="finite"):
         verify_calculation_evidence(tmp_path, malformed.name)
 
@@ -353,7 +467,7 @@ def test_calculation_evidence_size_limit_cannot_be_widened(tmp_path: Path) -> No
 def test_calculation_evidence_rejects_false_assertion_and_forged_marker_fields(tmp_path: Path) -> None:
     evidence_path, evidence_sha, payload = _calculation_artifact(tmp_path / "calculation.json")
     payload["result"]["p_value"] = 0.9
-    evidence_path.write_text(json.dumps(payload), encoding="utf-8")
+    _rewrite_calculation_artifact(evidence_path, payload)
     with pytest.raises(ValueError, match="does not satisfy"):
         verify_calculation_evidence(tmp_path, evidence_path.name)
 
@@ -381,14 +495,14 @@ def test_calculation_evidence_rejects_false_assertion_and_forged_marker_fields(t
 def test_calculation_evidence_rejects_unknown_path_and_large_string_injection(tmp_path: Path) -> None:
     evidence_path, _sha, payload = _calculation_artifact(tmp_path / "calculation.json")
     payload["artifact_path"] = "C:/secret/private.txt"
-    evidence_path.write_text(json.dumps(payload), encoding="utf-8")
+    _rewrite_calculation_artifact(evidence_path, payload)
     with pytest.raises(ValueError, match="unsupported fields") as error:
         verify_calculation_evidence(tmp_path, evidence_path.name)
     assert "C:/secret" not in str(error.value)
 
     payload.pop("artifact_path")
     payload["producer"] = "x" * 257
-    evidence_path.write_text(json.dumps(payload), encoding="utf-8")
+    _rewrite_calculation_artifact(evidence_path, payload)
     with pytest.raises(ValueError, match="exceeds 256"):
         verify_calculation_evidence(tmp_path, evidence_path.name)
 
@@ -408,7 +522,7 @@ def test_geometry_output_schema_is_frozen_raw_v2() -> None:
 
 def test_calculation_evidence_rejects_symlink_component(tmp_path: Path) -> None:
     outside = tmp_path.parent / f"{tmp_path.name}-outside-calculation.json"
-    _calculation_artifact(outside)
+    outside.write_text("{}", encoding="utf-8")
     link = tmp_path / "linked.json"
     try:
         link.symlink_to(outside)
@@ -425,7 +539,7 @@ def test_calculation_evidence_rejects_symlink_component(tmp_path: Path) -> None:
 def test_calculation_evidence_rejects_in_root_windows_junction(tmp_path: Path) -> None:
     real = tmp_path / "real"
     real.mkdir()
-    _calculation_artifact(real / "evidence.json")
+    (real / "evidence.json").write_text("{}", encoding="utf-8")
     junction = tmp_path / "junction"
     created = subprocess.run(
         ["cmd", "/c", "mklink", "/J", str(junction), str(real)],
@@ -470,7 +584,7 @@ def test_calculation_evidence_rejects_bool_and_numeric_strings(
         payload["assertion"][field] = value
     else:
         payload["marker_binding"][field] = value
-    path.write_text(json.dumps(payload), encoding="utf-8")
+    _rewrite_calculation_artifact(path, payload)
     with pytest.raises(ValueError, match="JSON number"):
         verify_calculation_evidence(tmp_path, path.name)
 
@@ -537,20 +651,20 @@ def test_authored_pvalue_typography_and_explicit_stars_remain_valid(tmp_path: Pa
         )
         if stars is not None:
             payload["assertion"]["star_thresholds"] = stars
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        _rewrite_calculation_artifact(path, payload)
         assert verify_calculation_evidence(tmp_path, path.name)["assertion"]["display_label"] == label
 
     custom, _sha, payload = _calculation_artifact(tmp_path / "custom.json")
     payload["assertion"].update(
         {"display_label": "adjusted q = 0.012 (BH)", "display_kind": "custom"}
     )
-    custom.write_text(json.dumps(payload), encoding="utf-8")
+    _rewrite_calculation_artifact(custom, payload)
     normalized = verify_calculation_evidence(tmp_path, custom.name)
     assert normalized["assertion"]["display_label"] == "adjusted q = 0.012 (BH)"
     assert normalized["assertion"]["display_kind"] == "custom"
 
     payload["assertion"].update({"display_label": "p<0.01", "display_kind": "threshold"})
-    custom.write_text(json.dumps(payload), encoding="utf-8")
+    _rewrite_calculation_artifact(custom, payload)
     with pytest.raises(ValueError, match="contradicts"):
         verify_calculation_evidence(tmp_path, custom.name)
 
@@ -561,7 +675,7 @@ def test_bundle_prefetches_once_opens_each_once_and_canonicalizes_refs(tmp_path:
     second.parent.mkdir()
     payload["evidence_id"] = "analysis:t-test:second"
     payload["marker_binding"] = {"x1": 2, "x2": 3}
-    second.write_text(json.dumps(payload), encoding="utf-8")
+    _calculation_artifact(second, root=tmp_path, payload=payload)
 
     calls: list[list[str]] = []
 
@@ -580,9 +694,10 @@ def test_bundle_prefetches_once_opens_each_once_and_canonicalizes_refs(tmp_path:
             ["./evidence-a.json", "nested//evidence-b.json", "evidence-a.json"],
         )
 
-    assert len(calls) == 1
+    assert len(calls) == 3
     assert len(calls[0]) == 2
-    assert opened.call_count == 2
+    assert all(len(lineage_paths) == 4 for lineage_paths in calls[1:])
+    assert opened.call_count == 10
     assert [record["artifact_ref"] for record in records] == [
         "evidence-a.json",
         "nested/evidence-b.json",
@@ -625,8 +740,7 @@ def test_bundle_rejects_duplicate_ids_and_multiple_claims_render_in_one_call(tmp
     second_payload["evidence_id"] = "analysis:t-test:second"
     second_payload["assertion"]["display_label"] = "p < .05"
     second_payload["marker_binding"] = {"x1": 1, "x2": 2}
-    second.write_text(json.dumps(second_payload), encoding="utf-8")
-    second_sha = hashlib.sha256(second.read_bytes()).hexdigest()
+    _second, second_sha, second_payload = _calculation_artifact(second, payload=second_payload)
 
     server = GraphHubMCPServer(research_root=tmp_path, runtime_root=tmp_path / "runtime")
     result = server.call_tool(
@@ -655,7 +769,7 @@ def test_bundle_rejects_duplicate_ids_and_multiple_claims_render_in_one_call(tmp
     assert len(result["statistical_claims"]) == 2
 
     second_payload["evidence_id"] = first_payload["evidence_id"]
-    second.write_text(json.dumps(second_payload), encoding="utf-8")
+    _rewrite_calculation_artifact(second, second_payload)
     with pytest.raises(ValueError, match="duplicate evidence_id"):
         verify_calculation_evidence_bundle(tmp_path, [first.name, second.name])
 
@@ -714,8 +828,7 @@ def test_multipanel_distinct_claims_and_compat_alias_use_same_closed_lane(tmp_pa
     second_payload = json.loads(json.dumps(first_payload))
     second_payload["evidence_id"] = "analysis:t-test:second-panel"
     second_payload["assertion"]["display_label"] = "p = 0.012"
-    second.write_text(json.dumps(second_payload), encoding="utf-8")
-    second_sha = hashlib.sha256(second.read_bytes()).hexdigest()
+    _second, second_sha, second_payload = _calculation_artifact(second, payload=second_payload)
     second_marker = _marker(second_sha, second_payload)
     second_marker["label"] = "p = 0.012"
 

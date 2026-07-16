@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Final
 
+from .artifact_policy_measurement import measure_artifact_policy
 from .evidence_contract import normalize_evidence_envelope
 from .geometry_raw_contract import normalize_geometry_payload
 from .project_paths import open_verified_project_input, snapshot_project_input
@@ -40,6 +41,8 @@ def build_render_evidence(
     producer_kind: str,
     producer_version: str,
     resolved_policy: Mapping[str, Any] | None = None,
+    render_policy: Mapping[str, Any] | None = None,
+    validation_target: str | None = None,
     baseline_reference_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Re-verify final bytes and return one frozen ``figops_evidence/2`` envelope."""
@@ -54,10 +57,11 @@ def build_render_evidence(
     artifacts: dict[str, Any] = {"status": "passed", "entries": entries}
 
     geometry = normalize_geometry_payload(_geometry_payload(manifest))
+    measurements = list(geometry["measurements"])
     evidence: dict[str, Any] = {
         "version": "2.0",
         "producer": producer,
-        "measurements": geometry["measurements"],
+        "measurements": measurements,
         "policy_projections": [],
         "artifacts": artifacts,
         "provenance": provenance,
@@ -70,6 +74,33 @@ def build_render_evidence(
         "visual_comparison": None,
     }
     policy = _resolved_policy(resolved_policy)
+    selected_render_policy = _resolved_policy(render_policy)
+    target = str(validation_target or "").strip().lower()
+    if target:
+        if policy is not None:
+            raise RenderEvidenceError(
+                "validation_target cannot be combined with the legacy resolved_policy argument"
+            )
+        primary = next(entry for entry in entries if entry["logical_role"] == "primary")
+        measured = measure_artifact_policy(
+            Path(job_root) / primary["relative_path"],
+            validation_target=target,
+            artifact_sha256=primary["sha256"],
+            render_policy=(
+                str(selected_render_policy["id"])
+                if selected_render_policy is not None
+                else "neutral"
+            ),
+            geometry_measurements=measurements,
+            producer_binding={"producer": producer, "provenance": provenance},
+        )
+        measurements.extend(measured["measurements"])
+        evidence["policy_projections"] = [measured["policy_projection"]]
+        policy = measured["resolved_policy"]
+    elif selected_render_policy is not None:
+        if policy is not None:
+            raise RenderEvidenceError("render_policy conflicts with the legacy resolved_policy argument")
+        policy = selected_render_policy
     if policy is not None:
         evidence["resolved_policy"] = policy
     ledger = manifest.get("mutation_ledger")

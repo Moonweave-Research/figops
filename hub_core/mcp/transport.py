@@ -133,7 +133,11 @@ def _handle_json_rpc(server: Any, request: dict[str, Any]) -> dict[str, Any] | N
             return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, f"Unknown tool: {tool_name}")
         if not isinstance(arguments, dict):
             return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "Tool arguments must be an object.")
-        argument_errors = _validate_tool_arguments(tool_name, arguments, _tool_definitions_for(server))
+        argument_errors = _validate_tool_arguments(
+            tool_name,
+            arguments,
+            _callable_tool_definitions_for(server),
+        )
         if argument_errors:
             return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "; ".join(argument_errors))
         return {"jsonrpc": "2.0", "id": request_id, "result": server.call_tool(tool_name, arguments)}
@@ -190,6 +194,15 @@ def _tool_definitions_for(server: Any) -> list[dict[str, Any]]:
     return list_tool_definitions()
 
 
+def _callable_tool_definitions_for(server: Any) -> list[dict[str, Any]]:
+    """Return the schema boundary paired with a server's handler boundary."""
+
+    provider = getattr(server, "callable_tool_definitions", None)
+    if callable(provider):
+        return provider()
+    return _tool_definitions_for(server)
+
+
 def _resource_definitions_for(server: Any) -> list[dict[str, str]]:
     provider = getattr(server, "list_resource_definitions", None)
     if callable(provider):
@@ -228,12 +241,7 @@ def _validate_tool_arguments(
     if definitions is None:
         definitions = _tool_definitions_for(None)
     elif not any(definition.get("name") in validation_names for definition in definitions):
-        # Discovery profiles intentionally omit tools to keep the LLM context
-        # bounded, while the compatibility handler registry remains callable.
-        # A guessed/compatibility-hidden canonical name must still be validated
-        # against its real schema before dispatch; omission is never a schema
-        # bypass.
-        definitions = _tool_definitions_for(None)
+        return [f"Tool is not available on this callable surface: {tool_name}."]
     for definition in definitions:
         if definition["name"] not in validation_names:
             continue
@@ -285,12 +293,15 @@ def _required_tool_argument_present(value: Any, prop_schema: dict[str, Any]) -> 
 
 
 def _enum_contains(value: Any, enum: list[Any]) -> bool:
-    # Case-normalized fields (profile, target_format, output_format, plot_type) are
-    # lowercased by the handler before use, so match the enum case-insensitively for
-    # strings to avoid rejecting mixed-case input the handler would accept.
+    """Apply JSON Schema enum equality, including case-sensitive strings.
+
+    This deliberately avoids field-specific normalization. The advertised
+    schema is the transport contract, so ``"Nature"`` is not a member of an
+    enum containing only ``"nature"``.
+    """
+
     if isinstance(value, str):
-        normalized = value.strip().lower()
-        return any(isinstance(option, str) and option.lower() == normalized for option in enum)
+        return any(isinstance(option, str) and option == value for option in enum)
     if isinstance(value, bool):
         return any(isinstance(option, bool) and option is value for option in enum)
     if isinstance(value, (int, float)):
@@ -324,7 +335,9 @@ def _validate_tool_argument_constraints(key: str, value: Any, prop_schema: dict[
     enum = prop_schema.get("enum")
     if isinstance(enum, list) and not _enum_contains(value, enum):
         allowed = ", ".join(json.dumps(option, ensure_ascii=False) for option in enum)
-        errors.append(f"Tool argument '{key}' must be one of: {allowed}.")
+        errors.append(
+            f"Tool argument '{key}' must be one of: {allowed}. String enum matching is case-sensitive."
+        )
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         minimum = prop_schema.get("minimum")
         if isinstance(minimum, (int, float)) and not isinstance(minimum, bool) and value < minimum:

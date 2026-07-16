@@ -23,6 +23,7 @@ from hub_core.project_paths import (
     project_path_has_symlink_component,
     snapshot_project_input,
 )
+from hub_core.runtime_boundary import activate_runtime_root
 
 MAX_PREVIEW_RAW_BYTES: Final = 2 * 1024 * 1024
 MAX_PREVIEW_BASE64_BYTES: Final = 2_796_204
@@ -137,7 +138,9 @@ def read_job_preview_blob(
 
     try:
         selection = _resolve_selection(runtime_root, job_id, logical_role, artifact_index)
-        with tempfile.TemporaryDirectory(prefix="figops_preview_") as tmp:
+        preview_temp = activate_runtime_root(runtime_root) / "previews" / "temp"
+        preview_temp.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="figops_preview_", dir=preview_temp) as tmp:
             private_root = Path(tmp)
             source = private_root / f"source{Path(selection.declaration).suffix.lower()}"
             _copy_verified_source(selection, source)

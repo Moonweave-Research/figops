@@ -8,6 +8,10 @@ from typing import Any, Callable
 def build_font_token_presets(token_type: Callable[..., Any], internal_target: str) -> dict[str, Any]:
     """Build immutable role-token objects while leaving their public type facade-owned."""
     return {
+        # Neutral follows the active Matplotlib defaults and exists only so
+        # authored-output helpers have semantic fallbacks without selecting a
+        # journal aesthetic.
+        "neutral": token_type(tag=12.0, label=10.0, annot=10.0, legend=10.0, axis=10.0, tick=10.0),
         "nature": token_type(tag=8.0, label=6.0, annot=6.0, legend=7.0, axis=7.0, tick=6.0),
         # Science/AAAS figure guidance uses Helvetica/Arial-family lettering.
         "science": token_type(tag=8.0, label=7.0, annot=7.0, legend=7.0, axis=7.0, tick=6.5),

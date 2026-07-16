@@ -1090,7 +1090,7 @@ project:
 
         accepted = _validate_tool_arguments(
             "figops.schema_probe",
-            {"payload": {"value": "ONE", "items": [{"x": 1}, {"label": "ok"}]}},
+            {"payload": {"value": "one", "items": [{"x": 1}, {"label": "ok"}]}},
             definitions,
         )
         rejected = _validate_tool_arguments(
@@ -1103,6 +1103,12 @@ project:
         self.assertTrue(any("payload.value" in error for error in rejected))
         self.assertTrue(any("payload.items[0]" in error for error in rejected))
         self.assertTrue(any("payload.items[1]" in error for error in rejected))
+        wrong_case = _validate_tool_arguments(
+            "figops.schema_probe",
+            {"payload": {"value": "ONE", "items": [{"x": 1}, {"label": "ok"}]}},
+            definitions,
+        )
+        self.assertTrue(any("payload.value" in error for error in wrong_case))
 
         compact_definitions = list_tool_definitions(profile="v2", write_tools_enabled=True)
         hidden_alias_errors = _validate_tool_arguments(
@@ -1110,7 +1116,10 @@ project:
             {"data_path": "data.csv", "x_column": "x", "y_column": "y", "unexpected": True},
             compact_definitions,
         )
-        self.assertTrue(any("unexpected" in error for error in hidden_alias_errors))
+        self.assertEqual(
+            hidden_alias_errors,
+            ["Tool is not available on this callable surface: graphhub.render_csv_graph."],
+        )
 
     def _call_rpc(self, server: GraphHubMCPServer, tool_name: str, arguments: dict) -> dict:
         return _handle_json_rpc(
@@ -1237,9 +1246,7 @@ project:
 
         self.assertEqual(argument_errors, [])
 
-    def test_validate_accepts_mixed_case_case_normalized_enums(self):
-        # Handler lowercases profile/target_format/output_format, so the enum check
-        # must accept mixed-case input it would normalize rather than reject it.
+    def test_validate_rejects_mixed_case_enums_by_exact_schema_contract(self):
         argument_errors = _validate_tool_arguments(
             "figops.render_csv_graph",
             {
@@ -1252,7 +1259,9 @@ project:
             },
         )
 
-        self.assertEqual(argument_errors, [])
+        self.assertTrue(any("profile" in error and '"base"' in error for error in argument_errors))
+        self.assertTrue(any("target_format" in error and '"nature"' in error for error in argument_errors))
+        self.assertTrue(any("output_format" in error and '"png"' in error for error in argument_errors))
 
     def test_validate_rejects_render_project_figure_without_selector(self):
         argument_errors = _validate_tool_arguments(

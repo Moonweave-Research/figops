@@ -640,6 +640,8 @@ def get_profile_tokens(profile_name=None):
 
 def get_render_style_tokens(target_format="nature", profile_name=None):
     target_key = str(target_format or "nature").strip().lower()
+    if target_key == "neutral":
+        return {}, {"target_format": target_key, "profile": resolve_profile_name(profile_name)}
     profile_tokens, profile_key = get_profile_tokens(profile_name)
     tokens = deepcopy(profile_tokens)
     target_tokens = TARGET_FORMAT_PROFILE_TOKENS.get(target_key, {})

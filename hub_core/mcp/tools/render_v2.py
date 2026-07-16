@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Final
 
+from hub_core.artifact_policy_measurement import resolve_render_policy_selection
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
 from hub_core.mcp.render_response import one_render_response
 from hub_core.mcp.tools.render_csv import McpRenderCsvMixin
@@ -21,13 +22,23 @@ _BASIC_ARGS: Final = frozenset(
         "facet",
         "labels",
         "style_policy",
+        "validation_target",
         "output_format",
         "job_id",
         "overwrite",
     }
 )
 _PROJECT_ARGS: Final = frozenset(
-    {"project_id", "project_path", "figure_id", "figure_output", "job_id", "overwrite"}
+    {
+        "project_id",
+        "project_path",
+        "figure_id",
+        "figure_output",
+        "style_policy",
+        "validation_target",
+        "job_id",
+        "overwrite",
+    }
 )
 _LABEL_ARGS: Final = frozenset({"title", "x_axis", "y_axis"})
 _BASIC_PLOT_TYPES: Final = frozenset({"scatter", "line", "bar"})
@@ -50,7 +61,7 @@ class McpRenderV2Mixin:
             plot_type = str(arguments.get("plot_type") or "scatter").strip().lower()
             if plot_type not in _BASIC_PLOT_TYPES:
                 raise ValueError("plot_type is outside the basic lane; use a declared project script")
-            style_policy = str(arguments.get("style_policy") or "nature").strip().lower()
+            style_policy = str(arguments.get("style_policy") or "neutral").strip().lower()
             if style_policy not in ALLOWED_TARGET_FORMATS:
                 raise ValueError("style_policy is not a supported explicit journal/style policy")
             output_format = str(arguments.get("output_format") or "png").strip().lower().lstrip(".")
@@ -74,6 +85,9 @@ class McpRenderV2Mixin:
                 "label_transform": "raw",
                 "compliance_mode": "validate",
                 "declutter_mode": "none",
+                "resolved_render_policy": resolve_render_policy_selection(style_policy),
+                "validation_target": arguments.get("validation_target"),
+                "v2_policy_contract": True,
                 "dry_run": False,
             }
         except ValueError as exc:
@@ -97,6 +111,9 @@ class McpRenderV2Mixin:
             return guarded
         try:
             self._closed_arguments(arguments, _PROJECT_ARGS)
+            style_policy = str(arguments.get("style_policy") or "neutral").strip().lower()
+            if style_policy not in ALLOWED_TARGET_FORMATS:
+                raise ValueError("style_policy is not a supported explicit journal/style policy")
         except ValueError as exc:
             return one_render_response(
                 tool_name,
@@ -111,6 +128,9 @@ class McpRenderV2Mixin:
                 },
             )
         compatibility_args = dict(arguments)
+        compatibility_args["target_format"] = style_policy
+        compatibility_args["resolved_render_policy"] = resolve_render_policy_selection(style_policy)
+        compatibility_args["v2_policy_contract"] = True
         compatibility_args["dry_run"] = False
         result = McpRenderProjectMixin.render_project_figure(self, compatibility_args)
         return one_render_response(tool_name, result)

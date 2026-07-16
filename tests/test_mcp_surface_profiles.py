@@ -9,9 +9,10 @@ from hub_core.mcp import FigOpsMCPServer, GraphHubMCPServer
 from hub_core.mcp.config import McpServerConfig
 from hub_core.mcp.schemas import LEGACY_TOOL_NAMES, TOOL_NAMES, list_tool_definitions
 from hub_core.mcp.security import LEGACY_WRITE_TOOL_NAMES, WRITE_TOOL_NAMES, is_write_tool_name
-from hub_core.mcp.surface_profiles import V2_TOOL_NAMES
+from hub_core.mcp.surface_profiles import V2_TOOL_NAMES, callable_tool_names
 from hub_core.mcp.transport import _handle_json_rpc, _validate_tool_arguments
 from scripts.gen_tool_reference import render_tool_reference
+from themes.journal_theme import STYLE_PRESETS, apply_journal_theme
 
 
 def _names(definitions: list[dict[str, object]]) -> list[str]:
@@ -36,6 +37,65 @@ def test_figops_server_defaults_to_compact_ai_native_profile(monkeypatch: pytest
         len(json.dumps(tool["inputSchema"], separators=(",", ":")).encode("utf-8"))
         for tool in definitions
     ) <= 6 * 1024
+    assert tuple(server._handlers) == V2_TOOL_NAMES
+    assert _names(server.callable_tool_definitions()) == list(V2_TOOL_NAMES)
+
+
+@pytest.mark.parametrize(
+    "guessed_name",
+    ["figops.list_projects", "figops.render_csv_graph", "graphhub.health"],
+)
+def test_v2_guessed_compatibility_names_are_not_callable(guessed_name: str) -> None:
+    server = FigOpsMCPServer(surface_profile="v2", write_tools_enabled=True)
+
+    with pytest.raises(ValueError, match="Unknown FigOps MCP tool"):
+        server.call_tool(guessed_name, {})
+
+    response = _handle_json_rpc(
+        server,
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": guessed_name, "arguments": {}},
+        },
+    )
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == f"Unknown tool: {guessed_name}"
+
+
+@pytest.mark.parametrize(
+    ("name", "arguments", "field"),
+    [
+        ("figops.describe", {"kind": "TOOLS"}, "kind"),
+        (
+            "figops.audit_artifact",
+            {"job_id": "missing", "policy_packs": ["PUBLICATION-READINESS-V1"]},
+            "policy_packs[0]",
+        ),
+    ],
+)
+def test_v2_string_enums_are_case_sensitive_before_handler_dispatch(
+    name: str,
+    arguments: dict[str, object],
+    field: str,
+) -> None:
+    server = FigOpsMCPServer(surface_profile="v2", write_tools_enabled=False)
+
+    response = _handle_json_rpc(
+        server,
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": name, "arguments": arguments},
+        },
+    )
+
+    assert response["error"]["code"] == -32602
+    assert field in response["error"]["message"]
+    assert "must be one of" in response["error"]["message"]
+    assert "case-sensitive" in response["error"]["message"]
 
 
 def test_writes_disabled_v2_discovery_omits_denied_renders() -> None:
@@ -54,10 +114,16 @@ def test_compatibility_profile_exposes_frozen_fourteen_plus_thirteen() -> None:
 
     assert _names(definitions) == expected
     assert len(definitions) == 27
-    assert set(expected) <= set(server._handlers)
+    assert list(server._handlers) == expected
+    assert tuple(expected) == callable_tool_names("compatibility")
+    assert _names(server.callable_tool_definitions()) == expected
     alias_render = next(tool for tool in definitions if tool["name"] == "graphhub.render_csv_graph")
     assert alias_render["annotations"]["readOnlyHint"] is False
     assert alias_render["annotations"]["destructiveHint"] is True
+
+    for hidden_v2_name in ("figops.inspect_data", "figops.render_basic_csv", "figops.audit_artifact"):
+        with pytest.raises(ValueError, match="Unknown FigOps MCP tool"):
+            server.call_tool(hidden_v2_name, {})
 
 
 def test_each_frozen_alias_resolves_to_a_live_guarded_handler(tmp_path: Path) -> None:
@@ -138,7 +204,7 @@ def test_render_prompts_are_optional_evidence_guidance_not_forced_choreography()
     assert "- x_column:" not in csv_text
     assert "- y_column:" not in csv_text
     callable_payload = json.loads(csv_text.split("Callable arguments:\n", 1)[1].split("\n\n", 1)[0])
-    assert callable_payload["style_policy"] == "nature"
+    assert "style_policy" not in callable_payload
     assert "target_format" not in callable_payload
     assert "profile" not in callable_payload
     assert _validate_tool_arguments(
@@ -148,12 +214,39 @@ def test_render_prompts_are_optional_evidence_guidance_not_forced_choreography()
     assert "dry_run=true" not in csv_text + project_text
     assert "no dry-run or collect call is a prerequisite" in csv_text
     assert "preview" in csv_text.lower() and "preview" in project_text.lower()
+    assert "proportional" in csv_text.lower() and "proportional" in project_text.lower()
 
     mutation_text = v2.get_prompt(
         "standardize_existing_graph_project", {"project_path": "/allowed/project"}
     )["messages"][0]["content"]["text"]
     assert "dry_run=true" in mutation_text
     assert "explicit user approval" in mutation_text
+
+
+def test_new_contract_is_neutral_and_compatibility_keeps_nature() -> None:
+    v2_definitions = list_tool_definitions(profile="v2", write_tools_enabled=True)
+    v2_render = next(item for item in v2_definitions if item["name"] == "figops.render_basic_csv")
+    assert v2_render["inputSchema"]["properties"]["style_policy"]["default"] == "neutral"
+    assert "neutral" in v2_render["inputSchema"]["properties"]["style_policy"]["enum"]
+    assert "validation_target" in v2_render["inputSchema"]["properties"]
+
+    compatibility_render = next(
+        item for item in list_tool_definitions(profile="compatibility", write_tools_enabled=True)
+        if item["name"] == "figops.render_csv_graph"
+    )
+    assert compatibility_render["inputSchema"]["properties"]["target_format"]["default"] == "nature"
+    assert STYLE_PRESETS["default"] == STYLE_PRESETS["nature"]
+    assert STYLE_PRESETS["neutral"] == {}
+
+    import matplotlib.pyplot as plt
+
+    before = plt.rcParams.copy()
+    try:
+        apply_journal_theme("neutral")
+        for key in ("axes.prop_cycle", "axes.linewidth", "font.size", "savefig.dpi"):
+            assert plt.rcParams[key] == before[key]
+    finally:
+        plt.rcParams.update(before)
 
 
 def test_profile_selection_from_config_and_environment(monkeypatch: pytest.MonkeyPatch) -> None:

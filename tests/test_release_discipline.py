@@ -41,3 +41,26 @@ def test_stale_post_tag_release_blocker_allows_bumped_package_and_changelog_vers
     )
 
     assert blocker is None
+
+
+def test_v020_release_requires_structure_p1_gate():
+    status = (HUB_ROOT / "docs" / "packaging" / "public-release-status.md").read_text(
+        encoding="utf-8"
+    )
+    decision = (
+        HUB_ROOT / "docs" / "packaging" / "public-release-decision-record.md"
+    ).read_text(encoding="utf-8")
+    structure_ssot = (
+        HUB_ROOT
+        / "docs"
+        / "specs"
+        / "2026-07-15-project-structure-runtime-integrity-plan.md"
+    ).read_text(encoding="utf-8")
+
+    # A green technical inventory is necessary, but it is not release authority.
+    assert "- Release gate: ok" in status
+    assert "Decision record:" in status
+    assert "intentionally blocked" in decision
+    assert "| TBD |" in decision
+    assert "must not be presented as released merely because tests or" in structure_ssot
+    assert "all repository-required approvals must be recorded" in structure_ssot

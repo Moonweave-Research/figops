@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from hub_core.adapters import select_adapters
+from hub_core.artifact_policy_measurement import resolve_render_validation_policies
 from hub_core.config_parser import validate_config
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.tools.render_csv_args import (
@@ -86,6 +87,16 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             )
         plot_type = str(arguments.get("plot_type") or "scatter").strip().lower()
         target_format = str(arguments.get("target_format") or "nature").strip().lower()
+        try:
+            validation_target, render_policy = resolve_render_validation_policies(
+                arguments, target_format=target_format
+            )
+        except ValueError as exc:
+            return self._csv_render_error(
+                arguments, summary="Invalid validation target.", errors=[str(exc)],
+                is_dry_run=dry_run, failure_stage="CONTRACT",
+                resolution_hint="Select validation independently from render style.",
+            )
         profile = str(arguments.get("profile") or DEFAULT_PROFILE).strip() or DEFAULT_PROFILE
         output_format = str(arguments.get("output_format") or "png").strip().lower().lstrip(".")
         facet_scales = str(arguments.get("facet_scales") or "fixed").strip().lower()
@@ -436,7 +447,13 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 output_path=str(job_root / "results" / "figures" / f"graph.{output_format}"),
                 config_path=str(job_root / "project_config.yaml"),
                 manifest_path=str(job_root / "manifest.json"),
-                style_summary={"target_format": target_format, "profile": profile, "output_format": output_format},
+                style_summary={
+                    "target_format": target_format,
+                    "profile": profile,
+                    "output_format": output_format,
+                    "render_policy": render_policy["id"],
+                    "validation_target": validation_target or None,
+                },
                 visual_preflight_status={"passed": None, "checks": [], "warnings": ["dry_run"]},
                 failure_stage="",
                 resolution_hint="",
@@ -575,7 +592,18 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             )
             preview_references = render_helpers._preview_resource_references(job_id, preview_artifacts)
             created_paths.extend(str(figure["path"]) for figure in figures)
-            preflight = self._visual_preflight_with_geometry_overlaps(output_path, target_format, geometry_diagnostics)
+            preflight = (
+                self._visual_preflight_with_geometry_overlaps(
+                    output_path, validation_target, geometry_diagnostics
+                )
+                if validation_target
+                else {
+                    "passed": True,
+                    "checks": [],
+                    "warnings": ["publication validation target not selected"],
+                    "target": None,
+                }
+            )
             preflight_warnings = self._preflight_warnings(preflight)
             baseline_comparison = self._baseline_comparison(output_path, arguments.get("baseline_path"))
             baseline_warnings = self._baseline_warnings(baseline_comparison)
@@ -622,6 +650,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     "target_format": target_format,
                     "profile": profile,
                     "output_format": output_format,
+                    "render_policy": render_policy["id"],
+                    "validation_target": validation_target or None,
                 },
                 visual_preflight_status=preflight,
                 geometry_diagnostics=geometry_diagnostics,
@@ -654,17 +684,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     and Path(baseline_comparison["baseline_path"]).is_file()
                     else None
                 ),
-                resolved_policy={
-                    "id": f"journal-{target_format}",
-                    "version": "1",
-                    "source": "render-style-selection",
-                    "parameters": {
-                        "target_format": target_format,
-                        "profile": profile,
-                        "compliance_mode": compliance_mode,
-                        "declutter_mode": declutter_mode,
-                    },
-                },
+                render_policy=render_policy,
+                validation_target=validation_target or None,
             )
             status_payload = self._render_status_payload(
                 job_id=job_id,

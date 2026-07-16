@@ -13,7 +13,12 @@ from typing import Final
 
 from .logging import get_logger
 from .redaction import redact_locals, redact_secrets, redact_text
-from .runtime_paths import resolve_execution_artifacts_dir, resolve_latest_publish_dir
+from .runtime_paths import (
+    resolve_diagnostics_dir,
+    resolve_execution_artifacts_dir,
+    resolve_failure_dir,
+    resolve_latest_publish_dir,
+)
 
 logger = get_logger(__name__)
 _DEFAULT_LOCAL_ALLOWLIST: Final = frozenset()
@@ -28,7 +33,7 @@ def dump_exception_failure(
     max_locals: int = 8,
     allowed_local_keys: frozenset[str] | None = None,
 ) -> str:
-    """Write a structured exception snapshot to results/latest_failure.json."""
+    """Write a structured exception snapshot below the external runtime root."""
     tb = traceback.TracebackException.from_exception(exc, capture_locals=True)
     frames = list(tb.stack)[-max_frames:]
     payload = {
@@ -85,13 +90,13 @@ def _write_payload(project_dir: str | Path, payload: dict) -> str:
     payload["job_id"] = job_id
     payload["failure_stage"] = failure_stage
     payload["artifacts_dir"] = resolve_execution_artifacts_dir(str(project_path), engine_target)
-    payload["latest_dir"] = resolve_latest_publish_dir(engine_target, job_id)
+    payload["latest_dir"] = resolve_latest_publish_dir(engine_target, job_id, project_root=str(project_path))
     if raw_request:
         payload["request"] = {"raw_request": redact_text(str(raw_request))}
 
     payload = redact_secrets(payload)
 
-    output_path = project_path / "results" / "latest_failure.json"
+    output_path = Path(resolve_failure_dir(str(project_path))) / "latest_failure.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
@@ -140,7 +145,7 @@ def dump_contract_report(
         return None
 
     project_path = Path(project_dir).expanduser().resolve()
-    diag_dir = project_path / "results" / "diagnostics"
+    diag_dir = Path(resolve_diagnostics_dir(str(project_path))) / "data_contract"
     diag_dir.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

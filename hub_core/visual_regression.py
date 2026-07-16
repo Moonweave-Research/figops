@@ -14,7 +14,7 @@ from datetime import datetime
 
 from .config_parser import discover_projects_with_status, load_config
 from .logging import get_logger
-from .runtime_paths import resolve_hub_logs_dir, resolve_runtime_root
+from .runtime_paths import resolve_hub_logs_dir, resolve_runtime_root, resolve_temp_dir
 from .utils import resolve_path
 from .visual_regression_baselines import (
     build_baseline_key as _build_baseline_key_impl,
@@ -623,7 +623,9 @@ def _build_pdf_diff_metrics(baseline_path, current_path):
         return metrics
 
     try:
-        with tempfile.TemporaryDirectory(prefix="ghub-pdfdiff-") as tmpdir:
+        with tempfile.TemporaryDirectory(
+            prefix="ghub-pdfdiff-", dir=resolve_temp_dir("visual_regression")
+        ) as tmpdir:
             baseline_preview = _render_pdf_preview(renderer, baseline_path, tmpdir)
             current_preview = _render_pdf_preview(renderer, current_path, tmpdir)
             metrics["baseline_preview_available"] = baseline_preview is not None
@@ -653,7 +655,9 @@ def _artifact_dimensions(path):
         if renderer is None:
             return None
         try:
-            with tempfile.TemporaryDirectory(prefix="ghub-pdfsize-") as tmpdir:
+            with tempfile.TemporaryDirectory(
+                prefix="ghub-pdfsize-", dir=resolve_temp_dir("visual_regression")
+            ) as tmpdir:
                 preview_path = _render_pdf_preview(renderer, path, tmpdir)
                 return _image_dimensions(preview_path) if preview_path else None
         except Exception:

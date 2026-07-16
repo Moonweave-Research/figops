@@ -121,12 +121,25 @@ That creates a scaffold with:
 my_figure_project/
 ├── project_config.yaml
 ├── raw/
-│   └── example_input.csv
-└── hub_scripts/
-    ├── analyze.R
-    ├── plot.py
-    └── project_context.py
+│   ├── example.csv
+│   └── .raw_manifest.json
+├── hub_scripts/
+│   ├── analysis/analyze.R
+│   ├── figures/
+│   │   ├── plot.py
+│   │   └── device_cross_section.py
+│   └── shared/project_context.py
+└── results/
+    ├── data/{intermediate,source}/
+    ├── tables/
+    ├── figures/
+    ├── evidence/
+    └── publication/
 ```
+
+The scaffold manifest records these durable role roots and explicitly marks
+runtime state as external and disposable. Scaffolding never creates runtime,
+cache, log, preview, or temporary directories inside the project.
 
 Run the project:
 

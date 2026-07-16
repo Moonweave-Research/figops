@@ -8,17 +8,18 @@ from pathlib import Path
 import pytest
 
 from hub_core.evidence_contract import validate_evidence_envelope
-from hub_core.mcp import GraphHubMCPServer
+from hub_core.mcp import FigOpsMCPServer
 from hub_core.mcp.schemas import TOOL_NAMES, list_tool_definitions
 from hub_core.mcp.transport import JSONRPC_INVALID_PARAMS, _handle_json_rpc
 from tests.test_mcp_rendering import _write_csv, _write_project_render_fixture
 
 
-def _server(root: Path, *, writes: bool) -> GraphHubMCPServer:
-    return GraphHubMCPServer(
+def _server(root: Path, *, writes: bool) -> FigOpsMCPServer:
+    return FigOpsMCPServer(
         research_root=root,
         runtime_root=root / "runtime",
         write_tools_enabled=writes,
+        surface_profile="v2",
     )
 
 
@@ -165,24 +166,25 @@ def test_nested_basic_labels_are_closed_before_dispatch(tmp_path: Path) -> None:
     assert "labels.statistics" in response["error"]["message"]
 
 
-def test_writes_disabled_blocks_v2_and_alias_before_runtime_mutation(tmp_path: Path) -> None:
+def test_writes_disabled_blocks_v2_and_rejects_hidden_alias_before_runtime_mutation(tmp_path: Path) -> None:
     source = _write_csv(tmp_path / "input" / "facts.csv")
     server = _server(tmp_path, writes=False)
 
-    for name, arguments in (
-        ("figops.render_basic_csv", {"data_path": str(source), "x": "x", "y": "y", "job_id": "blocked-v2"}),
-        (
+    response = server.call_tool(
+        "figops.render_basic_csv",
+        {"data_path": str(source), "x": "x", "y": "y", "job_id": "blocked-v2"},
+    )
+    assert response["isError"] is True
+    assert response["structuredContent"]["error_category"] == "disabled"
+    with pytest.raises(ValueError, match="Unknown FigOps MCP tool"):
+        server.call_tool(
             "graphhub.render_csv_graph",
             {"data_path": str(source), "x_column": "x", "y_column": "y", "job_id": "blocked-alias"},
-        ),
-    ):
-        response = server.call_tool(name, arguments)
-        assert response["isError"] is True
-        assert response["structuredContent"]["error_category"] == "disabled"
+        )
     assert not (tmp_path / "runtime").exists()
 
 
-def test_all_direct_write_handlers_and_legacy_aliases_guard_before_validation_or_mutation(tmp_path: Path) -> None:
+def test_all_direct_write_methods_guard_and_v2_registry_excludes_legacy_aliases(tmp_path: Path) -> None:
     server = _server(tmp_path, writes=False)
 
     direct_handlers = (
@@ -197,15 +199,15 @@ def test_all_direct_write_handlers_and_legacy_aliases_guard_before_validation_or
     )
     for handler in direct_handlers:
         assert handler({})["status"] == "error"
-    for alias in (
+    aliases = (
         "graphhub.render_csv_graph",
         "graphhub.render_csv_multipanel",
         "graphhub.render_project_figure",
         "graphhub.scaffold_project",
         "graphhub.normalize_project_structure",
         "graphhub.batch_check",
-    ):
-        assert server._handlers[alias]({})["status"] == "error"
+    )
+    assert set(aliases).isdisjoint(server._handlers)
     assert not (tmp_path / "runtime").exists()
 
 
@@ -234,7 +236,7 @@ def test_audit_is_read_only_explicit_and_returns_preview_uri(tmp_path: Path) -> 
     assert "publishable" not in json.dumps(result).lower()
 
 
-def _render_audit_fixture(root: Path, job_id: str) -> tuple[GraphHubMCPServer, Path]:
+def _render_audit_fixture(root: Path, job_id: str) -> tuple[FigOpsMCPServer, Path]:
     source = _write_csv(root / "input" / f"{job_id}.csv")
     writer = _server(root, writes=True)
     result = writer.call_tool(

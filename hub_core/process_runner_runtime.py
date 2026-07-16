@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-import tempfile
 from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -13,6 +12,7 @@ from .execution_security import (
     is_positive_finite_timeout,
     reject_reserved_execution_env,
 )
+from .runtime_paths import resolve_temp_dir
 from .utils import get_hub_path
 
 _RUN_COMMAND_ENV_OVERLAY: ContextVar[dict[str, str] | None] = ContextVar(
@@ -76,7 +76,7 @@ def run_command_runtime(
     }
     env = canonicalize_execution_environment(inherited_env, canonical_env)
     if "MPLCONFIGDIR" not in env:
-        mpl_cache = os.path.join(tempfile.gettempdir(), "graph_hub_mplcache")
+        mpl_cache = os.path.join(resolve_temp_dir("matplotlib", project_root=cwd), "cache")
         os.makedirs(mpl_cache, exist_ok=True)
         env["MPLCONFIGDIR"] = mpl_cache
     if "MPLBACKEND" not in env and not env.get("DISPLAY"):

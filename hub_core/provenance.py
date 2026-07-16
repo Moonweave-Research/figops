@@ -6,6 +6,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .external_raw_execution import external_raw_signatures, is_external_raw_declaration
 from .logging import get_logger
 from .provenance_inputs import expand_project_input_files
 from .utils import hash_file, is_executable_available, short_hash
@@ -267,17 +268,22 @@ def build_fingerprint_payload(
     return payload
 
 
-def hash_input_files(project_dir: str, inputs: list[str]) -> dict[str, str]:
+def hash_input_files(project_dir: str, inputs: list[str], *, config: dict | None = None) -> dict[str, str]:
     project_root = Path(project_dir).resolve(strict=True)
     result: dict[str, str] = {}
-    for path in expand_project_input_files(project_root, inputs, require_matches=False):
+    project_inputs = [item for item in inputs if not is_external_raw_declaration(item)]
+    external_inputs = [item for item in inputs if is_external_raw_declaration(item)]
+    for path in expand_project_input_files(project_root, project_inputs, require_matches=False):
         digest = hash_file(path)
         result[path.relative_to(project_root).as_posix()] = short_hash(digest) if digest else "N/A"
+    if external_inputs:
+        for metadata in external_raw_signatures(config or {}, external_inputs):
+            result[metadata["declaration"]] = short_hash(metadata["sha256"])
     return result
 
 
-def _hash_input_files(project_dir: str, inputs: list[str]) -> dict[str, str]:
-    return hash_input_files(project_dir, inputs)
+def _hash_input_files(project_dir: str, inputs: list[str], *, config: dict | None = None) -> dict[str, str]:
+    return hash_input_files(project_dir, inputs, config=config)
 
 
 def embed_provenance_fingerprint(output_path: str, fingerprint: dict) -> bool:
@@ -444,7 +450,7 @@ def embed_figures_fingerprint(
 
         # config 등록 파일은 inputs/script 해시 포함, 미등록 파일은 기본 지문만
         meta = config_meta.get(path, {})
-        data_hashes = _hash_input_files(project_dir, meta["inputs"]) if meta.get("inputs") else None
+        data_hashes = _hash_input_files(project_dir, meta["inputs"], config=config) if meta.get("inputs") else None
         fingerprint = build_fingerprint_payload(
             **base_fingerprint_kwargs,
             data_hashes=data_hashes,

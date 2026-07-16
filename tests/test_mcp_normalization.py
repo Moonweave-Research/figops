@@ -53,6 +53,29 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
         self.assertEqual(json.loads(response["content"][0]["text"]), response["structuredContent"])
         return response["structuredContent"]
 
+    def _reviewed_copy(
+        self,
+        server: GraphHubMCPServer,
+        project: Path,
+        mappings: list[dict[str, str]],
+    ) -> tuple[dict, dict]:
+        arguments = {
+            "project_path": str(project),
+            "move_policy": "copy",
+            "approved_mappings": mappings,
+        }
+        planned = self._call(
+            server,
+            "figops.normalize_project_structure",
+            {**arguments, "dry_run": True},
+        )
+        applied = self._call(
+            server,
+            "figops.normalize_project_structure",
+            {**arguments, "dry_run": False, "confirmation_token": planned["confirmation_token"]},
+        )
+        return planned, applied
+
     def test_tool_definitions_include_project_normalization_tools(self):
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
 
@@ -70,6 +93,9 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
         self.assertNotIn("plan_only", normalize_props)
         self.assertTrue(normalize_props["dry_run"]["default"])
         self.assertIn("default", normalize_props["dry_run"]["description"].lower())
+        self.assertEqual(normalize_props["move_policy"]["default"], "adopt")
+        self.assertIn("approved_mappings", normalize_props)
+        self.assertIn("confirmation_token", normalize_props)
 
     def test_scaffold_project_dry_run_is_side_effect_free(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -93,7 +119,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             self.assertTrue(result["is_dry_run"])
             self.assertEqual(_snapshot_files(Path(tmpdir)), before)
             self.assertIn("project_config.yaml", result["planned_paths"])
-            self.assertIn("hub_scripts/analyze.R", result["planned_paths"])
+            self.assertIn("hub_scripts/analysis/analyze.R", result["planned_paths"])
             reasons = {entry["reason"] for entry in result["manifest"]["entries"]}
             self.assertIn("scaffold directory", reasons)
             self.assertIn("scaffold file", reasons)
@@ -101,13 +127,15 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             self.assertNotIn("ResearchOS scaffold file", reasons)
             for required_dir in (
                 "raw",
-                "work",
-                "hub_scripts",
-                "results/data",
+                "hub_scripts/analysis",
+                "hub_scripts/figures",
+                "hub_scripts/shared",
+                "results/data/intermediate",
+                "results/data/source",
+                "results/tables",
                 "results/figures",
-                "results/final",
-                "docs",
-                "archive",
+                "results/evidence",
+                "results/publication",
             ):
                 self.assertIn(required_dir, result["planned_paths"])
             self.assertEqual(result["style_summary"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
@@ -171,20 +199,23 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             self.assertTrue((project_root / "project_config.yaml").is_file())
             for required_dir in (
                 "raw",
-                "work",
-                "results/data",
+                "hub_scripts/analysis",
+                "hub_scripts/figures",
+                "hub_scripts/shared",
+                "results/data/intermediate",
+                "results/data/source",
+                "results/tables",
                 "results/figures",
-                "results/final",
-                "docs",
-                "archive",
+                "results/evidence",
+                "results/publication",
             ):
                 self.assertTrue((project_root / required_dir).is_dir())
-            self.assertTrue((project_root / "hub_scripts" / "analyze.R").is_file())
-            self.assertTrue((project_root / "hub_scripts" / "project_context.py").is_file())
-            self.assertTrue((project_root / "hub_scripts" / "plot.py").is_file())
+            self.assertTrue((project_root / "hub_scripts" / "analysis" / "analyze.R").is_file())
+            self.assertTrue((project_root / "hub_scripts" / "shared" / "project_context.py").is_file())
+            self.assertTrue((project_root / "hub_scripts" / "figures" / "plot.py").is_file())
             self.assertIn(
                 "theme_font_tokens",
-                (project_root / "hub_scripts" / "project_context.py").read_text(encoding="utf-8"),
+                (project_root / "hub_scripts" / "shared" / "project_context.py").read_text(encoding="utf-8"),
             )
             config = yaml.safe_load((project_root / "project_config.yaml").read_text(encoding="utf-8"))
             self.assertEqual(config["project"]["name"], "Applied Project")
@@ -403,18 +434,26 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             result = self._call(
                 server,
                 "figops.normalize_project_structure",
-                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "adopt"},
+            )
+            repeated = self._call(
+                server,
+                "figops.normalize_project_structure",
+                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "adopt"},
             )
 
             self.assertEqual(result["status"], "ok")
             self.assertTrue(result["is_dry_run"])
+            self.assertTrue(result["manual_review_needed"])
             self.assertEqual(_snapshot_files(project), before)
-            destinations = {entry["destination"] for entry in result["manifest"]["entries"]}
-            self.assertIn("hub_scripts/plot.py", destinations)
-            self.assertIn("hub_scripts/project_context.py", destinations)
+            self.assertEqual(result["plan_digest"], repeated["plan_digest"])
+            self.assertEqual(result["proposed_mappings"], repeated["proposed_mappings"])
+            destinations = {entry["destination"] for entry in result["proposed_mappings"]}
+            self.assertIn("hub_scripts/figures/plot.py", destinations)
             self.assertIn("raw/summary.csv", destinations)
             self.assertIn("results/figures/figure.png", destinations)
-            self.assertIn("docs/notes.md", destinations)
+            unresolved = {entry["source"] for entry in result["unresolved_proposals"]}
+            self.assertIn("notes.md", unresolved)
             self.assertEqual(result["style_summary"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
             self.assertIn("custom_svg", result["style_summary"]["presets"])
             self.assertFalse(result["style_summary"]["style_update_applied"])
@@ -439,7 +478,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             self.assertIn("project_path must stay under", result["errors"][0])
             self.assertEqual(_snapshot_files(project), before)
 
-    def test_normalize_project_structure_apply_copies_files_and_writes_manifest(self):
+    def test_normalize_project_structure_explicit_reviewed_copy_preserves_originals(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project = Path(tmpdir) / "LegacyGraph"
             project.mkdir()
@@ -447,23 +486,51 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             (project / "summary.csv").write_text("x,y\n1,2\n", encoding="utf-8")
             server = GraphHubMCPServer(research_root=Path(tmpdir))
 
-            result = self._call(
+            planned, result = self._reviewed_copy(
                 server,
-                "figops.normalize_project_structure",
-                {"project_path": str(project), "dry_run": False, "include_raw": True, "move_policy": "copy"},
+                project,
+                [
+                    {"source": "plot.py", "destination": "hub_scripts/figures/plot.py", "role": "script.figure"},
+                    {"source": "summary.csv", "destination": "raw/summary.csv", "role": "raw"},
+                ],
             )
 
             self.assertEqual(result["status"], "ok")
             self.assertFalse(result["is_dry_run"])
-            self.assertTrue((project / "hub_scripts" / "plot.py").is_file())
+            self.assertEqual(result["plan_digest"], planned["plan_digest"])
+            self.assertTrue(result["originals_preserved"])
+            self.assertTrue((project / "plot.py").is_file())
+            self.assertTrue((project / "summary.csv").is_file())
+            self.assertTrue((project / "hub_scripts" / "figures" / "plot.py").is_file())
             self.assertTrue((project / "raw" / "summary.csv").is_file())
-            self.assertTrue((project / ".figops_normalization_manifest.json").is_file())
-            manifest = json.loads((project / ".figops_normalization_manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["operation"], "normalize_project_structure")
-            self.assertTrue(any(entry["destination"] == "hub_scripts/plot.py" for entry in manifest["entries"]))
-            self.assertTrue(
-                any(path.endswith(".figops_normalization_manifest.json") for path in result["created_paths"])
+            self.assertFalse((project / ".figops_normalization_manifest.json").exists())
+            self.assertEqual(result["provenance_receipt"]["plan_digest"], planned["plan_digest"])
+
+    def test_normalize_project_structure_reviewed_copy_requires_exact_confirmation(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
+            project = Path(tmpdir) / "LegacyGraph"
+            project.mkdir()
+            (project / "plot.py").write_text("print('plot')\n", encoding="utf-8")
+            server = GraphHubMCPServer(research_root=Path(tmpdir))
+            arguments = {
+                "project_path": str(project),
+                "dry_run": False,
+                "move_policy": "copy",
+                "approved_mappings": [
+                    {"source": "plot.py", "destination": "hub_scripts/figures/plot.py", "role": "script.figure"}
+                ],
+            }
+
+            missing = self._call(server, "figops.normalize_project_structure", arguments)
+            wrong = self._call(
+                server,
+                "figops.normalize_project_structure",
+                {**arguments, "confirmation_token": "FIGOPS-APPLY-wrong"},
             )
+
+            self.assertEqual(missing["error_code"], "FIGOPS_NORMALIZATION_CONFIRMATION_REQUIRED")
+            self.assertEqual(wrong["error_code"], "FIGOPS_NORMALIZATION_PLAN_REJECTED")
+            self.assertFalse((project / "hub_scripts" / "figures" / "plot.py").exists())
 
     def test_normalize_project_structure_preserves_legacy_scripts_config(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -476,22 +543,20 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             planned = self._call(
                 server,
                 "figops.normalize_project_structure",
-                {"project_path": str(project), "dry_run": True, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": True, "move_policy": "adopt"},
             )
             applied = self._call(
                 server,
                 "figops.normalize_project_structure",
-                {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": False, "move_policy": "adopt"},
             )
 
             self.assertEqual(planned["style_summary"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
             self.assertIn("custom_svg", planned["style_summary"]["presets"])
-            self.assertEqual(applied["status"], "warning")
-            config = yaml.safe_load((project / "project_config.yaml").read_text(encoding="utf-8"))
-            self.assertEqual(config["visual_style"]["target_format"], INTERNAL_STYLE_TARGET_FORMAT)
-            self.assertEqual(config["visual_style"]["profile"], INTERNAL_RESISTANCE_PROFILE)
-            self.assertIn("custom_svg", config["presets"])
-            self.assertEqual(config["figures"][0]["preset"], "custom_svg")
+            self.assertEqual(applied["status"], "error")
+            self.assertEqual(applied["error_code"], "FIGOPS_NORMALIZATION_REVIEW_REQUIRED")
+            self.assertFalse((project / "project_config.yaml").exists())
+            self.assertIn("custom_svg", (scripts / "project_config.yaml").read_text(encoding="utf-8"))
 
     def test_normalize_project_structure_includes_nested_legacy_files(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -507,13 +572,13 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             result = self._call(
                 server,
                 "figops.normalize_project_structure",
-                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "adopt"},
             )
 
-            destinations = {entry["destination"] for entry in result["manifest"]["entries"]}
-            self.assertIn("hub_scripts/plot.py", destinations)
+            destinations = {entry["destination"] for entry in result["proposed_mappings"]}
+            self.assertIn("hub_scripts/figures/plot.py", destinations)
             self.assertIn("raw/summary.csv", destinations)
-            self.assertIn("docs/notes.md", destinations)
+            self.assertIn("docs/notes.md", {entry["source"] for entry in result["unresolved_proposals"]})
 
     def test_normalize_project_structure_preserves_nested_relative_subpaths(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -531,12 +596,12 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             result = self._call(
                 server,
                 "figops.normalize_project_structure",
-                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": True, "include_raw": True, "move_policy": "adopt"},
             )
 
-            destinations = {entry["destination"] for entry in result["manifest"]["entries"]}
-            self.assertIn("hub_scripts/prep/plot.py", destinations)
-            self.assertIn("hub_scripts/final/plot.py", destinations)
+            destinations = {entry["destination"] for entry in result["proposed_mappings"]}
+            self.assertIn("hub_scripts/figures/prep/plot.py", destinations)
+            self.assertIn("hub_scripts/figures/final/plot.py", destinations)
             self.assertIn("raw/a/results.csv", destinations)
             self.assertIn("raw/b/results.csv", destinations)
 
@@ -550,13 +615,13 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             planned = self._call(
                 server,
                 "figops.normalize_project_structure",
-                {"project_path": str(project), "dry_run": True, "include_raw": False, "move_policy": "copy"},
+                {"project_path": str(project), "dry_run": True, "include_raw": False, "move_policy": "adopt"},
             )
 
-            entries = {entry["source"]: entry for entry in planned["manifest"]["entries"]}
-            self.assertIn("results/data/summary.csv", entries)
-            self.assertEqual(entries["results/data/summary.csv"]["destination"], "results/data/summary.csv")
-            self.assertEqual(entries["results/data/summary.csv"]["operation"], "copy")
+            self.assertEqual(planned["proposed_mappings"], [])
+            unresolved = {entry["source"]: entry for entry in planned["unresolved_proposals"]}
+            self.assertIn("results/data/summary.csv", unresolved)
+            self.assertIn("ambiguous", unresolved["results/data/summary.csv"]["reason"])
 
     def test_normalize_project_structure_refuses_intra_manifest_destination_collision(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -575,7 +640,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn("hub_scripts/plot.py", result["errors"][0])
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_REVIEW_REQUIRED")
             self.assertFalse((project / "hub_scripts" / "plot.py").exists())
             self.assertEqual(_snapshot_files(project), before)
 
@@ -596,7 +661,7 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn("hub_scripts/plot.py", result["errors"][0])
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_POLICY_DEPRECATED")
             self.assertTrue((project / "plot.py").is_file())
             self.assertTrue((project / "scripts" / "plot.py").is_file())
             self.assertEqual(_snapshot_files(project), before)
@@ -618,11 +683,11 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn("hub_scripts/plot.py", result["errors"][0])
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_OVERWRITE_DISABLED")
             self.assertEqual((project / "hub_scripts" / "plot.py").read_text(encoding="utf-8"), "print('normalized')\n")
             self.assertEqual(_snapshot_files(project), before)
 
-    def test_normalize_project_structure_keeps_raw_source_when_move_policy_selected(self):
+    def test_normalize_project_structure_move_policy_is_callable_but_fails_closed(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project = Path(tmpdir) / "LegacyGraph"
             project.mkdir()
@@ -641,16 +706,15 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 {"project_path": str(project), "dry_run": False, "include_raw": True, "move_policy": "move"},
             )
 
-            raw_entry = next(
-                entry for entry in planned["manifest"]["entries"] if entry["destination"] == "raw/summary.csv"
-            )
-            self.assertEqual(raw_entry["operation"], "copy")
-            self.assertIn(applied["status"], {"ok", "warning"})
+            self.assertEqual(planned["status"], "error")
+            self.assertEqual(applied["status"], "error")
+            self.assertEqual(planned["error_code"], "FIGOPS_NORMALIZATION_POLICY_DEPRECATED")
+            self.assertEqual(applied["error_code"], "FIGOPS_NORMALIZATION_POLICY_DEPRECATED")
             self.assertTrue(raw_source.is_file())
             self.assertEqual(raw_source.read_text(encoding="utf-8"), "x,y\n1,2\n")
-            self.assertEqual((project / "raw" / "summary.csv").read_text(encoding="utf-8"), "x,y\n1,2\n")
+            self.assertFalse((project / "raw" / "summary.csv").exists())
 
-    def test_normalize_project_structure_symlink_overwrite_replaces_existing_target(self):
+    def test_normalize_project_structure_symlink_overwrite_fails_closed(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project = Path(tmpdir) / "LegacyGraph"
             (project / "hub_scripts").mkdir(parents=True)
@@ -664,11 +728,11 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
                 {"project_path": str(project), "dry_run": False, "move_policy": "symlink", "overwrite": True},
             )
 
-            self.assertIn(result["status"], {"ok", "warning"})
-            self.assertTrue((project / "hub_scripts" / "plot.py").is_symlink())
-            self.assertEqual((project / "hub_scripts" / "plot.py").resolve(), (project / "plot.py").resolve())
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_POLICY_DEPRECATED")
+            self.assertNotEqual((project / "hub_scripts" / "plot.py").resolve(), (project / "plot.py").resolve())
 
-    def test_normalize_project_structure_copy_overwrite_replaces_symlink_not_target(self):
+    def test_normalize_project_structure_copy_overwrite_preserves_symlink(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project = Path(tmpdir) / "LegacyGraph"
             (project / "hub_scripts").mkdir(parents=True)
@@ -683,11 +747,11 @@ class ProjectNormalizationMCPTest(unittest.TestCase):
             )
 
             destination = project / "hub_scripts" / "plot.py"
-            self.assertIn(result["status"], {"ok", "warning"})
-            self.assertFalse(destination.is_symlink())
-            self.assertEqual(destination.read_text(encoding="utf-8"), "print('new')\n")
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_OVERWRITE_DISABLED")
+            self.assertTrue(destination.is_symlink())
 
-    def test_normalize_project_structure_apply_warns_when_config_remains_invalid(self):
+    def test_normalize_project_structure_autoapply_rejects_invalid_config_project(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project = Path(tmpdir) / "LegacyGraph"
             project.mkdir()
@@ -708,13 +772,14 @@ visual_style:
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
-            self.assertEqual(result["status"], "warning")
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_REVIEW_REQUIRED")
             self.assertTrue(result["manual_review_needed"])
             self.assertTrue(result["validation"]["checked"])
             self.assertFalse(result["validation"]["valid"])
             self.assertTrue(result["validation"]["errors"])
 
-    def test_normalize_project_structure_warns_for_non_mapping_config(self):
+    def test_normalize_project_structure_autoapply_rejects_non_mapping_config(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             project = Path(tmpdir) / "LegacyGraph"
             project.mkdir()
@@ -728,7 +793,8 @@ visual_style:
                 {"project_path": str(project), "dry_run": False, "move_policy": "copy"},
             )
 
-            self.assertEqual(result["status"], "warning")
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_REVIEW_REQUIRED")
             self.assertTrue(result["manual_review_needed"])
             self.assertTrue(result["validation"]["checked"])
             self.assertFalse(result["validation"]["valid"])
@@ -751,7 +817,7 @@ visual_style:
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn("already exists", result["errors"][0])
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_REVIEW_REQUIRED")
             self.assertEqual(_snapshot_files(project), before)
 
     def test_normalize_project_structure_refuses_existing_manifest_without_overwrite(self):
@@ -771,7 +837,7 @@ visual_style:
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn(".figops_normalization_manifest.json", result["errors"][0])
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_REVIEW_REQUIRED")
             self.assertEqual(_snapshot_files(project), before)
 
     def test_normalize_project_structure_refuses_manifest_directory_even_with_overwrite(self):
@@ -793,7 +859,7 @@ visual_style:
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn(".figops_normalization_manifest.json", result["errors"][0])
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_OVERWRITE_DISABLED")
             self.assertFalse((project / "hub_scripts" / "plot.py").exists())
             self.assertEqual(_snapshot_files(project), before)
 
@@ -815,7 +881,7 @@ visual_style:
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn("docs", result["errors"][0])
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_REVIEW_REQUIRED")
             self.assertFalse((project / "hub_scripts" / "a.py").exists())
             self.assertEqual(_snapshot_files(project), before)
 
@@ -838,7 +904,7 @@ visual_style:
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn("hub_scripts/plot.py", result["errors"][0])
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_OVERWRITE_DISABLED")
             self.assertFalse((project / "hub_scripts" / "a.py").exists())
             self.assertEqual(_snapshot_files(project), before)
 
@@ -860,11 +926,11 @@ visual_style:
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn("hub_scripts", result["errors"][0])
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_OVERWRITE_DISABLED")
             self.assertFalse((project / "alternate_scripts" / "plot.py").exists())
             self.assertEqual(_snapshot_files(project), before)
 
-    def test_normalize_project_structure_allows_internal_symlinked_project_root_boundary(self):
+    def test_normalize_project_structure_internal_symlink_alias_still_requires_review(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             actual_root = Path(tmpdir) / "LegacyGraph"
             actual_root.mkdir()
@@ -880,13 +946,13 @@ visual_style:
                 {"project_path": str(symlink_root), "dry_run": False, "move_policy": "copy"},
             )
 
-            self.assertEqual(result["status"], "ok")
-            self.assertFalse(result["manual_review_needed"])
-            self.assertEqual(result["errors"], [])
-            self.assertTrue((actual_root / "hub_scripts" / "plot.py").exists())
-            self.assertNotEqual(_snapshot_files(actual_root), before_actual)
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_REVIEW_REQUIRED")
+            self.assertTrue(result["manual_review_needed"])
+            self.assertFalse((actual_root / "hub_scripts" / "plot.py").exists())
+            self.assertEqual(_snapshot_files(actual_root), before_actual)
 
-    def test_normalize_project_structure_allows_project_root_under_internal_symlinked_ancestor(self):
+    def test_normalize_project_structure_symlinked_ancestor_still_requires_review(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             actual_parent = Path(tmpdir) / "Actual_Projects"
             project = actual_parent / "LegacyGraph"
@@ -903,13 +969,13 @@ visual_style:
                 {"project_path": str(symlink_parent / "LegacyGraph"), "dry_run": False, "move_policy": "copy"},
             )
 
-            self.assertEqual(result["status"], "ok")
-            self.assertFalse(result["manual_review_needed"])
-            self.assertEqual(result["errors"], [])
-            self.assertTrue((project / "hub_scripts" / "plot.py").exists())
-            self.assertNotEqual(_snapshot_files(project), before_project)
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_REVIEW_REQUIRED")
+            self.assertTrue(result["manual_review_needed"])
+            self.assertFalse((project / "hub_scripts" / "plot.py").exists())
+            self.assertEqual(_snapshot_files(project), before_project)
 
-    def test_normalize_project_structure_allows_symlink_alias_back_to_research_root(self):
+    def test_normalize_project_structure_default_apply_requires_review_through_alias(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
             research_root = Path(tmpdir) / "ResearchOS"
             project = research_root / "LegacyGraph"
@@ -926,10 +992,10 @@ visual_style:
                 {"project_path": str(alias / "LegacyGraph"), "dry_run": False},
             )
 
-            self.assertEqual(result["status"], "ok")
-            self.assertEqual(result["errors"], [])
-            self.assertTrue((project / "hub_scripts" / "plot.py").exists())
-            self.assertNotEqual(_snapshot_files(project), before_project)
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_REVIEW_REQUIRED")
+            self.assertFalse((project / "hub_scripts" / "plot.py").exists())
+            self.assertEqual(_snapshot_files(project), before_project)
 
     def test_normalize_project_structure_rejects_symlink_source_escaping_project(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_norm_") as tmpdir:
@@ -949,7 +1015,7 @@ visual_style:
 
             self.assertEqual(result["status"], "error")
             self.assertTrue(result["manual_review_needed"])
-            self.assertIn("symlink source must stay inside the project root", result["errors"][0])
+            self.assertEqual(result["error_code"], "FIGOPS_NORMALIZATION_POLICY_DEPRECATED")
             self.assertFalse((project / "hub_scripts" / "plot.py").exists())
 
 

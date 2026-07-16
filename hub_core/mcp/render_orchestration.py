@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from hub_core.external_raw_execution import external_raw_signatures, is_external_raw_declaration
 from hub_core.mcp.render_errors import ProjectRenderExportError, ProjectRenderScriptError  # noqa: F401
 from hub_core.mcp.render_geometry import (
     SCRIPT_OUTPUT_TAIL_LINES,
@@ -53,6 +54,7 @@ from hub_core.mcp.render_project_runtime import McpProjectRuntimeMixin
 from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.project_paths import open_verified_project_input, snapshot_project_input
 from hub_core.provenance_inputs import expand_project_input_files
+from hub_core.runtime_paths import resolve_temp_dir
 
 __all__ = [
     "McpRenderOrchestrationMixin",
@@ -76,7 +78,7 @@ def _ensure_matplotlib_runtime_env(config_root: str | Path | None = None) -> Non
     os.environ.setdefault("MPLBACKEND", "Agg")
     if os.environ.get("MPLCONFIGDIR"):
         return
-    root = Path(config_root) if config_root is not None else Path(tempfile.gettempdir())
+    root = Path(config_root) if config_root is not None else Path(resolve_temp_dir("mcp_matplotlib"))
     config_dir = root / ".matplotlib"
     config_dir.mkdir(parents=True, exist_ok=True)
     os.environ["MPLCONFIGDIR"] = str(config_dir)
@@ -169,7 +171,7 @@ def _render_multipanel_figure_worker(
 
 
 def _batch_discovery_worker(root: str, max_depth: int, result_path: str) -> None:
-    _ensure_matplotlib_runtime_env()
+    _ensure_matplotlib_runtime_env(Path(result_path).parent)
     try:
         with redirect_stdout(sys.stderr):
             projects = ProjectDiscoveryService(
@@ -338,7 +340,8 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
         *,
         verified_calculation_evidence: tuple[dict[str, Any], ...] = (),
     ) -> None:
-        with tempfile.TemporaryDirectory(prefix="figops_mcp_render_worker_") as tmpdir:
+        temp_root = Path(resolve_temp_dir("mcp_render_worker"))
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_render_worker_", dir=temp_root) as tmpdir:
             result_path = Path(tmpdir) / "result.json"
             worker_args = (
                 (spec_payload, str(result_path), verified_calculation_evidence)
@@ -375,7 +378,8 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
         *,
         verified_calculation_evidence: tuple[tuple[dict[str, Any], ...], ...] = (),
     ) -> None:
-        with tempfile.TemporaryDirectory(prefix="figops_mcp_multipanel_worker_") as tmpdir:
+        temp_root = Path(resolve_temp_dir("mcp_multipanel_worker"))
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_multipanel_worker_", dir=temp_root) as tmpdir:
             result_path = Path(tmpdir) / "result.json"
             worker_args = (
                 (spec_payload, str(result_path), verified_calculation_evidence)
@@ -733,14 +737,17 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
         *,
         snapshot_project_path: Path,
         config_path: Path,
+        config: dict[str, Any],
         selected_figure: dict[str, Any],
     ) -> dict[str, str]:
         input_declarations = selected_figure.get("inputs")
         if not isinstance(input_declarations, list):
             input_declarations = []
+        declarations = [str(declaration) for declaration in input_declarations]
+        project_declarations = [item for item in declarations if not is_external_raw_declaration(item)]
         input_files = expand_project_input_files(
             snapshot_project_path,
-            [str(declaration) for declaration in input_declarations],
+            project_declarations,
             require_matches=True,
         )
         input_payload = [
@@ -753,6 +760,7 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
             }
             for path in input_files
         ]
+        input_payload.extend(external_raw_signatures(config, declarations))
         script_declaration = str(selected_figure.get("script") or "").split("::", 1)[0]
         return {
             "input_sha256": hashlib.sha256(

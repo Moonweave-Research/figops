@@ -1,6 +1,6 @@
 # AI-Native FigOps Rearchitecture — Single Source of Truth
 
-> Status: **Complete; real-R execution remains unavailable on this host because `Rscript` is absent**<br>
+> Status: **Complete for the AI-native v2 scope; real-R execution remains unavailable on this host because `Rscript` is absent**<br>
 > Date: 2026-07-14<br>
 > Scope: FigOps kernel, MCP agent surface, evidence/readiness, plotting defaults,
 > compatibility adapters, tests, and migration<br>
@@ -8,11 +8,17 @@
 > Governing principle: **Catch what the LLM misses without reducing the LLM's
 > capability.**
 
-This is the only implementation plan for the AI-native FigOps rearchitecture.
-Later agents update the execution checklist and decision log in this file rather
-than creating competing plans. `docs/architecture.md` and `docs/ROADMAP.md`
-continue to describe shipped state and must be updated when a work package
-ships. Historical plans remain historical.
+> Successor SSOT: PR #224 project-structure/runtime-result corrections are
+> governed by
+> `docs/specs/2026-07-15-project-structure-runtime-integrity-plan.md`. That
+> document supersedes current-state and release-gate statements here for its
+> scope, including any stale “in progress” wording retained in this historical
+> execution record.
+
+This is the completed implementation record for the AI-native FigOps
+rearchitecture. `docs/architecture.md` and `docs/ROADMAP.md` describe current
+state; the successor SSOT above governs the later corrective scope. Historical
+plans remain historical.
 
 ## 1. Decision and problem statement
 
@@ -815,7 +821,7 @@ CairoSVG dependency path was rolled back because no SVG renderer passed the
 required Windows safety smoke. Sanitized SVG input therefore returns typed
 `SVG_RENDERER_UNAVAILABLE`; source SVG bytes are never returned as a preview.
 
-### 13.1 Final live v2 measurement (2026-07-15)
+### 13.1 Current live v2 measurement (2026-07-16)
 
 `tests/fixtures/ai_native_agent_eval/baseline-v1.json` remains the immutable
 pre-patch measurement. `final-v2.json` records the post-patch working tree and
@@ -824,22 +830,24 @@ is checked against live JSON-RPC discovery and generated files.
 | Measurement | Baseline v1 | Default v2 |
 |---|---:|---:|
 | Discovered tools with writes enabled | 14 | 7 |
-| Compact `tools` array | 51,455 B | 9,592 B |
-| JSON-RPC `tools/list` response | -- | 9,636 B |
-| Largest input schema | 9,682 B | 987 B |
-| Basic CSV top-level properties | 46 | 11 |
+| Compact `tools` array | 51,455 B | 11,346 B |
+| JSON-RPC `tools/list` response | -- | 11,390 B |
+| Largest input schema | 9,682 B | 1,102 B |
+| Basic CSV top-level properties | 46 | 12 |
 | Known-schema render calls | 2 | 1 |
 | Follow-up collect calls | 1 | 0 |
-| Default-surface generated reference | 129,241 B | 15,257 B / 880 lines |
+| Default-surface generated reference | 129,241 B | 18,381 B / 1,026 lines |
 
-This is an 81.4% reduction in the default tool-definition context, an 89.8%
-reduction in the largest input schema, and an 88.2% reduction in the generated
+This is a 78.0% reduction in the default tool-definition context, an 88.6%
+reduction in the largest input schema, and an 85.8% reduction in the generated
 default-surface reference. With writes disabled, discovery contains five
-read-only tools in a 6,317-byte compact array and a 6,361-byte JSON-RPC
-response. The on-demand compatibility reference is 133,404 bytes and 5,815
-lines (8.7x the default-v2 bytes and 6.6x its lines); the all-canonical
-maintenance reference is 158,253 bytes and 7,425 lines (10.4x the default-v2
-bytes and 8.4x its lines) and is not a default prompt/discovery payload.
+read-only tools in a 7,707-byte compact array and a 7,751-byte JSON-RPC
+response. The on-demand compatibility reference is 136,599 bytes and 5,947
+lines (7.4x the default-v2 bytes and 5.8x its lines); the all-canonical
+maintenance reference is 163,802 bytes and 7,662 lines (8.9x the default-v2
+bytes and 7.5x its lines) and is not a default prompt/discovery payload. These
+2026-07-16 measurements include the corrective structure/runtime schemas and
+are source-matched by `final-v2.json`.
 
 The focused documentation, architecture, profile, agent-consumability,
 baseline/evaluation, and visual-protocol gate passed 46 tests on 2026-07-15;
@@ -1037,8 +1045,8 @@ Use `[~]` for in progress and `[!]` for blocked.
 - [x] V2 and compatibility surface profiles implemented.
 - [x] Existing 14 canonical and 13 frozen alias tools callable in compatibility
       mode.
-- [x] Default tools/list and per-tool schema budgets pass: 7 tools, 9,592-byte
-      compact array, 9,636-byte JSON-RPC response, and a 987-byte largest input
+- [x] Default tools/list and per-tool schema budgets pass: 7 tools, 11,346-byte
+      compact array, 11,390-byte JSON-RPC response, and a 1,102-byte largest input
       schema.
 - [x] Generated docs are profile-aware and freshness-tested.
 - [x] Mandatory dry-run/collect choreography removed from render guidance.
@@ -1082,7 +1090,7 @@ Append entries; do not rewrite history.
 | 2026-07-15 | WP0-WP2 | Closed the baseline P0 witnesses with one contained path kernel, strict raw/artifact/provenance evidence, and the validated `figops_evidence/2` contract. | Delegated implementation and independent reviewers | complete |
 | 2026-07-15 | WP3-WP4 | Preserved authored labels/styles by default, required claim provenance, separated raw geometry from policy, and added manifest-bound bounded preview resources. SVG remains explicitly unavailable pending a safe Windows renderer. | Delegated implementation and independent reviewers | complete |
 | 2026-07-15 | WP5-WP6 | Added four thin v2 capabilities, one-render evidence/preview responses, truthful annotations/write gating, default v2 discovery, and frozen compatibility discovery. | Delegated implementation and independent reviewers | complete |
-| 2026-07-15 | WP7 | Generated full, v2, and compatibility references from live registries; captured `final-v2.json` without rewriting the v1 baseline. Final full-suite and independent release review remain release-orchestrator gates. | Documentation/evaluation owner | in progress |
+| 2026-07-15 | WP7 | Generated full, v2, and compatibility references from live registries; captured `final-v2.json` without rewriting the v1 baseline. Later corrective release gates moved to the successor project-structure/runtime-integrity SSOT. | Documentation/evaluation owner | complete for this plan |
 | 2026-07-15 | WP7 fix sweep | Added verified config/manifest reads, honest PDF/vector dimension and raw-integrity availability, and final evidence/overlay module splits; full regression and final independent review remain open gates. | Delegated fix owners and documentation owner | complete |
 | 2026-07-15 | WP7 final gate | Full pytest passed with 2,005 passed, 45 skipped, 99 subtests, 28 warnings, and zero failures in 254.54 seconds; full Ruff, diff check, 30/30 architecture/docs/profile/schema-budget tests, and independent quality review passed with zero blockers. Live model preview-revision evidence remains pending. | Release verification and independent quality reviewers | automated gates complete |
 | 2026-07-15 | WP7 live model witness | An actual v2 server completed two renders and two lazy preview reads with zero collect calls; a targeted series/label-only revision removed the observed zigzag and added authored context without statistics, while hashes, primary immutability, bounds, cleanup, and non-approval boundaries held. | Live model evaluation owner | complete |

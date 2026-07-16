@@ -489,7 +489,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             runtime_root = tmp_root / "runtime"
             source_snapshot = _snapshot_tree(tmp_root / "input")
 
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
             result = self._call(
                 server,
                 "figops.render_csv_graph",
@@ -936,14 +940,15 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             job_root = runtime_root / "mcp_project_jobs" / "invalid-style"
             self.assertEqual(result["status"], "error")
-            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
             self.assertTrue((job_root / "manifest.json").is_file())
             self.assertTrue((job_root / "status.json").is_file())
             manifest = json.loads((job_root / "manifest.json").read_text(encoding="utf-8"))
             status = json.loads((job_root / "status.json").read_text(encoding="utf-8"))
-            self.assertEqual(result["style_summary"]["target_format"], "not-a-style")
-            self.assertEqual(manifest["style_summary"], result["style_summary"])
-            self.assertEqual(status["style_summary"], result["style_summary"])
+            self.assertEqual(manifest["failure_stage"], "CONTRACT")
+            self.assertEqual(status["failure_stage"], "CONTRACT")
+            self.assertEqual(manifest["style_summary"], {})
+            self.assertEqual(status["style_summary"], {})
             self.assertEqual(
                 manifest["provenance"]["attempt"],
                 result["provenance"]["attempt"],
@@ -4088,7 +4093,9 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "geom-project-overlap"},
             )
 
-            self.assertEqual(result["status"], "ok")
+            self.assertEqual(result["status"], "warning")
+            self.assertEqual(result["publication_status"], "unverified")
+            self.assertFalse(result["promotion_eligible"])
             measurement = next(
                 item for item in result["geometry_diagnostics"]["measurements"]
                 if item["metric_id"] == "artist_pair_iou[axis=0]"
@@ -4360,6 +4367,19 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
         # key would be caught by additionalProperties:False, not just by manual tracing.
         csv_schema = definitions["figops.render_csv_graph"]["outputSchema"]
         project_schema = definitions["figops.render_project_figure"]["outputSchema"]
+        project_properties = project_schema["properties"]
+        self.assertEqual(project_properties["claim_inventory"]["type"], "object")
+        self.assertEqual(
+            project_properties["publication_status"],
+            {"type": "string", "enum": ["verified", "unverified"]},
+        )
+        self.assertEqual(project_properties["promotion_eligible"]["type"], "boolean")
+        for optional_success_field in (
+            "claim_inventory",
+            "publication_status",
+            "promotion_eligible",
+        ):
+            self.assertNotIn(optional_success_field, project_schema.get("required", []))
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             _, csv_success = self._render_csv(tmpdir)
             self._assert_validates(csv_success, csv_schema)

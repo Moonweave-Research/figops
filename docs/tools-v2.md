@@ -171,7 +171,7 @@ Return FigOps server health and discovery status.
 
 ### `figops.describe`
 
-Summarize available capabilities, then fetch filtered kind/name detail on demand.
+Summarize capabilities or inspect one project's declared structure without writing files.
 
 **Input schema**
 
@@ -184,12 +184,23 @@ Summarize available capabilities, then fetch filtered kind/name detail on demand
         "tools",
         "plot_types",
         "semantic_checks",
-        "domain_helpers"
+        "domain_helpers",
+        "project_structure"
       ],
       "type": "string"
     },
     "name": {
       "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "project_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "project_path": {
+      "maxLength": 4096,
       "minLength": 1,
       "type": "string"
     }
@@ -216,13 +227,37 @@ Summarize available capabilities, then fetch filtered kind/name detail on demand
         "null"
       ]
     },
+    "findings": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "graph": {
+      "type": "object"
+    },
     "kinds": {
       "items": {
         "type": "object"
       },
       "type": "array"
     },
+    "proposed_changes": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "roles": {
+      "type": "object"
+    },
+    "schema_version": {
+      "type": "string"
+    },
     "status": {
+      "type": "string"
+    },
+    "status_code": {
       "type": "string"
     },
     "summary": {
@@ -234,6 +269,12 @@ Summarize available capabilities, then fetch filtered kind/name detail on demand
         "compatibility"
       ],
       "type": "string"
+    },
+    "unknowns": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
     },
     "write_tools_enabled": {
       "type": "boolean"
@@ -398,7 +439,7 @@ Return canonical FigOps target formats, output formats, profiles, and aliases.
 
 ### `figops.inspect_data`
 
-Inspect bounded facts for an allowed CSV or TSV without returning rows by default.
+Inspect an allowed CSV or TSV under declared sensitivity policy; undeclared, unspecified, and restricted data return metadata only.
 
 **Input schema**
 
@@ -417,6 +458,12 @@ Inspect bounded facts for an allowed CSV or TSV without returning rows by defaul
     },
     "data_path": {
       "maxLength": 4096,
+      "minLength": 1,
+      "type": "string"
+    },
+    "external_raw_id": {
+      "description": "Required for value samples from a declared external_raw source; must match the descriptor id bound to its launcher-approved root.",
+      "maxLength": 128,
       "minLength": 1,
       "type": "string"
     },
@@ -444,6 +491,55 @@ Inspect bounded facts for an allowed CSV or TSV without returning rows by defaul
 {
   "additionalProperties": false,
   "properties": {
+    "access_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": [
+            "public",
+            "internal",
+            "restricted",
+            "unspecified",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "declaration_source": {
+          "type": "string"
+        },
+        "external_raw_identity": {
+          "type": "object"
+        },
+        "materialized_sha256_verified": {
+          "type": "boolean"
+        },
+        "mode": {
+          "enum": [
+            "metadata_only",
+            "bounded_values"
+          ],
+          "type": "string"
+        },
+        "reason_code": {
+          "type": "string"
+        },
+        "samples_allowed": {
+          "type": "boolean"
+        },
+        "samples_requested": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "classification",
+        "declaration_source",
+        "mode",
+        "samples_requested",
+        "samples_allowed",
+        "reason_code"
+      ],
+      "type": "object"
+    },
     "availability": {
       "type": "object"
     },
@@ -455,6 +551,12 @@ Inspect bounded facts for an allowed CSV or TSV without returning rows by defaul
     },
     "limits": {
       "type": "object"
+    },
+    "sample_columns": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
     },
     "samples": {
       "items": {
@@ -479,6 +581,9 @@ Inspect bounded facts for an allowed CSV or TSV without returning rows by defaul
         "available",
         "unavailable"
       ],
+      "type": "string"
+    },
+    "status_code": {
       "type": "string"
     },
     "truncation": {
@@ -566,14 +671,27 @@ Render one quick CSV chart with raw labels and no statistics DSL.
       "type": "string"
     },
     "style_policy": {
-      "default": "nature",
+      "default": "neutral",
       "enum": [
         "acs",
         "cell",
         "default",
         "elsevier",
         "nature",
+        "neutral",
         "ppt",
+        "rsc",
+        "science",
+        "wiley"
+      ],
+      "type": "string"
+    },
+    "validation_target": {
+      "enum": [
+        "acs",
+        "cell",
+        "elsevier",
+        "nature",
         "rsc",
         "science",
         "wiley"
@@ -717,6 +835,34 @@ Render one configured project-local .py or .R figure; code and command strings a
     },
     "project_path": {
       "description": "Project path; mutually exclusive with project_id, supply exactly one.",
+      "type": "string"
+    },
+    "style_policy": {
+      "default": "neutral",
+      "enum": [
+        "acs",
+        "cell",
+        "default",
+        "elsevier",
+        "nature",
+        "neutral",
+        "ppt",
+        "rsc",
+        "science",
+        "wiley"
+      ],
+      "type": "string"
+    },
+    "validation_target": {
+      "enum": [
+        "acs",
+        "cell",
+        "elsevier",
+        "nature",
+        "rsc",
+        "science",
+        "wiley"
+      ],
       "type": "string"
     }
   },

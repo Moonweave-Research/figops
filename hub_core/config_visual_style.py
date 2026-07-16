@@ -1,5 +1,27 @@
 """Validation for project visual-style and named-preset configuration."""
 
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+_CURRENT_STRUCTURE_CONTRACT = "figops-project-v1.1"
+_JOURNAL_TARGETS = {
+    "acs": "acs",
+    "cell": "cell",
+    "elsevier": "elsevier",
+    "nature": "nature",
+    "nature communications": "nature",
+    "rsc": "rsc",
+    "science": "science",
+    "wiley": "wiley",
+}
+
+
+def _journal_validation_target(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return _JOURNAL_TARGETS.get(value.strip().lower())
+
 
 def validate_visual_style(
     errors: list[str],
@@ -16,7 +38,12 @@ def validate_visual_style(
     if not isinstance(visual_style, dict):
         errors.append("Invalid 'visual_style' section (must be a mapping).")
     else:
-        target_format = visual_style.get("target_format", "nature")
+        structure = config.get("structure", {})
+        current_contract = (
+            isinstance(structure, Mapping) and structure.get("contract") == _CURRENT_STRUCTURE_CONTRACT
+        )
+        implicit_render_policy = "neutral" if current_contract else "nature"
+        target_format = visual_style.get("target_format", implicit_render_policy)
         if not isinstance(target_format, str) or target_format.lower() not in allowed_target_formats:
             allowed = ", ".join(sorted(allowed_target_formats))
             errors.append(f"Invalid visual_style.target_format: '{target_format}'. Allowed values: {allowed}.")
@@ -33,6 +60,40 @@ def validate_visual_style(
             if known_style_profile_keys and profile_key not in known_style_profile_keys:
                 allowed_profiles = ", ".join(sorted(known_style_profiles))
                 errors.append(f"Invalid visual_style.profile: '{profile_name}'. Allowed values: {allowed_profiles}.")
+
+        render_policy = visual_style.get("render_policy")
+        if render_policy is not None:
+            if not isinstance(render_policy, str) or render_policy.strip().lower() not in allowed_target_formats:
+                allowed = ", ".join(sorted(allowed_target_formats))
+                errors.append(f"Invalid visual_style.render_policy: '{render_policy}'. Allowed values: {allowed}.")
+            elif "target_format" in visual_style and isinstance(target_format, str):
+                if render_policy.strip().lower() != target_format.strip().lower():
+                    errors.append(
+                        "visual_style.render_policy and legacy visual_style.target_format must select "
+                        "the same rendering policy when both are provided."
+                    )
+
+        validation_target = visual_style.get("validation_target")
+        if validation_target is not None and (
+            not isinstance(validation_target, str)
+            or validation_target.strip().lower() not in allowed_target_formats - {"neutral", "default", "ppt"}
+        ):
+            allowed = ", ".join(sorted(allowed_target_formats - {"neutral", "default", "ppt"}))
+            errors.append(
+                f"Invalid visual_style.validation_target: '{validation_target}'. Allowed values: {allowed}."
+            )
+
+        project = config.get("project", {})
+        target_journal = project.get("target_journal") if isinstance(project, Mapping) else None
+        if target_journal is not None and (not isinstance(target_journal, str) or not target_journal.strip()):
+            errors.append("project.target_journal must be a non-empty string when provided.")
+        expected_target = _journal_validation_target(target_journal)
+        if expected_target is not None and isinstance(validation_target, str):
+            if validation_target.strip().lower() != expected_target:
+                errors.append(
+                    "project.target_journal and visual_style.validation_target are inconsistent: "
+                    f"{target_journal!r} requires {expected_target!r}."
+                )
 
 
 def validate_presets(

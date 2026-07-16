@@ -92,12 +92,28 @@ class FigOpsMCPServer(
             runtime_root=runtime_root,
             write_tools_enabled=write_tools_enabled,
         )
-        self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = get_tool_handlers(self)
+        self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = get_tool_handlers(
+            self,
+            profile=self.surface_profile,
+        )
 
     def list_tool_definitions(self) -> list[dict[str, Any]]:
         return schema_list_tool_definitions(
             profile=self.surface_profile,
             write_tools_enabled=self.write_tools_enabled,
+        )
+
+    def callable_tool_definitions(self) -> list[dict[str, Any]]:
+        """Return schemas for exactly the names this profile may dispatch.
+
+        Write schemas remain available here when writes are disabled so the
+        independent write guard can return the stable disabled error. They are
+        still omitted from public discovery by ``list_tool_definitions``.
+        """
+
+        return schema_list_tool_definitions(
+            profile=self.surface_profile,
+            write_tools_enabled=True,
         )
 
     @staticmethod

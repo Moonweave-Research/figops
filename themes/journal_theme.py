@@ -38,6 +38,11 @@ except ImportError:
     from font_token_resolver import build_font_token_presets, resolve_font_tokens
 
 try:
+    from .journal_annotations import panel_label
+except ImportError:
+    from journal_annotations import panel_label
+
+try:
     # Package import path: from themes.journal_theme import ...
     from .palettes import get_palette
 
@@ -481,6 +486,10 @@ STYLE_PRESETS[INTERNAL_STYLE_TARGET_FORMAT].update(
 )
 
 STYLE_PRESETS["default"] = copy.deepcopy(STYLE_PRESETS["nature"])
+# Neutral is intentionally not an alias for ``default``.  ``default`` remains
+# the frozen Nature-derived compatibility preset, while neutral means that no
+# journal rcParams, palette, or compliance mutation is applied.
+STYLE_PRESETS["neutral"] = {}
 
 def apply_journal_theme(
     target_format="nature",
@@ -506,6 +515,16 @@ def apply_journal_theme(
     target_format = target_format.lower()
     if target_format not in STYLE_PRESETS:
         target_format = "nature"
+
+    if target_format == "neutral":
+        resolved_profile = resolve_profile_name(profile_name)
+        fallback_font_tokens = font_tokens("neutral", font_scale, resolved_profile)
+        _ACTIVE_FONT_TOKENS = fallback_font_tokens
+        _ACTIVE_TARGET_FORMAT = "neutral"
+        _ACTIVE_COMPLIANCE_TOKENS = None
+        _ACTIVE_COMPLIANCE_MODE = "validate"
+        append_authored_output_evidence(mutation_ledger=[])
+        return
 
     theme_rc = copy.deepcopy(STYLE_PRESETS[target_format])
 
@@ -607,41 +626,6 @@ def set_figure_size(width_mm, height_mm=None, ratio=0.8):
 get_figsize = set_figure_size
 
 
-_PANEL_LABEL_LOCS = {
-    "upper left": (0.03, 0.97, "left", "top"),
-    "upper right": (0.97, 0.97, "right", "top"),
-    "lower left": (0.03, 0.03, "left", "bottom"),
-    "lower right": (0.97, 0.03, "right", "bottom"),
-}
-
-
-def panel_label(ax, text: str, loc: str = "upper left", color=None, box: bool = True, **kw):
-    """Place readable in-panel text in axes-fraction corner coordinates."""
-    loc_key = str(loc).lower().replace("_", " ").strip()
-    if loc_key not in _PANEL_LABEL_LOCS:
-        allowed = ", ".join(sorted(_PANEL_LABEL_LOCS))
-        raise ValueError(f"Unsupported panel_label loc {loc!r}; expected one of: {allowed}")
-
-    x, y, ha, va = _PANEL_LABEL_LOCS[loc_key]
-    text_kwargs = {
-        "transform": ax.transAxes,
-        "ha": ha,
-        "va": va,
-        "color": "black" if color is None else color,
-        "zorder": 20,
-    }
-    if box and "bbox" not in kw:
-        text_kwargs["bbox"] = {
-            "boxstyle": "round,pad=0.12",
-            "facecolor": "white",
-            "alpha": 0.72,
-            "edgecolor": "none",
-            "linewidth": 0.0,
-        }
-    text_kwargs.update(kw)
-    return ax.text(x, y, text, **text_kwargs)
-
-
 def _safe_geometry_diagnostics_inline(fig) -> dict:
     """Run geometry diagnostics in the same frame that holds the live figure.
 
@@ -714,13 +698,14 @@ def save_journal_fig(
         kwargs.pop("bbox_inches", None)
         save_ctx = plt.rc_context({"savefig.bbox": None, "savefig.pad_inches": 0})
     else:
-        kwargs.setdefault("bbox_inches", "tight")
+        if _ACTIVE_TARGET_FORMAT != "neutral":
+            kwargs.setdefault("bbox_inches", "tight")
         save_ctx = contextlib.nullcontext()
 
     metadata = kwargs.pop("metadata", {}) or {}
     file_path = Path(filename)
     suffix = file_path.suffix.lower()
-    if suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff"}:
+    if _ACTIVE_TARGET_FORMAT != "neutral" and suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff"}:
         kwargs.setdefault("dpi", 600)
 
     # 도구 버전 정보 차단 — 환경별 바이너리 해시 불일치 방지

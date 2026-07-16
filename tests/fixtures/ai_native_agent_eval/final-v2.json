@@ -1,10 +1,10 @@
 {
   "schema_version": "figops_agent_eval_measurement/2",
-  "captured_at": "2026-07-15",
-  "source_commit": "55ce4fcd0512+working-tree",
+  "captured_at": "2026-07-16",
+  "source_commit": "983db8d6ec93+working-tree",
   "surface": "default-v2",
   "measurement_method": {
-    "command": "python hub_uv.py run --offline --locked --no-sync python -c <live JSON-RPC measurement>",
+    "command": "%LOCALAPPDATA%\\FigOps\\uv_envs\\figops\\Scripts\\python.exe -c <live JSON-RPC measurement>",
     "json_encoding": "UTF-8; ensure_ascii=false; separators=(',', ':')",
     "runtime": "external FigOps uv environment"
   },
@@ -19,11 +19,11 @@
       "figops.audit_artifact"
     ],
     "emitted_tool_definition_count": 7,
-    "tools_list_response_bytes": 9636,
-    "tools_array_bytes": 9592,
-    "maximum_input_schema_bytes": 987,
+    "tools_list_response_bytes": 11390,
+    "tools_array_bytes": 11346,
+    "maximum_input_schema_bytes": 1102,
     "maximum_input_schema_tool": "figops.render_basic_csv",
-    "render_basic_csv_top_level_properties": 11
+    "render_basic_csv_top_level_properties": 12
   },
   "writes_disabled_surface": {
     "names": [
@@ -34,8 +34,8 @@
       "figops.audit_artifact"
     ],
     "emitted_tool_definition_count": 5,
-    "tools_list_response_bytes": 6361,
-    "tools_array_bytes": 6317
+    "tools_list_response_bytes": 7751,
+    "tools_array_bytes": 7707
   },
   "compatibility_surface": {
     "canonical_tool_count": 14,
@@ -45,18 +45,18 @@
   "generated_references": {
     "default_full": {
       "path": "docs/tools.md",
-      "bytes": 158253,
-      "lines": 7425
+      "bytes": 163802,
+      "lines": 7662
     },
     "v2": {
       "path": "docs/tools-v2.md",
-      "bytes": 15257,
-      "lines": 880
+      "bytes": 18381,
+      "lines": 1026
     },
     "compatibility": {
       "path": "docs/tools-compatibility.md",
-      "bytes": 133404,
-      "lines": 5815
+      "bytes": 136599,
+      "lines": 5947
     }
   },
   "guided_call_contract": {

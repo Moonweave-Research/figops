@@ -17,6 +17,8 @@ FORMAT_FIGSIZE_MM: dict[str, tuple[float, float]] = {
 
 
 def figsize_for_format(target_format: str) -> tuple[float, float]:
+    if str(target_format).strip().lower() == "neutral":
+        return tuple(float(value) for value in plt.rcParams["figure.figsize"])
     tokens, _meta = get_render_style_tokens(target_format, "baseline")
     if "figure_width_mm" in tokens:
         w_mm = float(tokens["figure_width_mm"])

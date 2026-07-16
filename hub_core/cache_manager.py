@@ -5,6 +5,7 @@ import tempfile
 from datetime import datetime
 
 from .logging import get_logger
+from .runtime_paths import resolve_build_state_path, resolve_runtime_root
 from .utils import expand_declared_paths
 
 logger = get_logger(__name__)
@@ -78,22 +79,24 @@ def _empty_build_state():
     }
 
 def build_state_path(project_dir):
-    return os.path.join(project_dir, BUILD_STATE_FILENAME)
+    return resolve_build_state_path(project_dir)
 
 def load_build_state(project_dir):
     state_path = build_state_path(project_dir)
-    if not os.path.exists(state_path):
+    legacy_path = os.path.join(project_dir, BUILD_STATE_FILENAME)
+    read_path = state_path if os.path.exists(state_path) else legacy_path
+    if not os.path.exists(read_path):
         return _empty_build_state(), state_path
 
     try:
-        with open(state_path, "r", encoding="utf-8") as f:
+        with open(read_path, "r", encoding="utf-8") as f:
             state = json.load(f)
     except (OSError, json.JSONDecodeError):
-        logger.warning("⚠️  Warning: invalid build state, resetting cache: %s", state_path)
+        logger.warning("⚠️  Warning: invalid build state, resetting cache: %s", read_path)
         return _empty_build_state(), state_path
 
     if not isinstance(state, dict):
-        logger.warning("⚠️  Warning: malformed build state, resetting cache: %s", state_path)
+        logger.warning("⚠️  Warning: malformed build state, resetting cache: %s", read_path)
         return _empty_build_state(), state_path
 
     normalized = _empty_build_state()
@@ -108,7 +111,9 @@ def save_build_state(state_path, build_state):
     """
     tempfile을 사용해 원자적으로 캐시 파일을 업데이트합니다.
     """
+    state_path = _external_build_state_path(state_path)
     dir_name = os.path.dirname(state_path)
+    os.makedirs(dir_name, exist_ok=True)
     try:
         with tempfile.NamedTemporaryFile(
             mode="w", encoding="utf-8", dir=dir_name, delete=False, suffix=".tmp"
@@ -125,6 +130,19 @@ def save_build_state(state_path, build_state):
                 pass
         logger.warning("⚠️  Warning: failed to save build state: %s\n   └─ %s", state_path, e)
         return False
+
+
+def _external_build_state_path(state_path):
+    """Redirect legacy caller-supplied project state paths to external runtime."""
+
+    supplied = os.path.abspath(os.fspath(state_path))
+    runtime_root = os.path.abspath(resolve_runtime_root())
+    try:
+        if os.path.commonpath((supplied, runtime_root)) == runtime_root:
+            return supplied
+    except ValueError:
+        pass
+    return resolve_build_state_path(os.path.dirname(supplied))
 
 def is_step_stale(step_kind, step_key, signature, output_signatures, build_state, config_hash, force=False):
     if force:

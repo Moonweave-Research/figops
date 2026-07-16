@@ -495,7 +495,7 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             self.skipTest("Rscript is not installed")
 
     def _write_scaffold_analysis_project(self, project_dir: Path) -> dict:
-        script_path = project_dir / "hub_scripts" / "analyze.R"
+        script_path = project_dir / "hub_scripts" / "analysis" / "analyze.R"
         script_path.parent.mkdir(parents=True, exist_ok=True)
         script_path.write_text(DEFAULT_ANALYZE_R, encoding="utf-8")
         return {
@@ -504,10 +504,10 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             "pipeline": {
                 "analysis": [
                     {
-                        "script": "hub_scripts/analyze.R",
+                        "script": "hub_scripts/analysis/analyze.R",
                         "lang": "r",
                         "inputs": ["raw/"],
-                        "outputs": ["results/data/summary.csv"],
+                        "outputs": ["results/data/source/summary.csv"],
                     }
                 ]
             },
@@ -537,7 +537,9 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             )
 
             self.assertTrue(result)
-            with (project_dir / "results" / "data" / "summary.csv").open(newline="", encoding="utf-8") as handle:
+            with (project_dir / "results" / "data" / "source" / "summary.csv").open(
+                newline="", encoding="utf-8"
+            ) as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual([row["value"] for row in rows], ["7.5", "8.5"])
 
@@ -559,7 +561,7 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             )
 
             self.assertFalse(result)
-            self.assertFalse((project_dir / "results" / "data" / "summary.csv").exists())
+            self.assertFalse((project_dir / "results" / "data" / "source" / "summary.csv").exists())
 
     def test_scaffold_project_creates_normalized_raw_dir(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_scaffold_") as tmpdir:
@@ -568,7 +570,8 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             scaffold_project(project_dir, HUB_ROOT, project_name="raw_dir_contract")
 
             self.assertTrue((project_dir / "raw").is_dir())
-            self.assertTrue((project_dir / "raw" / "example_input.csv").is_file())
+            self.assertTrue((project_dir / "raw" / "example.csv").is_file())
+            self.assertTrue((project_dir / "raw" / ".raw_manifest.json").is_file())
             self.assertFalse((project_dir / "data" / "raw").exists())
 
     def test_scaffold_project_uses_packaged_template_when_root_template_is_absent(self):
@@ -588,7 +591,7 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             config_text = (project_dir / "project_config.yaml").read_text(encoding="utf-8")
             self.assertIn('name: "Packaged Template Smoke"', config_text)
             self.assertNotIn(INTERNAL_STYLE_TARGET_FORMAT, config_text)
-            self.assertTrue((project_dir / "hub_scripts" / "plot.py").is_file())
+            self.assertTrue((project_dir / "hub_scripts" / "figures" / "plot.py").is_file())
 
     def test_scaffold_project_fails_fast_for_unrelated_hub_without_templates(self):
         with tempfile.TemporaryDirectory(prefix="figops_missing_scaffold_") as tmpdir:
