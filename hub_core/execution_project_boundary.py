@@ -6,7 +6,12 @@ import os
 import stat
 from pathlib import Path
 
-from .path_identity import canonical_path, canonical_relative_to, is_macos_system_alias
+from .path_identity import (
+    canonical_path,
+    canonical_relative_to,
+    is_macos_system_alias,
+    lexical_absolute_path,
+)
 
 PROJECT_EXECUTION_REPARSE_ERROR = (
     "execution project must not resolve through a symlink, junction, or reparse point."
@@ -34,10 +39,10 @@ def resolve_execution_project_path(
 ) -> Path:
     """Resolve one real directory below ``research_root`` without aliases."""
 
-    root = canonical_path(research_root, strict=True)
+    lexical_root = lexical_absolute_path(research_root)
+    root = canonical_path(lexical_root, strict=True)
     raw = Path(project_path).expanduser()
-    lexical = raw if raw.is_absolute() else root / raw
-    lexical = lexical.absolute()
+    lexical = lexical_absolute_path(raw if raw.is_absolute() else lexical_root / raw)
     try:
         canonical_relative_to(lexical, root, strict=True)
     except (OSError, RuntimeError, ValueError) as exc:
@@ -58,7 +63,7 @@ def resolve_execution_project_path(
         raise ExecutionProjectPathError("execution project must stay under the research root.") from exc
     if not resolved.is_dir():
         raise ExecutionProjectPathError("execution project must be a directory.")
-    return resolved
+    return lexical
 
 
 __all__ = [

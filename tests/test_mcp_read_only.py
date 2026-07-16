@@ -183,6 +183,33 @@ class ReadOnlyMCPTest(unittest.TestCase):
         self.assertFalse(server.write_tools_enabled)
         self.assertEqual(health["runtime_root"], str(runtime_root.resolve()))
 
+    def test_health_reports_darwin_preview_memory_capability_without_hiding_other_bounds(self):
+        capabilities = {
+            "memory_limit_bytes": 256 * 1024 * 1024,
+            "memory_limit_enforced": False,
+            "memory_limit_limitation": "Hard worker memory enforcement is unavailable on macOS.",
+            "timeout_seconds": 5.0,
+            "source_byte_limit": 16 * 1024 * 1024,
+            "raw_output_byte_limit": 2 * 1024 * 1024,
+            "base64_output_byte_limit": 2_796_204,
+            "pixel_limit": 8_000_000,
+            "edge_limit": 2_048,
+            "cpu_limit_enforced": True,
+            "file_size_limit_enforced": True,
+            "process_tree_containment": True,
+        }
+        with unittest.mock.patch(
+            "hub_core.mcp.tools.read_tools.preview_worker_capabilities",
+            return_value=capabilities,
+        ):
+            health = self._call(GraphHubMCPServer(), "figops.health")
+
+        self.assertEqual(health["preview_worker_limits"], capabilities)
+        self.assertFalse(health["preview_worker_limits"]["memory_limit_enforced"])
+        self.assertTrue(health["preview_worker_limits"]["cpu_limit_enforced"])
+        self.assertTrue(health["preview_worker_limits"]["file_size_limit_enforced"])
+        self.assertTrue(health["preview_worker_limits"]["process_tree_containment"])
+
     def test_env_trust_model_documents_root_adapter_security_env_vars(self):
         trust_model = (HUB_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 

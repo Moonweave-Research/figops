@@ -295,10 +295,11 @@ def delete_file_by_identity(
     """Delete the exact verified Windows file object, never a replacement.
 
     Python has no portable handle-bound unlink. Non-Windows callers therefore
-    fail closed instead of performing a check-then-unlink sequence. Windows
-    opens one non-write-shared handle, verifies file ID and optional content
-    hash through that handle, and applies delete disposition to that same file
-    object. A pathname swap can therefore never redirect deletion.
+    fail closed instead of performing a rename/check/unlink sequence whose
+    private pathname can still be replaced between verification and deletion.
+    Windows opens one non-write-shared handle, verifies file ID and optional
+    content hash through that handle, and applies delete disposition to that
+    same file object. A pathname swap can therefore never redirect deletion.
     """
 
     if os.name != "nt":

@@ -21,6 +21,17 @@ def canonical_path(path: PathLike, *, strict: bool = False) -> Path:
     return _NATIVE_PATH_TYPE(path).expanduser().resolve(strict=strict)
 
 
+def lexical_absolute_path(path: PathLike) -> Path:
+    """Return an absolute path while preserving the caller's root spelling.
+
+    This is for paths exposed in configuration, DTOs, environment variables,
+    reports, and filesystem output selection.  Trust-boundary decisions must
+    still use the canonical helpers above.
+    """
+
+    return _NATIVE_PATH_TYPE(path).expanduser().absolute()
+
+
 def canonical_relative_to(path: PathLike, root: PathLike, *, strict: bool = False) -> Path:
     """Return ``path`` relative to ``root`` after resolving both identities."""
 
@@ -79,5 +90,6 @@ __all__ = [
     "canonical_paths_overlap",
     "canonical_relative_to",
     "is_macos_system_alias",
+    "lexical_absolute_path",
     "lexical_or_canonical_relative_to",
 ]

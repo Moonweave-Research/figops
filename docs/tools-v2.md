@@ -111,6 +111,51 @@ Return FigOps server health and discovery status.
     "operation_id": {
       "type": "string"
     },
+    "preview_worker_limits": {
+      "additionalProperties": false,
+      "properties": {
+        "base64_output_byte_limit": {
+          "type": "integer"
+        },
+        "cpu_limit_enforced": {
+          "type": "boolean"
+        },
+        "edge_limit": {
+          "type": "integer"
+        },
+        "file_size_limit_enforced": {
+          "type": "boolean"
+        },
+        "memory_limit_bytes": {
+          "type": "integer"
+        },
+        "memory_limit_enforced": {
+          "type": "boolean"
+        },
+        "memory_limit_limitation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pixel_limit": {
+          "type": "integer"
+        },
+        "process_tree_containment": {
+          "type": "boolean"
+        },
+        "raw_output_byte_limit": {
+          "type": "integer"
+        },
+        "source_byte_limit": {
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
     "python_executable": {
       "type": "string"
     },

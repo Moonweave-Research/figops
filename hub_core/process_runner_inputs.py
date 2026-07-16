@@ -5,13 +5,16 @@ inputs on one fail-closed execution path.  The process runner retains the
 historical private helper names as direct aliases.
 """
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .external_raw_execution import (
     is_external_raw_declaration,
     materialize_external_raw_inputs,
 )
+from .path_identity import canonical_path, lexical_absolute_path
 from .project_paths import (
+    ProjectPathError,
+    normalize_project_relative_path,
     resolve_project_input,
     resolve_project_root,
     revalidate_project_input,
@@ -36,16 +39,28 @@ def project_relative_inputs(project_dir, absolute_paths):
 
 
 def prefetch_and_revalidate_inputs(project_dir, declared_inputs, prefetcher):
-    resolved = [
-        resolve_project_input(project_dir, declaration, purpose="declared execution input")
-        for declaration in declared_inputs
-    ]
-    prefetcher.ensure_local([str(path) for path in resolved])
+    lexical_root = lexical_absolute_path(project_dir)
+    lexical_inputs = []
+    for declaration in declared_inputs:
+        normalized = normalize_project_relative_path(
+            declaration,
+            purpose="declared execution input",
+        )
+        lexical = lexical_root.joinpath(*PurePosixPath(normalized).parts)
+        resolved = resolve_project_input(
+            project_dir,
+            declaration,
+            purpose="declared execution input",
+        )
+        if canonical_path(lexical, strict=True) != resolved:
+            raise ProjectPathError("declared execution input changed during lexical path validation")
+        lexical_inputs.append(lexical)
+    prefetcher.ensure_local([str(path) for path in lexical_inputs])
     snapshots = [
         snapshot_project_input(project_dir, declaration, purpose="declared execution input")
         for declaration in declared_inputs
     ]
-    return [
+    revalidated = [
         revalidate_project_input(
             project_dir,
             declaration,
@@ -54,6 +69,10 @@ def prefetch_and_revalidate_inputs(project_dir, declared_inputs, prefetcher):
         )
         for declaration, snapshot in zip(declared_inputs, snapshots, strict=True)
     ]
+    for lexical, resolved in zip(lexical_inputs, revalidated, strict=True):
+        if canonical_path(lexical, strict=True) != resolved:
+            raise ProjectPathError("declared execution input changed after prefetch")
+    return lexical_inputs
 
 
 def resolve_execution_inputs(

@@ -7,6 +7,16 @@ import sys
 from collections.abc import Callable
 
 
+def posix_memory_limit_supported() -> bool:
+    """Report whether this POSIX host has a reliable address-space limit."""
+
+    try:
+        import resource
+    except ImportError:
+        return False
+    return sys.platform != "darwin" and hasattr(resource, "RLIMIT_AS")
+
+
 def build_posix_limit_callback(
     *,
     memory_bytes: int,
@@ -22,7 +32,7 @@ def build_posix_limit_callback(
 
     import resource
 
-    memory_enforced = sys.platform != "darwin" and hasattr(resource, "RLIMIT_AS")
+    memory_enforced = posix_memory_limit_supported()
     cpu_limit = max(1, int(math.ceil(cpu_seconds)))
 
     def apply_limits() -> None:

@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 
 from .durable_promotion import file_sha256, promote_runtime_artifact
 from .logging import get_logger
+from .path_identity import canonical_is_relative_to, canonical_path, lexical_absolute_path
 from .runtime_paths import resolve_diagnostics_dir, resolve_runtime_root
 
 logger = get_logger(__name__)
@@ -190,7 +191,7 @@ class AthenaBridge:
     def _read_quality_sidecar(output_path: str) -> Optional[Dict[str, Any]]:
         """Read runtime quality diagnostics, falling back to legacy project-local state."""
         try:
-            out = Path(output_path).resolve()
+            out = lexical_absolute_path(output_path)
             for parent in out.parents:
                 sidecars = (
                     Path(resolve_diagnostics_dir(str(parent))) / "data_contract" / "quality_metrics.json",
@@ -256,12 +257,12 @@ class AthenaBridge:
 
     def _write_manifest(self, output_path: str, manifest: RenderManifest) -> str:
         """Write detailed Athena diagnostics below disposable external runtime."""
-        output = Path(output_path).expanduser().resolve()
+        output = lexical_absolute_path(output_path)
         configured_project = os.environ.get("PROJECT_ROOT")
         project_root = None
         if configured_project:
-            candidate = Path(configured_project).expanduser().resolve()
-            if output.is_relative_to(candidate):
+            candidate = lexical_absolute_path(configured_project)
+            if canonical_is_relative_to(output, candidate):
                 project_root = candidate
         if project_root is None:
             project_root = next(
@@ -270,7 +271,7 @@ class AthenaBridge:
             )
         runtime_dir = Path(resolve_diagnostics_dir(str(project_root))) / "athena"
         runtime_dir.mkdir(parents=True, exist_ok=True)
-        output_id = hashlib.sha256(str(output).encode("utf-8")).hexdigest()[:20]
+        output_id = hashlib.sha256(str(canonical_path(output)).encode("utf-8")).hexdigest()[:20]
         manifest_path = runtime_dir / f"render-{output_id}.manifest.json"
         with manifest_path.open('w', encoding='utf-8') as f:
             json.dump(manifest, f, indent=2, ensure_ascii=False)
@@ -278,12 +279,12 @@ class AthenaBridge:
 
     @staticmethod
     def _runtime_stage_path(output_path: str) -> tuple[Path, Path]:
-        output = Path(output_path).expanduser().resolve()
+        output = lexical_absolute_path(output_path)
         configured_project = os.environ.get("PROJECT_ROOT")
         project_root = None
         if configured_project:
-            candidate = Path(configured_project).expanduser().resolve()
-            if output.is_relative_to(candidate):
+            candidate = lexical_absolute_path(configured_project)
+            if canonical_is_relative_to(output, candidate):
                 project_root = candidate
         if project_root is None:
             project_root = next(
@@ -293,7 +294,7 @@ class AthenaBridge:
         runtime_root = Path(resolve_runtime_root(project_root=str(project_root)))
         stage_dir = Path(resolve_diagnostics_dir(str(project_root))) / "athena" / "artifacts"
         stage_dir.mkdir(parents=True, exist_ok=True)
-        output_id = hashlib.sha256(str(output).encode("utf-8")).hexdigest()[:20]
+        output_id = hashlib.sha256(str(canonical_path(output)).encode("utf-8")).hexdigest()[:20]
         stage = stage_dir / f"render-{output_id}-{secrets.token_hex(8)}{output.suffix}"
         return runtime_root, stage
 

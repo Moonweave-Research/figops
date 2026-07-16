@@ -10,7 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from .path_identity import canonical_path, canonical_paths_overlap, canonical_relative_to
+from .path_identity import (
+    canonical_path,
+    canonical_paths_overlap,
+    canonical_relative_to,
+    lexical_absolute_path,
+)
 from .project_structure_contract import resolve_project_structure
 from .structure_contract_types import RESULT_ROLES
 
@@ -55,7 +60,8 @@ def validate_runtime_location(
 ) -> Path:
     """Validate external placement without creating the runtime directory."""
 
-    root = _resolved(runtime_root)
+    root = lexical_absolute_path(runtime_root)
+    root_identity = _resolved(root)
     protected: list[tuple[str, Path]] = []
     if project_root is not None:
         project = _resolved(project_root)
@@ -63,7 +69,7 @@ def validate_runtime_location(
         protected.extend(("durable role root", item) for item in durable_role_roots(project, config))
     protected.extend(("durable role root", _resolved(item)) for item in durable_roots)
     for label, candidate in protected:
-        if paths_overlap(root, candidate):
+        if paths_overlap(root_identity, candidate):
             raise RuntimeBoundaryError(
                 f"FigOps runtime root must be external and disjoint from every project and durable role root; "
                 f"it overlaps the configured {label}."

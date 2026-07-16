@@ -12,6 +12,14 @@ from hub_core.structure_apply import apply_structure_plan
 from hub_core.structure_plan import build_structure_plan, confirmation_token
 
 
+def _test_no_clobber_move(source: Path, destination: Path) -> None:
+    """Model a successful native no-replace rename on a controlled test path."""
+
+    if os.path.lexists(destination):
+        raise FileExistsError(destination)
+    os.rename(source, destination)
+
+
 def _plan(root: Path) -> dict:
     return build_structure_plan(
         root,
@@ -244,6 +252,129 @@ def test_typed_config_cas_receipt_and_verifier_failure_rollback(tmp_path: Path) 
     assert receipt["config"]["before_sha256"] != receipt["config"]["after_sha256"]
 
 
+def test_success_reports_only_authoritative_config_guard(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """POSIX-style cleanup limits must not leave an undisclosed second backup."""
+
+    source = tmp_path / "legacy" / "input.csv"
+    source.parent.mkdir()
+    source.write_bytes(b"original")
+    config = tmp_path / "project_config.yaml"
+    config.write_text("structure:\n  roots:\n    raw: legacy\n", encoding="utf-8")
+    plan = build_structure_plan(
+        tmp_path,
+        [{"source": "legacy/input.csv", "destination": "raw/input.csv", "role": "raw"}],
+        config_diff=[{"path": ["structure", "roots", "raw"], "before": "legacy", "after": "raw"}],
+    )
+
+    import hub_core.structure_apply as structure_apply
+
+    monkeypatch.setattr(structure_apply, "atomic_no_clobber_move", _test_no_clobber_move)
+    monkeypatch.setattr(structure_apply, "delete_file_by_identity", lambda *_args, **_kwargs: False)
+
+    result = apply_structure_plan(plan, confirmation_token=confirmation_token(plan))
+
+    reported = result["provenance_receipt"]["config"]["backup"]
+    private_config_paths = {
+        path.relative_to(tmp_path).as_posix()
+        for path in tmp_path.glob(".project_config.yaml.figops-*")
+    }
+    assert reported is not None
+    assert private_config_paths == {reported}
+    assert reported.endswith(".cas")
+    assert not list(tmp_path.glob("*.bak"))
+    assert not list(tmp_path.glob(".*.bak"))
+
+
+def test_verifier_failure_reports_retained_rollback_tomb_not_public_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "legacy" / "input.csv"
+    source.parent.mkdir()
+    source.write_bytes(b"original")
+    config = tmp_path / "project_config.yaml"
+    original_config = b"structure:\n  roots:\n    raw: legacy\n"
+    config.write_bytes(original_config)
+    plan = build_structure_plan(
+        tmp_path,
+        [{"source": "legacy/input.csv", "destination": "raw/input.csv", "role": "raw"}],
+        config_diff=[{"path": ["structure", "roots", "raw"], "before": "legacy", "after": "raw"}],
+    )
+
+    import hub_core.structure_apply as structure_apply
+
+    monkeypatch.setattr(structure_apply, "atomic_no_clobber_move", _test_no_clobber_move)
+    monkeypatch.setattr(structure_apply, "delete_file_by_identity", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(RuntimeError) as captured:
+        apply_structure_plan(
+            plan,
+            confirmation_token=confirmation_token(plan),
+            post_apply_verifier=lambda *_args: (_ for _ in ()).throw(
+                RuntimeError("verification failed")
+            ),
+        )
+
+    message = str(captured.value)
+    tombs = list(tmp_path.glob(".project_config.yaml.figops-*.rollback"))
+    assert len(tombs) == 1
+    assert tombs[0].name in message
+    assert "raw/input.csv" in message
+    assert "ownership-ambiguous path(s): project_config.yaml" not in message
+    assert config.read_bytes() == original_config
+    assert not list(tmp_path.glob("*.bak"))
+    assert not list(tmp_path.glob(".*.bak"))
+    assert not list(tmp_path.glob(".project_config.yaml.figops-*.cas"))
+
+
+def test_unavailable_rollback_primitive_reports_public_replacement(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "legacy" / "input.csv"
+    source.parent.mkdir()
+    source.write_bytes(b"original")
+    config = tmp_path / "project_config.yaml"
+    config.write_text("structure:\n  roots:\n    raw: legacy\n", encoding="utf-8")
+    plan = build_structure_plan(
+        tmp_path,
+        [{"source": "legacy/input.csv", "destination": "raw/input.csv", "role": "raw"}],
+        config_diff=[{"path": ["structure", "roots", "raw"], "before": "legacy", "after": "raw"}],
+    )
+
+    import hub_core.structure_apply as structure_apply
+
+    def unavailable_only_for_rollback(source_path: Path, destination_path: Path) -> None:
+        if str(destination_path).endswith(".rollback"):
+            raise AtomicNoClobberUnavailable("rollback primitive unavailable")
+        _test_no_clobber_move(Path(source_path), Path(destination_path))
+
+    monkeypatch.setattr(
+        structure_apply,
+        "atomic_no_clobber_move",
+        unavailable_only_for_rollback,
+    )
+    monkeypatch.setattr(structure_apply, "delete_file_by_identity", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(RuntimeError) as captured:
+        apply_structure_plan(
+            plan,
+            confirmation_token=confirmation_token(plan),
+            post_apply_verifier=lambda *_args: (_ for _ in ()).throw(
+                RuntimeError("verification failed")
+            ),
+        )
+
+    assert "FIGOPS_STRUCTURE_MANUAL_CLEANUP_REQUIRED" in str(captured.value)
+    assert "project_config.yaml" in str(captured.value)
+    assert isinstance(captured.value.__cause__, RuntimeError)
+    assert str(captured.value.__cause__) == "verification failed"
+    assert not list(tmp_path.glob(".project_config.yaml.figops-*.rollback"))
+    guard_paths = list(tmp_path.glob(".project_config.yaml.figops-*.cas"))
+    assert len(guard_paths) == 1
+    assert guard_paths[0].name in str(captured.value)
+
+
 def test_apply_rejects_same_bytes_source_identity_swap(tmp_path: Path) -> None:
     source = tmp_path / "legacy" / "input.csv"
     source.parent.mkdir()
@@ -457,7 +588,9 @@ def test_publish_detects_parent_swap_inside_atomic_move(tmp_path: Path, monkeypa
             held.rename(raw)
 
 
-def test_config_open_handle_mutation_is_preserved_and_aborts_commit(tmp_path: Path) -> None:
+def test_config_open_handle_mutation_is_preserved_and_aborts_commit(
+    tmp_path: Path, monkeypatch
+) -> None:
     source = tmp_path / "legacy" / "input.csv"
     source.parent.mkdir()
     source.write_bytes(b"original")
@@ -470,6 +603,18 @@ def test_config_open_handle_mutation_is_preserved_and_aborts_commit(tmp_path: Pa
         config_diff=[{"path": ["structure", "roots", "raw"], "before": "legacy", "after": "raw"}],
     )
     competitor = b"project: {name: open-handle-writer}\n"
+
+    if os.name != "nt":
+        import hub_core.structure_apply as structure_apply
+
+        # Some POSIX-compatible mounted filesystems (for example WSL DrvFs)
+        # do not expose the native no-replace primitive. This test targets the
+        # post-publication rollback contract, so model a successful primitive.
+        monkeypatch.setattr(
+            structure_apply,
+            "atomic_no_clobber_move",
+            _test_no_clobber_move,
+        )
 
     with config.open("r+b") as held_config:
 
@@ -490,10 +635,14 @@ def test_config_open_handle_mutation_is_preserved_and_aborts_commit(tmp_path: Pa
             )
 
     # Windows denies the CAS rename while a non-delete-sharing handle is open,
-    # so the transaction fails before invoking the verifier. POSIX permits the
-    # rename and detects the held-inode mutation at finalization instead.
+    # so the transaction fails before invoking the verifier. POSIX/macOS permits
+    # the rename, detects the held-inode mutation at finalization, and cannot
+    # safely identity-delete the published files. It therefore preserves the
+    # modified config and copied result for explicit manual cleanup.
     assert config.read_bytes() == (original if os.name == "nt" else competitor)
     assert (tmp_path / "raw" / "input.csv").exists() is (os.name != "nt")
+    if os.name != "nt":
+        assert (tmp_path / "raw" / "input.csv").read_bytes() == b"original"
 
 
 def test_publish_rejects_private_hardlink_alias(tmp_path: Path, monkeypatch) -> None:

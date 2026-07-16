@@ -571,6 +571,57 @@ def test_darwin_inspection_continues_with_non_memory_limits_and_reports_limitati
     assert "unavailable on this host" in result["limits"]["worker_memory_limitation"]
 
 
+def test_darwin_public_inspection_preserves_available_samples_and_reports_limitation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "facts.csv"
+    source.write_text("x\n1\n", encoding="utf-8")
+
+    class Process:
+        returncode = 0
+
+        @staticmethod
+        def communicate(*, input, timeout):
+            del input, timeout
+            payload = {
+                "schema_version": "figops.inspect-data.v1",
+                "status": "available",
+                "availability": {"state": "available", "reason": None},
+                "source": {"name": "facts.csv", "format": "csv", "byte_size": 4, "sha256": "0" * 64},
+                "scan": {
+                    "row_count": 1,
+                    "row_count_lower_bound": None,
+                    "rows_scanned": 1,
+                    "columns_detected": 1,
+                    "columns_returned": 1,
+                },
+                "columns": [],
+                "sample_columns": ["x"],
+                "samples": [["1"]],
+                "truncation": {},
+                "warnings": [],
+                "prefetch_calls": 1,
+            }
+            return json.dumps(payload).encode(), b""
+
+    limiter = inspection._PosixProcessGroupLimiter(memory_enforced=False)
+    monkeypatch.setattr(inspection, "_start_worker", lambda: (Process(), limiter))
+
+    result = inspect_allowed_data(
+        source,
+        allowed_roots=[tmp_path],
+        prefetch_mode="noop",
+        include_samples=True,
+        sample_rows=1,
+    )
+
+    assert result["status"] == "available"
+    assert result["samples"] == [["1"]]
+    assert result["limits"]["worker_memory_enforced"] is False
+    assert "unavailable on this host" in result["limits"]["worker_memory_limitation"]
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job Object failure path is Windows-specific")
 def test_windows_job_creation_failure_never_spawns_unbounded_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     popen = pytest.fail
@@ -649,6 +700,32 @@ def test_posix_timeout_limiter_kills_entire_process_group(monkeypatch: pytest.Mo
     assert killpg == [(4242, inspection.signal.SIGKILL)]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process groups are unavailable on Windows")
+def test_posix_timeout_limiter_accepts_already_exited_group(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Process:
+        pid = 4242
+
+        @staticmethod
+        def poll():
+            return 0
+
+        @staticmethod
+        def wait(timeout):
+            assert timeout == 0.75
+            return 0
+
+        @staticmethod
+        def kill():
+            pytest.fail("an already-exited worker must not be killed again")
+
+    monkeypatch.setattr(
+        inspection.os,
+        "killpg",
+        lambda _pid, _sig: (_ for _ in ()).throw(ProcessLookupError()),
+    )
+    inspection._PosixProcessGroupLimiter().terminate(Process())
+
+
 def test_response_is_compact_under_worst_case_headers_and_samples(tmp_path: Path) -> None:
     source = tmp_path / "wide.csv"
     header = [f"column_{index}_" + ("h" * 120) for index in range(256)]
@@ -661,6 +738,32 @@ def test_response_is_compact_under_worst_case_headers_and_samples(tmp_path: Path
     assert len(encoded) <= MAX_INSPECTION_RESPONSE_BYTES
     assert result["truncation"]["columns_for_response_size"] is True
     assert result["scan"]["columns_returned"] < 256
+
+
+def test_compact_unavailable_response_initializes_truncation_schema() -> None:
+    result = inspection._compact_result(
+        {
+            "status": "unavailable",
+            "availability": {"state": "unavailable", "reason": "WORKER_FAILURE"},
+            "source": {"name": "facts.csv", "format": "csv", "byte_size": None, "sha256": None},
+            "scan": None,
+            "columns": [],
+            "sample_columns": [],
+            "samples": [],
+            "truncation": {},
+            "warnings": [],
+            "limits": inspection._limits(False),
+        }
+    )
+
+    assert result["truncation"] == {
+        "row_limit": False,
+        "deadline": False,
+        "columns": False,
+        "cell_strings": False,
+        "samples_for_response_size": False,
+        "columns_for_response_size": False,
+    }
 
 
 def test_worker_failure_is_path_redacted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

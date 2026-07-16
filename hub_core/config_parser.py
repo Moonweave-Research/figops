@@ -1,6 +1,7 @@
 import hashlib
 import math
 import os
+from pathlib import Path
 
 import yaml
 
@@ -11,6 +12,7 @@ from .config_assemblies import validate_assemblies as _validate_assemblies_impl
 from .config_language_policy import ALLOWED_LANGUAGE_POLICY_MODES as ALLOWED_LANGUAGE_POLICY_MODES
 from .config_language_policy import get_language_policy as _get_language_policy_impl
 from .config_language_policy import normalize_lang as normalize_lang
+from .config_path_discovery import resolve_discovered_config_path as _resolve_discovered_config_path
 from .config_project_registry import load_registry_operational_states as _load_registry_operational_states
 from .config_project_registry import normalize_registry_path as _normalize_registry_path  # noqa: F401
 from .config_project_registry import resolve_operational_state as _resolve_operational_state
@@ -102,6 +104,7 @@ def get_language_policy(config):
 
 
 def find_config_path(project_dir):
+    project_root = Path(project_dir).expanduser().absolute()
     for rel_path in CONFIG_FILE_CANDIDATES:
         candidate = resolve_project_input(
             project_dir,
@@ -110,7 +113,7 @@ def find_config_path(project_dir):
             purpose="project config",
         )
         if candidate.exists():
-            return str(resolve_project_input(project_dir, rel_path, purpose="project config"))
+            return str(project_root / rel_path)
     return None
 
 
@@ -632,7 +635,6 @@ def _validate_visual_outputs(
 
 
 def load_config(project_dir):
-    """프로젝트 루트의 project_config.yaml을 로드."""
     try:
         config_path = find_config_path(project_dir)
     except (FileNotFoundError, ProjectPathError) as exc:
@@ -646,9 +648,17 @@ def load_config(project_dir):
         return None, None, None
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        config_read_path = _resolve_discovered_config_path(
+            project_dir,
+            config_path,
+            candidates=CONFIG_FILE_CANDIDATES,
+        )
+        with open(config_read_path, "r", encoding="utf-8") as f:
             raw_text = f.read()
             config = _load_yaml_with_unique_keys(raw_text)
+    except ProjectPathError as e:
+        logger.error("❌ Error: project config path changed before read: %s", e)
+        return None, None, None
     except yaml.YAMLError as e:
         logger.error("❌ Error: Invalid YAML in %s\n   └─ %s", config_path, e)
         logger.error("   └─ Fix the YAML syntax in project_config.yaml and rerun.")

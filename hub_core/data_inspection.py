@@ -45,6 +45,17 @@ _CONTAINER_SUFFIXES = {
 }
 
 
+def _truncation_flags() -> dict[str, bool]:
+    return {
+        "row_limit": False,
+        "deadline": False,
+        "columns": False,
+        "cell_strings": False,
+        "samples_for_response_size": False,
+        "columns_for_response_size": False,
+    }
+
+
 class InspectionSnapshot(Protocol):
     snapshot_path: Path
     display_name: str
@@ -67,7 +78,7 @@ def _unavailable(reason: str, *, source: dict[str, Any], memory_enforced: bool |
         "scan": None,
         "columns": [],
         "samples": [],
-        "truncation": {},
+        "truncation": _truncation_flags(),
         "warnings": [],
         "limits": _limits(memory_enforced),
     }
@@ -152,10 +163,12 @@ class _Limiter:
 
 class _PosixProcessGroupLimiter(_Limiter):
     def terminate(self, process: subprocess.Popen[bytes]) -> None:
-        if process.poll() is None:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except (OSError, ProcessLookupError):
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            if process.poll() is None:
                 process.kill()
         try:
             process.wait(timeout=0.75)
@@ -165,8 +178,6 @@ class _PosixProcessGroupLimiter(_Limiter):
                 process.wait(timeout=0.2)
             except subprocess.TimeoutExpired as exc:
                 raise RuntimeError("inspection process group could not be reaped") from exc
-        if process.poll() is None:
-            raise RuntimeError("inspection process group could not be reaped")
 
 
 class _WindowsJobLimiter(_Limiter):
@@ -321,10 +332,12 @@ def _compact_result(result: dict[str, Any]) -> dict[str, Any]:
     def size() -> int:
         return len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
+    truncation = result.setdefault("truncation", _truncation_flags())
+    for key, value in _truncation_flags().items():
+        truncation.setdefault(key, value)
     if size() <= MAX_INSPECTION_RESPONSE_BYTES:
         return result
     samples = result.get("samples")
-    truncation = result.setdefault("truncation", {})
     if isinstance(samples, list) and samples:
         samples.clear()
         result["sample_columns"] = []
@@ -501,6 +514,7 @@ def inspect_allowed_data(
         return _request_unavailable("WORKER_MEMORY_LIMIT_UNAVAILABLE", source=source, memory_enforced=False)
     except (OSError, ValueError):
         return _request_unavailable("WORKER_START_FAILED", source=source, memory_enforced=False)
+    memory_enforced = bool(getattr(limiter, "memory_enforced", True)) if limiter is not None else False
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         try:
@@ -510,7 +524,7 @@ def inspect_allowed_data(
             reason = "WORKER_TERMINATION_FAILED"
         finally:
             limiter.close()
-        return _request_unavailable(reason, source=source, memory_enforced=True)
+        return _request_unavailable(reason, source=source, memory_enforced=memory_enforced)
     encoded = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -521,7 +535,7 @@ def inspect_allowed_data(
             reason = "WORKER_TERMINATION_FAILED"
         finally:
             limiter.close()
-        return _request_unavailable(reason, source=source, memory_enforced=True)
+        return _request_unavailable(reason, source=source, memory_enforced=memory_enforced)
     try:
         output, _ = process.communicate(input=encoded, timeout=remaining)
     except subprocess.TimeoutExpired:
@@ -530,29 +544,29 @@ def inspect_allowed_data(
             reason = "INSPECTION_DEADLINE"
         except RuntimeError:
             reason = "WORKER_TERMINATION_FAILED"
-        return _request_unavailable(reason, source=source, memory_enforced=True)
+        return _request_unavailable(reason, source=source, memory_enforced=memory_enforced)
     except OSError:
         try:
             limiter.terminate(process)
             reason = "WORKER_FAILURE"
         except RuntimeError:
             reason = "WORKER_TERMINATION_FAILED"
-        return _request_unavailable(reason, source=source, memory_enforced=True)
+        return _request_unavailable(reason, source=source, memory_enforced=memory_enforced)
     finally:
         limiter.close()
     if process.returncode != 0 or len(output) > MAX_INSPECTION_RESPONSE_BYTES:
-        return _request_unavailable("WORKER_FAILURE", source=source, memory_enforced=True)
+        return _request_unavailable("WORKER_FAILURE", source=source, memory_enforced=memory_enforced)
     try:
         result = json.loads(output.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError):
-        return _request_unavailable("WORKER_FAILURE", source=source, memory_enforced=True)
+        return _request_unavailable("WORKER_FAILURE", source=source, memory_enforced=memory_enforced)
     if not isinstance(result, dict):
-        return _request_unavailable("WORKER_FAILURE", source=source, memory_enforced=True)
+        return _request_unavailable("WORKER_FAILURE", source=source, memory_enforced=memory_enforced)
     serialized = json.dumps(result, ensure_ascii=False)
     sensitive = [raw_path, *root_values]
     if any(value and Path(value).is_absolute() and value in serialized for value in sensitive):
-        return _request_unavailable("WORKER_FAILURE", source=source, memory_enforced=True)
-    result["limits"] = _limits(True)
+        return _request_unavailable("WORKER_FAILURE", source=source, memory_enforced=memory_enforced)
+    result["limits"] = _limits(memory_enforced)
     return _compact_result(result)
 
 

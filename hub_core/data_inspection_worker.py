@@ -28,6 +28,17 @@ WORKER_RESPONSE_BYTES = 28 * 1024
 MAX_JSON_SAFE_INTEGER = (1 << 53) - 1
 
 
+def _truncation_flags() -> dict[str, bool]:
+    return {
+        "row_limit": False,
+        "deadline": False,
+        "columns": False,
+        "cell_strings": False,
+        "samples_for_response_size": False,
+        "columns_for_response_size": False,
+    }
+
+
 def _trim(value: str) -> tuple[str, bool]:
     if len(value) <= MAX_CELL_CHARS:
         return value, False
@@ -67,6 +78,7 @@ class _Column:
     unique: set[bytes] = field(default_factory=set)
     unique_truncated: bool = False
     range_unavailable_reason: str | None = None
+    last_short_value: str | None = None
 
     def consume(self, raw: str) -> None:
         value, truncated = _trim(raw)
@@ -77,7 +89,7 @@ class _Column:
             self.null_count += 1
         else:
             self.kinds.add(kind)
-            if not self.unique_truncated:
+            if not self.unique_truncated and (len(raw) > MAX_CELL_CHARS or raw != self.last_short_value):
                 # Display truncation must never collapse cardinality. Retain a
                 # fixed-size cryptographic identity of the complete decoded
                 # field instead of its 512-character presentation prefix.
@@ -86,6 +98,7 @@ class _Column:
                     self.unique_truncated = True
                     # Keep a truthful lower bound without retaining the full set.
                     self.unique = set(tuple(self.unique)[:MAX_UNIQUE_VALUES])
+            self.last_short_value = raw if len(raw) <= MAX_CELL_CHARS else None
         if kind == "integer" and isinstance(parsed, int) and not isinstance(parsed, bool):
             if abs(parsed) > MAX_JSON_SAFE_INTEGER:
                 self.range_unavailable_reason = "INTEGER_OUTSIDE_SAFE_JSON_RANGE"
@@ -142,7 +155,7 @@ def _unavailable(reason: str) -> dict[str, Any]:
         "columns": [],
         "sample_columns": [],
         "samples": [],
-        "truncation": {},
+        "truncation": _truncation_flags(),
         "warnings": [],
     }
 
@@ -157,13 +170,15 @@ def _compact(payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(samples, list) and samples:
         samples.clear()
         payload["sample_columns"] = []
-        payload["truncation"]["samples_for_response_size"] = True
+        payload.setdefault("truncation", _truncation_flags())["samples_for_response_size"] = True
     columns = payload.get("columns")
     if isinstance(columns, list):
         while columns and encoded_size() > WORKER_RESPONSE_BYTES:
             columns.pop()
-        payload["scan"]["columns_returned"] = len(columns)
-        payload["truncation"]["columns_for_response_size"] = True
+        scan = payload.get("scan")
+        if isinstance(scan, dict):
+            scan["columns_returned"] = len(columns)
+        payload.setdefault("truncation", _truncation_flags())["columns_for_response_size"] = True
     if encoded_size() > WORKER_RESPONSE_BYTES:
         return _unavailable("RESPONSE_BYTE_LIMIT")
     return payload
@@ -276,12 +291,11 @@ def inspect_stream(
         "sample_columns": [column.name for column in columns] if samples else [],
         "samples": samples,
         "truncation": {
+            **_truncation_flags(),
             "row_limit": row_limit_reached,
             "deadline": deadline_reached,
             "columns": len(header) > len(selected_indices) and requested_columns is None,
             "cell_strings": any(column.value_truncated_count for column in columns),
-            "samples_for_response_size": False,
-            "columns_for_response_size": False,
         },
         "warnings": warnings,
     }

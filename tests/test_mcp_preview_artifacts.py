@@ -68,7 +68,9 @@ def test_raster_blob_is_bounded_and_memory_limited(tmp_path: Path) -> None:
     blob = previews.read_job_preview_blob(runtime, "preview-job", logical_role="primary", artifact_index=0)
 
     assert blob.available
-    assert blob.metadata.memory_limit_enforced is True
+    assert blob.metadata.memory_limit_enforced is previews.preview_worker_capabilities()["memory_limit_enforced"]
+    if not blob.metadata.memory_limit_enforced:
+        assert blob.metadata.memory_limit_limitation
     assert blob.raw_byte_size is not None and blob.raw_byte_size <= previews.MAX_PREVIEW_RAW_BYTES
     assert blob.encoded_byte_size is not None and blob.encoded_byte_size <= previews.MAX_PREVIEW_BASE64_BYTES
     assert blob.width is not None and blob.width <= previews.MAX_PREVIEW_EDGE
@@ -309,19 +311,21 @@ def test_timeout_terminates_worker_descendants(tmp_path: Path) -> None:
     assert not marker.exists()
 
 
-def test_worker_memory_limit_kills_real_overallocation() -> None:
+def test_worker_memory_limit_kills_real_overallocation_when_enforced() -> None:
     process, limiter = previews._start_limited_process(
         [sys.executable, "-c", "x = bytearray(300 * 1024 * 1024); print(len(x))"]
     )
     process.wait(timeout=10)
     limiter.close()
-    assert process.returncode != 0
+    if limiter.memory_enforced:
+        assert process.returncode != 0
 
 
 def test_darwin_preview_worker_continues_and_reports_memory_limitation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setattr(previews.sys, "platform", "darwin")
     output = tmp_path / "preview.png"
     result_path = tmp_path / "result.json"
     result_path.write_text('{"status":"available"}', encoding="utf-8")
@@ -341,6 +345,55 @@ def test_darwin_preview_worker_continues_and_reports_memory_limitation(
     assert payload == {"status": "available"}
     assert memory_enforced is False
     assert "macOS" in previews._memory_limit_limitation(memory_enforced)
+
+
+def test_darwin_capabilities_are_explicit_and_keep_other_bounds(monkeypatch) -> None:
+    monkeypatch.setattr(previews.os, "name", "posix")
+    monkeypatch.setattr(previews.sys, "platform", "darwin")
+    monkeypatch.setattr(previews, "posix_memory_limit_supported", lambda: False)
+
+    capabilities = previews.preview_worker_capabilities()
+
+    assert capabilities["memory_limit_enforced"] is False
+    assert "macOS" in capabilities["memory_limit_limitation"]
+    assert capabilities["timeout_seconds"] == previews.PREVIEW_WORKER_TIMEOUT_SECONDS
+    assert capabilities["source_byte_limit"] == previews.MAX_PREVIEW_SOURCE_BYTES
+    assert capabilities["raw_output_byte_limit"] == previews.MAX_PREVIEW_RAW_BYTES
+    assert capabilities["base64_output_byte_limit"] == previews.MAX_PREVIEW_BASE64_BYTES
+    assert capabilities["pixel_limit"] == previews.MAX_PREVIEW_PIXELS
+    assert capabilities["cpu_limit_enforced"] is True
+    assert capabilities["file_size_limit_enforced"] is True
+    assert capabilities["process_tree_containment"] is True
+
+
+def test_darwin_bounded_raster_preview_succeeds_without_hard_memory_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(previews.sys, "platform", "darwin")
+    payload = _image_bytes(tmp_path)
+    runtime, _, _ = _job(tmp_path / "darwin-raster", payload)
+
+    def bounded_worker(source: Path, output: Path, result_path: Path, media_type: str):
+        assert source.stat().st_size <= previews.MAX_PREVIEW_SOURCE_BYTES
+        assert media_type == "image/png"
+        output.write_bytes(payload)
+        result_path.write_text('{"status":"available"}', encoding="utf-8")
+        return {"status": "available"}, False
+
+    monkeypatch.setattr(previews, "_run_worker", bounded_worker)
+    blob = previews.read_job_preview_blob(
+        runtime,
+        "preview-job",
+        logical_role="primary",
+        artifact_index=0,
+    )
+
+    assert blob.available
+    assert blob.metadata.memory_limit_enforced is False
+    assert "macOS" in (blob.metadata.memory_limit_limitation or "")
+    assert blob.raw_byte_size is not None
+    assert blob.raw_byte_size <= previews.MAX_PREVIEW_RAW_BYTES
 
 
 def test_posix_limited_spawn_failure_is_typed(monkeypatch) -> None:

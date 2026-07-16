@@ -177,8 +177,12 @@ Preview lookup, manifest membership, MIME/header checks, lazy base64, and worker
 launch orchestration live in `hub_core/mcp/preview_artifacts.py`; Windows Job
 Object containment lives in `preview_process_limits.py`, while conversion work
 lives in `preview_worker.py`. Raster and PDF-first-page previews are bounded to 5 seconds,
-8 megapixels, 256 MiB worker memory, a 2,048-pixel longest edge, and 2 MiB raw
-output. SVG returns typed unavailable until a renderer passes the required
+8 megapixels, a 2,048-pixel longest edge, and 2 MiB raw output, with a hard
+256 MiB worker-memory limit where the host provides a reliable primitive.
+macOS reports `memory_limit_enforced=false` because Darwin lacks a
+reliable `RLIMIT_AS`; bounded source/output sizes, pixel/edge caps, the worker
+deadline, CPU/file limits, and process-session containment remain active and
+are exposed by `figops.health`. SVG returns typed unavailable until a renderer passes the required
 Windows safety smoke; source vector bytes are never substituted for a preview.
 
 The AI-native façade split remains intact after the structure work. Shared tool

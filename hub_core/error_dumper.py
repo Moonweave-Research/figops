@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Final
 
 from .logging import get_logger
+from .path_identity import lexical_absolute_path
 from .redaction import redact_locals, redact_secrets, redact_text
 from .runtime_paths import (
     resolve_diagnostics_dir,
@@ -79,7 +80,7 @@ def dump_pipeline_failure(
 
 
 def _write_payload(project_dir: str | Path, payload: dict) -> str:
-    project_path = Path(project_dir).expanduser().resolve()
+    project_path = lexical_absolute_path(project_dir)
     context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
     engine_target = str(context.get("engine_target") or "hub_pipeline").strip() or "hub_pipeline"
     job_id = str(context.get("job_id") or project_path.name or "hub_project")
@@ -144,7 +145,7 @@ def dump_contract_report(
     if not violations:
         return None
 
-    project_path = Path(project_dir).expanduser().resolve()
+    project_path = lexical_absolute_path(project_dir)
     diag_dir = Path(resolve_diagnostics_dir(str(project_path))) / "data_contract"
     diag_dir.mkdir(parents=True, exist_ok=True)
 

@@ -23,6 +23,14 @@ from hub_core.durable_receipt import (
 )
 
 
+def _test_no_clobber_move(source: Path, destination: Path) -> None:
+    """Model a successful native no-replace rename on a controlled test path."""
+
+    if os.path.lexists(destination):
+        raise FileExistsError(destination)
+    os.rename(source, destination)
+
+
 def _receipt(digest: str) -> DurableReceipt:
     artifact = {
         "artifact_id": opaque_artifact_id("result.source_data", "calc-1"),
@@ -191,7 +199,11 @@ def test_promotion_rejects_prepublication_private_hardlink_alias(tmp_path: Path,
 
     import hub_core.durable_promotion as promotion
 
-    real_move = promotion.atomic_no_clobber_move
+    real_move = (
+        promotion.atomic_no_clobber_move
+        if os.name == "nt"
+        else _test_no_clobber_move
+    )
     alias = destination.parent / "attacker-alias.tmp"
 
     def add_alias_then_move(stage, target):
@@ -199,10 +211,20 @@ def test_promotion_rejects_prepublication_private_hardlink_alias(tmp_path: Path,
         real_move(stage, target)
 
     monkeypatch.setattr(promotion, "atomic_no_clobber_move", add_alias_then_move)
-    with pytest.raises(DurablePromotionError, match="retained an alias"):
+    expected_error = (
+        "retained an alias"
+        if os.name == "nt"
+        else "FIGOPS_DURABLE_MANUAL_CLEANUP_REQUIRED"
+    )
+    with pytest.raises(DurablePromotionError, match=expected_error):
         promote_runtime_artifact(source, destination, runtime_root=runtime, expected_sha256=digest)
 
-    assert not destination.exists()
+    # Windows can delete the exact process-owned published file by identity.
+    # POSIX/macOS has no portable handle-bound unlink, so rollback fails closed:
+    # preserve both names for manual review and never risk deleting a competitor.
+    assert destination.exists() is (os.name != "nt")
+    if destination.exists():
+        assert destination.read_bytes() == b"producer-owned"
     assert alias.read_bytes() == b"producer-owned"
     assert not list(destination.parent.glob(".result.csv.figops-stage-*"))
 
@@ -219,7 +241,11 @@ def test_posix_postpublication_verifier_failure_preserves_destination_for_manual
 
     import hub_core.durable_promotion as promotion
 
-    real_move = promotion.atomic_no_clobber_move
+    real_move = (
+        promotion.atomic_no_clobber_move
+        if os.name == "nt"
+        else _test_no_clobber_move
+    )
     alias = destination.parent / "attacker-alias.tmp"
 
     def add_alias_then_move(stage, target):

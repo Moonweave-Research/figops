@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .logging import get_logger
+from .path_identity import canonical_relative_to, lexical_absolute_path
 from .provenance import _build_environment_hash, _readable_git_commit, _readable_tool_version
 from .runtime_boundary import RuntimeBoundaryError, safe_runtime_segment
 from .runtime_paths import (
@@ -142,16 +143,16 @@ def append_execution_log(hub_path, record, *, log_dirname=DEFAULT_LOG_DIRNAME, f
         raise RuntimeError("Execution log record must be a dict.")
 
     project_root = record.get("project_dir") if isinstance(record.get("project_dir"), str) else None
-    runtime_root = Path(resolve_runtime_root(project_root=project_root)).resolve()
+    runtime_root = lexical_absolute_path(resolve_runtime_root(project_root=project_root))
     if log_dirname is None:
         log_dir = resolve_hub_logs_dir()
     elif os.path.isabs(log_dirname):
         log_dir = log_dirname
     else:
         log_dir = os.path.join(runtime_root, log_dirname)
-    log_dir_path = Path(log_dir).expanduser().resolve()
+    log_dir_path = lexical_absolute_path(log_dir)
     try:
-        log_dir_path.relative_to(runtime_root)
+        canonical_relative_to(log_dir_path, runtime_root)
     except ValueError as exc:
         raise RuntimeBoundaryError("Execution logs must stay inside the configured runtime root.") from exc
     filename = safe_runtime_segment(filename, fallback=DEFAULT_LOG_FILENAME)
@@ -291,7 +292,7 @@ def _persist_execution_contract(record):
 
 
 def _infer_job_id(project_dir):
-    name = Path(project_dir).expanduser().resolve().name
+    name = lexical_absolute_path(project_dir).name
     return name or "hub_project"
 
 

@@ -29,10 +29,7 @@ from .structure_path_security import (
     source_identity,
 )
 from .structure_plan import PLAN_VERSION, validate_confirmation_token
-from .structure_role_binding import (
-    config_mapping,
-    validate_role_destination_bindings,
-)
+from .structure_role_binding import config_mapping, validate_role_destination_bindings
 from .structure_stage_cleanup import (
     discard_owned_prepublication_stage,
     discard_private_stage,
@@ -274,18 +271,21 @@ def _restore_guard_no_clobber(guard: Path, config_path: Path, expected_hash: str
 
     if not guard.is_file() or guard.is_symlink() or _sha256(guard) != expected_hash:
         return
+    guard_identity = _file_identity(guard)
     try:
-        guard_identity = _file_identity(guard)
-        identity = _publish_no_clobber(
-            guard,
-            config_path,
-            expected_stage_identity=guard_identity,
-            expected_hash=expected_hash,
-        )
-    except (FileExistsError, RuntimeError):
+        # A config guard contains the original (and potentially concurrently
+        # modified) user file. Unlike an unpublished stage, it must never be
+        # discarded when the public name is occupied or the native primitive
+        # is unavailable.
+        atomic_no_clobber_move(guard, config_path)
+    except (FileExistsError, AtomicNoClobberUnavailable, OSError):
         return
-    if _sha256(config_path) != expected_hash:
-        _remove_if_owned(config_path, expected_hash, identity)
+    try:
+        if _file_identity(config_path) != guard_identity or _sha256(config_path) != expected_hash:
+            return
+        _fsync_parent(config_path.parent)
+    except OSError:
+        return
 
 
 def _publish_config_compare_and_swap_leased(
@@ -409,48 +409,76 @@ def _rollback_config_no_clobber_leased(
     config_path: Path,
     replacement_hash: str,
     replacement_identity: tuple[int, int],
-    backup: Path,
-    original_hash: str,
     original_guard: Path | None,
-) -> bool:
+) -> tuple[bool, tuple[Path, ...]]:
     """Restore the original config without overwriting a concurrent writer."""
 
     tomb = config_path.with_name(f".{config_path.name}.figops-{uuid.uuid4().hex}.rollback")
     try:
         atomic_no_clobber_move(config_path, tomb)
-    except OSError:
-        return False
+    except (AtomicNoClobberUnavailable, OSError):
+        retained = (config_path,)
+        if original_guard is not None and os.path.lexists(original_guard):
+            retained += (original_guard,)
+        return False, retained
     try:
         if _file_identity(tomb) != replacement_identity or _sha256(tomb) != replacement_hash:
             _restore_guard_no_clobber(tomb, config_path, _sha256(tomb))
-            return False
+            retained = (tomb,) if os.path.lexists(tomb) else (config_path,)
+            return False, retained
         restore_source = original_guard
-        if restore_source is None or not restore_source.is_file() or restore_source.is_symlink():
-            restore_source = backup
-        if not restore_source.is_file() or restore_source.is_symlink():
+        if (
+            restore_source is None
+            or not restore_source.is_file()
+            or restore_source.is_symlink()
+        ):
             _restore_guard_no_clobber(tomb, config_path, replacement_hash)
-            return False
-        restore_hash = _sha256(restore_source)
-        if restore_source == backup and restore_hash != original_hash:
-            _restore_guard_no_clobber(tomb, config_path, replacement_hash)
-            return False
-        try:
-            _publish_no_clobber(
-                restore_source,
-                config_path,
-                expected_stage_identity=_file_identity(restore_source),
-                expected_hash=restore_hash,
+            retained = tuple(
+                path
+                for path in (tomb, original_guard)
+                if path is not None and os.path.lexists(path)
             )
-        except (FileExistsError, RuntimeError):
-            # A competing config won the public name. Preserve it and keep the
-            # transaction-owned replacement only under the private tomb.
-            return False
+            return False, retained or (config_path,)
+        restore_hash = _sha256(restore_source)
+        restore_identity = _file_identity(restore_source)
+        try:
+            # The guard is user-owned original data, not a disposable stage.
+            # A failed no-replace operation must preserve its private name.
+            atomic_no_clobber_move(restore_source, config_path)
+        except (FileExistsError, AtomicNoClobberUnavailable, OSError):
+            # A competing config won the public name, or native no-replace is
+            # unavailable. Preserve the guard and report every retained
+            # transaction path after restoring the replacement when possible.
+            if not config_path.exists():
+                _restore_guard_no_clobber(tomb, config_path, replacement_hash)
+            retained = tuple(
+                path for path in (tomb, restore_source) if os.path.lexists(path)
+            )
+            if not os.path.lexists(tomb) and os.path.lexists(config_path):
+                retained += (config_path,)
+            return False, retained
+        try:
+            restored = config_path.stat(follow_symlinks=False)
+            if (
+                (restored.st_dev, restored.st_ino) != restore_identity
+                or not stat.S_ISREG(restored.st_mode)
+                or _sha256(config_path) != restore_hash
+            ):
+                return False, tuple(
+                    path for path in (tomb, config_path) if os.path.lexists(path)
+                )
+            _fsync_parent(config_path)
+        except OSError:
+            return False, tuple(
+                path for path in (tomb, config_path) if os.path.lexists(path)
+            )
         if not delete_file_by_identity(tomb, replacement_identity, replacement_hash):
-            return False
-        return True
-    finally:
+            return False, (tomb,)
+        return True, ()
+    except BaseException:
         if tomb.exists() and not tomb.is_symlink() and not config_path.exists():
             _restore_guard_no_clobber(tomb, config_path, replacement_hash)
+        raise
 
 
 def _rollback_config_no_clobber(
@@ -458,18 +486,14 @@ def _rollback_config_no_clobber(
     config_path: Path,
     replacement_hash: str,
     replacement_identity: tuple[int, int],
-    backup: Path,
-    original_hash: str,
     original_guard: Path | None,
     parent_witness: DirectoryWitness,
-) -> bool:
+) -> tuple[bool, tuple[Path, ...]]:
     with lease_directory_witness(parent_witness):
         return _rollback_config_no_clobber_leased(
             config_path=config_path,
             replacement_hash=replacement_hash,
             replacement_identity=replacement_identity,
-            backup=backup,
-            original_hash=original_hash,
             original_guard=original_guard,
         )
 
@@ -556,8 +580,6 @@ def apply_structure_plan(
     )
     prepared: list[tuple[Mapping[str, Any], Path, Path, DirectoryWitness]] = []
     created: list[tuple[Path, str, tuple[int, int]]] = []
-    config_backup: Path | None = None
-    config_backup_identity: tuple[int, int] | None = None
     config_replacement_identity: tuple[int, int] | None = None
     config_original_guard: Path | None = None
     config_original_guard_identity: tuple[int, int] | None = None
@@ -640,33 +662,6 @@ def apply_structure_plan(
             config_persistent_lease = lease_directory_witness(config_parent_witness)
             config_persistent_lease.__enter__()
             held_directory_leases.append(config_persistent_lease)
-            config_backup = config_path.with_name(f".{config_path.name}.figops-{plan['digest'][:16]}.bak")
-            if config_backup.exists() or config_backup.is_symlink():
-                raise FileExistsError("Config backup path already exists.")
-            config_identity = source_identity(config_path)
-            with open_bound_source(
-                root,
-                "project_config.yaml",
-                root_identity=root_identity,
-                planned_identity=config_identity,
-            ) as config_handle:
-                backup_stage, backup_stage_identity = _stage_copy(
-                    config_handle,
-                    config_backup,
-                    planned_config_hash,
-                    root=root,
-                    parent_witness=config_parent_witness,
-                )
-            try:
-                with lease_directory_witness(config_parent_witness):
-                    config_backup_identity = _publish_no_clobber(
-                        backup_stage,
-                        config_backup,
-                        expected_stage_identity=backup_stage_identity,
-                        expected_hash=str(planned_config_hash),
-                    )
-            finally:
-                _discard_private_stage(backup_stage, backup_stage_identity, config_parent_witness)
             with lease_directory_witness(config_parent_witness):
                 config_stage, config_stage_identity = _stage_bytes(
                     str(config_update["after_text"]).encode("utf-8"),
@@ -711,10 +706,6 @@ def apply_structure_plan(
                 replacement_hash=str(config_update["after_sha256"]),
                 parent_witness=config_parent_witness,
             )
-            if config_backup is not None and config_backup_identity is not None:
-                _remove_if_owned(config_backup, str(planned_config_hash), config_backup_identity)
-            config_backup = config_original_guard
-            config_backup_identity = config_original_guard_identity
         receipt = {
             "plan_digest": plan["digest"],
             "copies": [
@@ -730,7 +721,11 @@ def apply_structure_plan(
             "config": {
                 "before_sha256": planned_config_hash,
                 "after_sha256": config_update["after_sha256"] if config_update else planned_config_hash,
-                "backup": config_backup.relative_to(root).as_posix() if config_backup else None,
+                "backup": (
+                    config_original_guard.relative_to(root).as_posix()
+                    if config_original_guard
+                    else None
+                ),
             },
             "verification": verification,
             "originals_preserved": True,
@@ -747,34 +742,18 @@ def apply_structure_plan(
         return result
     except BaseException as exc:
         cleanup_withheld: list[Path] = []
-        if config_replaced and config_backup is not None and config_parent_witness is not None:
+        if config_replaced and config_parent_witness is not None:
             if config_replacement_identity is not None:
-                rolled_back = _rollback_config_no_clobber(
+                rolled_back, retained_paths = _rollback_config_no_clobber(
                     config_path=config_path,
                     replacement_hash=str(config_update["after_sha256"]),
                     replacement_identity=config_replacement_identity,
-                    backup=config_backup,
-                    original_hash=str(planned_config_hash),
                     original_guard=config_original_guard,
                     parent_witness=config_parent_witness,
                 )
                 if not rolled_back:
-                    cleanup_withheld.append(config_path)
+                    cleanup_withheld.extend(retained_paths)
         try:
-            if config_backup is not None and config_backup.is_file() and not config_backup.is_symlink():
-                if (
-                    config_backup_identity is not None
-                    and _file_identity(config_backup) == config_backup_identity
-                    and _sha256(config_backup) == planned_config_hash
-                    and _sha256(config_path) == planned_config_hash
-                ):
-                    removed_backup = delete_file_by_identity(
-                        config_backup,
-                        config_backup_identity,
-                        str(planned_config_hash),
-                    )
-                    if not removed_backup:
-                        cleanup_withheld.append(config_backup)
             for destination, expected_hash, identity in reversed(created):
                 if not _remove_if_owned(destination, expected_hash, identity):
                     cleanup_withheld.append(destination)

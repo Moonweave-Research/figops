@@ -22,7 +22,10 @@ from hub_core.mcp.preview_process_limits import (
 from hub_core.mcp.preview_process_limits import (
     WindowsJobLimiter as _WindowsJobLimiter,
 )
-from hub_core.posix_worker_limits import build_posix_limit_callback
+from hub_core.posix_worker_limits import (
+    build_posix_limit_callback,
+    posix_memory_limit_supported,
+)
 from hub_core.project_paths import (
     ProjectPathError,
     normalize_project_relative_path,
@@ -109,6 +112,28 @@ class _Selection:
     metadata: PreviewMetadata
 
 
+def preview_worker_capabilities() -> dict[str, Any]:
+    """Describe effective preview containment without claiming absent controls."""
+
+    memory_enforced = os.name == "nt" or (
+        os.name == "posix" and posix_memory_limit_supported()
+    )
+    return {
+        "memory_limit_bytes": PREVIEW_WORKER_MEMORY_BYTES,
+        "memory_limit_enforced": memory_enforced,
+        "memory_limit_limitation": _memory_limit_limitation(memory_enforced),
+        "timeout_seconds": PREVIEW_WORKER_TIMEOUT_SECONDS,
+        "source_byte_limit": MAX_PREVIEW_SOURCE_BYTES,
+        "raw_output_byte_limit": MAX_PREVIEW_RAW_BYTES,
+        "base64_output_byte_limit": MAX_PREVIEW_BASE64_BYTES,
+        "pixel_limit": MAX_PREVIEW_PIXELS,
+        "edge_limit": MAX_PREVIEW_EDGE,
+        "cpu_limit_enforced": os.name == "posix",
+        "file_size_limit_enforced": os.name == "posix",
+        "process_tree_containment": os.name in {"nt", "posix"},
+    }
+
+
 def preview_resource_uri(job_id: str, logical_role: str, artifact_index: int) -> str:
     """Build a canonical preview URI after strict selector validation."""
 
@@ -164,6 +189,7 @@ def read_job_preview_blob(
                 unavailable = replace(
                     _unavailable(job_id, logical_role, artifact_index, code),
                     memory_limit_enforced=memory_enforced,
+                    memory_limit_limitation=_memory_limit_limitation(memory_enforced),
                 )
                 return PreviewBlob(metadata=unavailable)
             raw, media_type, width, height = _read_validated_preview(output)
@@ -313,6 +339,12 @@ def _unavailable(job_id: Any, role: Any, index: Any, code: str) -> PreviewMetada
 def _memory_limit_limitation(memory_enforced: bool) -> str | None:
     if memory_enforced:
         return None
+    if sys.platform != "darwin":
+        return (
+            "Hard worker memory enforcement is unavailable on this host; timeout, "
+            "input/output byte caps, CPU/file limits where supported, and process "
+            "isolation remain active."
+        )
     return (
         "Hard worker memory enforcement is unavailable on macOS; timeout, "
         "input/output byte caps, CPU/file limits, and process isolation remain active."

@@ -24,6 +24,7 @@ from hub_core.config_parser import (
 )
 from hub_core.config_placeholders import placeholder_report
 from hub_core.domain_analysis import list_domain_helper_descriptions
+from hub_core.mcp.preview_artifacts import preview_worker_capabilities
 from hub_core.mcp.schemas import (
     describe_figops_surface,
     list_plot_type_descriptions,
@@ -86,6 +87,7 @@ class McpReadToolsMixin:
             write_tools_enabled=self.write_tools_enabled,
             surface_profile=self.surface_profile,
             exposed_tool_count=len(self.list_tool_definitions()),
+            preview_worker_limits=preview_worker_capabilities(),
         )
 
     def list_styles(self, arguments: dict[str, Any] | None = None) -> dict[str, Any]:

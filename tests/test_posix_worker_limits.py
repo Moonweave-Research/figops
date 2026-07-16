@@ -16,6 +16,7 @@ def test_darwin_skips_rlimit_as_but_keeps_cpu_and_file_limits(monkeypatch) -> No
     )
     monkeypatch.setitem(sys.modules, "resource", resource)
     monkeypatch.setattr(posix_worker_limits.sys, "platform", "darwin")
+    assert posix_worker_limits.posix_memory_limit_supported() is False
 
     callback, memory_enforced = posix_worker_limits.build_posix_limit_callback(
         memory_bytes=256,
@@ -38,6 +39,7 @@ def test_linux_keeps_rlimit_as_cpu_and_file_limits(monkeypatch) -> None:
     )
     monkeypatch.setitem(sys.modules, "resource", resource)
     monkeypatch.setattr(posix_worker_limits.sys, "platform", "linux")
+    assert posix_worker_limits.posix_memory_limit_supported() is True
 
     callback, memory_enforced = posix_worker_limits.build_posix_limit_callback(
         memory_bytes=256,
