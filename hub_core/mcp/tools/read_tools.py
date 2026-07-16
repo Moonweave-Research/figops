@@ -591,6 +591,7 @@ class McpReadToolsMixin:
                 "config_path": None,
                 "config_relpath": "",
                 "errors": [str(exc)],
+                "failure_kind": "config_read",
             }
         config_path = config_path or (
             project_path.joinpath(*discovered_declaration.split("/")) if discovered_declaration else None
@@ -601,6 +602,7 @@ class McpReadToolsMixin:
                 "config_path": None,
                 "config_relpath": "",
                 "errors": ["project_config.yaml was not found in the selected project."],
+                "failure_kind": "not_found",
             }
         try:
             raw_text = read_verified_project_config(project_path, config_path)
@@ -613,6 +615,7 @@ class McpReadToolsMixin:
                 "config_path": str(config_path),
                 "config_relpath": "",
                 "errors": [f"Invalid YAML: {exc}"],
+                "failure_kind": "yaml",
             }
         except ConfigMigrationError as exc:
             return {
@@ -620,6 +623,7 @@ class McpReadToolsMixin:
                 "config_path": str(config_path),
                 "config_relpath": os.path.relpath(config_path, project_path),
                 "errors": [str(exc)],
+                "failure_kind": "migration",
             }
         except (OSError, ProjectConfigReadError) as exc:
             return {
@@ -627,6 +631,7 @@ class McpReadToolsMixin:
                 "config_path": None,
                 "config_relpath": "",
                 "errors": [f"Failed to read config: {exc}"],
+                "failure_kind": "config_read",
             }
 
         errors = validate_config(config)
@@ -636,12 +641,14 @@ class McpReadToolsMixin:
                 "config_path": str(config_path),
                 "config_relpath": os.path.relpath(config_path, project_path),
                 "errors": errors,
+                "failure_kind": "semantic",
             }
         return {
             "config": config,
             "config_path": str(config_path),
             "config_relpath": os.path.relpath(config_path, project_path),
             "errors": errors if allow_invalid else [],
+            "failure_kind": "semantic" if errors else "",
         }
 
     @staticmethod

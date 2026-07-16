@@ -120,6 +120,36 @@ def _check_components(root: Path, candidate: Path) -> None:
             )
 
 
+def _consume_file_symlink_components(lexical: Path) -> Path:
+    """Dereference file-system symlinks component by component.
+
+    ``Path.resolve()`` is sufficient for junctions and most symlinks, but some
+    Windows directory-symlink spellings can survive resolution of a child
+    path.  Consuming the link target itself ensures alias-enabled readers
+    receive a target spelling and never reopen through the caller's alias.
+    """
+
+    absolute = lexical.absolute()
+    current = Path(absolute.anchor)
+    for index, part in enumerate(absolute.parts[1:]):
+        current = current / part
+        if not current.is_symlink():
+            continue
+        try:
+            target = current.readlink()
+        except OSError as exc:
+            raise AllowedDataError("DATA_PATH_UNAVAILABLE", "Data path cannot be inspected safely.") from exc
+        if not target.is_absolute():
+            target = current.parent / target
+        remainder = absolute.parts[index + 2 :]
+        current = target.joinpath(*remainder)
+        break
+    try:
+        return current.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise AllowedDataError("DATA_PATH_UNAVAILABLE", "Data path does not exist or cannot be resolved.") from exc
+
+
 def select_allowed_data_path(
     raw_path: str | os.PathLike[str],
     *,
@@ -156,10 +186,13 @@ def select_allowed_data_path(
         if not any(_is_relative_to(base, root) for root in roots):
             raise AllowedDataError("RELATIVE_BASE_OUTSIDE_ALLOWED_ROOT", "The relative data base is not allowed.")
         lexical = base / lexical
-    try:
-        resolved = lexical.resolve(strict=True)
-    except (OSError, RuntimeError) as exc:
-        raise AllowedDataError("DATA_PATH_UNAVAILABLE", "Data path does not exist or cannot be resolved.") from exc
+    if allow_internal_aliases:
+        resolved = _consume_file_symlink_components(lexical)
+    else:
+        try:
+            resolved = lexical.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise AllowedDataError("DATA_PATH_UNAVAILABLE", "Data path does not exist or cannot be resolved.") from exc
     containing = tuple(root for root in roots if _is_relative_to(resolved, root))
     if not containing:
         raise AllowedDataError("DATA_PATH_OUTSIDE_ALLOWED_ROOT", "Data path is outside allowed roots.")

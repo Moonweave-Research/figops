@@ -65,8 +65,13 @@ class McpRenderProjectMixin:
                 )
             project_resolved = True
             loaded = self._load_project_config(project_path, allow_invalid=True)
-            config = loaded["config"] if isinstance(loaded["config"], dict) else {}
-            config_errors = validate_config(config) if isinstance(config, dict) else list(loaded["errors"])
+            loaded_config = loaded["config"]
+            config = loaded_config if isinstance(loaded_config, dict) else {}
+            config_errors = (
+                validate_config(config)
+                if isinstance(loaded_config, dict)
+                else list(loaded["errors"])
+            )
             config_source_path = project_path / str(loaded["config_relpath"] or "project_config.yaml")
             update_attempt_provenance(
                 attempt,
@@ -74,7 +79,10 @@ class McpRenderProjectMixin:
                 config_status="invalid" if config_errors else "valid",
             )
             if config_errors:
-                unsafe_declared_path = has_unsafe_declared_path(config_errors)
+                config_read_boundary_failure = loaded.get("failure_kind") == "config_read"
+                unsafe_declared_path = (
+                    config_read_boundary_failure or has_unsafe_declared_path(config_errors)
+                )
                 return self._project_render_error(
                     arguments,
                     dry_run=dry_run,

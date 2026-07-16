@@ -1132,7 +1132,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 )
 
             self.assertEqual(result["status"], "error")
-            self.assertIn(result["failure_stage"], {"CONTRACT", "VALIDATE"})
+            self.assertEqual(result["failure_stage"], "CONTRACT", json.dumps(result, sort_keys=True))
+            self.assertEqual(result["error_category"], "validation")
+            self.assertEqual(result["error_code"], "PROJECT_DECLARATION_PATH_INVALID")
             error = result["errors"][0]
             normalized_error = error.lower()
             self.assertTrue(
@@ -3466,7 +3468,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 {"data_path": str(link_dir / data_path.name), "x_column": "x", "y_column": "y"},
             )
 
-            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertIn(result["status"], {"ok", "warning"}, json.dumps(result, sort_keys=True))
             self.assertFalse(any("symlinked path components" in error for error in result["errors"]))
 
     def test_render_csv_graph_rejects_external_symlinked_data_path_without_writing(self):
@@ -3488,6 +3490,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["error_category"], "validation")
             self.assertFalse(runtime_root.exists())
 
     def test_render_csv_graph_failure_manifest_preserves_requested_baseline_state(self):
