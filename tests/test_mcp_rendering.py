@@ -14,6 +14,7 @@ import yaml
 from hub_core.mcp import GraphHubMCPServer
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.schemas import list_tool_definitions
+from hub_core.mcp.security import PROJECT_ID_REPARSE_ERROR
 from hub_core.mcp.transport import _handle_json_rpc
 from tests._symlink import symlink_or_skip
 from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
@@ -1057,21 +1058,35 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             data_path = project / "results" / "data" / "summary.csv"
             data_path.unlink()
             symlink_or_skip(data_path, target)
-            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
 
-            result = self._call(
-                server,
-                "figops.render_project_figure",
-                {"project_path": str(project), "figure_id": "Fig1", "job_id": "symlink-input"},
-            )
+            with (
+                patch.object(server, "_copy_project_snapshot", wraps=server._copy_project_snapshot) as copy_snapshot,
+                patch.object(
+                    server,
+                    "_run_project_figure_script",
+                    wraps=server._run_project_figure_script,
+                ) as run_script,
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_project_figure",
+                    {"project_path": str(project), "figure_id": "Fig1", "job_id": "symlink-input"},
+                )
 
             self.assertEqual(result["status"], "error")
-            self.assertEqual(result["failure_stage"], "EXPORT")
+            self.assertEqual(result["failure_stage"], "VALIDATE")
             error = result["errors"][0]
             self.assertTrue(
                 "symlink" in error or "escapes project root" in error,
                 f"unexpected snapshot-input rejection: {error}",
             )
+            copy_snapshot.assert_not_called()
+            run_script.assert_not_called()
+            job_root = runtime_root / "mcp_project_jobs" / "symlink-input"
+            self.assertFalse((job_root / "project").exists())
+            self.assertFalse((project / "results" / "figures" / "Fig1.png").exists())
 
     def test_render_project_figure_expands_declared_input_globs_in_snapshot(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -3729,6 +3744,118 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             # The id render reports back must equal the id list emitted.
             self.assertEqual(server._stable_project_id_for_path(project), project_id)
+
+    def test_external_project_alias_is_listed_but_project_id_render_is_rejected_without_writes(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_alias_") as tmpdir:
+            workspace = Path(tmpdir)
+            research_root = workspace / "ResearchOS"
+            external_project = _write_project_render_fixture(workspace / "external", name="01_External")
+            research_root.mkdir()
+            alias = research_root / "01_Alias"
+            symlink_or_skip(alias, external_project, target_is_directory=True)
+            runtime_root = workspace / "runtime"
+            server = GraphHubMCPServer(
+                research_root=research_root,
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
+
+            listed = self._call(server, "figops.list_projects")
+            alias_entry = next(project for project in listed["projects"] if project["project_root"] == "01_Alias")
+
+            with (
+                patch.object(server, "_load_project_config", wraps=server._load_project_config) as load_config,
+                patch.object(server, "_copy_project_snapshot", wraps=server._copy_project_snapshot) as copy_snapshot,
+                patch.object(
+                    server,
+                    "_run_project_figure_script",
+                    wraps=server._run_project_figure_script,
+                ) as run_script,
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_project_figure",
+                    {
+                        "project_id": alias_entry["project_id"],
+                        "figure_id": "Fig1",
+                        "job_id": "external-alias",
+                    },
+                )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["errors"], [PROJECT_ID_REPARSE_ERROR])
+            load_config.assert_not_called()
+            copy_snapshot.assert_not_called()
+            run_script.assert_not_called()
+            self.assertFalse((runtime_root / "mcp_project_jobs" / "external-alias").exists())
+            self.assertFalse((external_project / "results" / "figures" / "Fig1.png").exists())
+
+    def test_internal_project_alias_is_listed_but_project_id_render_is_rejected_without_writes(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_alias_") as tmpdir:
+            workspace = Path(tmpdir)
+            research_root = workspace / "ResearchOS"
+            internal_project = _write_project_render_fixture(research_root / ".venv", name="01_Internal")
+            alias = research_root / "01_Alias"
+            symlink_or_skip(alias, internal_project, target_is_directory=True)
+            runtime_root = workspace / "runtime"
+            server = GraphHubMCPServer(
+                research_root=research_root,
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
+
+            listed = self._call(server, "figops.list_projects")
+            alias_entry = next(project for project in listed["projects"] if project["project_root"] == "01_Alias")
+
+            with (
+                patch.object(server, "_load_project_config", wraps=server._load_project_config) as load_config,
+                patch.object(server, "_copy_project_snapshot", wraps=server._copy_project_snapshot) as copy_snapshot,
+                patch.object(
+                    server,
+                    "_run_project_figure_script",
+                    wraps=server._run_project_figure_script,
+                ) as run_script,
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_project_figure",
+                    {
+                        "project_id": alias_entry["project_id"],
+                        "figure_id": "Fig1",
+                        "job_id": "internal-alias",
+                    },
+                )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["errors"], [PROJECT_ID_REPARSE_ERROR])
+            load_config.assert_not_called()
+            copy_snapshot.assert_not_called()
+            run_script.assert_not_called()
+            self.assertFalse((runtime_root / "mcp_project_jobs" / "internal-alias").exists())
+            self.assertFalse((internal_project / "results" / "figures" / "Fig1.png").exists())
+
+    def test_real_project_id_still_resolves_without_execution_or_writes(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_id_") as tmpdir:
+            workspace = Path(tmpdir)
+            research_root = workspace / "ResearchOS"
+            project = _write_project_render_fixture(research_root, name="01_Real")
+            runtime_root = workspace / "runtime"
+            server = GraphHubMCPServer(
+                research_root=research_root,
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
+
+            listed = self._call(server, "figops.list_projects")
+            project_id = next(
+                item["project_id"] for item in listed["projects"] if item["project_root"] == "01_Real"
+            )
+            resolved = server._resolve_project_path({"project_id": project_id})
+
+            self.assertEqual(resolved, project.resolve())
+            self.assertFalse(runtime_root.exists())
 
 
 def _write_dense_csv(path: Path) -> Path:

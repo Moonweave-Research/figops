@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import os
+import stat
 from pathlib import Path
 from typing import Any
 
+from hub_core.execution_project_boundary import (
+    PROJECT_EXECUTION_REPARSE_ERROR,
+    ExecutionProjectPathError,
+    resolve_execution_project_path,
+)
 from hub_core.mcp.config import McpServerConfig, normalize_allowed_root
 from hub_core.mcp.errors import DISABLED_ERROR
 from hub_core.project_discovery import ProjectDiscoveryService
@@ -22,6 +28,7 @@ WRITE_TOOL_NAMES = (
     "figops.batch_check",
 )
 LEGACY_WRITE_TOOL_NAMES = tuple(name.replace("figops.", "graphhub.", 1) for name in WRITE_TOOL_NAMES)
+PROJECT_ID_REPARSE_ERROR = PROJECT_EXECUTION_REPARSE_ERROR.replace("execution project", "project_id")
 
 
 def is_write_tool_name(name: str) -> bool:
@@ -180,6 +187,17 @@ class McpSecurityMixin:
             return False
         return True
 
+    @staticmethod
+    def _is_reparse_or_symlink(path: Path) -> bool:
+        try:
+            item = path.lstat()
+        except OSError:
+            return False
+        attributes = getattr(item, "st_file_attributes", 0)
+        return path.is_symlink() or bool(
+            attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        )
+
     def _resolve_under_root(self, raw_path: Any, *, field_name: str, root: Path | None = None) -> Path:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise ValueError(f"{field_name} is required.")
@@ -195,7 +213,7 @@ class McpSecurityMixin:
         current = Path(raw_absolute.anchor)
         for part in raw_absolute.parts[1:]:
             current = current / part
-            if current.is_symlink():
+            if self._is_reparse_or_symlink(current):
                 target = current.resolve()
                 # Allow internal symlinks (target under trusted_root) and system-level
                 # aliases (trusted_root under target, e.g. macOS /var → /private/var).
@@ -219,7 +237,7 @@ class McpSecurityMixin:
         current = Path(raw_absolute.anchor)
         for part in raw_absolute.parts[1:]:
             current = current / part
-            if current.is_symlink():
+            if self._is_reparse_or_symlink(current):
                 target = current.resolve()
                 if not any(
                     self._is_relative_to(target, root) or self._is_relative_to(root, target)
@@ -256,7 +274,23 @@ class McpSecurityMixin:
         )
         for project in service.discover(max_depth=self._max_depth(arguments.get("max_depth", 4))):
             if project.project_id == project_id:
-                resolved = (root / project.path).resolve()
+                lexical = root / Path(project.path)
+                try:
+                    resolved = resolve_execution_project_path(self.research_root, lexical)
+                except ExecutionProjectPathError as exc:
+                    if str(exc) == PROJECT_EXECUTION_REPARSE_ERROR:
+                        raise ValueError(PROJECT_ID_REPARSE_ERROR) from exc
+                    raise ValueError(str(exc).replace("execution project", "project_id")) from exc
                 validate_runtime_location(self.runtime_root, project_root=resolved)
                 return resolved
         raise ValueError(f"Project id not found: {project_id}")
+
+    def _resolve_execution_project_path(self, raw_path: Any) -> Path:
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ValueError("project_path is required.")
+        try:
+            resolved = resolve_execution_project_path(self.research_root, raw_path)
+        except ExecutionProjectPathError as exc:
+            raise ValueError(str(exc).replace("execution project", "project_path")) from exc
+        validate_runtime_location(self.runtime_root, project_root=resolved)
+        return resolved

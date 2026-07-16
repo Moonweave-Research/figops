@@ -84,6 +84,49 @@ class ProjectDiscoveryServiceTest(unittest.TestCase):
             self.assertTrue(project.project_id)
             self.assertEqual(project.target_format, INTERNAL_STYLE_TARGET_FORMAT)
 
+    def test_direct_project_aliases_are_deduplicated_by_resolved_target(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            real_project = Path(tmpdir) / "external" / "01_Project"
+            self._write_config(real_project, "Aliased Project")
+            root.mkdir()
+            symlink_or_skip(root / "01_Alias", real_project, target_is_directory=True)
+            symlink_or_skip(root / "02_Duplicate", real_project, target_is_directory=True)
+
+            projects = ProjectDiscoveryService(root).discover(max_depth=2)
+            runnable = get_discoverable_projects(root, max_depth=2)
+
+            self.assertEqual([project.path for project in projects], ["01_Alias"])
+            self.assertEqual(projects[0].name, "Aliased Project")
+            self.assertEqual(runnable, [])
+
+    def test_direct_alias_to_discovered_project_prefers_real_project_path(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            real_project = root / "02_Real"
+            self._write_config(real_project, "Real Project")
+            symlink_or_skip(root / "01_Alias", real_project, target_is_directory=True)
+
+            projects = ProjectDiscoveryService(root).discover(max_depth=2)
+
+            self.assertEqual([project.path for project in projects], ["02_Real"])
+
+    def test_broken_broad_and_ephemeral_aliases_are_excluded(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_discovery_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            external = Path(tmpdir) / "external"
+            real_project = external / "01_Project"
+            self._write_config(real_project, "External Project")
+            root.mkdir()
+            symlink_or_skip(root / "broken", external / "missing", target_is_directory=True)
+            symlink_or_skip(root / "workspace_cycle", root, target_is_directory=True)
+            for name in ("runtime", "jobs"):
+                symlink_or_skip(root / name, real_project, target_is_directory=True)
+
+            projects = ProjectDiscoveryService(root, conventions=SurfurConventions()).discover(max_depth=2)
+
+            self.assertEqual(projects, [])
+
     def test_legacy_list_projects_non_recursive_caps_scan_depth(self):
         calls = []
 

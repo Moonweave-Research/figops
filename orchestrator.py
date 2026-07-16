@@ -64,6 +64,7 @@ from hub_core.adapters import select_adapters
 from hub_core.attempt_provenance import render_attempt_provenance, update_attempt_provenance
 from hub_core.cache_manager import collect_signatures
 from hub_core.config_parser import find_config_path
+from hub_core.execution_project_boundary import ExecutionProjectPathError, resolve_execution_project_path
 from hub_core.external_raw import ExternalRawError
 from hub_core.external_raw_execution import parse_cli_external_raw_roots
 from hub_core.logging import configure_logging, get_logger
@@ -414,7 +415,11 @@ def main():
         project_path = args.project
         if not os.path.isabs(project_path):
             project_path = os.path.join(root_dir, project_path)
-        project_path = os.path.abspath(project_path)
+        try:
+            project_path = str(resolve_execution_project_path(root_dir, project_path))
+        except ExecutionProjectPathError as exc:
+            ui_print(f"❌ Error: Unsafe project execution path: {exc}")
+            return 1
         raw_request = shlex.join(["python", "orchestrator.py", *sys.argv[1:]])
         engine_target = "hub_pipeline"
         job_id = os.path.basename(project_path.rstrip(os.sep)) or "hub_project"
@@ -563,6 +568,12 @@ def main():
     if not os.path.exists(project_path):
         project_path = os.path.join(root_dir, args.project)
     project_path = os.path.abspath(project_path)
+
+    try:
+        project_path = str(resolve_execution_project_path(root_dir, project_path))
+    except ExecutionProjectPathError as exc:
+        logger.error("❌ Error: Unsafe project execution path: %s", exc)
+        return 1
 
     if not os.path.isdir(project_path):
         logger.error("❌ Error: Project directory not found: %s", project_path)

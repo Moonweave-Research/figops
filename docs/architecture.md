@@ -32,6 +32,7 @@ hub_core/mcp/server.py                # FigOps facade + historical GraphHub Pyth
                 |
                 v
 hub_core/project_paths.py             # contained project input/output resolution
+hub_core/execution_project_boundary.py # alias-free producer/write project selection
 hub_core/project_config_reader.py     # verified, bounded config discovery/read
 hub_core/project_structure_contract.py # v1.1 role/DAG/alias contract
 hub_core/legacy_structure_resolver.py  # schema-less 1.0 -> in-memory 1.1 view

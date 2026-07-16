@@ -648,7 +648,7 @@ class McpRenderToolSupportMixin:
         # tools/call validation enforces exactly one of project_id/project_path,
         # so only the single-selector path-or-id resolution is reachable here.
         if arguments.get("project_path"):
-            return self._resolve_under_root(arguments["project_path"], field_name="project_path")
+            return self._resolve_execution_project_path(arguments["project_path"])
         return self._resolve_project_path(arguments)
 
     def _project_figure_entries(self, config: dict[str, Any]) -> list[dict[str, Any]]:

@@ -13,6 +13,7 @@ import tempfile
 from datetime import datetime
 
 from .config_parser import discover_projects_with_status, load_config
+from .execution_project_boundary import ExecutionProjectPathError, resolve_execution_project_path
 from .logging import get_logger
 from .runtime_paths import resolve_hub_logs_dir, resolve_runtime_root, resolve_temp_dir
 from .utils import resolve_path
@@ -95,7 +96,20 @@ def run_check_all(
 
     for project in projects:
         project_rel = project["path"]
-        project_dir = os.path.abspath(os.path.join(root_dir, project_rel))
+        try:
+            project_dir = str(resolve_execution_project_path(root_dir, project_rel))
+        except ExecutionProjectPathError as exc:
+            results.append(
+                {
+                    "project_name": project.get("name") or project_rel,
+                    "project_dir": project_rel,
+                    "success": False,
+                    "failure_stage": "CONTRACT",
+                    "message": str(exc),
+                }
+            )
+            overall_success = False
+            continue
         result = _run_single_project(
             hub_path,
             project_dir,

@@ -101,7 +101,7 @@ class McpProjectToolsMixin:
         guarded = self._authorize_write_tool("figops.normalize_project_structure", arguments)
         if guarded is not None:
             return guarded
-        project_path = self._resolve_under_root(arguments.get("project_path"), field_name="project_path")
+        project_path = self._resolve_execution_project_path(arguments.get("project_path"))
         dry_run = bool(arguments.get("dry_run", True))
         move_policy = str(arguments.get("move_policy") or "adopt").strip().lower()
         include_raw = bool(arguments.get("include_raw", False))
