@@ -62,22 +62,33 @@ def test_directory_is_not_a_regular_input(tmp_path: Path) -> None:
     assert captured.value.code == "DATA_PATH_NOT_REGULAR"
 
 
-def test_internal_symlink_or_reparse_is_rejected(tmp_path: Path) -> None:
+def test_internal_file_symlink_is_allowed_but_external_target_is_rejected(tmp_path: Path) -> None:
     target = tmp_path / "target.csv"
     target.write_text("x\n1\n", encoding="utf-8")
     link = tmp_path / "linked.csv"
     symlink_or_skip(link, target)
+    selected = select_allowed_data_path(link, allowed_roots=[tmp_path], allow_internal_aliases=True)
+    assert selected.candidate == target.resolve()
+
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside.csv"
+    outside.write_text("x\n2\n", encoding="utf-8")
+    external_link = allowed / "external.csv"
+    symlink_or_skip(external_link, outside)
     with pytest.raises(AllowedDataError) as captured:
-        select_allowed_data_path(link, allowed_roots=[tmp_path])
-    assert captured.value.code == "DATA_PATH_REPARSE_POINT"
+        select_allowed_data_path(external_link, allowed_roots=[allowed], allow_internal_aliases=True)
+    assert captured.value.code == "DATA_PATH_OUTSIDE_ALLOWED_ROOT"
 
 
 @pytest.mark.skipif(os.name != "nt", reason="directory junctions are Windows-specific")
-def test_windows_junction_component_is_rejected(tmp_path: Path) -> None:
-    target = tmp_path / "target"
+def test_windows_internal_junction_is_allowed_but_external_junction_is_rejected(tmp_path: Path) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    target = allowed / "target"
     target.mkdir()
     (target / "input.csv").write_text("x\n1\n", encoding="utf-8")
-    junction = tmp_path / "junction"
+    junction = allowed / "junction"
     completed = subprocess.run(
         ["cmd", "/c", "mklink", "/J", str(junction), str(target)],
         stdout=subprocess.DEVNULL,
@@ -87,11 +98,37 @@ def test_windows_junction_component_is_rejected(tmp_path: Path) -> None:
     if completed.returncode != 0:
         pytest.skip("Windows junction creation is unavailable")
     try:
-        with pytest.raises(AllowedDataError) as captured:
-            select_allowed_data_path(junction / "input.csv", allowed_roots=[tmp_path])
-        assert captured.value.code == "DATA_PATH_REPARSE_POINT"
+        selected = select_allowed_data_path(
+            junction / "input.csv",
+            allowed_roots=[allowed],
+            allow_internal_aliases=True,
+        )
+        assert selected.candidate == (target / "input.csv").resolve()
     finally:
         os.rmdir(junction)
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "input.csv").write_text("x\n2\n", encoding="utf-8")
+    external_junction = allowed / "external-junction"
+    completed = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(external_junction), str(outside)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if completed.returncode != 0:
+        pytest.skip("Windows junction creation is unavailable")
+    try:
+        with pytest.raises(AllowedDataError) as captured:
+            select_allowed_data_path(
+                external_junction / "input.csv",
+                allowed_roots=[allowed],
+                allow_internal_aliases=True,
+            )
+        assert captured.value.code == "DATA_PATH_OUTSIDE_ALLOWED_ROOT"
+    finally:
+        os.rmdir(external_junction)
 
 
 def test_verified_descriptor_reports_prefetch_count_and_never_reopens_for_consumer(tmp_path: Path) -> None:

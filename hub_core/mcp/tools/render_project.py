@@ -14,6 +14,7 @@ from hub_core.external_raw_execution import (
     materialize_external_raw_inputs,
 )
 from hub_core.mcp import render_orchestration as render_helpers
+from hub_core.mcp.errors import PROJECT_DECLARATION_PATH_INVALID, has_unsafe_declared_path
 from hub_core.project_paths import resolve_project_input, resolve_project_output
 from hub_core.provenance_inputs import expand_project_input_files, resolved_research_ops_evidence
 from hub_core.render_evidence import build_render_evidence
@@ -73,11 +74,7 @@ class McpRenderProjectMixin:
                 config_status="invalid" if config_errors else "valid",
             )
             if config_errors:
-                unsafe_figure_path = any(
-                    error.startswith(("figures[", "diagrams["))
-                    and any(token in error for token in ("project-relative", "traversal", "absolute", "UNC", "drive"))
-                    for error in config_errors
-                )
+                unsafe_declared_path = has_unsafe_declared_path(config_errors)
                 return self._project_render_error(
                     arguments,
                     dry_run=dry_run,
@@ -85,9 +82,11 @@ class McpRenderProjectMixin:
                     job_root=job_root,
                     summary="Project config is not valid for rendering.",
                     errors=config_errors,
-                    failure_stage="CONTRACT" if unsafe_figure_path else "CONFIG",
+                    failure_stage="CONTRACT" if unsafe_declared_path else "CONFIG",
                     resolution_hint="Fix project_config.yaml before rendering this project figure.",
-                    persist_failure=not unsafe_figure_path,
+                    persist_failure=not unsafe_declared_path,
+                    error_category="validation" if unsafe_declared_path else None,
+                    error_code=PROJECT_DECLARATION_PATH_INVALID if unsafe_declared_path else None,
                 )
             if project_role(config) == "master":
                 return self._project_render_error(

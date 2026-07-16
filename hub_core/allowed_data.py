@@ -125,6 +125,7 @@ def select_allowed_data_path(
     *,
     allowed_roots: Sequence[str | os.PathLike[str]],
     relative_base: str | os.PathLike[str] | None = None,
+    allow_internal_aliases: bool = False,
 ) -> AllowedDataSelection:
     """Select one contained regular file without widening configured trust."""
 
@@ -163,7 +164,13 @@ def select_allowed_data_path(
     if not containing:
         raise AllowedDataError("DATA_PATH_OUTSIDE_ALLOWED_ROOT", "Data path is outside allowed roots.")
     root = max(containing, key=lambda item: len(item.parts))
-    _check_components(root, lexical)
+    if not allow_internal_aliases:
+        _check_components(root, lexical)
+    # Alias-enabled read-only consumers receive the resolved candidate below,
+    # so they never open through the caller-controlled symlink/junction
+    # spelling. Containment is decided from the canonical target, while broken
+    # aliases and external targets fail during strict resolution or the
+    # allowed-root check above.
     _check_components(root, resolved)
     try:
         current = resolved.stat()

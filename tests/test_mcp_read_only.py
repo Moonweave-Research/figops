@@ -559,7 +559,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             with self.assertRaises(ValueError):
                 server._resolve_allowed_data_path(str(outside), field_name="data_path")
 
-    def test_allowed_data_path_rejects_symlink_component_into_allowed_root(self):
+    def test_allowed_data_path_allows_internal_alias_and_rejects_external_target(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_containment_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
             root.mkdir()

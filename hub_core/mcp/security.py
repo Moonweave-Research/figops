@@ -5,6 +5,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from hub_core.allowed_data import AllowedDataError, select_allowed_data_path
 from hub_core.execution_project_boundary import (
     PROJECT_EXECUTION_REPARSE_ERROR,
     ExecutionProjectPathError,
@@ -226,22 +227,26 @@ class McpSecurityMixin:
             raise ValueError(f"{field_name} is required.")
         raw = Path(raw_path).expanduser()
         raw_absolute = raw if raw.is_absolute() else self.research_root / raw
-        path = canonical_path(raw_absolute)
-        containing_roots = tuple(root for root in self.allowed_data_roots if self._is_relative_to(path, root))
+        canonical_candidate = canonical_path(raw_absolute)
+        containing_roots = tuple(
+            root for root in self.allowed_data_roots if self._is_relative_to(canonical_candidate, root)
+        )
         if not containing_roots:
-            allowed = ", ".join(str(root) for root in self.allowed_data_roots)
-            raise ValueError(f"{field_name} must stay under an allowed data root: {allowed}.")
-        current = Path(raw_absolute.anchor)
-        for part in raw_absolute.parts[1:]:
-            current = current / part
-            if self._is_reparse_or_symlink(current):
-                target = canonical_path(current)
-                if not any(
-                    self._is_relative_to(target, root) or self._is_relative_to(root, target)
-                    for root in containing_roots
-                ):
-                    raise ValueError(f"{field_name} must not include symlinked path components.")
-        return path
+            raise ValueError(f"{field_name} must stay under an allowed data root.")
+        try:
+            selection = select_allowed_data_path(
+                raw_path,
+                allowed_roots=containing_roots,
+                relative_base=self.research_root,
+                allow_internal_aliases=True,
+            )
+        except AllowedDataError as exc:
+            if exc.code == "DATA_PATH_OUTSIDE_ALLOWED_ROOT":
+                raise ValueError(f"{field_name} must stay under an allowed data root.") from exc
+            if exc.code in {"DATA_PATH_UNAVAILABLE", "DATA_PATH_NOT_REGULAR"}:
+                raise ValueError(f"{field_name} is not a file.") from exc
+            raise ValueError(f"{field_name} is not an available regular data file ({exc.code}).") from exc
+        return selection.candidate
 
     def _activate_runtime_root_for_runtime_access(self) -> None:
         if not self._runtime_root_explicit:

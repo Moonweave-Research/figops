@@ -921,6 +921,29 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertFalse(outside_output.exists())
             self.assertFalse((runtime_root / "mcp_project_jobs").exists())
 
+    def test_render_project_figure_classifies_unsafe_declared_data_path_as_contract_without_writing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["data_contract"]["csv_checks"][0]["path"] = "../outside.csv"
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "unsafe-data-path"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["error_category"], "validation")
+            self.assertEqual(result["error_code"], "PROJECT_DECLARATION_PATH_INVALID")
+            self.assertFalse(runtime_root.exists())
+
     def test_render_project_invalid_style_persists_failure_artifacts(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
@@ -3445,6 +3468,27 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertIn(result["status"], {"ok", "warning"})
             self.assertFalse(any("symlinked path components" in error for error in result["errors"]))
+
+    def test_render_csv_graph_rejects_external_symlinked_data_path_without_writing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_symlink_data_") as tmpdir:
+            workspace = Path(tmpdir)
+            root = workspace / "root"
+            root.mkdir()
+            outside = _write_csv(workspace / "outside" / "data.csv")
+            link = root / "external.csv"
+            symlink_or_skip(link, outside)
+            runtime_root = workspace / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {"data_path": str(link), "x_column": "x", "y_column": "y"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertFalse(runtime_root.exists())
 
     def test_render_csv_graph_failure_manifest_preserves_requested_baseline_state(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
