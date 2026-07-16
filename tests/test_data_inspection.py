@@ -20,6 +20,7 @@ from hub_core.data_inspection import (
     inspect_allowed_data,
     inspect_data,
 )
+from hub_core.posix_worker_limits import posix_memory_limit_supported
 from tests._symlink import symlink_or_skip
 
 
@@ -65,7 +66,12 @@ def test_csv_profile_returns_facts_hash_and_no_default_samples_or_recommendation
     assert result["samples"] == []
     assert result["sample_columns"] == []
     assert result["limits"]["worker_memory_bytes"] == 256 * 1024 * 1024
-    assert result["limits"]["worker_memory_enforced"] is True
+    expected_memory_enforcement = os.name == "nt" or posix_memory_limit_supported()
+    assert result["limits"]["worker_memory_enforced"] is expected_memory_enforcement
+    if expected_memory_enforcement:
+        assert result["limits"]["worker_memory_limitation"] is None
+    else:
+        assert "unavailable on this host" in result["limits"]["worker_memory_limitation"]
     by_name = {column["name"]: column for column in result["columns"]}
     assert by_name["group"]["dtype"] == "string"
     assert by_name["group"]["unique_count"] == 2
@@ -535,6 +541,37 @@ def test_memory_limiter_unavailable_fails_before_unbounded_worker(
     assert result["status"] == "unavailable"
     assert result["availability"]["reason"] == "WORKER_MEMORY_LIMIT_UNAVAILABLE"
     assert result["limits"]["worker_memory_enforced"] is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX resource limits are unavailable on Windows")
+def test_posix_worker_file_limit_covers_the_largest_accepted_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, int | float] = {}
+
+    def build_limits(*, memory_bytes: int, cpu_seconds: float, file_bytes: int):
+        captured.update(
+            memory_bytes=memory_bytes,
+            cpu_seconds=cpu_seconds,
+            file_bytes=file_bytes,
+        )
+        return (lambda: None), False
+
+    class Process:
+        pass
+
+    monkeypatch.setattr(inspection, "build_posix_limit_callback", build_limits)
+    monkeypatch.setattr(inspection.subprocess, "Popen", lambda *_args, **_kwargs: Process())
+
+    process, limiter = inspection._start_worker()
+
+    assert isinstance(process, Process)
+    assert isinstance(limiter, inspection._PosixProcessGroupLimiter)
+    assert captured == {
+        "memory_bytes": inspection.INSPECTION_WORKER_MEMORY_BYTES,
+        "cpu_seconds": inspection.INSPECTION_WORK_CUTOFF_SECONDS,
+        "file_bytes": inspection.ABSOLUTE_INSPECT_SOURCE_BYTES,
+    }
 
 
 def test_darwin_inspection_continues_with_non_memory_limits_and_reports_limitation(

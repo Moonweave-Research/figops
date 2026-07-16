@@ -305,7 +305,12 @@ def _start_worker(module: str = "hub_core.data_inspection_worker") -> tuple[subp
         limit_worker, memory_enforced = build_posix_limit_callback(
             memory_bytes=INSPECTION_WORKER_MEMORY_BYTES,
             cpu_seconds=INSPECTION_WORK_CUTOFF_SECONDS,
-            file_bytes=MAX_INSPECTION_RESPONSE_BYTES,
+            # The public worker first freezes the verified input into an
+            # anonymous temporary file.  RLIMIT_FSIZE therefore bounds that
+            # private snapshot, not stdout (which is a pipe).  Keep it aligned
+            # with the absolute accepted-source cap; the worker and parent
+            # independently enforce the much smaller response-byte caps.
+            file_bytes=ABSOLUTE_INSPECT_SOURCE_BYTES,
         )
         options["start_new_session"] = True
         options["preexec_fn"] = limit_worker

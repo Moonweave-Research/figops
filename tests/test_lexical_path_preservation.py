@@ -38,6 +38,24 @@ def test_runtime_preview_returns_canonical_identity_without_creating_alias_targe
     assert not canonical.exists()
 
 
+def test_runtime_preview_preserves_only_a_verified_macos_system_alias(
+    tmp_path: Path,
+) -> None:
+    lexical = (tmp_path / "alias" / "runtime").absolute()
+    canonical = (tmp_path / "canonical" / "runtime").absolute()
+
+    with (
+        patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(lexical)}, clear=False),
+        patch("hub_core.runtime_boundary._resolved", return_value=canonical),
+        patch("hub_core.runtime_paths._is_verified_macos_alias_path", return_value=True),
+    ):
+        returned = preview_runtime_root()
+
+    assert returned == str(lexical)
+    assert not lexical.exists()
+    assert not canonical.exists()
+
+
 def test_config_discovery_validates_canonical_candidate_but_returns_lexical_path(
     tmp_path: Path,
 ) -> None:

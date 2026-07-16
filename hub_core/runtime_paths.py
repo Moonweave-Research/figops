@@ -1,7 +1,9 @@
 import os
+import sys
 import tempfile
+from pathlib import Path
 
-from hub_core.path_identity import canonical_path
+from hub_core.path_identity import canonical_path, is_macos_system_alias
 from hub_core.runtime_boundary import (
     RuntimeBoundaryError,
     activate_runtime_root,
@@ -33,15 +35,15 @@ def _abspath(value):
 
 
 def _usable_runtime_dir(path, *, project_root=None, config=None, durable_roots=()):
+    lexical = _abspath(path)
     try:
-        return str(
-            activate_runtime_root(
-                _abspath(path),
-                project_root=project_root,
-                config=config,
-                durable_roots=durable_roots,
-            )
+        identity = activate_runtime_root(
+            lexical,
+            project_root=project_root,
+            config=config,
+            durable_roots=durable_roots,
         )
+        return _runtime_contract_path(lexical, identity)
     except RuntimeBoundaryError:
         return None
 
@@ -77,6 +79,41 @@ def _preview_usable_runtime_dir(path):
     return None
 
 
+def _runtime_contract_path(path, identity):
+    """Expose a stable lexical path only for Apple's fixed root aliases.
+
+    Runtime boundary validation and MCP containment keep using ``identity``.
+    Preserving macOS's system-provided ``/var``/``/tmp`` spelling prevents
+    outward paths from unexpectedly changing to ``/private/...`` while still
+    canonicalizing user-controlled symlinks.
+    """
+
+    lexical = Path(_abspath(path))
+    canonical = Path(identity)
+    if lexical == canonical:
+        return str(lexical)
+    if _is_verified_macos_alias_path(lexical, canonical):
+        return str(lexical)
+    return str(canonical)
+
+
+def _is_verified_macos_alias_path(lexical: Path, canonical: Path) -> bool:
+    if sys.platform != "darwin":
+        return False
+    for alias_root in (Path("/var"), Path("/tmp"), Path("/etc")):
+        try:
+            relative = lexical.relative_to(alias_root)
+        except ValueError:
+            continue
+        if not is_macos_system_alias(alias_root):
+            continue
+        alias_identity = canonical_path(alias_root, strict=True)
+        expected_identity = alias_identity.joinpath(relative)
+        if expected_identity == canonical and canonical_path(lexical) == canonical:
+            return True
+    return False
+
+
 def _repo_runtime_root_from_symlink():
     hub_logs_path = os.path.join(_repo_root(), "hub_logs")
     if os.path.islink(hub_logs_path):
@@ -110,23 +147,22 @@ def preview_runtime_root(*, project_root=None, config=None, durable_roots=()):
     for candidate in candidates:
         usable = _preview_usable_runtime_dir(candidate)
         if usable:
-            return str(
-                validate_runtime_location(
-                    usable,
-                    project_root=project_root,
-                    config=config,
-                    durable_roots=durable_roots,
-                )
+            identity = validate_runtime_location(
+                usable,
+                project_root=project_root,
+                config=config,
+                durable_roots=durable_roots,
             )
+            return _runtime_contract_path(usable, identity)
 
-    return str(
-        validate_runtime_location(
-            _abspath(os.path.join(_preview_temp_dir(), "figops_runtime")),
-            project_root=project_root,
-            config=config,
-            durable_roots=durable_roots,
-        )
+    fallback = _abspath(os.path.join(_preview_temp_dir(), "figops_runtime"))
+    identity = validate_runtime_location(
+        fallback,
+        project_root=project_root,
+        config=config,
+        durable_roots=durable_roots,
     )
+    return _runtime_contract_path(fallback, identity)
 
 
 def runtime_root_lookup_candidates():
@@ -148,10 +184,11 @@ def runtime_root_lookup_candidates():
     deduped = []
     seen = set()
     for candidate in candidates:
-        normalized = canonical_path(_abspath(candidate))
+        lexical = _abspath(candidate)
+        normalized = canonical_path(lexical)
         identity = os.path.normcase(os.path.normpath(str(normalized)))
         if identity not in seen:
-            deduped.append(str(normalized))
+            deduped.append(_runtime_contract_path(lexical, normalized))
             seen.add(identity)
     return deduped
 
@@ -161,14 +198,14 @@ def resolve_runtime_root(*, project_root=None, config=None, durable_roots=()):
     effective_project_root = project_root or os.environ.get("PROJECT_ROOT")
     if override:
         # Launcher values are trusted policy inputs, not exemptions from boundary validation.
-        return str(
-            activate_runtime_root(
-                _abspath(override),
-                project_root=effective_project_root,
-                config=config,
-                durable_roots=durable_roots,
-            )
+        lexical = _abspath(override)
+        identity = activate_runtime_root(
+            lexical,
+            project_root=effective_project_root,
+            config=config,
+            durable_roots=durable_roots,
         )
+        return _runtime_contract_path(lexical, identity)
     candidates = []
     repo_runtime_root = _repo_runtime_root_from_symlink()
     if repo_runtime_root:

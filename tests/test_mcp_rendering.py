@@ -711,14 +711,22 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             expected_dry_root = runtime_root / "mcp_project_jobs" / "path-parity"
             expected_render_root = runtime_root / "mcp_project_jobs" / "path-parity-real"
-            self.assertEqual(Path(dry_result["job_root"]).resolve(), expected_dry_root.resolve())
+            self.assertEqual(dry_result["status"], "ok", json.dumps(dry_result, sort_keys=True))
+            self.assertIn(render_result["status"], {"ok", "warning"}, json.dumps(render_result, sort_keys=True))
             self.assertEqual(
-                Path(dry_result["snapshot_project_path"]).resolve(),
+                _runtime_artifact_path(dry_result["job_root"], runtime_root).resolve(),
+                expected_dry_root.resolve(),
+            )
+            self.assertEqual(
+                _runtime_artifact_path(dry_result["snapshot_project_path"], runtime_root).resolve(),
                 (expected_dry_root / "project").resolve(),
             )
-            self.assertEqual(Path(render_result["job_root"]).resolve(), expected_render_root.resolve())
             self.assertEqual(
-                Path(render_result["snapshot_project_path"]).resolve(),
+                _runtime_artifact_path(render_result["job_root"], runtime_root).resolve(),
+                expected_render_root.resolve(),
+            )
+            self.assertEqual(
+                _runtime_artifact_path(render_result["snapshot_project_path"], runtime_root).resolve(),
                 (expected_render_root / "project").resolve(),
             )
 

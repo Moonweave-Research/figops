@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -13,6 +15,7 @@ from hub_core.mcp import FigOpsMCPServer
 from hub_core.mcp.manifest_io import read_verified_runtime_json_object
 from hub_core.path_identity import canonical_is_relative_to, canonical_paths_overlap
 from hub_core.runtime_boundary import validate_runtime_location
+from hub_core.runtime_paths import preview_runtime_root, resolve_runtime_root
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="macOS root-alias regression")
 
@@ -67,6 +70,35 @@ def test_runtime_boundary_object_keeps_the_canonical_var_identity(tmp_path: Path
 
     assert runtime == canonical_runtime
     assert str(runtime).startswith("/private/var/")
+
+
+def test_runtime_path_contract_preserves_system_var_spelling_without_creation(tmp_path: Path) -> None:
+    lexical_runtime = _alternate_var_spelling((tmp_path / "runtime").resolve())
+    if not str(lexical_runtime).startswith("/var/"):
+        lexical_runtime = tmp_path / "runtime"
+
+    with patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(lexical_runtime)}, clear=False):
+        preview = Path(preview_runtime_root())
+        assert preview == lexical_runtime
+        assert not lexical_runtime.exists()
+        resolved = Path(resolve_runtime_root())
+
+    assert resolved == lexical_runtime
+    assert resolved.is_dir()
+    assert resolved.resolve() == (tmp_path / "runtime").resolve()
+
+
+def test_runtime_path_contract_canonicalizes_a_nested_user_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "canonical-runtime"
+    target.mkdir()
+    alias = tmp_path / "user-alias"
+    alias.symlink_to(target, target_is_directory=True)
+    lexical_runtime = _alternate_var_spelling(alias)
+
+    with patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(lexical_runtime)}, clear=False):
+        preview = Path(preview_runtime_root())
+
+    assert preview == target.resolve()
 
 
 def test_external_raw_verification_accepts_mixed_var_spellings(tmp_path: Path) -> None:
