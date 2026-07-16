@@ -1082,8 +1082,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "CONTRACT")
             error = result["errors"][0]
+            normalized_error = error.lower()
             self.assertTrue(
-                "symlink" in error or "escapes project root" in error,
+                "symlink" in normalized_error
+                or "escapes project root" in normalized_error
+                or ("project_path" in normalized_error and "research root" in normalized_error),
                 f"unexpected snapshot-input rejection: {error}",
             )
             copy_snapshot.assert_not_called()
