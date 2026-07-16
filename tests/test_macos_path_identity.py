@@ -59,6 +59,16 @@ def test_runtime_disjointness_uses_identity_not_var_spelling(tmp_path: Path) -> 
     assert runtime == (tmp_path / "runtime").resolve()
 
 
+def test_runtime_boundary_object_keeps_the_canonical_var_identity(tmp_path: Path) -> None:
+    canonical_runtime = (tmp_path / "runtime").resolve()
+    alias_runtime = _alternate_var_spelling(canonical_runtime)
+
+    runtime = validate_runtime_location(alias_runtime)
+
+    assert runtime == canonical_runtime
+    assert str(runtime).startswith("/private/var/")
+
+
 def test_external_raw_verification_accepts_mixed_var_spellings(tmp_path: Path) -> None:
     allowed = tmp_path / "allowed"
     runtime = tmp_path / "runtime"

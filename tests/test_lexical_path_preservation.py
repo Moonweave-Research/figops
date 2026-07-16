@@ -8,16 +8,34 @@ from hub_core.athena_bridge import AthenaBridge, RenderManifest
 from hub_core.config_parser import find_config_path
 from hub_core.process_runner_inputs import prefetch_and_revalidate_inputs
 from hub_core.runtime_boundary import validate_runtime_location
+from hub_core.runtime_paths import preview_runtime_root
 
 
-def test_runtime_validation_returns_lexical_path_when_identity_uses_alias(tmp_path: Path) -> None:
+def test_runtime_validation_returns_canonical_identity_when_input_uses_alias(tmp_path: Path) -> None:
     lexical = (tmp_path / "alias" / "runtime").absolute()
     canonical = (tmp_path / "canonical" / "runtime").absolute()
 
     with patch("hub_core.runtime_boundary._resolved", return_value=canonical):
         returned = validate_runtime_location(lexical)
 
-    assert returned == lexical
+    assert returned == canonical
+
+
+def test_runtime_preview_returns_canonical_identity_without_creating_alias_target(
+    tmp_path: Path,
+) -> None:
+    lexical = (tmp_path / "alias" / "runtime").absolute()
+    canonical = (tmp_path / "canonical" / "runtime").absolute()
+
+    with (
+        patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(lexical)}, clear=False),
+        patch("hub_core.runtime_boundary._resolved", return_value=canonical),
+    ):
+        returned = Path(preview_runtime_root())
+
+    assert returned == canonical
+    assert not lexical.exists()
+    assert not canonical.exists()
 
 
 def test_config_discovery_validates_canonical_candidate_but_returns_lexical_path(

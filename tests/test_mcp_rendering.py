@@ -88,6 +88,15 @@ def _write_csv(path: Path) -> Path:
     return path
 
 
+def _runtime_artifact_path(value: str, runtime_root: Path) -> Path:
+    """Map an outward runtime URI back to its known test boundary."""
+
+    prefix = "runtime://"
+    if value.startswith(prefix):
+        return runtime_root.joinpath(*value[len(prefix) :].split("/"))
+    return Path(value)
+
+
 def _write_valid_png(path: str | Path) -> None:
     from PIL import Image
 
@@ -1140,6 +1149,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(
                 "symlink" in normalized_error
                 or "escapes project root" in normalized_error
+                or error == "Failed to read config: Project config must stay inside the project root."
                 or ("project_path" in normalized_error and "research root" in normalized_error)
                 or error == "Data contract preflight failed for project render.",
                 f"unexpected snapshot-input rejection: {error}",
@@ -3403,10 +3413,14 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn("timeout", result["resolution_hint"].lower())
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("timed out", result["errors"][0])
-            self.assertTrue(str(Path(result["job_root"]).resolve()).startswith(str(runtime_root.resolve())))
-            self.assertTrue(Path(result["manifest_path"]).is_file())
-            self.assertTrue(Path(result["status_path"]).is_file())
-            self.assertTrue(Path(result["latest_dir"]).is_dir())
+            self.assertTrue(
+                _runtime_artifact_path(result["job_root"], runtime_root)
+                .resolve()
+                .is_relative_to(runtime_root.resolve())
+            )
+            self.assertTrue(_runtime_artifact_path(result["manifest_path"], runtime_root).is_file())
+            self.assertTrue(_runtime_artifact_path(result["status_path"], runtime_root).is_file())
+            self.assertTrue(_runtime_artifact_path(result["latest_dir"], runtime_root).is_dir())
             self.assertEqual(result["latest_alias"], result["latest_dir"])
 
     def test_render_csv_graph_execution_error_sanitizes_runtime_path(self):
@@ -3428,14 +3442,17 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("runtime://mcp_jobs/path-demo/results/figures/graph.png", result["errors"][0])
             self.assertNotIn(str(runtime_root.resolve()), result["errors"][0])
-            self.assertTrue(Path(result["manifest_path"]).is_file())
-            self.assertTrue(Path(result["status_path"]).is_file())
-            self.assertTrue(Path(result["latest_dir"]).is_dir())
+            manifest_path = _runtime_artifact_path(result["manifest_path"], runtime_root)
+            status_path = _runtime_artifact_path(result["status_path"], runtime_root)
+            latest_dir = _runtime_artifact_path(result["latest_dir"], runtime_root)
+            self.assertTrue(manifest_path.is_file())
+            self.assertTrue(status_path.is_file())
+            self.assertTrue(latest_dir.is_dir())
             self.assertEqual(result["latest_alias"], result["latest_dir"])
-            self.assertTrue((Path(result["latest_dir"]) / "manifest.json").is_file())
-            self.assertTrue((Path(result["latest_dir"]) / "status.json").is_file())
-            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
-            status = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
+            self.assertTrue((latest_dir / "manifest.json").is_file())
+            self.assertTrue((latest_dir / "status.json").is_file())
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            status = json.loads(status_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["failure_stage"], "PLOT")
             self.assertEqual(manifest["resolution_hint"], result["resolution_hint"])
             self.assertEqual(manifest["status_path"], result["status_path"])

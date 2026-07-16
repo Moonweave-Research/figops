@@ -225,18 +225,14 @@ class McpSecurityMixin:
     def _resolve_allowed_data_path(self, raw_path: Any, *, field_name: str) -> Path:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise ValueError(f"{field_name} is required.")
-        raw = Path(raw_path).expanduser()
-        raw_absolute = raw if raw.is_absolute() else self.research_root / raw
-        canonical_candidate = canonical_path(raw_absolute)
-        containing_roots = tuple(
-            root for root in self.allowed_data_roots if self._is_relative_to(canonical_candidate, root)
-        )
-        if not containing_roots:
-            raise ValueError(f"{field_name} must stay under an allowed data root.")
+        # The canonical runtime root is an allowed destination even before a
+        # write tool activates it.  A missing future runtime directory must not
+        # invalidate an existing research-data root during a read selection.
+        available_roots = tuple(root for root in self.allowed_data_roots if root.is_dir())
         try:
             selection = select_allowed_data_path(
                 raw_path,
-                allowed_roots=containing_roots,
+                allowed_roots=available_roots,
                 relative_base=self.research_root,
                 allow_internal_aliases=True,
             )

@@ -14,7 +14,6 @@ from .path_identity import (
     canonical_path,
     canonical_paths_overlap,
     canonical_relative_to,
-    lexical_absolute_path,
 )
 from .project_structure_contract import resolve_project_structure
 from .structure_contract_types import RESULT_ROLES
@@ -58,10 +57,15 @@ def validate_runtime_location(
     config: Mapping[str, object] | None = None,
     durable_roots: Iterable[str | os.PathLike[str]] = (),
 ) -> Path:
-    """Validate external placement without creating the runtime directory."""
+    """Validate external placement and return its canonical filesystem identity.
 
-    root = lexical_absolute_path(runtime_root)
-    root_identity = _resolved(root)
+    The runtime root is a trust-boundary object.  Callers that need to retain a
+    user's lexical spelling for a DTO, log, or configuration echo must do so
+    separately; runtime children and containment checks must all derive from
+    this canonical identity.
+    """
+
+    root_identity = _resolved(runtime_root)
     protected: list[tuple[str, Path]] = []
     if project_root is not None:
         project = _resolved(project_root)
@@ -74,7 +78,7 @@ def validate_runtime_location(
                 f"FigOps runtime root must be external and disjoint from every project and durable role root; "
                 f"it overlaps the configured {label}."
             )
-    return root
+    return root_identity
 
 
 def activate_runtime_root(

@@ -1,6 +1,7 @@
 import os
 import tempfile
 
+from hub_core.path_identity import canonical_path
 from hub_core.runtime_boundary import (
     RuntimeBoundaryError,
     activate_runtime_root,
@@ -118,7 +119,14 @@ def preview_runtime_root(*, project_root=None, config=None, durable_roots=()):
                 )
             )
 
-    return _abspath(os.path.join(_preview_temp_dir(), "figops_runtime"))
+    return str(
+        validate_runtime_location(
+            _abspath(os.path.join(_preview_temp_dir(), "figops_runtime")),
+            project_root=project_root,
+            config=config,
+            durable_roots=durable_roots,
+        )
+    )
 
 
 def runtime_root_lookup_candidates():
@@ -140,10 +148,11 @@ def runtime_root_lookup_candidates():
     deduped = []
     seen = set()
     for candidate in candidates:
-        normalized = _abspath(candidate)
-        if normalized not in seen:
-            deduped.append(normalized)
-            seen.add(normalized)
+        normalized = canonical_path(_abspath(candidate))
+        identity = os.path.normcase(os.path.normpath(str(normalized)))
+        if identity not in seen:
+            deduped.append(str(normalized))
+            seen.add(identity)
     return deduped
 
 

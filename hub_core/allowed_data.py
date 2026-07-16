@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, BinaryIO, Iterator, Sequence
 
+from hub_core.path_identity import final_regular_file_path
+
 DEFAULT_INSPECT_MAX_BYTES = 64 * 1024 * 1024
 ABSOLUTE_INSPECT_MAX_BYTES = 256 * 1024 * 1024
 SNAPSHOT_CHUNK_BYTES = 1024 * 1024
@@ -120,36 +122,6 @@ def _check_components(root: Path, candidate: Path) -> None:
             )
 
 
-def _consume_file_symlink_components(lexical: Path) -> Path:
-    """Dereference file-system symlinks component by component.
-
-    ``Path.resolve()`` is sufficient for junctions and most symlinks, but some
-    Windows directory-symlink spellings can survive resolution of a child
-    path.  Consuming the link target itself ensures alias-enabled readers
-    receive a target spelling and never reopen through the caller's alias.
-    """
-
-    absolute = lexical.absolute()
-    current = Path(absolute.anchor)
-    for index, part in enumerate(absolute.parts[1:]):
-        current = current / part
-        if not current.is_symlink():
-            continue
-        try:
-            target = current.readlink()
-        except OSError as exc:
-            raise AllowedDataError("DATA_PATH_UNAVAILABLE", "Data path cannot be inspected safely.") from exc
-        if not target.is_absolute():
-            target = current.parent / target
-        remainder = absolute.parts[index + 2 :]
-        current = target.joinpath(*remainder)
-        break
-    try:
-        return current.resolve(strict=True)
-    except (OSError, RuntimeError) as exc:
-        raise AllowedDataError("DATA_PATH_UNAVAILABLE", "Data path does not exist or cannot be resolved.") from exc
-
-
 def select_allowed_data_path(
     raw_path: str | os.PathLike[str],
     *,
@@ -187,7 +159,10 @@ def select_allowed_data_path(
             raise AllowedDataError("RELATIVE_BASE_OUTSIDE_ALLOWED_ROOT", "The relative data base is not allowed.")
         lexical = base / lexical
     if allow_internal_aliases:
-        resolved = _consume_file_symlink_components(lexical)
+        try:
+            resolved = final_regular_file_path(lexical)
+        except OSError as exc:
+            raise AllowedDataError("DATA_PATH_UNAVAILABLE", "Data path does not exist or cannot be resolved.") from exc
     else:
         try:
             resolved = lexical.resolve(strict=True)
