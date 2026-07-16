@@ -162,7 +162,10 @@ def main() -> int:
     rendered = render_tool_reference(args.profile)
     output_path = PROFILE_TOOL_DOCS.get(args.profile, TOOLS_DOC)
     if args.write:
-        output_path.write_text(rendered, encoding="utf-8")
+        # Generated-reference byte metrics are release witnesses. Keep their
+        # on-disk representation independent of the host checkout's newline
+        # policy (notably Windows CRLF versus macOS/Linux LF).
+        output_path.write_text(rendered, encoding="utf-8", newline="\n")
         return 0
     if args.check:
         current = output_path.read_text(encoding="utf-8")

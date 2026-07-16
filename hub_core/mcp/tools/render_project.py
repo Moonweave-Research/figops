@@ -45,7 +45,23 @@ class McpRenderProjectMixin:
         project_resolved = False
         safe_output_path = False
         try:
-            project_path = self._resolve_project_render_path(arguments)
+            try:
+                project_path = self._resolve_project_render_path(arguments)
+            except (OSError, RuntimeError):
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project render request is invalid.",
+                    errors=[
+                        "project_path must stay under the research root "
+                        "and resolve to an available project directory."
+                    ],
+                    failure_stage="CONTRACT",
+                    resolution_hint="Provide a valid project_id or project_path and figure selector.",
+                    persist_failure=False,
+                )
             project_resolved = True
             loaded = self._load_project_config(project_path, allow_invalid=True)
             config = loaded["config"] if isinstance(loaded["config"], dict) else {}
@@ -259,14 +275,22 @@ class McpRenderProjectMixin:
                     style_summary=style_summary,
                     persist_failure=True,
                 )
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
+            error = (
+                str(exc)
+                if isinstance(exc, ValueError)
+                else (
+                    "Configured project render paths must stay inside the project "
+                    "and resolve to available files."
+                )
+            )
             return self._project_render_error(
                 arguments,
                 dry_run=dry_run,
                 job_id=job_id,
                 job_root=job_root,
                 summary="Project render request is invalid.",
-                errors=[str(exc)],
+                errors=[error],
                 failure_stage="CONTRACT",
                 resolution_hint="Provide a valid project_id or project_path and figure selector.",
                 persist_failure=project_resolved and safe_output_path,

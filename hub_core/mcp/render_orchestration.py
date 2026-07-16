@@ -51,6 +51,7 @@ from hub_core.mcp.render_manifest import (
     write_manifest_and_status as _write_manifest_and_status,
 )
 from hub_core.mcp.render_project_runtime import McpProjectRuntimeMixin
+from hub_core.path_identity import canonical_is_relative_to, canonical_path
 from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.project_paths import open_verified_project_input, snapshot_project_input
 from hub_core.provenance_inputs import expand_project_input_files
@@ -496,8 +497,8 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
 
     def _public_runtime_path(self, path: Path) -> str:
         """Expose runtime artifacts only as runtime URIs, never host-local paths."""
-        resolved = path.resolve()
-        if not resolved.is_relative_to(self.runtime_root.resolve()):
+        resolved = canonical_path(path)
+        if not canonical_is_relative_to(resolved, self.runtime_root):
             return ""
         return self._runtime_uri(resolved)
 

@@ -45,17 +45,17 @@
   "generated_references": {
     "default_full": {
       "path": "docs/tools.md",
-      "bytes": 163802,
+      "bytes": 156140,
       "lines": 7662
     },
     "v2": {
       "path": "docs/tools-v2.md",
-      "bytes": 18381,
+      "bytes": 17355,
       "lines": 1026
     },
     "compatibility": {
       "path": "docs/tools-compatibility.md",
-      "bytes": 136599,
+      "bytes": 130652,
       "lines": 5947
     }
   },

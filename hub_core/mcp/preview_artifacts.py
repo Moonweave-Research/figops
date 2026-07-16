@@ -16,6 +16,13 @@ from pathlib import Path
 from typing import Any, Final, Literal, Mapping
 from urllib.parse import quote
 
+from hub_core.mcp.preview_process_limits import (
+    PREVIEW_WORKER_MEMORY_BYTES,
+)
+from hub_core.mcp.preview_process_limits import (
+    WindowsJobLimiter as _WindowsJobLimiter,
+)
+from hub_core.posix_worker_limits import build_posix_limit_callback
 from hub_core.project_paths import (
     ProjectPathError,
     normalize_project_relative_path,
@@ -30,7 +37,6 @@ MAX_PREVIEW_BASE64_BYTES: Final = 2_796_204
 MAX_PREVIEW_EDGE: Final = 2_048
 MAX_PREVIEW_PIXELS: Final = 8_000_000
 PREVIEW_WORKER_TIMEOUT_SECONDS: Final = 5.0
-PREVIEW_WORKER_MEMORY_BYTES: Final = 256 * 1024 * 1024
 MAX_PREVIEW_SOURCE_BYTES: Final = 16 * 1024 * 1024
 MAX_PREVIEW_MANIFEST_BYTES: Final = 2 * 1024 * 1024
 
@@ -61,6 +67,7 @@ class PreviewMetadata:
     preview_uri: str | None = None
     memory_limit_bytes: int = PREVIEW_WORKER_MEMORY_BYTES
     memory_limit_enforced: bool | None = None
+    memory_limit_limitation: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -163,7 +170,11 @@ def read_job_preview_blob(
             encoded = base64.b64encode(raw)
             if len(encoded) > MAX_PREVIEW_BASE64_BYTES:
                 raise _PreviewUnavailable("PREVIEW_BASE64_LIMIT")
-            metadata = replace(selection.metadata, memory_limit_enforced=memory_enforced)
+            metadata = replace(
+                selection.metadata,
+                memory_limit_enforced=memory_enforced,
+                memory_limit_limitation=_memory_limit_limitation(memory_enforced),
+            )
             return PreviewBlob(
                 metadata=metadata,
                 data_base64=encoded.decode("ascii"),
@@ -291,6 +302,20 @@ def _unavailable(job_id: Any, role: Any, index: Any, code: str) -> PreviewMetada
         logical_role=role if isinstance(role, str) and _ROLE.fullmatch(role) else "",
         artifact_index=index if isinstance(index, int) and not isinstance(index, bool) and index >= 0 else 0,
         memory_limit_enforced=False if code == "WORKER_MEMORY_LIMIT_UNAVAILABLE" else None,
+        memory_limit_limitation=(
+            "Hard worker memory enforcement is unavailable on this host."
+            if code == "WORKER_MEMORY_LIMIT_UNAVAILABLE"
+            else None
+        ),
+    )
+
+
+def _memory_limit_limitation(memory_enforced: bool) -> str | None:
+    if memory_enforced:
+        return None
+    return (
+        "Hard worker memory enforcement is unavailable on macOS; timeout, "
+        "input/output byte caps, CPU/file limits, and process isolation remain active."
     )
 
 
@@ -496,12 +521,7 @@ def _run_worker(source: Path, output: Path, result_path: Path, media_type: str) 
         media_type,
     ]
     process, limiter = _start_limited_process(command)
-    memory_enforced = limiter is not None
-    if not memory_enforced:
-        if process.poll() is None:
-            process.kill()
-        process.wait()
-        raise _PreviewUnavailable("WORKER_MEMORY_LIMIT_UNAVAILABLE")
+    memory_enforced = bool(getattr(limiter, "memory_enforced", True))
     try:
         process.wait(timeout=PREVIEW_WORKER_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
@@ -521,6 +541,9 @@ def _run_worker(source: Path, output: Path, result_path: Path, media_type: str) 
 
 
 class _Limiter:
+    def __init__(self, *, memory_enforced: bool = True) -> None:
+        self.memory_enforced = memory_enforced
+
     def terminate(self, process: subprocess.Popen[bytes]) -> None:
         if process.poll() is None:
             process.kill()
@@ -531,152 +554,6 @@ class _Limiter:
 
     def close(self) -> None:
         return None
-
-
-class _WindowsJobLimiter(_Limiter):
-    def __init__(self, handle: int) -> None:
-        self.handle = handle
-
-    @classmethod
-    def create(cls) -> _WindowsJobLimiter:
-        import ctypes
-        from ctypes import wintypes
-
-        class Basic(ctypes.Structure):
-            _fields_ = [
-                ("per_process_user_time_limit", ctypes.c_longlong),
-                ("per_job_user_time_limit", ctypes.c_longlong),
-                ("limit_flags", wintypes.DWORD),
-                ("minimum_working_set_size", ctypes.c_size_t),
-                ("maximum_working_set_size", ctypes.c_size_t),
-                ("active_process_limit", wintypes.DWORD),
-                ("affinity", ctypes.c_size_t),
-                ("priority_class", wintypes.DWORD),
-                ("scheduling_class", wintypes.DWORD),
-            ]
-
-        class Io(ctypes.Structure):
-            _fields_ = [
-                (name, ctypes.c_ulonglong)
-                for name in (
-                    "read_operation_count",
-                    "write_operation_count",
-                    "other_operation_count",
-                    "read_transfer_count",
-                    "write_transfer_count",
-                    "other_transfer_count",
-                )
-            ]
-
-        class Extended(ctypes.Structure):
-            _fields_ = [
-                ("basic", Basic),
-                ("io", Io),
-                ("process_memory_limit", ctypes.c_size_t),
-                ("job_memory_limit", ctypes.c_size_t),
-                ("peak_process_memory_used", ctypes.c_size_t),
-                ("peak_job_memory_used", ctypes.c_size_t),
-            ]
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
-        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
-        handle = kernel32.CreateJobObjectW(None, None)
-        if not handle:
-            raise OSError(ctypes.get_last_error(), "CreateJobObjectW")
-        limits = Extended()
-        limits.basic.limit_flags = 0x2000 | 0x100 | 0x200
-        limits.process_memory_limit = PREVIEW_WORKER_MEMORY_BYTES
-        limits.job_memory_limit = PREVIEW_WORKER_MEMORY_BYTES
-        kernel32.SetInformationJobObject.argtypes = (
-            wintypes.HANDLE,
-            ctypes.c_int,
-            wintypes.LPVOID,
-            wintypes.DWORD,
-        )
-        kernel32.SetInformationJobObject.restype = wintypes.BOOL
-        ok = kernel32.SetInformationJobObject(wintypes.HANDLE(handle), 9, ctypes.byref(limits), ctypes.sizeof(limits))
-        if not ok:
-            kernel32.CloseHandle(wintypes.HANDLE(handle))
-            raise OSError(ctypes.get_last_error(), "SetInformationJobObject")
-        return cls(int(handle))
-
-    def assign(self, process: subprocess.Popen[bytes]) -> None:
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
-        kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
-        if not kernel32.AssignProcessToJobObject(wintypes.HANDLE(self.handle), wintypes.HANDLE(int(process._handle))):
-            raise OSError(ctypes.get_last_error(), "AssignProcessToJobObject")
-
-    @staticmethod
-    def resume(process: subprocess.Popen[bytes]) -> None:
-        import ctypes
-        from ctypes import wintypes
-
-        class ThreadEntry(ctypes.Structure):
-            _fields_ = [
-                ("dwSize", wintypes.DWORD),
-                ("cntUsage", wintypes.DWORD),
-                ("th32ThreadID", wintypes.DWORD),
-                ("th32OwnerProcessID", wintypes.DWORD),
-                ("tpBasePri", ctypes.c_long),
-                ("tpDeltaPri", ctypes.c_long),
-                ("dwFlags", wintypes.DWORD),
-            ]
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.CreateToolhelp32Snapshot.argtypes = (wintypes.DWORD, wintypes.DWORD)
-        kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-        kernel32.Thread32First.argtypes = (wintypes.HANDLE, ctypes.POINTER(ThreadEntry))
-        kernel32.Thread32First.restype = wintypes.BOOL
-        kernel32.Thread32Next.argtypes = (wintypes.HANDLE, ctypes.POINTER(ThreadEntry))
-        kernel32.Thread32Next.restype = wintypes.BOOL
-        snapshot = kernel32.CreateToolhelp32Snapshot(0x00000004, 0)
-        if snapshot == wintypes.HANDLE(-1).value:
-            raise OSError(ctypes.get_last_error(), "CreateToolhelp32Snapshot")
-        try:
-            entry = ThreadEntry()
-            entry.dwSize = ctypes.sizeof(entry)
-            found = bool(kernel32.Thread32First(snapshot, ctypes.byref(entry)))
-            while found and entry.th32OwnerProcessID != process.pid:
-                found = bool(kernel32.Thread32Next(snapshot, ctypes.byref(entry)))
-            if not found:
-                raise OSError("Suspended worker thread was not found")
-            kernel32.OpenThread.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
-            kernel32.OpenThread.restype = wintypes.HANDLE
-            thread = kernel32.OpenThread(0x0002, False, entry.th32ThreadID)
-            if not thread:
-                raise OSError(ctypes.get_last_error(), "OpenThread")
-            try:
-                kernel32.ResumeThread.argtypes = (wintypes.HANDLE,)
-                kernel32.ResumeThread.restype = wintypes.DWORD
-                if kernel32.ResumeThread(thread) == 0xFFFFFFFF:
-                    raise OSError(ctypes.get_last_error(), "ResumeThread")
-            finally:
-                kernel32.CloseHandle(thread)
-        finally:
-            kernel32.CloseHandle(snapshot)
-
-    def terminate(self, process: subprocess.Popen[bytes]) -> None:
-        import ctypes
-        from ctypes import wintypes
-
-        ctypes.WinDLL("kernel32", use_last_error=True).TerminateJobObject(wintypes.HANDLE(self.handle), 1)
-        try:
-            process.wait(timeout=1.0)
-        except subprocess.TimeoutExpired:
-            super().terminate(process)
-
-    def close(self) -> None:
-        if self.handle:
-            import ctypes
-            from ctypes import wintypes
-
-            ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(wintypes.HANDLE(self.handle))
-            self.handle = 0
 
 
 class _PosixLimiter(_Limiter):
@@ -725,14 +602,14 @@ def _start_limited_process(command: list[str]) -> tuple[subprocess.Popen[bytes],
                 windows.close()
             raise _PreviewUnavailable("WORKER_MEMORY_LIMIT_UNAVAILABLE") from None
     try:
-        import resource
-
-        def limit_memory() -> None:
-            resource.setrlimit(resource.RLIMIT_AS, (PREVIEW_WORKER_MEMORY_BYTES, PREVIEW_WORKER_MEMORY_BYTES))
-
+        limit_worker, memory_enforced = build_posix_limit_callback(
+            memory_bytes=PREVIEW_WORKER_MEMORY_BYTES,
+            cpu_seconds=PREVIEW_WORKER_TIMEOUT_SECONDS,
+            file_bytes=MAX_PREVIEW_RAW_BYTES,
+        )
         options["start_new_session"] = True
-        options["preexec_fn"] = limit_memory
-        limiter = _PosixLimiter()
+        options["preexec_fn"] = limit_worker
+        limiter = _PosixLimiter(memory_enforced=memory_enforced)
     except (ImportError, AttributeError):
         limiter = None
     if limiter is None:

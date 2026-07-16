@@ -971,7 +971,36 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["error_category"], "validation")
+            self.assertEqual(result["error_code"], "GRAPHHUB_VALIDATION")
             self.assertIn("project_path must stay under", result["errors"][0])
+            self.assertNotIn(str(external_root), result["errors"][0])
+            self.assertEqual(result["created_paths"], [])
+            self.assertFalse((runtime_root / "mcp_project_jobs").exists())
+
+    def test_render_project_figure_missing_script_is_contract_error_without_writing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(research_root)
+            (project / "hub_scripts" / "plot.py").unlink()
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "missing-script"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["error_category"], "validation")
+            self.assertEqual(result["error_code"], "GRAPHHUB_VALIDATION")
+            self.assertEqual(
+                result["errors"],
+                ["Configured project render paths must stay inside the project and resolve to available files."],
+            )
+            self.assertEqual(result["created_paths"], [])
             self.assertFalse((runtime_root / "mcp_project_jobs").exists())
 
     def test_render_project_figure_missing_input_fails_data_contract_before_render(self):

@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from hub_core.path_identity import canonical_path, canonical_relative_to
 from hub_core.redaction import redact_secrets, redact_text
 
 from .config import McpServerConfig
@@ -305,14 +306,14 @@ class FigOpsMCPServer(
 
     def _display_path(self, path: Path) -> str:
         try:
-            return path.resolve().relative_to(self.research_root).as_posix()
-        except ValueError:
+            return canonical_relative_to(path, self.research_root).as_posix()
+        except (OSError, RuntimeError, ValueError):
             return str(path)
 
     def _runtime_uri(self, path: Path) -> str:
         try:
-            rel_path = path.resolve().relative_to(self.runtime_root).as_posix()
-        except ValueError:
+            rel_path = canonical_relative_to(path, self.runtime_root).as_posix()
+        except (OSError, RuntimeError, ValueError):
             return self._display_path(path)
         return f"runtime://{rel_path}"
 
@@ -347,13 +348,13 @@ class FigOpsMCPServer(
             expanded_path = Path(data_path).expanduser()
             if expanded_path.is_absolute():
                 replacements.append((str(expanded_path), "input://data_path"))
-            replacements.append((str(expanded_path.resolve()), "input://data_path"))
+            replacements.append((str(canonical_path(expanded_path)), "input://data_path"))
         project_path = arguments.get("project_path")
         if isinstance(project_path, str) and project_path.strip():
             expanded_project_path = Path(project_path).expanduser()
             if expanded_project_path.is_absolute():
                 replacements.append((str(expanded_project_path), "input://project_path"))
-            replacements.append((str(expanded_project_path.resolve()), "input://project_path"))
+            replacements.append((str(canonical_path(expanded_project_path)), "input://project_path"))
 
         deduped: list[tuple[str, str]] = []
         seen: set[tuple[str, str]] = set()

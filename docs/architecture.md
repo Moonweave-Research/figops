@@ -41,6 +41,7 @@ hub_core/structure_inventory.py         # read-only semantic inventory
 hub_core/structure_audit.py             # findings, graph, unresolved classification
 hub_core/structure_plan.py              # deterministic reviewed copy plan
 hub_core/structure_role_binding.py       # destination -> declared role-root binding
+hub_core/structure_stage_cleanup.py      # ownership-safe private-stage/lease cleanup
 hub_core/structure_apply.py              # token/CAS-guarded copy-only transaction
 hub_core/runtime_boundary.py           # project/result/runtime disjointness
 hub_core/atomic_no_clobber.py          # native consuming no-replace namespace move
@@ -104,8 +105,10 @@ No Python module in the tracked architecture roots (`hub_core`, `plotting`, and
 normalization now lives in `plotting/renderers/annotation_normalization.py`,
 while the public overlay façade and compatibility imports remain stable.
 Structure-plan destination binding now lives in
-`hub_core/structure_role_binding.py`; `hub_core/structure_apply.py` retains its
-private compatibility aliases while focusing on transactional execution.
+`hub_core/structure_role_binding.py`, while private-stage and directory-lease
+cleanup lives in `hub_core/structure_stage_cleanup.py`;
+`hub_core/structure_apply.py` retains its private compatibility aliases while
+focusing on transactional execution and config compare-and-swap.
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
 1000 lines while preserving compatibility shims:
@@ -171,8 +174,9 @@ Artifact verification and explicit-policy audit are separated into
 data profiling is isolated in `hub_core/data_inspection.py` and its worker.
 
 Preview lookup, manifest membership, MIME/header checks, lazy base64, and worker
-limits live in `hub_core/mcp/preview_artifacts.py`; conversion work lives in
-`preview_worker.py`. Raster and PDF-first-page previews are bounded to 5 seconds,
+launch orchestration live in `hub_core/mcp/preview_artifacts.py`; Windows Job
+Object containment lives in `preview_process_limits.py`, while conversion work
+lives in `preview_worker.py`. Raster and PDF-first-page previews are bounded to 5 seconds,
 8 megapixels, 256 MiB worker memory, a 2,048-pixel longest edge, and 2 MiB raw
 output. SVG returns typed unavailable until a renderer passes the required
 Windows safety smoke; source vector bytes are never substituted for a preview.
@@ -192,8 +196,9 @@ read-only in-memory view for schema-less projects. `project_layout.py` is the
 single layout inventory consumed by scaffolding and normalization. Read-only
 classification and planning are separated into `structure_inventory.py`,
 `structure_audit.py`, and `structure_plan.py`; `structure_role_binding.py` binds
-every approved destination back to its declared semantic root. Reviewed
-mutation is isolated in `structure_apply.py` and remains copy-only.
+every approved destination back to its declared semantic root, while
+`structure_stage_cleanup.py` owns transaction-private stage and lease cleanup.
+Reviewed mutation is isolated in `structure_apply.py` and remains copy-only.
 
 Runtime and durable-result mechanics are separate from structure discovery.
 `runtime_boundary.py` enforces project/result/runtime disjointness,

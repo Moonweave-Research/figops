@@ -104,7 +104,7 @@ def _stage_bytes(destination: Path, chunks: Any) -> tuple[Path, str]:
         if descriptor >= 0:
             os.close(descriptor)
         if staging_identity is not None:
-            delete_file_by_identity(staging, staging_identity)
+            _discard_owned_prepublication_stage(staging)
         raise
 
 
@@ -122,9 +122,14 @@ def _atomic_install(staging: Path, destination: Path, expected_sha256: str) -> t
     try:
         atomic_no_clobber_move(staging, destination)
     except FileExistsError:
+        _discard_owned_prepublication_stage(staging)
         raise DurablePromotionError(f"{DURABLE_DESTINATION_EXISTS}: durable destination already exists") from None
     except AtomicNoClobberUnavailable as exc:
+        _discard_owned_prepublication_stage(staging)
         raise DurablePromotionError(f"{ATOMIC_NO_CLOBBER_UNAVAILABLE}: atomic no-clobber promotion failed") from exc
+    except PermissionError as exc:
+        _discard_owned_prepublication_stage(staging)
+        raise DurablePromotionError("atomic no-clobber promotion was denied before publication") from exc
     try:
         installed = destination.stat(follow_symlinks=False)
         installed_identity = (installed.st_dev, installed.st_ino)
@@ -150,19 +155,25 @@ def _atomic_install(staging: Path, destination: Path, expected_sha256: str) -> t
     return identity
 
 
-def _discard_staging(
-    staging: Path | None,
-    identity: tuple[int, int] | None = None,
-    expected_sha256: str | None = None,
-) -> None:
-    if staging is None or identity is None or expected_sha256 is None:
-        return
+def _discard_owned_prepublication_stage(staging: Path) -> None:
+    """Remove a stage whose private name has not entered publication.
+
+    This is deliberately a direct unlink, not an identity-check followed by
+    unlink. The caller may use it only while it still owns the unpublished
+    exclusive-create name and after a native no-replace operation reported
+    that no namespace move occurred.
+    """
+
     try:
-        if staging.is_file() and not staging.is_symlink() and _file_identity(staging) == identity:
-            if file_sha256(staging) == expected_sha256:
-                delete_file_by_identity(staging, identity, expected_sha256)
-    except OSError:
-        return
+        staging.unlink()
+    except FileNotFoundError as exc:
+        raise DurablePromotionError(
+            f"{DURABLE_PRIVATE_STAGE_RETAINED}: unpublished stage ownership became ambiguous"
+        ) from exc
+    except OSError as exc:
+        raise DurablePromotionError(
+            f"{DURABLE_PRIVATE_STAGE_RETAINED}: unpublished stage could not be removed"
+        ) from exc
 
 
 def _remove_installed(path: Path, identity: tuple[int, int], expected_sha256: str) -> bool:
@@ -442,9 +453,8 @@ def _promote_runtime_artifact_with_identity(
                 yield chunk
 
     staging, observed = _stage_bytes(target, chunks())
-    staging_identity = _file_identity(staging)
     if observed != expected_sha256:
-        _discard_staging(staging, staging_identity, observed)
+        _discard_owned_prepublication_stage(staging)
         raise DurablePromotionError("runtime artifact hash does not match the producer declaration")
     identity: tuple[int, int] | None = None
     try:
@@ -458,8 +468,6 @@ def _promote_runtime_artifact_with_identity(
         if identity is not None and not _remove_installed(target, identity, expected_sha256):
             raise _cleanup_withheld_error((target,)) from exc
         raise DurablePromotionError("promoted artifact could not be verified after publication") from exc
-    finally:
-        _discard_staging(staging, staging_identity, observed)
     return PromotedArtifact(target, expected_sha256, metadata.st_size), identity
 
 
@@ -491,14 +499,12 @@ def promote_result_with_receipt(
     )
     receipt_target: Path | None = None
     staging: Path | None = None
-    staging_identity: tuple[int, int] | None = None
     receipt_identity: tuple[int, int] | None = None
     digest: str | None = None
     payload = receipt.canonical_bytes()
     try:
         receipt_target = _destination(receipt_destination, Path(runtime_root).expanduser().resolve())
         staging, digest = _stage_bytes(receipt_target, (payload,))
-        staging_identity = _file_identity(staging)
         receipt_identity = _atomic_install(staging, receipt_target, digest)
         if (
             _file_identity(receipt_target) != receipt_identity
@@ -517,8 +523,6 @@ def promote_result_with_receipt(
         if cleanup_withheld:
             raise _cleanup_withheld_error(cleanup_withheld) from exc
         raise
-    finally:
-        _discard_staging(staging, staging_identity, digest)
     assert receipt_target is not None and digest is not None
     return promoted, PromotedArtifact(receipt_target, digest, len(payload))
 

@@ -543,9 +543,14 @@ class TestGraphHubLogging(unittest.TestCase):
         stderr = io.StringIO()
 
         with tempfile.TemporaryDirectory(prefix="graphhub_logging_missing_project_") as tmpdir:
+            missing_project = Path(tmpdir) / "missing"
             with (
-                patch.object(sys, "argv", ["orchestrator.py", "--project", "missing"]),
+                patch.object(sys, "argv", ["orchestrator.py", "--project", str(missing_project)]),
                 patch("orchestrator.get_research_root", return_value=tmpdir),
+                patch(
+                    "orchestrator.resolve_execution_project_path",
+                    return_value=missing_project,
+                ),
                 patch("orchestrator.run_preflight_check"),
                 contextlib.redirect_stdout(stdout),
                 contextlib.redirect_stderr(stderr),
@@ -571,6 +576,7 @@ class TestGraphHubLogging(unittest.TestCase):
                     "argv",
                     ["orchestrator.py", "--project", str(project_dir), "--step", "analysis", "--verbose"],
                 ),
+                patch("orchestrator.get_research_root", return_value=tmpdir),
                 patch("orchestrator.run_preflight_check"),
                 patch(
                     "orchestrator.load_config",

@@ -14,6 +14,7 @@ from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMAT
 from hub_core.data_contract import _read_data_safe, _validate_semantic_constraints
 from hub_core.figure_preflight import validate_figure_preflight
 from hub_core.mcp import render_orchestration as render_helpers
+from hub_core.path_identity import canonical_relative_to
 from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.project_paths import normalize_project_relative_path
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
@@ -716,8 +717,8 @@ class McpRenderToolSupportMixin:
 
     def _public_project_path(self, project_path: Path) -> str:
         try:
-            return project_path.resolve().relative_to(self.research_root).as_posix()
-        except ValueError:
+            return canonical_relative_to(project_path, self.research_root).as_posix()
+        except (OSError, RuntimeError, ValueError):
             return "input://project_path"
 
     @staticmethod

@@ -8,6 +8,11 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from hub_core.path_identity import (
+    canonical_is_relative_to,
+    canonical_path,
+    lexical_or_canonical_relative_to,
+)
 from hub_core.project_paths import (
     ProjectPathError,
     open_verified_project_input,
@@ -50,12 +55,12 @@ def read_verified_runtime_json_object(
     if max_bytes <= 0:
         raise ValueError("Manifest byte limit must be positive.")
     try:
-        root = Path(runtime_root).expanduser().resolve(strict=True)
+        root = canonical_path(runtime_root, strict=True)
         raw_candidate = Path(candidate).expanduser().absolute()
     except (OSError, RuntimeError) as exc:
         raise ValueError("Runtime manifest root is unavailable.") from exc
     try:
-        declaration = raw_candidate.relative_to(root.absolute()).as_posix()
+        declaration = lexical_or_canonical_relative_to(raw_candidate, root).as_posix()
     except ValueError as exc:
         raise ValueError("Runtime manifest must stay inside the runtime root.") from exc
     try:
@@ -136,10 +141,10 @@ def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int, int]
 
 def resolve_runtime_manifest_file(runtime_root: str | Path, candidate: str | Path) -> Path:
     """Resolve a discovered manifest only when every component stays non-symlinked in root."""
-    root = Path(runtime_root).expanduser().resolve()
+    root = canonical_path(runtime_root)
     raw_candidate = Path(candidate).expanduser()
     try:
-        relative = raw_candidate.relative_to(root)
+        relative = lexical_or_canonical_relative_to(raw_candidate, root)
     except ValueError as exc:
         raise ValueError("Discovered manifest must stay under the runtime root.") from exc
     current = root
@@ -148,9 +153,9 @@ def resolve_runtime_manifest_file(runtime_root: str | Path, candidate: str | Pat
         if current.is_symlink():
             raise ValueError("Discovered manifest must not include symlinked path components.")
     try:
-        resolved = raw_candidate.resolve(strict=True)
+        resolved = canonical_path(raw_candidate, strict=True)
     except OSError as exc:
         raise ValueError("Discovered manifest is unavailable.") from exc
-    if not resolved.is_relative_to(root) or not resolved.is_file():
+    if not canonical_is_relative_to(resolved, root, strict=True) or not resolved.is_file():
         raise ValueError("Discovered manifest must be a regular file inside the runtime root.")
     return resolved

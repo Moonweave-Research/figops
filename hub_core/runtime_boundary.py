@@ -10,18 +10,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping
 
+from .path_identity import canonical_path, canonical_paths_overlap, canonical_relative_to
 from .project_structure_contract import resolve_project_structure
 from .structure_contract_types import RESULT_ROLES
 
 _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
-
-
 class RuntimeBoundaryError(RuntimeError):
     """The configured runtime storage violates the external-runtime contract."""
 
 
 def _resolved(path: str | os.PathLike[str]) -> Path:
-    return Path(path).expanduser().resolve(strict=False)
+    return canonical_path(path)
 
 
 def _key(path: Path) -> str:
@@ -31,13 +30,7 @@ def _key(path: Path) -> str:
 def paths_overlap(left: str | os.PathLike[str], right: str | os.PathLike[str]) -> bool:
     """Return whether either fully resolved path contains the other."""
 
-    left_path = _resolved(left)
-    right_path = _resolved(right)
-    try:
-        common = os.path.commonpath((_key(left_path), _key(right_path)))
-    except ValueError:
-        return False
-    return common in {_key(left_path), _key(right_path)}
+    return canonical_paths_overlap(left, right)
 
 
 def durable_role_roots(
@@ -148,13 +141,15 @@ class RuntimeBoundary:
         segments = [safe_runtime_segment(role, fallback="runtime")]
         segments.extend(safe_runtime_segment(part, fallback="item") for part in parts)
         candidate = self.root.joinpath(*segments)
-        if not candidate.resolve(strict=False).is_relative_to(self.root):
+        try:
+            canonical_relative_to(candidate, self.root)
+        except (OSError, RuntimeError, ValueError):
             raise RuntimeBoundaryError("Runtime path escaped the configured runtime root.")
         return candidate
 
     def relative_id(self, path: str | os.PathLike[str]) -> str:
         try:
-            return _resolved(path).relative_to(self.root).as_posix()
+            return canonical_relative_to(path, self.root).as_posix()
         except ValueError as exc:
             raise RuntimeBoundaryError("Runtime identifier must be relative to the runtime root.") from exc
 

@@ -312,8 +312,10 @@ def test_final_v2_measurement_matches_live_default_surface_and_generated_referen
 
     for reference in measurement["generated_references"].values():
         path = Path(__file__).parents[1] / reference["path"]
-        assert len(path.read_bytes()) == reference["bytes"]
-        assert len(path.read_text(encoding="utf-8").splitlines()) == reference["lines"]
+        raw = path.read_bytes()
+        assert b"\r\n" not in raw, f"{reference['path']} must use canonical LF newlines"
+        assert len(raw) == reference["bytes"]
+        assert len(raw.decode("utf-8").splitlines()) == reference["lines"]
 
     limits = measurement["preview_limits"]
     assert PREVIEW_WORKER_TIMEOUT_SECONDS == limits["worker_timeout_seconds"]

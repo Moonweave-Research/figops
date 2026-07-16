@@ -7,7 +7,6 @@ import os
 import shutil
 import stat
 import uuid
-from contextlib import nullcontext
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping
 
@@ -34,9 +33,18 @@ from .structure_role_binding import (
     config_mapping,
     validate_role_destination_bindings,
 )
+from .structure_stage_cleanup import (
+    discard_owned_prepublication_stage,
+    discard_private_stage,
+    release_directory_leases,
+)
 
 _config_mapping = config_mapping
 _validate_role_destination_bindings = validate_role_destination_bindings
+_discard_owned_prepublication_stage = discard_owned_prepublication_stage
+_discard_private_stage = discard_private_stage
+_release_directory_leases = release_directory_leases
+STRUCTURE_MANUAL_CLEANUP_REQUIRED = "FIGOPS_STRUCTURE_MANUAL_CLEANUP_REQUIRED"
 
 
 def _sha256(path: Path) -> str:
@@ -106,89 +114,85 @@ def _publish_no_clobber(
     try:
         atomic_no_clobber_move(stage, destination)
     except FileExistsError:
+        _discard_owned_prepublication_stage(stage)
         raise FileExistsError(f"Destination appeared during apply: {destination.name}") from None
     except AtomicNoClobberUnavailable as exc:
+        _discard_owned_prepublication_stage(stage)
         raise RuntimeError(
             f"{ATOMIC_NO_CLOBBER_UNAVAILABLE}: atomic no-clobber publish failed: {destination.name}"
         ) from exc
+    except PermissionError:
+        _discard_owned_prepublication_stage(stage)
+        raise
     try:
         published_identity = _file_identity(destination)
     except OSError as exc:
-        _remove_if_identity(destination, identity, expected_hash)
-        raise RuntimeError("Published structure path changed during apply.") from exc
+        removed = _remove_if_identity(destination, identity, expected_hash)
+        suffix = "" if removed else f"; {STRUCTURE_MANUAL_CLEANUP_REQUIRED}: cleanup withheld"
+        raise RuntimeError(f"Published structure path changed during apply{suffix}.") from exc
     if published_identity != identity or os.path.lexists(stage):
-        _remove_if_identity(destination, identity, expected_hash)
-        raise RuntimeError("Structure parent or stage identity changed during publish.")
+        removed = _remove_if_identity(destination, identity, expected_hash)
+        suffix = "" if removed else f"; {STRUCTURE_MANUAL_CLEANUP_REQUIRED}: cleanup withheld"
+        raise RuntimeError(f"Structure parent or stage identity changed during publish{suffix}.")
     try:
         installed = destination.stat(follow_symlinks=False)
         installed_identity = (installed.st_dev, installed.st_ino)
         installed_hash = _sha256(destination)
     except OSError as exc:
-        _remove_if_identity(destination, identity, expected_hash)
-        raise RuntimeError("Published structure destination could not be verified.") from exc
+        removed = _remove_if_identity(destination, identity, expected_hash)
+        suffix = "" if removed else f"; {STRUCTURE_MANUAL_CLEANUP_REQUIRED}: cleanup withheld"
+        raise RuntimeError(
+            f"Published structure destination could not be verified{suffix}."
+        ) from exc
     if (
         installed_identity != identity
         or installed.st_nlink != 1
         or (expected_hash is not None and installed_hash != expected_hash)
     ):
-        _remove_if_identity(destination, identity, expected_hash)
-        raise RuntimeError("Published structure destination retained an alias or changed after publish.")
+        removed = _remove_if_identity(destination, identity, expected_hash)
+        suffix = "" if removed else f"; {STRUCTURE_MANUAL_CLEANUP_REQUIRED}: cleanup withheld"
+        raise RuntimeError(
+            f"Published structure destination retained an alias or changed after publish{suffix}."
+        )
     _fsync_parent(destination)
     return identity
 
 
-def _discard_private_stage(
-    stage: Path,
-    expected_identity: tuple[int, int] | None = None,
-    parent_witness: DirectoryWitness | None = None,
-) -> None:
-    try:
-        lease = lease_directory_witness(parent_witness) if parent_witness is not None else nullcontext()
-        with lease:
-            if expected_identity is not None:
-                delete_file_by_identity(stage, expected_identity)
-    except (OSError, RuntimeError):
-        return
-
-
-def _remove_if_owned(path: Path, expected_hash: str, identity: tuple[int, int]) -> None:
+def _remove_if_owned(path: Path, expected_hash: str, identity: tuple[int, int]) -> bool:
     """Best-effort rollback that cannot unlink a replacement at the same path."""
 
     try:
+        if not os.path.lexists(path):
+            return True
         if (
             path.is_file()
             and not path.is_symlink()
             and _file_identity(path) == identity
             and _sha256(path) == expected_hash
         ):
-            delete_file_by_identity(path, identity, expected_hash)
+            return delete_file_by_identity(path, identity, expected_hash)
     except OSError:
-        return
+        return False
+    return False
 
 
 def _remove_if_identity(
     path: Path,
     identity: tuple[int, int],
     expected_hash: str | None = None,
-) -> None:
+) -> bool:
     """Remove only the exact namespace identity installed by this transaction."""
 
     if expected_hash is None:
-        return
+        return False
     try:
+        if not os.path.lexists(path):
+            return True
         if path.is_file() and not path.is_symlink():
-            delete_file_by_identity(path, identity, expected_hash)
+            return delete_file_by_identity(path, identity, expected_hash)
     except OSError:
-        return
-
-
-def _release_directory_leases(leases: list[Any]) -> None:
-    for lease in reversed(leases):
-        try:
-            lease.__exit__(None, None, None)
-        except (OSError, RuntimeError):
-            pass
-    leases.clear()
+        return False
+    return False
 
 
 def _stage_copy(
@@ -225,7 +229,7 @@ def _stage_copy(
         if descriptor >= 0:
             os.close(descriptor)
         if stage_identity is not None:
-            delete_file_by_identity(stage, stage_identity)
+            _discard_owned_prepublication_stage(stage)
         raise
 
 
@@ -261,7 +265,7 @@ def _stage_bytes(
         if descriptor >= 0:
             os.close(descriptor)
         if stage_identity is not None:
-            delete_file_by_identity(stage, stage_identity)
+            _discard_owned_prepublication_stage(stage)
         raise
 
 
@@ -741,10 +745,11 @@ def apply_structure_plan(
         }
         _release_directory_leases(held_directory_leases)
         return result
-    except BaseException:
+    except BaseException as exc:
+        cleanup_withheld: list[Path] = []
         if config_replaced and config_backup is not None and config_parent_witness is not None:
             if config_replacement_identity is not None:
-                _rollback_config_no_clobber(
+                rolled_back = _rollback_config_no_clobber(
                     config_path=config_path,
                     replacement_hash=str(config_update["after_sha256"]),
                     replacement_identity=config_replacement_identity,
@@ -753,6 +758,8 @@ def apply_structure_plan(
                     original_guard=config_original_guard,
                     parent_witness=config_parent_witness,
                 )
+                if not rolled_back:
+                    cleanup_withheld.append(config_path)
         try:
             if config_backup is not None and config_backup.is_file() and not config_backup.is_symlink():
                 if (
@@ -761,15 +768,31 @@ def apply_structure_plan(
                     and _sha256(config_backup) == planned_config_hash
                     and _sha256(config_path) == planned_config_hash
                 ):
-                    delete_file_by_identity(
+                    removed_backup = delete_file_by_identity(
                         config_backup,
                         config_backup_identity,
                         str(planned_config_hash),
                     )
+                    if not removed_backup:
+                        cleanup_withheld.append(config_backup)
             for destination, expected_hash, identity in reversed(created):
-                _remove_if_owned(destination, expected_hash, identity)
+                if not _remove_if_owned(destination, expected_hash, identity):
+                    cleanup_withheld.append(destination)
         finally:
             _release_directory_leases(held_directory_leases)
+        if cleanup_withheld:
+            labels = ", ".join(
+                sorted(
+                    path.relative_to(root).as_posix()
+                    if path.is_relative_to(root)
+                    else path.name
+                    for path in cleanup_withheld
+                )
+            )
+            raise RuntimeError(
+                f"{STRUCTURE_MANUAL_CLEANUP_REQUIRED}: automatic rollback was withheld for "
+                f"ownership-ambiguous path(s): {labels}; preserve them for manual review"
+            ) from exc
         raise
 
 

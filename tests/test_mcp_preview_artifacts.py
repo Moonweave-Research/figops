@@ -318,6 +318,31 @@ def test_worker_memory_limit_kills_real_overallocation() -> None:
     assert process.returncode != 0
 
 
+def test_darwin_preview_worker_continues_and_reports_memory_limitation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "preview.png"
+    result_path = tmp_path / "result.json"
+    result_path.write_text('{"status":"available"}', encoding="utf-8")
+
+    class Process:
+        returncode = 0
+
+        @staticmethod
+        def wait(timeout=None):
+            assert timeout == previews.PREVIEW_WORKER_TIMEOUT_SECONDS
+
+    limiter = previews._PosixLimiter(memory_enforced=False)
+    monkeypatch.setattr(previews, "_start_limited_process", lambda command: (Process(), limiter))
+
+    payload, memory_enforced = previews._run_worker(tmp_path / "source.png", output, result_path, "image/png")
+
+    assert payload == {"status": "available"}
+    assert memory_enforced is False
+    assert "macOS" in previews._memory_limit_limitation(memory_enforced)
+
+
 def test_posix_limited_spawn_failure_is_typed(monkeypatch) -> None:
     monkeypatch.setattr(previews.subprocess, "Popen", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("boom")))
     with pytest.raises(previews._PreviewUnavailable) as caught:

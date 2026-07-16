@@ -420,7 +420,8 @@ def test_mcp_project_render_consumes_verified_external_raw_from_runtime(tmp_path
 
 
 def test_cli_external_raw_root_grant_reaches_actual_producer(tmp_path: Path) -> None:
-    project = tmp_path / "project"
+    research = tmp_path / "research"
+    project = research / "project"
     allowed = tmp_path / "lab-exports"
     runtime = tmp_path / "runtime"
     (project / "hub_scripts" / "analysis").mkdir(parents=True)
@@ -459,6 +460,7 @@ def test_cli_external_raw_root_grant_reaches_actual_producer(tmp_path: Path) -> 
         encoding="utf-8",
     )
     env = os.environ.copy()
+    env["PROJECT_ROOT"] = str(research)
     env["RESEARCH_HUB_RUNTIME_ROOT"] = str(runtime)
     completed = subprocess.run(
         [

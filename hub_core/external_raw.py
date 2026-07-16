@@ -16,6 +16,8 @@ from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
+from .path_identity import canonical_is_relative_to, canonical_path
+
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _URI_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*$")
@@ -175,25 +177,21 @@ def verify_external_raw_materialization(
     )
     if item.allowed_root not in allowed_roots:
         raise ExternalRawError(f"external raw allowed root {item.allowed_root!r} is not launcher-approved")
-    approved_root = Path(allowed_roots[item.allowed_root]).expanduser().resolve(strict=True)
+    approved_root = canonical_path(allowed_roots[item.allowed_root], strict=True)
     if not approved_root.is_dir():
         raise ExternalRawError("external raw allowed root must resolve to an existing directory")
     if item.locator_kind == "path":
-        source = (approved_root / Path(item.locator)).resolve(strict=False)
-        try:
-            source.relative_to(approved_root)
-        except ValueError as exc:
-            raise ExternalRawError("external raw local locator escapes its approved root") from exc
+        source = canonical_path(approved_root / Path(item.locator))
+        if not canonical_is_relative_to(source, approved_root):
+            raise ExternalRawError("external raw local locator escapes its approved root")
 
-    runtime = Path(runtime_root).expanduser().resolve(strict=True)
+    runtime = canonical_path(runtime_root, strict=True)
     if not runtime.is_dir():
         raise ExternalRawError("external raw runtime root must be an existing directory")
     raw_materialized = Path(materialized_path).expanduser().absolute()
-    materialized = raw_materialized.resolve(strict=True)
-    try:
-        materialized.relative_to(runtime)
-    except ValueError as exc:
-        raise ExternalRawError("external raw materialization must stay below the runtime root") from exc
+    materialized = canonical_path(raw_materialized, strict=True)
+    if not canonical_is_relative_to(materialized, runtime, strict=True):
+        raise ExternalRawError("external raw materialization must stay below the runtime root")
     observed, size = _hash_regular_file(raw_materialized)
     if observed != item.sha256:
         raise ExternalRawError(

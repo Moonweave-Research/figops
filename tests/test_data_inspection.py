@@ -537,6 +537,40 @@ def test_memory_limiter_unavailable_fails_before_unbounded_worker(
     assert result["limits"]["worker_memory_enforced"] is False
 
 
+def test_darwin_inspection_continues_with_non_memory_limits_and_reports_limitation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "facts.csv"
+    source.write_text("x\n1\n", encoding="utf-8")
+
+    class Process:
+        returncode = 0
+
+        @staticmethod
+        def communicate(*, input, timeout):
+            del input, timeout
+            payload = {
+                "status": "available",
+                "availability": {"state": "available", "reason": None},
+                "scan": {"row_count": 1},
+                "columns": [],
+                "samples": [],
+                "truncation": {},
+                "warnings": [],
+            }
+            return json.dumps(payload).encode(), b""
+
+    limiter = inspection._PosixProcessGroupLimiter(memory_enforced=False)
+    monkeypatch.setattr(inspection, "_start_worker", lambda: (Process(), limiter))
+
+    result = inspect_data(_legacy_snapshot(source))
+
+    assert result["status"] == "available"
+    assert result["limits"]["worker_memory_enforced"] is False
+    assert "unavailable on this host" in result["limits"]["worker_memory_limitation"]
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job Object failure path is Windows-specific")
 def test_windows_job_creation_failure_never_spawns_unbounded_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     popen = pytest.fail

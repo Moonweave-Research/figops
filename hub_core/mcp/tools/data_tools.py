@@ -11,6 +11,7 @@ from hub_core.config_parser import load_yaml_with_unique_keys, validate_config
 from hub_core.data_inspection import inspect_allowed_data
 from hub_core.external_raw import ExternalRawError, validate_external_raw_descriptors
 from hub_core.external_raw_execution import bind_launcher_allowed_roots
+from hub_core.path_identity import canonical_is_relative_to, canonical_path
 from hub_core.project_config_reader import find_verified_project_config, read_verified_project_config
 from hub_core.project_discovery import ProjectDiscoveryService
 
@@ -230,8 +231,12 @@ class McpDataToolsMixin:
                 if allowed_root is None:
                     continue
                 try:
-                    candidate = allowed_root.joinpath(*descriptor.locator.split("/")).resolve(strict=True)
-                    candidate.relative_to(allowed_root)
+                    candidate = canonical_path(
+                        allowed_root.joinpath(*descriptor.locator.split("/")),
+                        strict=True,
+                    )
+                    if not canonical_is_relative_to(candidate, allowed_root, strict=True):
+                        continue
                 except (FileNotFoundError, OSError, RuntimeError, ValueError):
                     continue
                 if candidate != requested:
@@ -254,11 +259,7 @@ class McpDataToolsMixin:
 
     def _policy_configs(self, requested: Path) -> list[tuple[Path, dict[str, Any]]]:
         roots: list[Path] = []
-        try:
-            requested.relative_to(self.research_root)
-        except ValueError:
-            pass
-        else:
+        if canonical_is_relative_to(requested, self.research_root):
             for parent in (requested.parent, *requested.parents):
                 try:
                     if find_verified_project_config(parent) is not None:

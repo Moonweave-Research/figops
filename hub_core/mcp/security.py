@@ -12,6 +12,7 @@ from hub_core.execution_project_boundary import (
 )
 from hub_core.mcp.config import McpServerConfig, normalize_allowed_root
 from hub_core.mcp.errors import DISABLED_ERROR
+from hub_core.path_identity import canonical_is_relative_to, canonical_path
 from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.runtime_boundary import validate_runtime_location
 from hub_core.runtime_paths import preview_runtime_root, resolve_runtime_root
@@ -75,8 +76,8 @@ class McpSecurityMixin:
             runtime_root=runtime_root,
             write_tools_enabled=write_tools_enabled,
         )
-        self.hub_path = Path(server_config.hub_path or get_hub_path()).expanduser().resolve()
-        self.research_root = Path(server_config.research_root or get_research_root()).expanduser().resolve()
+        self.hub_path = canonical_path(server_config.hub_path or get_hub_path())
+        self.research_root = canonical_path(server_config.research_root or get_research_root())
         self._runtime_root_explicit = server_config.explicit_runtime_root()
         self.runtime_root = self._resolve_runtime_root(server_config.runtime_root)
         self.security_warnings = []
@@ -114,7 +115,7 @@ class McpSecurityMixin:
     def _resolve_runtime_root(runtime_root: str | os.PathLike | None = None) -> Path:
         if runtime_root:
             return validate_runtime_location(runtime_root)
-        return Path(preview_runtime_root()).expanduser().resolve()
+        return canonical_path(preview_runtime_root())
 
     @staticmethod
     def _resolve_write_tools_enabled(write_tools_enabled: bool | None) -> bool:
@@ -139,7 +140,7 @@ class McpSecurityMixin:
             if not extra.is_absolute():
                 self.security_warnings.append(f"Skipped allowed data root because it is not absolute: {stripped}")
                 continue
-            resolved = extra.resolve()
+            resolved = canonical_path(extra)
             if not resolved.is_dir():
                 self.security_warnings.append(
                     f"Skipped allowed data root because it does not exist as a directory: {resolved}"
@@ -181,11 +182,7 @@ class McpSecurityMixin:
 
     @staticmethod
     def _is_relative_to(path: Path, root: Path) -> bool:
-        try:
-            path.relative_to(root)
-        except ValueError:
-            return False
-        return True
+        return canonical_is_relative_to(path, root)
 
     @staticmethod
     def _is_reparse_or_symlink(path: Path) -> bool:
@@ -204,17 +201,17 @@ class McpSecurityMixin:
         raw = Path(raw_path).expanduser()
         trusted_root_raw = Path(root or self.research_root).expanduser()
         if not trusted_root_raw.is_absolute():
-            trusted_root_raw = trusted_root_raw.resolve()
+            trusted_root_raw = canonical_path(trusted_root_raw)
         raw_absolute = raw if raw.is_absolute() else trusted_root_raw / raw
-        trusted_root = trusted_root_raw.resolve()
-        path = raw_absolute.resolve()
+        trusted_root = canonical_path(trusted_root_raw)
+        path = canonical_path(raw_absolute)
         if not self._is_relative_to(path, trusted_root):
             raise ValueError(f"{field_name} must stay under {trusted_root}.")
         current = Path(raw_absolute.anchor)
         for part in raw_absolute.parts[1:]:
             current = current / part
             if self._is_reparse_or_symlink(current):
-                target = current.resolve()
+                target = canonical_path(current)
                 # Allow internal symlinks (target under trusted_root) and system-level
                 # aliases (trusted_root under target, e.g. macOS /var → /private/var).
                 # Reject only when neither side is contained by the other — a true escape.
@@ -229,7 +226,7 @@ class McpSecurityMixin:
             raise ValueError(f"{field_name} is required.")
         raw = Path(raw_path).expanduser()
         raw_absolute = raw if raw.is_absolute() else self.research_root / raw
-        path = raw_absolute.resolve()
+        path = canonical_path(raw_absolute)
         containing_roots = tuple(root for root in self.allowed_data_roots if self._is_relative_to(path, root))
         if not containing_roots:
             allowed = ", ".join(str(root) for root in self.allowed_data_roots)
@@ -238,7 +235,7 @@ class McpSecurityMixin:
         for part in raw_absolute.parts[1:]:
             current = current / part
             if self._is_reparse_or_symlink(current):
-                target = current.resolve()
+                target = canonical_path(current)
                 if not any(
                     self._is_relative_to(target, root) or self._is_relative_to(root, target)
                     for root in containing_roots
@@ -248,7 +245,7 @@ class McpSecurityMixin:
 
     def _activate_runtime_root_for_runtime_access(self) -> None:
         if not self._runtime_root_explicit:
-            self.runtime_root = Path(resolve_runtime_root()).expanduser().resolve()
+            self.runtime_root = canonical_path(resolve_runtime_root())
             self.allowed_data_roots = self._allowed_data_roots()
 
     def _scan_root(self, arguments: dict[str, Any]) -> Path:

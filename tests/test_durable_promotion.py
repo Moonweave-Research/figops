@@ -134,6 +134,32 @@ def test_promotion_unsupported_atomic_move_has_no_overwrite_fallback(tmp_path: P
     assert not list(destination.parent.glob(".result.csv.figops-stage-*"))
 
 
+def test_posix_prepublication_failure_directly_discards_owned_stage(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    source = runtime / "result.csv"
+    source.write_bytes(b"producer-owned")
+    destination = tmp_path / "project" / "results" / "result.csv"
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    import hub_core.durable_promotion as promotion
+
+    monkeypatch.setattr(
+        promotion,
+        "atomic_no_clobber_move",
+        lambda *_args: (_ for _ in ()).throw(AtomicNoClobberUnavailable("darwin unavailable")),
+    )
+    monkeypatch.setattr(promotion, "delete_file_by_identity", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(DurablePromotionError, match="FIGOPS_ATOMIC_NO_CLOBBER_UNAVAILABLE"):
+        promote_runtime_artifact(source, destination, runtime_root=runtime, expected_sha256=digest)
+
+    assert not destination.exists()
+    assert not list(destination.parent.glob(".result.csv.figops-stage-*"))
+
+
 def test_permanent_stage_unlink_denial_cannot_leave_a_private_alias(tmp_path: Path, monkeypatch) -> None:
     runtime = tmp_path / "runtime"
     runtime.mkdir()
@@ -181,6 +207,36 @@ def test_promotion_rejects_prepublication_private_hardlink_alias(tmp_path: Path,
     assert not list(destination.parent.glob(".result.csv.figops-stage-*"))
 
 
+def test_posix_postpublication_verifier_failure_preserves_destination_for_manual_review(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    source = runtime / "result.csv"
+    source.write_bytes(b"producer-owned")
+    destination = tmp_path / "project" / "results" / "result.csv"
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    import hub_core.durable_promotion as promotion
+
+    real_move = promotion.atomic_no_clobber_move
+    alias = destination.parent / "attacker-alias.tmp"
+
+    def add_alias_then_move(stage, target):
+        os.link(stage, alias, follow_symlinks=False)
+        real_move(stage, target)
+
+    monkeypatch.setattr(promotion, "atomic_no_clobber_move", add_alias_then_move)
+    monkeypatch.setattr(promotion, "delete_file_by_identity", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(DurablePromotionError, match="FIGOPS_DURABLE_MANUAL_CLEANUP_REQUIRED"):
+        promote_runtime_artifact(source, destination, runtime_root=runtime, expected_sha256=digest)
+
+    assert destination.read_bytes() == b"producer-owned"
+    assert alias.read_bytes() == b"producer-owned"
+    assert not list(destination.parent.glob(".result.csv.figops-stage-*"))
+
+
 def test_receipt_race_rolls_back_only_our_artifact(tmp_path: Path, monkeypatch) -> None:
     runtime = tmp_path / "runtime"
     runtime.mkdir()
@@ -209,6 +265,40 @@ def test_receipt_race_rolls_back_only_our_artifact(tmp_path: Path, monkeypatch) 
 
     assert result.exists() is (os.name != "nt")
     assert receipt_path.read_bytes() == b"competitor-receipt"
+
+
+def test_posix_receipt_race_keeps_published_artifact_and_discards_receipt_stage(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    source = runtime / "result.csv"
+    source.write_bytes(b"producer-owned")
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    result = tmp_path / "project" / "results" / "result.csv"
+    receipt_path = tmp_path / "project" / "results" / "result.receipt.json"
+
+    import hub_core.durable_promotion as promotion
+
+    real_move = promotion.atomic_no_clobber_move
+    calls = 0
+
+    def race_on_receipt(stage, target):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            Path(target).write_bytes(b"competitor-receipt")
+        real_move(stage, target)
+
+    monkeypatch.setattr(promotion, "atomic_no_clobber_move", race_on_receipt)
+    monkeypatch.setattr(promotion, "delete_file_by_identity", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(DurablePromotionError, match="FIGOPS_DURABLE_MANUAL_CLEANUP_REQUIRED"):
+        promote_result_with_receipt(source, result, _receipt(digest), receipt_path, runtime_root=runtime)
+
+    assert result.read_bytes() == b"producer-owned"
+    assert receipt_path.read_bytes() == b"competitor-receipt"
+    assert not list(result.parent.glob(".*.figops-stage-*"))
 
 
 def test_receipt_failure_never_deletes_replacement_artifact(tmp_path: Path, monkeypatch) -> None:

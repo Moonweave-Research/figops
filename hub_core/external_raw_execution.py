@@ -24,6 +24,7 @@ from .external_raw import (
     external_raw_index,
     verify_external_raw_materialization,
 )
+from .path_identity import canonical_is_relative_to, canonical_path, canonical_relative_to
 from .runtime_boundary import activate_runtime_root, runtime_project_id, safe_runtime_segment
 from .runtime_paths import resolve_runtime_root
 
@@ -113,7 +114,7 @@ def bind_launcher_allowed_roots(
             raise ExternalRawError(
                 "launcher external raw root id must use letters, digits, '.', '_', or '-'"
             )
-        path = Path(raw_path).expanduser().resolve(strict=True)
+        path = canonical_path(raw_path, strict=True)
         if not path.is_dir():
             raise ExternalRawError(f"launcher external raw root {root_id!r} is not a directory")
         if root_id in bound and bound[root_id] != path:
@@ -159,19 +160,15 @@ def _approved_source(
     if lexical.is_symlink():
         raise ExternalRawError(f"external raw source {descriptor.id!r} must not be a symlink")
     try:
-        source = lexical.resolve(strict=True)
-        source.relative_to(approved_root)
+        source = canonical_path(lexical, strict=True)
+        canonical_relative_to(source, approved_root, strict=True)
     except (FileNotFoundError, ValueError) as exc:
         raise ExternalRawError(
             f"external raw source {descriptor.id!r} is unavailable or outside its approved root"
         ) from exc
     if not source.is_file():
         raise ExternalRawError(f"external raw source {descriptor.id!r} must be a regular file")
-    try:
-        source.relative_to(project_root)
-    except ValueError:
-        pass
-    else:
+    if canonical_is_relative_to(source, project_root, strict=True):
         raise ExternalRawError(f"external raw source {descriptor.id!r} must remain outside the project")
     return source
 
@@ -242,7 +239,7 @@ def _copy_verified_source(source: Path, destination: Path, expected_sha256: str,
 def _runtime_child(runtime: Path, *parts: str) -> Path:
     candidate = runtime.joinpath(*parts)
     try:
-        candidate.resolve(strict=False).relative_to(runtime)
+        canonical_relative_to(candidate, runtime)
     except ValueError as exc:
         raise ExternalRawError("external raw materialization path escaped the runtime root") from exc
     current = runtime
@@ -269,9 +266,12 @@ def materialize_external_raw_inputs(
         return []
     descriptors = external_raw_index(config.get("external_raw"))
     authority = bind_launcher_allowed_roots(allowed_roots)
-    project = Path(project_root).resolve(strict=True)
+    project = canonical_path(project_root, strict=True)
     if runtime_root is None:
-        runtime = Path(resolve_runtime_root(project_root=project, config=dict(config))).resolve(strict=True)
+        runtime = canonical_path(
+            resolve_runtime_root(project_root=project, config=dict(config)),
+            strict=True,
+        )
     else:
         runtime = activate_runtime_root(
             runtime_root,

@@ -16,6 +16,7 @@ from hub_core.allowed_data import (
     DEFAULT_INSPECT_MAX_BYTES,
     INSPECT_WORK_CUTOFF_SECONDS,
 )
+from hub_core.posix_worker_limits import build_posix_limit_callback
 
 MAX_SCAN_ROWS = 1_000_000
 MAX_RETURNED_COLUMNS = 256
@@ -128,7 +129,8 @@ def _detect_format(snapshot: InspectionSnapshot) -> tuple[str | None, str | None
 
 
 class _Limiter:
-    enforced = True
+    def __init__(self, *, memory_enforced: bool = True) -> None:
+        self.memory_enforced = memory_enforced
 
     def terminate(self, process: subprocess.Popen[bytes]) -> None:
         if process.poll() is None:
@@ -289,17 +291,14 @@ def _start_worker(module: str = "hub_core.data_inspection_worker") -> tuple[subp
                 limiter.close()
             raise _WorkerLimitUnavailable("hard worker memory containment is unavailable") from None
     try:
-        import resource
-
-        def limit_memory() -> None:
-            resource.setrlimit(
-                resource.RLIMIT_AS,
-                (INSPECTION_WORKER_MEMORY_BYTES, INSPECTION_WORKER_MEMORY_BYTES),
-            )
-
+        limit_worker, memory_enforced = build_posix_limit_callback(
+            memory_bytes=INSPECTION_WORKER_MEMORY_BYTES,
+            cpu_seconds=INSPECTION_WORK_CUTOFF_SECONDS,
+            file_bytes=MAX_INSPECTION_RESPONSE_BYTES,
+        )
         options["start_new_session"] = True
-        options["preexec_fn"] = limit_memory
-        limiter = _PosixProcessGroupLimiter()
+        options["preexec_fn"] = limit_worker
+        limiter = _PosixProcessGroupLimiter(memory_enforced=memory_enforced)
     except (ImportError, AttributeError):
         raise _WorkerLimitUnavailable("hard worker memory containment is unavailable") from None
     return subprocess.Popen(command, **options), limiter
@@ -385,7 +384,7 @@ def inspect_data(
         process, limiter = _start_worker()
     except _WorkerLimitUnavailable:
         return _unavailable("WORKER_MEMORY_LIMIT_UNAVAILABLE", source=source, memory_enforced=False)
-    memory_enforced = limiter is not None
+    memory_enforced = bool(getattr(limiter, "memory_enforced", True)) if limiter is not None else False
     # Spawning is part of the single snapshot+inspection deadline. Recompute
     # the remaining budget only after the contained worker exists.
     remaining = float(snapshot.deadline) - time.monotonic()

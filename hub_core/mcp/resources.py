@@ -12,6 +12,11 @@ import yaml
 from hub_core.adapters import select_adapters
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, PUBLIC_TARGET_FORMATS, load_yaml_with_unique_keys
 from hub_core.mcp.manifest_io import read_verified_runtime_json_object
+from hub_core.path_identity import (
+    canonical_is_relative_to,
+    canonical_path,
+    lexical_or_canonical_relative_to,
+)
 from hub_core.project_config_reader import read_verified_project_config
 from hub_core.project_discovery import ProjectDiscoveryService
 from hub_core.project_paths import (
@@ -260,7 +265,7 @@ class McpResourcesMixin:
         if not project.config:
             raise FileNotFoundError("Discovered project has no config declaration.")
         try:
-            research_root = Path(self.research_root).expanduser().resolve(strict=True)
+            research_root = canonical_path(self.research_root, strict=True)
             project_declaration = normalize_project_relative_path(project.path, purpose="discovered project")
             if project_path_has_symlink_component(
                 research_root,
@@ -268,8 +273,12 @@ class McpResourcesMixin:
                 purpose="discovered project",
             ):
                 raise ProjectPathError("Discovered project includes a symlink or reparse-point component.")
-            project_root = research_root.joinpath(*PurePosixPath(project_declaration).parts).resolve(strict=True)
-            project_root.relative_to(research_root)
+            project_root = canonical_path(
+                research_root.joinpath(*PurePosixPath(project_declaration).parts),
+                strict=True,
+            )
+            if not canonical_is_relative_to(project_root, research_root, strict=True):
+                raise ProjectPathError("Discovered project must stay inside the research root.")
             if not project_root.is_dir():
                 raise ProjectPathError("Discovered project root must be a directory.")
         except ValueError as exc:
@@ -293,8 +302,8 @@ class McpResourcesMixin:
         raw_manifest = manifest_path.expanduser().absolute()
         for candidate in roots:
             try:
-                root = candidate.expanduser().resolve(strict=True)
-                raw_manifest.relative_to(root.absolute())
+                root = canonical_path(candidate, strict=True)
+                lexical_or_canonical_relative_to(raw_manifest, root)
             except (FileNotFoundError, OSError, RuntimeError, ValueError):
                 continue
             return root

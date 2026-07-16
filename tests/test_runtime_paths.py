@@ -10,7 +10,7 @@ from hub_core.attempt_provenance import build_attempt_provenance
 from hub_core.error_dumper import dump_exception_failure, dump_pipeline_failure
 from hub_core.execution_log import write_execution_log
 from hub_core.redaction import redact_secrets, redact_text
-from hub_core.runtime_boundary import RuntimeBoundaryError
+from hub_core.runtime_boundary import RuntimeBoundaryError, validate_runtime_location
 from hub_core.runtime_paths import (
     preview_runtime_root,
     resolve_build_state_path,
@@ -23,6 +23,17 @@ HUB_ROOT = Path(__file__).resolve().parent.parent
 
 
 class RuntimePathTest(unittest.TestCase):
+    def test_runtime_boundary_uses_native_path_flavour_when_os_name_is_mocked(self):
+        with tempfile.TemporaryDirectory(prefix="figops_native_path_") as tmpdir:
+            missing_runtime = Path(tmpdir) / "missing" / "runtime"
+            mocked_name = "posix" if os.name == "nt" else "nt"
+
+            with patch("hub_core.runtime_boundary.os.name", mocked_name):
+                resolved = validate_runtime_location(missing_runtime)
+
+            self.assertEqual(resolved, missing_runtime.resolve(strict=False))
+            self.assertFalse(missing_runtime.exists())
+
     def test_runtime_root_is_disjoint_from_project_and_durable_roots(self):
         with tempfile.TemporaryDirectory(prefix="figops_boundary_") as tmpdir:
             project = Path(tmpdir) / "project"

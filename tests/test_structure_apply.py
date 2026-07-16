@@ -103,6 +103,55 @@ def test_apply_unsupported_atomic_move_has_no_overwrite_fallback(tmp_path: Path,
     assert not list((tmp_path / "raw").glob(".input.csv.figops-*.tmp"))
 
 
+def test_posix_prepublication_failure_discards_owned_structure_stage(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "legacy" / "input.csv"
+    source.parent.mkdir()
+    source.write_bytes(b"planned-source")
+    plan = _plan(tmp_path)
+
+    import hub_core.structure_apply as structure_apply
+
+    def unavailable(*_args):
+        raise AtomicNoClobberUnavailable("darwin unavailable")
+
+    monkeypatch.setattr(structure_apply, "atomic_no_clobber_move", unavailable)
+    monkeypatch.setattr(structure_apply, "delete_file_by_identity", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(RuntimeError, match="FIGOPS_ATOMIC_NO_CLOBBER_UNAVAILABLE"):
+        apply_structure_plan(plan, confirmation_token=confirmation_token(plan))
+
+    assert not (tmp_path / "raw" / "input.csv").exists()
+    assert not list((tmp_path / "raw").glob(".input.csv.figops-*.tmp"))
+
+
+def test_posix_post_apply_failure_preserves_published_copy_for_manual_review(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "legacy" / "input.csv"
+    source.parent.mkdir()
+    source.write_bytes(b"planned-source")
+    plan = _plan(tmp_path)
+    destination = tmp_path / "raw" / "input.csv"
+
+    import hub_core.structure_apply as structure_apply
+
+    monkeypatch.setattr(structure_apply, "delete_file_by_identity", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(RuntimeError, match="FIGOPS_STRUCTURE_MANUAL_CLEANUP_REQUIRED"):
+        apply_structure_plan(
+            plan,
+            confirmation_token=confirmation_token(plan),
+            post_apply_verifier=lambda *_args: (_ for _ in ()).throw(
+                RuntimeError("verification failed")
+            ),
+        )
+
+    assert destination.read_bytes() == b"planned-source"
+    assert source.read_bytes() == b"planned-source"
+
+
 def test_rollback_never_deletes_replacement_destination(tmp_path: Path) -> None:
     source = tmp_path / "legacy" / "input.csv"
     source.parent.mkdir()
@@ -115,7 +164,7 @@ def test_rollback_never_deletes_replacement_destination(tmp_path: Path) -> None:
         destination.write_bytes(b"competitor-owned")
         raise RuntimeError("verification failed")
 
-    with pytest.raises(RuntimeError, match="verification failed"):
+    with pytest.raises(RuntimeError, match="FIGOPS_STRUCTURE_MANUAL_CLEANUP_REQUIRED"):
         apply_structure_plan(
             plan,
             confirmation_token=confirmation_token(plan),
@@ -170,12 +219,19 @@ def test_typed_config_cas_receipt_and_verifier_failure_rollback(tmp_path: Path) 
         assert "raw: raw" in config.read_text(encoding="utf-8")
         raise RuntimeError("verification failed")
 
-    with pytest.raises(RuntimeError, match="verification failed"):
+    expected_error = "verification failed" if os.name == "nt" else "FIGOPS_STRUCTURE_MANUAL_CLEANUP_REQUIRED"
+    with pytest.raises(RuntimeError, match=expected_error):
         apply_structure_plan(plan, confirmation_token=confirmation_token(plan), post_apply_verifier=reject)
     assert config.read_bytes() == original_config
     assert source.read_bytes() == b"original"
-    assert not (tmp_path / "raw" / "input.csv").exists()
-    assert not list(tmp_path.glob("*.bak"))
+    if os.name == "nt":
+        assert not (tmp_path / "raw" / "input.csv").exists()
+        assert not list(tmp_path.glob("*.bak"))
+    else:
+        assert (tmp_path / "raw" / "input.csv").read_bytes() == b"original"
+        (tmp_path / "raw" / "input.csv").unlink()
+        for private_path in tmp_path.glob(".project_config.yaml.figops-*"):
+            private_path.unlink()
 
     result = apply_structure_plan(
         plan,
@@ -255,11 +311,16 @@ def test_config_compare_and_swap_preserves_racing_writer(tmp_path: Path, monkeyp
         return real_move(source_path, destination_path)
 
     monkeypatch.setattr(structure_apply, "atomic_no_clobber_move", inject_before_cas)
-    with pytest.raises(RuntimeError, match="changed at compare-and-swap"):
+    expected_error = (
+        "changed at compare-and-swap"
+        if os.name == "nt"
+        else "FIGOPS_STRUCTURE_MANUAL_CLEANUP_REQUIRED"
+    )
+    with pytest.raises(RuntimeError, match=expected_error):
         apply_structure_plan(plan, confirmation_token=confirmation_token(plan))
 
     assert config.read_bytes() == competitor
-    assert not (tmp_path / "raw" / "input.csv").exists()
+    assert (tmp_path / "raw" / "input.csv").exists() is (os.name != "nt")
 
 
 def test_permanent_stage_unlink_denial_cannot_leave_a_private_alias(tmp_path: Path, monkeypatch) -> None:
@@ -420,7 +481,8 @@ def test_config_open_handle_mutation_is_preserved_and_aborts_commit(tmp_path: Pa
             os.fsync(held_config.fileno())
             return {"status": "passed"}
 
-        with pytest.raises(RuntimeError, match="open handle"):
+        expected_error = "open handle" if os.name == "nt" else "FIGOPS_STRUCTURE_MANUAL_CLEANUP_REQUIRED"
+        with pytest.raises(RuntimeError, match=expected_error):
             apply_structure_plan(
                 plan,
                 confirmation_token=confirmation_token(plan),
@@ -431,7 +493,7 @@ def test_config_open_handle_mutation_is_preserved_and_aborts_commit(tmp_path: Pa
     # so the transaction fails before invoking the verifier. POSIX permits the
     # rename and detects the held-inode mutation at finalization instead.
     assert config.read_bytes() == (original if os.name == "nt" else competitor)
-    assert not (tmp_path / "raw" / "input.csv").exists()
+    assert (tmp_path / "raw" / "input.csv").exists() is (os.name != "nt")
 
 
 def test_publish_rejects_private_hardlink_alias(tmp_path: Path, monkeypatch) -> None:
@@ -457,5 +519,5 @@ def test_publish_rejects_private_hardlink_alias(tmp_path: Path, monkeypatch) -> 
     with pytest.raises(RuntimeError, match="retained an alias"):
         apply_structure_plan(plan, confirmation_token=confirmation_token(plan))
 
-    assert not (tmp_path / "raw" / "input.csv").exists()
+    assert (tmp_path / "raw" / "input.csv").exists() is (os.name != "nt")
     assert alias.read_bytes() == b"planned-source"
