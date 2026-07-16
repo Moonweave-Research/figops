@@ -1059,6 +1059,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             data_path.unlink()
             symlink_or_skip(data_path, target)
             runtime_root = Path(tmpdir) / "runtime"
+            before = _snapshot_tree(project)
             server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
 
             with (
@@ -1068,6 +1069,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                     "_run_project_figure_script",
                     wraps=server._run_project_figure_script,
                 ) as run_script,
+                patch(
+                    "hub_core.mcp.tools.render_project.promote_eligible_project_result",
+                ) as promote_result,
             ):
                 result = self._call(
                     server,
@@ -1076,7 +1080,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 )
 
             self.assertEqual(result["status"], "error")
-            self.assertEqual(result["failure_stage"], "VALIDATE")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
             error = result["errors"][0]
             self.assertTrue(
                 "symlink" in error or "escapes project root" in error,
@@ -1084,8 +1088,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             )
             copy_snapshot.assert_not_called()
             run_script.assert_not_called()
-            job_root = runtime_root / "mcp_project_jobs" / "symlink-input"
-            self.assertFalse((job_root / "project").exists())
+            promote_result.assert_not_called()
+            self.assertFalse(runtime_root.exists())
+            self.assertEqual(_snapshot_tree(project), before)
             self.assertFalse((project / "results" / "figures" / "Fig1.png").exists())
 
     def test_render_project_figure_expands_declared_input_globs_in_snapshot(self):

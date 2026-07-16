@@ -101,7 +101,7 @@ class McpProjectToolsMixin:
         guarded = self._authorize_write_tool("figops.normalize_project_structure", arguments)
         if guarded is not None:
             return guarded
-        project_path = self._resolve_execution_project_path(arguments.get("project_path"))
+        project_path = self._resolve_under_root(arguments.get("project_path"), field_name="project_path")
         dry_run = bool(arguments.get("dry_run", True))
         move_policy = str(arguments.get("move_policy") or "adopt").strip().lower()
         include_raw = bool(arguments.get("include_raw", False))
@@ -232,6 +232,21 @@ class McpProjectToolsMixin:
                 is_dry_run=False,
                 error_category="validation",
                 error_code=NORMALIZATION_CONFIRMATION_REQUIRED,
+                **common,
+            )
+        try:
+            self._resolve_execution_project_path(arguments.get("project_path"))
+        except ValueError as exc:
+            return self._envelope(
+                "figops.normalize_project_structure",
+                arguments,
+                status="error",
+                summary="Reviewed normalization plan was rejected.",
+                errors=[str(exc)],
+                manual_review_needed=True,
+                is_dry_run=False,
+                error_category="validation",
+                error_code=NORMALIZATION_PLAN_REJECTED,
                 **common,
             )
         try:
