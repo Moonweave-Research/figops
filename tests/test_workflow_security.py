@@ -18,6 +18,7 @@ ACTION_REFS: Final[dict[str, tuple[str, str]]] = {
     "astral-sh/setup-uv": ("d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86", "v5"),
     "pypa/gh-action-pypi-publish": ("cef221092ed1bacb1cc03d23a2d87d1d172e277b", "release/v1"),
     "r-lib/actions/setup-r": ("d3c5be51b12e724e68f33216ca3c148b66d5f0b6", "v2"),
+    "r-lib/actions/setup-renv": ("d3c5be51b12e724e68f33216ca3c148b66d5f0b6", "v2"),
 }
 OIDC_PUBLISH_JOBS: Final[frozenset[str]] = frozenset({"publish-pypi", "publish-testpypi"})
 USES_LINE: Final[re.Pattern[str]] = re.compile(r"^\s*(?:-\s+)?uses:\s*(?P<uses>\S+)(?:\s+#\s*(?P<comment>\S+))?\s*$")
@@ -190,6 +191,154 @@ def test_test_and_ruff_jobs_are_gating_and_locked() -> None:
 
     assert jobs["test"]["name"] == "Test (gating)"
     assert jobs["lint"]["name"] == "Ruff (gating)"
+
+
+def test_macos_native_alias_smoke_precedes_full_regression_and_cannot_skip() -> None:
+    document = yaml.load((WORKFLOW_DIR / "ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    assert isinstance(document, dict)
+    test_job = document["jobs"]["test"]
+    assert "if" not in test_job
+    assert "continue-on-error" not in test_job
+    steps = test_job["steps"]
+    step_names = [step.get("name") for step in steps]
+    assert step_names == [
+        None,
+        "Install locked uv",
+        "Sync locked dependencies",
+        "Run native macOS alias smoke",
+        "Require exactly nine native macOS alias passes",
+        "Tests",
+    ]
+    smoke = next(step for step in steps if step.get("name") == "Run native macOS alias smoke")
+    assert smoke["run"].split() == [
+        "uv",
+        "run",
+        "--locked",
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "--basetemp=/var/tmp/figops-macos-path-identity-${{",
+        "github.run_id",
+        "}}-${{",
+        "github.run_attempt",
+        "}}",
+        "--junitxml=macos-path-identity-junit.xml",
+        "tests/test_macos_path_identity.py",
+        "tests/test_project_config_reader.py::test_absolute_config_accepts_macos_var_alias",
+    ]
+    count_gate = next(
+        step for step in steps if step.get("name") == "Require exactly nine native macOS alias passes"
+    )
+    assert count_gate["run"].strip() == """\
+uv run --locked python - <<'PY'
+import xml.etree.ElementTree as ET
+
+root = ET.parse("macos-path-identity-junit.xml").getroot()
+suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
+counts = {
+    key: sum(int(suite.attrib.get(key, "0")) for suite in suites)
+    for key in ("tests", "failures", "errors", "skipped")
+}
+passed = counts["tests"] - counts["failures"] - counts["errors"] - counts["skipped"]
+if passed != 9 or counts["tests"] != 9 or any(counts[key] for key in ("failures", "errors", "skipped")):
+    raise SystemExit(f"native macOS alias gate requires 9 passed/0 skipped; observed {counts}, passed={passed}")
+PY"""
+    assert all("if" not in step and "continue-on-error" not in step for step in steps)
+    assert step_names.index("Sync locked dependencies") < step_names.index("Run native macOS alias smoke")
+    assert step_names.index("Require exactly nine native macOS alias passes") < step_names.index("Tests")
+
+
+def _assert_actual_r_job(actual_r: dict) -> None:
+    assert actual_r["name"] == "Actual R integration (gating)"
+    assert actual_r["runs-on"] == "ubuntu-latest"
+    assert "if" not in actual_r
+    assert "continue-on-error" not in actual_r
+    steps = actual_r["steps"]
+    assert [step.get("name") for step in steps] == [
+        None,
+        "Install locked uv",
+        "Sync locked dependencies",
+        "Install R",
+        "Restore locked R dependencies",
+        "Verify locked R and readr",
+        "Run actual R integration tests",
+        "Require exactly two passed and zero skipped",
+    ]
+    assert all("if" not in step and "continue-on-error" not in step for step in steps)
+
+    setup_uv = next(step for step in steps if step.get("name") == "Install locked uv")
+    assert setup_uv["with"] == {"python-version": "3.12", "version": "0.11.25"}
+    sync = next(step for step in steps if step.get("name") == "Sync locked dependencies")
+    assert sync["run"] == "uv sync --locked --group dev"
+
+    setup_r = next(step for step in steps if step.get("name") == "Install R")
+    assert setup_r["uses"] == (
+        "r-lib/actions/setup-r@d3c5be51b12e724e68f33216ca3c148b66d5f0b6"
+    )
+    assert setup_r["with"] == {"r-version": "renv"}
+    setup_renv = next(step for step in steps if step.get("name") == "Restore locked R dependencies")
+    assert setup_renv["uses"] == (
+        "r-lib/actions/setup-renv@d3c5be51b12e724e68f33216ca3c148b66d5f0b6"
+    )
+
+    verify_readr = next(step for step in steps if step.get("name") == "Verify locked R and readr")
+    assert verify_readr["run"].splitlines() == [
+        'Rscript -e "stopifnot(getRversion() == \'4.4.2\', packageVersion(\'readr\') == \'2.2.0\')"',
+        'Rscript -e "suppressPackageStartupMessages(library(readr))"',
+    ]
+    execution = next(step for step in steps if step.get("name") == "Run actual R integration tests")
+    assert execution["run"].split() == [
+        "uv",
+        "run",
+        "--locked",
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "--junitxml=actual-r-junit.xml",
+        "tests/test_smoke.py::HubSmokeTest::test_scaffold_all_and_cache",
+        "tests/test_process_runner_new.py::TestScaffoldRAnalysisInputContract::test_scaffold_r_analysis_reads_real_data_from_normalized_raw_dir",
+    ]
+    skip_gate = next(
+        step for step in steps if step.get("name") == "Require exactly two passed and zero skipped"
+    )
+    assert skip_gate["run"].strip() == """\
+uv run --locked python - <<'PY'
+import xml.etree.ElementTree as ET
+
+root = ET.parse("actual-r-junit.xml").getroot()
+suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
+counts = {
+    key: sum(int(suite.attrib.get(key, "0")) for suite in suites)
+    for key in ("tests", "failures", "errors", "skipped")
+}
+passed = counts["tests"] - counts["failures"] - counts["errors"] - counts["skipped"]
+if passed != 2 or counts["tests"] != 2 or any(counts[key] for key in ("failures", "errors", "skipped")):
+    raise SystemExit(f"actual-R gate requires 2 passed/0 skipped; observed {counts}, passed={passed}")
+PY"""
+
+
+@pytest.mark.parametrize("workflow_name", ("ci.yml", "publish.yml"))
+def test_actual_r_job_is_gating_locked_and_cannot_silently_skip(workflow_name: str) -> None:
+    document = yaml.load((WORKFLOW_DIR / workflow_name).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    assert isinstance(document, dict)
+    _assert_actual_r_job(document["jobs"]["actual-r"])
+
+
+def test_publish_cannot_build_or_upload_before_actual_r_gate() -> None:
+    document = yaml.load((WORKFLOW_DIR / "publish.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    assert isinstance(document, dict)
+    jobs = document["jobs"]
+    assert jobs["actual-r"]["needs"] == "release-ref"
+    assert jobs["build"]["needs"] == ["release-ref", "actual-r"]
+    assert "if" not in jobs["build"]
+    assert "continue-on-error" not in jobs["build"]
+    assert jobs["publish-testpypi"]["needs"] == "build"
+    assert jobs["publish-pypi"]["needs"] == "build"
 
 
 def test_publish_build_job_uses_pinned_uv_and_locked_project_commands() -> None:

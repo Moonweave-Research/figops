@@ -27,10 +27,10 @@ jobs:
             exit 1
           fi
 
-  build:
-    name: Build and verify distributions
+  actual-r:
+    name: Actual R integration (gating)
     needs: release-ref
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install locked uv
@@ -43,7 +43,48 @@ jobs:
       - name: Install R
         uses: r-lib/actions/setup-r@d3c5be51b12e724e68f33216ca3c148b66d5f0b6 # v2
         with:
-          r-version: release
+          r-version: renv
+      - name: Restore locked R dependencies
+        uses: r-lib/actions/setup-renv@d3c5be51b12e724e68f33216ca3c148b66d5f0b6 # v2
+      - name: Verify locked R and readr
+        run: |
+          Rscript -e "stopifnot(getRversion() == '4.4.2', packageVersion('readr') == '2.2.0')"
+          Rscript -e "suppressPackageStartupMessages(library(readr))"
+      - name: Run actual R integration tests
+        run: >-
+          uv run --locked python -m pytest -q
+          --junitxml=actual-r-junit.xml
+          tests/test_smoke.py::HubSmokeTest::test_scaffold_all_and_cache
+          tests/test_process_runner_new.py::TestScaffoldRAnalysisInputContract::test_scaffold_r_analysis_reads_real_data_from_normalized_raw_dir
+      - name: Require exactly two passed and zero skipped
+        run: |
+          uv run --locked python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("actual-r-junit.xml").getroot()
+          suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
+          counts = {
+              key: sum(int(suite.attrib.get(key, "0")) for suite in suites)
+              for key in ("tests", "failures", "errors", "skipped")
+          }
+          passed = counts["tests"] - counts["failures"] - counts["errors"] - counts["skipped"]
+          if passed != 2 or counts["tests"] != 2 or any(counts[key] for key in ("failures", "errors", "skipped")):
+              raise SystemExit(f"actual-R gate requires 2 passed/0 skipped; observed {counts}, passed={passed}")
+          PY
+
+  build:
+    name: Build and verify distributions
+    needs: [release-ref, actual-r]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install locked uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+          version: "0.11.25"
+      - name: Sync locked dependencies
+        run: uv sync --locked --group dev
       - name: Run release-critical tests
         run: >-
           uv run --locked python -m pytest -q
