@@ -1,13 +1,20 @@
 # Public repository release decision record
 
-This record is the handoff checklist for turning the current private
-development repository into a public-source repository. It complements the
-generated release status snapshot in
+This record is the human-facing handoff checklist for turning the current
+private development repository into a public-source repository. It mirrors,
+but does not grant, the machine-readable authorization in
+`public-core-inventory.json`. The generator does not parse approvals from this
+Markdown file. It complements the generated release status snapshot in
 [`public-release-status.md`](./public-release-status.md).
 
-The current package distribution path is allowed. The full repository release
-path is intentionally blocked until each decision below has an explicit owner,
-resolution, and evidence link.
+The current package distribution path is allowed. The repository is technically
+eligible for public release, but publication is intentionally blocked until
+each decision below has an explicit owner, resolution, and evidence link. A
+green machine gate does not authorize publication, merge, tagging, or release.
+The authoritative machine-readable authorization source is the inventory's
+`repository_publication_approved` field together with one or more validated
+`repository_publication_approval_evidence` HTTPS references. Both must be
+present, and the referenced approvals must be reviewed before changing them.
 
 ## Current gate shape
 
@@ -21,9 +28,10 @@ python hub_uv.py run python scripts/public_core_inventory.py --status --include-
 Expected current shape:
 
 - package distribution is allowed;
-- repository public release is blocked;
-- all remaining blockers require human confirmation;
-- no remaining blocker family is currently auto-fixable.
+- the repository technical release gate is green with zero technical blockers;
+- repository publication authorization remains pending;
+- human/legal decisions are authorization requirements, not machine technical
+  blocker families.
 
 ## Required decisions
 
@@ -40,7 +48,10 @@ Expected current shape:
 
 ## Decision log template
 
-Copy one row per decision or blocker family when approval is obtained.
+Copy one row per decision or blocker family when approval is obtained. This
+table is a human-readable mirror; after review, record the approved state and
+its evidence references in the authoritative inventory JSON as a separate,
+reviewed change.
 
 | Date | Scope | Decision | Evidence link | Owner | Follow-up issue/PR |
 | --- | --- | --- | --- | --- | --- |

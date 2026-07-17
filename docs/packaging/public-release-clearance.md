@@ -26,6 +26,15 @@ Why Apache-2.0 is the best default for this project:
 
 LICENSE/NOTICE are now Apache-2.0 for package distribution. Keep the full repository private until repo-only private markers, docs, and internal style packs are intentionally separated or cleared.
 
+Even when the generated status reports a green repository technical gate and
+zero technical blockers, that machine result is not authorization to publish,
+merge, tag, or release. Keep the repository private until the decision record
+mirrors the required human/legal evidence and the authoritative
+`public-core-inventory.json` approval fields explicitly record repository
+publication approval plus validated HTTPS evidence references. The generated
+status reads authorization only from the inventory JSON; it does not parse this
+checklist or the decision-record Markdown.
+
 Use [public-release-decision-record.md](./public-release-decision-record.md) to
 record the required version, visibility, marker, workflow-doc, style-pack, IP,
 license, and publishing-owner decisions before changing repository visibility.

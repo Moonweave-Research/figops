@@ -8,6 +8,7 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INVENTORY_RELATIVE_PATH = Path("docs/packaging/public-core-inventory.json")
@@ -30,6 +31,26 @@ def load_public_core_inventory(root: Path = REPO_ROOT) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _valid_approval_evidence_reference(value: object) -> bool:
+    """Accept only credential-free HTTPS references to recorded approval evidence."""
+    if not isinstance(value, str) or not value.strip() or value != value.strip():
+        return False
+    if any(character.isspace() or ord(character) < 32 for character in value):
+        return False
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "https"
+        and bool(parsed.hostname)
+        and parsed.username is None
+        and parsed.password is None
+        and port in {None, 443}
+    )
+
+
 def validate_public_core_inventory(inventory: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     missing = sorted(REQUIRED_TOP_LEVEL_KEYS - set(inventory))
@@ -48,6 +69,19 @@ def validate_public_core_inventory(inventory: dict[str, Any]) -> list[str]:
             errors.append("distribution_policy.public_pypi_allowed must be boolean.")
         if not isinstance(policy.get("license_decision_required"), bool):
             errors.append("distribution_policy.license_decision_required must be boolean.")
+        if not isinstance(policy.get("repository_publication_approved"), bool):
+            errors.append("distribution_policy.repository_publication_approved must be boolean.")
+        approval_evidence = policy.get("repository_publication_approval_evidence")
+        if not isinstance(approval_evidence, list):
+            errors.append(
+                "distribution_policy.repository_publication_approval_evidence must be a list of HTTPS links."
+            )
+        elif any(not _valid_approval_evidence_reference(item) for item in approval_evidence):
+            errors.append(
+                "distribution_policy.repository_publication_approval_evidence must contain only valid HTTPS links."
+            )
+        if policy.get("repository_publication_approved") is True and not approval_evidence:
+            errors.append("repository publication approval requires at least one evidence link.")
         if policy.get("public_pypi_allowed") and policy.get("license_decision_required"):
             errors.append("distribution_policy cannot allow PyPI while license_decision_required is true.")
 
@@ -162,20 +196,39 @@ def _markdown_cell(value: object) -> str:
 def format_public_core_status_markdown(payload: dict[str, Any]) -> str:
     release_gate = payload["release_gate"]
     action_summary = release_gate["action_summary"]
+    authorized = payload["repository_public_release_authorized"]
+    evidence_count = len(payload["repository_publication_authorization_evidence"])
+    if authorized:
+        authorization_note = (
+            "Repository publication authorization is recorded in the authoritative inventory approval fields with "
+            "validated HTTPS evidence references. The technical gate remains evidence, not the source of that "
+            "authorization."
+        )
+    else:
+        authorization_note = (
+            "A green technical gate is machine evidence only. It does not authorize publication, merge, tagging, or "
+            "release. Human/legal authorization remains pending until the authoritative inventory approval fields "
+            "contain validated evidence references."
+        )
     lines = [
         "# FigOps Public Release Status",
         "",
         f"- Inventory valid: {_yes_no(payload['inventory_valid'])}",
         f"- Package distribution allowed: {_yes_no(payload['package_distribution_allowed'])}",
-        f"- Repository public release allowed: {_yes_no(payload['repository_public_release_allowed'])}",
-        f"- Release gate: {'ok' if release_gate['ok'] else 'blocked'}",
-        f"- Total blockers: {release_gate['blocker_count']}",
-        f"- Auto-fixable blockers: {action_summary['auto_fixable_blocker_count']}",
-        f"- Confirmation-required blockers: {action_summary['requires_confirmation_blocker_count']}",
+        "- Repository technically eligible for public release: "
+        + _yes_no(payload["repository_public_release_technically_eligible"]),
+        f"- Repository publication authorized: {_yes_no(authorized)}",
+        f"- Authorization evidence references: {evidence_count}",
+        f"- Technical release gate: {'ok' if release_gate['ok'] else 'blocked'}",
+        f"- Technical blockers: {release_gate['blocker_count']}",
+        f"- Auto-fixable technical blockers: {action_summary['auto_fixable_blocker_count']}",
+        f"- Confirmation-required technical blockers: {action_summary['requires_confirmation_blocker_count']}",
+        "",
+        authorization_note,
         "",
         "Decision record: [public-release-decision-record.md](./public-release-decision-record.md)",
         "",
-        "## Next Actions",
+        "## Technical Gate Next Actions",
         "",
         "| Family | Count | Status | Confirmation | Action |",
         "| --- | ---: | --- | --- | --- |",
@@ -195,7 +248,7 @@ def format_public_core_status_markdown(payload: dict[str, Any]) -> str:
             + " |"
         )
     if "blockers_by_family" in release_gate:
-        lines.extend(["", "## Blocker Details", ""])
+        lines.extend(["", "## Technical Blocker Details", ""])
         for family, blockers in release_gate["blockers_by_family"].items():
             lines.append(f"### {family}")
             for blocker in blockers:
@@ -228,6 +281,7 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
     release_result = run_release_check(root)
     families = sorted({blocker_family(blocker) for blocker in release_result.blockers})
     policy = inventory.get("distribution_policy", {})
+    approval_evidence = policy.get("repository_publication_approval_evidence", []) if isinstance(policy, dict) else []
     package_distribution_allowed = (
         not inventory_errors
         and isinstance(policy, dict)
@@ -235,11 +289,17 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
         and policy.get("license_decision_required") is False
         and policy.get("current_status") in {"public_package_approved", "public_pypi_approved"}
     )
-    repository_public_release_allowed = (
+    repository_public_release_technically_eligible = (
         not inventory_errors
         and release_result.ok
         and isinstance(policy, dict)
         and policy.get("current_status") in {"public_package_approved", "public_pypi_approved"}
+    )
+    repository_public_release_authorized = (
+        repository_public_release_technically_eligible
+        and isinstance(policy, dict)
+        and policy.get("repository_publication_approved") is True
+        and bool(approval_evidence)
     )
     next_actions = release_next_actions(release_result.blockers)
     payload = {
@@ -256,7 +316,12 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
             "next_actions": next_actions,
         },
         "package_distribution_allowed": package_distribution_allowed,
-        "repository_public_release_allowed": repository_public_release_allowed,
+        "repository_public_release_technically_eligible": repository_public_release_technically_eligible,
+        "repository_public_release_authorized": repository_public_release_authorized,
+        "repository_publication_authorization_evidence": approval_evidence,
+        # Compatibility field: "allowed" means authorized, never merely
+        # machine-technically eligible.
+        "repository_public_release_allowed": repository_public_release_authorized,
         "pypi_upload_allowed": package_distribution_allowed,
     }
     if include_blockers:

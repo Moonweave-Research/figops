@@ -58,7 +58,10 @@ def test_v020_release_requires_structure_p1_gate():
     ).read_text(encoding="utf-8")
 
     # A green technical inventory is necessary, but it is not release authority.
-    assert "- Release gate: ok" in status
+    assert "- Technical release gate: ok" in status
+    assert "- Repository technically eligible for public release: yes" in status
+    assert "- Repository publication authorized: no" in status
+    assert "does not authorize publication, merge, tagging, or release" in status
     assert "Decision record:" in status
     assert "intentionally blocked" in decision
     assert "| TBD |" in decision

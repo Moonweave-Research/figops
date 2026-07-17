@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.check_public_release import PRIVATE_MARKERS
 from scripts.public_core_inventory import (
     blocker_family,
@@ -25,6 +27,8 @@ def test_public_core_inventory_schema_is_valid():
     assert validate_public_core_inventory(inventory) == []
     assert inventory["distribution_policy"]["public_pypi_allowed"] is True
     assert inventory["distribution_policy"]["license_decision_required"] is False
+    assert inventory["distribution_policy"]["repository_publication_approved"] is False
+    assert inventory["distribution_policy"]["repository_publication_approval_evidence"] == []
     assert any(item["area"] == "mcp_protocol_surface" for item in inventory["public_core_candidates"])
     assert any(item["area"] == "internal_style_packs" for item in inventory["private_or_internal_components"])
     assert inventory["distribution_policy"]["current_status"] == "public_package_approved"
@@ -36,7 +40,9 @@ def test_public_core_status_reports_current_gate_consistently():
     assert status["inventory_valid"] is True
     assert status["package_distribution_allowed"] is True
     assert status["pypi_upload_allowed"] is True
-    assert status["repository_public_release_allowed"] is status["release_gate"]["ok"]
+    assert status["repository_public_release_technically_eligible"] is status["release_gate"]["ok"]
+    assert status["repository_public_release_authorized"] is False
+    assert status["repository_public_release_allowed"] is False
     assert "blockers_by_family" not in status["release_gate"]
     if status["release_gate"]["ok"]:
         assert status["release_gate"]["blocker_families"] == []
@@ -117,6 +123,9 @@ def test_format_public_core_status_markdown_summarizes_decision_state():
     payload = {
         "inventory_valid": True,
         "package_distribution_allowed": True,
+        "repository_public_release_technically_eligible": True,
+        "repository_public_release_authorized": False,
+        "repository_publication_authorization_evidence": [],
         "repository_public_release_allowed": False,
         "release_gate": {
             "ok": False,
@@ -142,8 +151,13 @@ def test_format_public_core_status_markdown_summarizes_decision_state():
 
     assert "# FigOps Public Release Status" in markdown
     assert "- Package distribution allowed: yes" in markdown
-    assert "- Repository public release allowed: no" in markdown
-    assert "- Auto-fixable blockers: 0" in markdown
+    assert "- Repository technically eligible for public release: yes" in markdown
+    assert "- Repository publication authorized: no" in markdown
+    assert "- Authorization evidence references: 0" in markdown
+    assert "- Technical release gate: blocked" in markdown
+    assert "- Auto-fixable technical blockers: 0" in markdown
+    assert "does not authorize publication, merge, tagging, or release" in markdown
+    assert "authoritative inventory approval fields" in markdown
     assert "Decision record: [public-release-decision-record.md]" in markdown
     assert "| private_marker | 3 | requires_decision | yes | Sanitize or relocate. |" in markdown
 
@@ -171,10 +185,11 @@ def test_public_release_status_snapshot_is_valid_markdown_report():
     assert snapshot.startswith("# FigOps Public Release Status\n")
     assert "- Inventory valid:" in snapshot
     assert "- Package distribution allowed:" in snapshot
-    assert "- Repository public release allowed:" in snapshot
-    assert "- Release gate:" in snapshot
+    assert "- Repository technically eligible for public release:" in snapshot
+    assert "- Repository publication authorized:" in snapshot
+    assert "- Technical release gate:" in snapshot
     assert "Decision record: [public-release-decision-record.md]" in snapshot
-    assert "## Next Actions" in snapshot
+    assert "## Technical Gate Next Actions" in snapshot
     assert "| Family | Count | Status | Confirmation | Action |" in snapshot
 
 
@@ -223,6 +238,8 @@ def test_public_core_status_requires_approved_current_status_for_pypi_allowed(tm
 
     assert status["inventory_valid"] is True
     assert status["package_distribution_allowed"] is False
+    assert status["repository_public_release_technically_eligible"] is False
+    assert status["repository_public_release_authorized"] is False
     assert status["repository_public_release_allowed"] is False
     assert status["release_gate"]["blocker_count"] == 0
     assert status["pypi_upload_allowed"] is False
@@ -235,6 +252,63 @@ def test_public_core_inventory_validation_fails_closed_for_missing_policy():
     errors = validate_public_core_inventory(inventory)
 
     assert any("distribution_policy" in error for error in errors)
+
+
+def test_public_core_inventory_validation_requires_explicit_repository_authorization():
+    inventory = load_public_core_inventory(HUB_ROOT)
+    inventory["distribution_policy"].pop("repository_publication_approved")
+
+    errors = validate_public_core_inventory(inventory)
+
+    assert "distribution_policy.repository_publication_approved must be boolean." in errors
+
+
+def test_public_core_inventory_rejects_repository_approval_without_evidence():
+    inventory = load_public_core_inventory(HUB_ROOT)
+    inventory["distribution_policy"]["repository_publication_approved"] = True
+
+    errors = validate_public_core_inventory(inventory)
+
+    assert "repository publication approval requires at least one evidence link." in errors
+
+
+@pytest.mark.parametrize(
+    "reference",
+    ["", "approved-by-owner", "http://example.test/approval/1", "https://user:secret@example.test/approval"],
+)
+def test_public_core_inventory_rejects_unapproved_or_malformed_evidence_reference(reference: str):
+    inventory = load_public_core_inventory(HUB_ROOT)
+    inventory["distribution_policy"]["repository_publication_approval_evidence"] = [reference]
+
+    errors = validate_public_core_inventory(inventory)
+
+    assert any("must contain only valid HTTPS links" in error for error in errors)
+
+
+def test_public_core_status_authorizes_only_with_valid_https_evidence(tmp_path: Path):
+    inventory = load_public_core_inventory(HUB_ROOT)
+    policy = inventory["distribution_policy"]
+    policy["repository_publication_approved"] = True
+    policy["repository_publication_approval_evidence"] = ["https://approvals.example.test/releases/figops-1"]
+    inventory_path = tmp_path / "docs" / "packaging" / "public-core-inventory.json"
+    inventory_path.parent.mkdir(parents=True)
+    inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
+    (tmp_path / "LICENSE").write_text("Apache License\nVersion 2.0\n", encoding="utf-8")
+    (tmp_path / "NOTICE").write_text("Apache-2.0 package distribution.\n", encoding="utf-8")
+
+    status = build_public_core_status(tmp_path)
+    markdown = format_public_core_status_markdown(status)
+
+    assert status["repository_public_release_technically_eligible"] is True
+    assert status["repository_public_release_authorized"] is True
+    assert status["repository_public_release_allowed"] is True
+    assert status["repository_publication_authorization_evidence"] == [
+        "https://approvals.example.test/releases/figops-1"
+    ]
+    assert "- Repository publication authorized: yes" in markdown
+    assert "- Authorization evidence references: 1" in markdown
+    assert "authorization is recorded in the authoritative inventory" in markdown
+    assert "authorization remains pending" not in markdown
 
 
 def test_public_core_inventory_is_json_serializable():
