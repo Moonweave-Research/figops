@@ -119,8 +119,24 @@ def _relative_declaration(root: Path, declaration: str | os.PathLike[str]) -> st
     path = Path(raw)
     if path.is_absolute():
         try:
-            raw = path.absolute().relative_to(root.absolute()).as_posix()
-        except ValueError as exc:
+            absolute = path.absolute()
+            if ".." in absolute.parts:
+                raise ValueError("absolute declaration contains traversal")
+
+            # Security decisions use canonical identities, but the declaration
+            # must stay in the caller's project-root coordinate.  This matters
+            # on macOS where /var and /private/var name the same filesystem
+            # tree.  Find the lexical ancestor whose identity is the trusted
+            # root so symlinks *below* that root remain visible to the later
+            # no-symlink validation instead of being normalized away.
+            absolute.resolve(strict=True).relative_to(root)
+            for ancestor in absolute.parents:
+                if ancestor.resolve(strict=True) == root:
+                    raw = absolute.relative_to(ancestor).as_posix()
+                    break
+            else:
+                raise ValueError("absolute declaration has no trusted root coordinate")
+        except (OSError, RuntimeError, ValueError) as exc:
             raise ProjectConfigReadError("Project config must stay inside the project root.") from exc
     try:
         return normalize_project_relative_path(raw, purpose="project config")
