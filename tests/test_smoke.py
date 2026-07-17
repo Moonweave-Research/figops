@@ -34,7 +34,7 @@ class HubSmokeTest(unittest.TestCase):
         "R runtime + readr package required for full scaffold analysis step",
     )
     def test_scaffold_all_and_cache(self):
-        with tempfile.TemporaryDirectory(prefix="graph_hub_smoke_") as tmpdir:
+        with tempfile.TemporaryDirectory(prefix="graph_hub_smoke_", dir=HUB_ROOT.parent) as tmpdir:
             tmp_path = Path(tmpdir)
             project_dir = tmp_path / "smoke_project"
 
@@ -94,6 +94,8 @@ class HubSmokeTest(unittest.TestCase):
     def _run(self, cmd, tmp_path):
         env = os.environ.copy()
         runtime_home = tmp_path / "runtime_home"
+        env.pop("PROJECT_ROOT", None)
+        env["RESEARCH_HUB_PATH"] = str(HUB_ROOT)
         env["RESEARCH_HUB_RUNTIME_HOME"] = str(runtime_home)
         env["RESEARCH_HUB_RUNTIME_ROOT"] = str(runtime_home)
         env["PYTHONUNBUFFERED"] = "1"
@@ -114,6 +116,8 @@ class HubSmokeTest(unittest.TestCase):
                 mock.patch.dict(
                     os.environ,
                     {
+                        "PROJECT_ROOT": "/ambient/active/project",
+                        "RESEARCH_HUB_PATH": "/ambient/research/hub",
                         "RESEARCH_HUB_RUNTIME_ROOT": "/ambient/runtime/root",
                         "RESEARCH_HUB_RUNTIME_HOME": "/ambient/runtime/home",
                     },
@@ -127,6 +131,8 @@ class HubSmokeTest(unittest.TestCase):
 
             passed_env = run_mock.call_args.kwargs["env"]
             expected_runtime = str(tmp_path / "runtime_home")
+            self.assertNotIn("PROJECT_ROOT", passed_env)
+            self.assertEqual(passed_env["RESEARCH_HUB_PATH"], str(HUB_ROOT))
             self.assertEqual(passed_env["RESEARCH_HUB_RUNTIME_HOME"], expected_runtime)
             self.assertEqual(passed_env["RESEARCH_HUB_RUNTIME_ROOT"], expected_runtime)
 

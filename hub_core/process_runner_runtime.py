@@ -2,7 +2,7 @@
 
 import os
 import subprocess
-from collections import deque
+from collections import Counter, deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -20,6 +20,20 @@ _RUN_COMMAND_ENV_OVERLAY: ContextVar[dict[str, str] | None] = ContextVar(
     default=None,
 )
 _OUTPUT_TAIL_LINES = 20
+_OUTPUT_TAIL_LINE_CHARS = 500
+_CHILD_OUTPUT_CLASSES = (
+    "R_PACKAGE_MISSING",
+    "R_PACKAGE_LOAD_ERROR",
+    "R_PARSE_ERROR",
+    "R_IO_ERROR",
+    "R_INPUT_MISSING",
+    "R_INPUT_SCHEMA_ERROR",
+    "R_OBJECT_NOT_FOUND",
+    "R_EXECUTION_HALTED",
+    "R_RUNTIME_ERROR",
+    "PYTHON_TRACEBACK",
+    "UNKNOWN",
+)
 
 
 @contextmanager
@@ -32,6 +46,61 @@ def run_command_env_overlay(env_overrides: dict[str, str]):
         yield
     finally:
         _RUN_COMMAND_ENV_OVERLAY.reset(token)
+
+
+def _classify_child_output(line: str) -> str:
+    """Map child output to one fixed diagnostic class without returning content."""
+
+    folded = line[:4096].casefold()
+    if "there is no package called" in folded or "package is not installed" in folded:
+        return "R_PACKAGE_MISSING"
+    if "package or namespace load failed" in folded or "loadnamespace" in folded:
+        return "R_PACKAGE_LOAD_ERROR"
+    if "execution halted" in folded:
+        return "R_EXECUTION_HALTED"
+    if "no analysis input csv found" in folded:
+        return "R_INPUT_MISSING"
+    if "missing required column" in folded:
+        return "R_INPUT_SCHEMA_ERROR"
+    if "object" in folded and "not found" in folded:
+        return "R_OBJECT_NOT_FOUND"
+    if any(
+        marker in folded
+        for marker in ("cannot open", "failed to open", "no such file", "permission denied", "read error")
+    ):
+        return "R_IO_ERROR"
+    if any(marker in folded for marker in ("parse error", "unexpected symbol", "unexpected string")):
+        return "R_PARSE_ERROR"
+    if "traceback (most recent call last)" in folded:
+        return "PYTHON_TRACEBACK"
+    if folded.startswith("error") or "error in " in folded:
+        return "R_RUNTIME_ERROR"
+    return "UNKNOWN"
+
+
+def _child_output_metadata(line: str, *, sequence: int) -> tuple[str, str]:
+    """Return content-free metadata and its allowlisted classification."""
+
+    classification = _classify_child_output(line)
+    if classification not in _CHILD_OUTPUT_CLASSES:  # defensive closed set
+        classification = "UNKNOWN"
+    character_count = len(line.rstrip("\r\n"))
+    if character_count == 0:
+        length_bucket = "empty"
+    elif character_count <= 32:
+        length_bucket = "1-32"
+    elif character_count <= 128:
+        length_bucket = "33-128"
+    elif character_count <= _OUTPUT_TAIL_LINE_CHARS:
+        length_bucket = "129-500"
+    else:
+        length_bucket = ">500"
+    truncated = character_count > _OUTPUT_TAIL_LINE_CHARS
+    metadata = (
+        f"seq={sequence} class={classification} length_bucket={length_bucket} "
+        f"truncated={str(truncated).lower()}"
+    )
+    return metadata, classification
 
 
 def run_command_runtime(
@@ -88,13 +157,17 @@ def run_command_runtime(
     env = build_uv_environment(env, hub_root=hub_path)
     ensure_uv_runtime_dirs(env)
 
-    output_lines: deque[str] = deque(maxlen=_OUTPUT_TAIL_LINES)
+    output_tail: deque[str] = deque(maxlen=_OUTPUT_TAIL_LINES)
+    output_class_counts: Counter[str] = Counter()
+    output_line_count = 0
 
     def record_output(line: str) -> None:
-        stripped = line.strip()
-        log(f"      {stripped}")
-        if stripped:
-            output_lines.append(stripped)
+        nonlocal output_line_count
+        output_line_count += 1
+        metadata, classification = _child_output_metadata(line, sequence=output_line_count)
+        output_class_counts[classification] += 1
+        log(f"      child-output {metadata}")
+        output_tail.append(metadata)
 
     try:
         result = supervise_process(
@@ -115,8 +188,16 @@ def run_command_runtime(
         log(f"      ❌ Execution supervision failed: {result.failure}")
     if not result.succeeded:
         log(f"      ❌ Execution failed with return code {result.returncode}")
-        if output_lines:
-            log(f"      ── last {len(output_lines)} lines ──")
-            for tail_line in output_lines:
-                log(f"      {tail_line}")
+        if output_tail:
+            class_summary = ",".join(
+                f"{classification}:{output_class_counts[classification]}"
+                for classification in _CHILD_OUTPUT_CLASSES
+                if output_class_counts[classification]
+            )
+            log(
+                f"      ❌ Child output metadata: lines={output_line_count} "
+                f"classes={class_summary} tail={len(output_tail)}"
+            )
+            for tail_entry in output_tail:
+                log(f"      ❌ child-meta {tail_entry}")
     return result.succeeded
