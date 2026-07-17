@@ -1068,6 +1068,28 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             persisted = json.loads((job_root / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(persisted["provenance"]["attempt"], result["provenance"]["attempt"])
 
+    def test_render_project_figure_malformed_data_remains_validation_failure(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            (project / "results" / "data" / "summary.csv").write_text(
+                'x,y\n1,"unterminated\n',
+                encoding="utf-8",
+            )
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "malformed-input"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "VALIDATE")
+            self.assertNotEqual(result["error_code"], "PROJECT_DECLARATION_PATH_INVALID")
+            self.assertEqual(result["errors"], ["Data contract validation failed for project render."])
+
     def test_render_project_invalid_config_persists_public_safe_failure_artifacts(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"

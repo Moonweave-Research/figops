@@ -20,6 +20,7 @@ from hub_core.data_contract import (
     validate_data_contract,
     validate_data_contract_preflight,
 )
+from hub_core.project_paths import ProjectPathError
 from hub_core.runtime_paths import resolve_diagnostics_dir
 
 
@@ -138,6 +139,18 @@ class TestReadDataSafe(unittest.TestCase):
             result = validate_data_contract_preflight(tmpdir, config, require_existing=True)
 
         self.assertFalse(result)
+
+    def test_preflight_can_preserve_typed_path_contract_failure_for_boundary_callers(self):
+        with tempfile.TemporaryDirectory(prefix="dcp_boundary_") as tmpdir:
+            config = {"data_contract": {"csv_checks": [{"path": "../outside.csv"}]}}
+
+            self.assertFalse(validate_data_contract_preflight(tmpdir, config))
+            with self.assertRaises(ProjectPathError):
+                validate_data_contract_preflight(
+                    tmpdir,
+                    config,
+                    raise_path_contract_errors=True,
+                )
 
     # ------------------------------------------------------------------
     # 4. .hdf5 with missing key -> raise (no silent fallback to a different dataset)

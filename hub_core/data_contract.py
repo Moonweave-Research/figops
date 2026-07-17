@@ -185,7 +185,14 @@ def _dtype_matches(series, expected, pd):
     )
 
 
-def validate_data_contract_preflight(project_dir, config, require_existing: bool = False, prefetcher=None):
+def validate_data_contract_preflight(
+    project_dir,
+    config,
+    require_existing: bool = False,
+    prefetcher=None,
+    *,
+    raise_path_contract_errors: bool = False,
+):
     prefetcher = _resolve_prefetcher(config, prefetcher)
     contract = config.get("data_contract", {})
     checks = contract.get("csv_checks", []) if isinstance(contract, dict) else []
@@ -209,8 +216,13 @@ def validate_data_contract_preflight(project_dir, config, require_existing: bool
                 must_exist=require_existing,
                 purpose=purpose,
             )
-        except (FileNotFoundError, ProjectPathError) as exc:
+        except FileNotFoundError as exc:
             _log(f"      ❌ {exc}")
+            return False
+        except ProjectPathError as exc:
+            _log(f"      ❌ {exc}")
+            if raise_path_contract_errors:
+                raise
             return False
         suffix = os.path.splitext(resolved_path)[1].lower()
         _log(f"   ➤ Check {i}: {rel_path}")
@@ -237,8 +249,13 @@ def validate_data_contract_preflight(project_dir, config, require_existing: bool
                     expected_snapshot=snapshot,
                     purpose=purpose,
                 )
-            except (FileNotFoundError, ProjectPathError) as exc:
+            except FileNotFoundError as exc:
                 _log(f"      ❌ {exc}")
+                return False
+            except ProjectPathError as exc:
+                _log(f"      ❌ {exc}")
+                if raise_path_contract_errors:
+                    raise
                 return False
 
         _log("      ✅ Preflight passed")

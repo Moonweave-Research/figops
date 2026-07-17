@@ -15,7 +15,7 @@ from hub_core.external_raw_execution import (
 )
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.errors import PROJECT_DECLARATION_PATH_INVALID, has_unsafe_declared_path
-from hub_core.project_paths import resolve_project_input, resolve_project_output
+from hub_core.project_paths import ProjectPathError, resolve_project_input, resolve_project_output
 from hub_core.provenance_inputs import expand_project_input_files, resolved_research_ops_evidence
 from hub_core.render_evidence import build_render_evidence
 from hub_core.research_ops_enforcement import validate_research_ops_contract
@@ -141,13 +141,30 @@ class McpRenderProjectMixin:
                     research_ops_policy=research_ops_policy,
                 )
             adapters = select_adapters(config)
-            if not validate_data_contract_preflight(
-                project_path,
-                config,
-                # Full validation below performs the single guarded prefetch/read.
-                require_existing=False,
-                prefetcher=adapters.prefetcher,
-            ):
+            try:
+                preflight_valid = validate_data_contract_preflight(
+                    project_path,
+                    config,
+                    # Full validation below performs the single guarded prefetch/read.
+                    require_existing=False,
+                    prefetcher=adapters.prefetcher,
+                    raise_path_contract_errors=True,
+                )
+            except ProjectPathError:
+                return self._project_render_error(
+                    arguments,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                    job_root=job_root,
+                    summary="Project data contract declares an unsafe input path.",
+                    errors=["Data contract preflight failed for project render."],
+                    failure_stage="CONTRACT",
+                    resolution_hint="Use only project-local data_contract inputs.",
+                    persist_failure=False,
+                    error_category="validation",
+                    error_code=PROJECT_DECLARATION_PATH_INVALID,
+                )
+            if not preflight_valid:
                 return self._project_render_error(
                     arguments,
                     dry_run=dry_run,
