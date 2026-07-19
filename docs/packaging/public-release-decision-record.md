@@ -7,10 +7,10 @@ but does not grant, the machine-readable authorization in
 Markdown file. It complements the generated release status snapshot in
 [`public-release-status.md`](./public-release-status.md).
 
-The current package distribution path is allowed. The repository is technically
-eligible for public release, but publication is intentionally blocked until
-each decision below has an explicit owner, resolution, and evidence link. A
-green machine gate does not authorize publication, merge, tagging, or release.
+The current package distribution path is allowed. Repository owner
+authorization for the v0.20.0 public release is recorded below and in the
+authoritative inventory. A green machine gate remains evidence rather than the
+source of authorization; re-run it for the exact commit selected for release.
 The authoritative machine-readable authorization source is the inventory's
 `repository_publication_approved` field together with one or more validated
 `repository_publication_approval_evidence` HTTPS references. Both must be
@@ -25,15 +25,30 @@ python hub_uv.py run python scripts/public_core_inventory.py --status --format m
 python hub_uv.py run python scripts/public_core_inventory.py --status --include-blockers
 ```
 
-Expected current shape:
+Expected current shape after the owner-recorded approval:
 
 - package distribution is allowed;
 - the repository technical release gate is green with zero technical blockers;
-- repository publication authorization remains pending;
-- human/legal decisions are authorization requirements, not machine technical
-  blocker families.
+- repository publication authorization is recorded with one HTTPS evidence
+  reference;
+- human/legal/release approval is owner-recorded, not inferred from machine
+  technical gates.
 
-## Required decisions
+## Recorded authorization
+
+The authenticated repository owner `moonweave` recorded the following explicit
+authorization on 2026-07-20:
+
+- release scope: FigOps v0.20.0 from PR #224;
+- authorized actions: merge, tag creation, GitHub Release, TestPyPI, and PyPI
+  publication;
+- approvals: required human, legal, and release approvals granted;
+- evidence: [PR #224 owner authorization](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221).
+
+This record mirrors the inventory JSON. It does not replace checking technical
+evidence on the exact release commit, nor does it contain any credential.
+
+## Decision coverage
 
 | Decision | Owner | Required outcome before public repo release |
 | --- | --- | --- |
@@ -46,7 +61,7 @@ Expected current shape:
 | Dependency/license review | Release maintainer | Confirm dependency licenses remain compatible with public-source release and package distribution. |
 | Publishing ownership | Release maintainer | Confirm PyPI/TestPyPI maintainers, GitHub release permissions, and Trusted Publishing settings. |
 
-## Decision log template
+## Decision log
 
 Copy one row per decision or blocker family when approval is obtained. This
 table is a human-readable mirror; after review, record the approved state and
@@ -55,14 +70,7 @@ reviewed change.
 
 | Date | Scope | Decision | Evidence link | Owner | Follow-up issue/PR |
 | --- | --- | --- | --- | --- | --- |
-| TBD | release_version | TBD | TBD | TBD | TBD |
-| TBD | repository_visibility | TBD | TBD | TBD | TBD |
-| TBD | private_marker | TBD | TBD | TBD | TBD |
-| TBD | private_workflow_doc | TBD | TBD | TBD | TBD |
-| TBD | style_pack | TBD | TBD | TBD | TBD |
-| TBD | license_ip | TBD | TBD | TBD | TBD |
-| TBD | dependencies | TBD | TBD | TBD | TBD |
-| TBD | publishing_ownership | TBD | TBD | TBD | TBD |
+| 2026-07-20 | v0.20.0 public release | Owner authorizes merge, tag, GitHub Release, TestPyPI, and PyPI publication; required human/legal/release approvals granted. | [PR #224 owner authorization](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221) | moonweave | PR #224 |
 
 ## Implementation workflow after decisions
 

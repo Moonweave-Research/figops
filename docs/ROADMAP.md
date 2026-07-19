@@ -112,9 +112,12 @@ Current release-candidate checkpoint:
   `b7128735c0f3eba259eea30bcadbda4e864f3bd101d05246a04a5cae9fbc7511`).
   Twine validation, package-surface inspection, and clean consumer smoke
   passed; installed discovery remains 7 v2 tools and 27 compatibility tools.
-  The artifacts are not published. `repository_public_release_authorized=false`
-  with zero approval-evidence references, so human/legal approvals, merge, tag,
-  package publication, GitHub Release, and release promotion remain open.
+  The artifacts are not yet published. Repository owner authorization for the
+  v0.20.0 public release is recorded as
+  `repository_public_release_authorized=true` with one approval-evidence
+  reference: [PR #224 owner authorization](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221).
+  Execute merge, tag, package publication, GitHub Release, and release
+  promotion only after rechecking technical gates for the exact release commit.
 
 ---
 

@@ -1,8 +1,11 @@
 # FigOps Project Structure and Runtime Integrity Plan
 
 **Status:** implementation, cross-platform CI, actual-R, and package gates are
-green for source head `9e4d340b718529bd0f65ba46b2124dda718918a2`; human/legal
-authorization, merge, tag, and publication gates remain open
+green for source head `9e4d340b718529bd0f65ba46b2124dda718918a2`; repository
+owner authorization for v0.20.0 is recorded in
+[PR #224](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221).
+Merge, tag, and publication remain operational steps, and require a technical
+gate recheck on the exact release commit before execution.
 
 **Contract target:** `figops-project-v1.1`
 
@@ -434,7 +437,7 @@ approval, or fulfillment of the complete Definition of Done.
 | WP7 | implementation complete | Reviewed application is copy-only, token/CAS guarded, rollback-aware, and publishes a verified sibling stage only through the native consuming no-replace primitive; race winners are preserved. |
 | WP8 | implementation complete; independent adversarial gate green | Runtime containment, pre-execution external-raw verification, eligible-result promotion, staged durable publication, and runtime-independent receipt verification are integrated across CLI and MCP producers. Handle-bound rollback deletion closes the hash-to-unlink swap window; the independent rollback suite passed 34 tests with two platform skips. |
 | WP9 | implementation complete | v2 exposes structure detail through `figops.describe`; compatibility apply remains write-gated without expanding the seven-tool default surface. |
-| WP10 | technical gates complete; release authorization open | Live references and the v2 baseline fixture are current. Cross-platform Python, actual R, public-release, docs/architecture, package build/check/scan, clean consumer install, and installed-surface gates are green for the exact source head below. Human/legal authorization, merge, tag, and publication remain open. |
+| WP10 | technical gates complete; owner authorization recorded | Live references and the v2 baseline fixture are current. Cross-platform Python, actual R, public-release, docs/architecture, package build/check/scan, clean consumer install, and installed-surface gates are green for the exact source head below. Repository owner authorization for v0.20.0 is recorded in PR #224; release operations still require technical-gate recheck on the exact selected release commit. |
 
 The definitive cross-platform CI run was
 [`29689087108`](https://github.com/Moonweave-Research/figops/actions/runs/29689087108)
@@ -459,9 +462,11 @@ directory `figops-package-9e4d340b-r1/artifacts/` (not this checkout's
 Twine validation, package-surface inspection, and clean consumer smoke passed.
 Installed discovery exposed 7 v2 tools and 27 compatibility tools. These
 artifacts are not published release artifacts. The authoritative public-release
-status remains `repository_public_release_authorized=false` with zero approval
-evidence references; repository-required human/legal approvals, merge, tag,
-package publication, and GitHub Release therefore remain open.
+status now records `repository_public_release_authorized=true` with the
+[PR #224 owner authorization](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221)
+as approval evidence. Merge, tag, package publication, and GitHub Release are
+authorized for v0.20.0, subject to rechecking technical gates on the exact
+selected release commit.
 
 ### 9.2 Token-efficient agent routing
 

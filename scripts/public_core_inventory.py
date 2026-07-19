@@ -201,8 +201,8 @@ def format_public_core_status_markdown(payload: dict[str, Any]) -> str:
     if authorized:
         authorization_note = (
             "Repository publication authorization is recorded in the authoritative inventory approval fields with "
-            "validated HTTPS evidence references. The technical gate remains evidence, not the source of that "
-            "authorization."
+            "validated HTTPS evidence references. The technical gate remains independent evidence; a release is "
+            "allowed only when both authorization and technical eligibility are yes."
         )
     else:
         authorization_note = (
@@ -218,6 +218,7 @@ def format_public_core_status_markdown(payload: dict[str, Any]) -> str:
         "- Repository technically eligible for public release: "
         + _yes_no(payload["repository_public_release_technically_eligible"]),
         f"- Repository publication authorized: {_yes_no(authorized)}",
+        f"- Repository release allowed: {_yes_no(payload['repository_public_release_allowed'])}",
         f"- Authorization evidence references: {evidence_count}",
         f"- Technical release gate: {'ok' if release_gate['ok'] else 'blocked'}",
         f"- Technical blockers: {release_gate['blocker_count']}",
@@ -296,10 +297,11 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
         and policy.get("current_status") in {"public_package_approved", "public_pypi_approved"}
     )
     repository_public_release_authorized = (
-        repository_public_release_technically_eligible
-        and isinstance(policy, dict)
+        isinstance(policy, dict)
         and policy.get("repository_publication_approved") is True
+        and isinstance(approval_evidence, list)
         and bool(approval_evidence)
+        and all(_valid_approval_evidence_reference(item) for item in approval_evidence)
     )
     next_actions = release_next_actions(release_result.blockers)
     payload = {
@@ -319,9 +321,11 @@ def build_public_core_status(root: Path = REPO_ROOT, *, include_blockers: bool =
         "repository_public_release_technically_eligible": repository_public_release_technically_eligible,
         "repository_public_release_authorized": repository_public_release_authorized,
         "repository_publication_authorization_evidence": approval_evidence,
-        # Compatibility field: "allowed" means authorized, never merely
-        # machine-technically eligible.
-        "repository_public_release_allowed": repository_public_release_authorized,
+        # A release action needs both independent owner authorization and a
+        # technically eligible exact source tree.
+        "repository_public_release_allowed": (
+            repository_public_release_authorized and repository_public_release_technically_eligible
+        ),
         "pypi_upload_allowed": package_distribution_allowed,
     }
     if include_blockers:

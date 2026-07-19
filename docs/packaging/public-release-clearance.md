@@ -24,24 +24,27 @@ Why Apache-2.0 is the best default for this project:
   may evolve alongside publishable methods.
 - It is widely recognized by PyPI, GitHub, companies, and universities.
 
-LICENSE/NOTICE are now Apache-2.0 for package distribution. Keep the full repository private until repo-only private markers, docs, and internal style packs are intentionally separated or cleared.
+LICENSE/NOTICE are Apache-2.0 for package distribution. The repository owner
+has authorized the v0.20.0 public release, including merge, tag, GitHub
+Release, TestPyPI, and PyPI publication. The authoritative evidence is the
+[PR #224 owner authorization](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221).
 
 Even when the generated status reports a green repository technical gate and
-zero technical blockers, that machine result is not authorization to publish,
-merge, tag, or release. Keep the repository private until the decision record
-mirrors the required human/legal evidence and the authoritative
-`public-core-inventory.json` approval fields explicitly record repository
-publication approval plus validated HTTPS evidence references. The generated
-status reads authorization only from the inventory JSON; it does not parse this
-checklist or the decision-record Markdown.
+zero technical blockers, that machine result is evidence rather than
+authorization to publish, merge, tag, or release. The authoritative
+`public-core-inventory.json` now records owner authorization plus a validated
+HTTPS evidence reference; the generated status reads only that inventory, not
+this checklist or the decision-record Markdown. Re-run technical gates for the
+exact release commit before each irreversible publication step.
 
-Use [public-release-decision-record.md](./public-release-decision-record.md) to
-record the required version, visibility, marker, workflow-doc, style-pack, IP,
-license, and publishing-owner decisions before changing repository visibility.
+Use [public-release-decision-record.md](./public-release-decision-record.md) as
+the human-readable mirror of the recorded authorization and its release scope.
 
-## Required human approvals
+## Recorded human/legal/release approval
 
-Before any future TestPyPI or PyPI upload, confirm these items:
+The repository owner recorded that the required human, legal, and release
+approvals are granted for v0.20.0. Before each future release that is not
+covered by that authorization, confirm these items again:
 
 1. Who owns the code: you personally, the lab, the university, a grant-funded
    project, or a mixed set of contributors?

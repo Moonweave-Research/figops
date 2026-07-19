@@ -57,13 +57,17 @@ def test_v020_release_requires_structure_p1_gate():
         / "2026-07-15-project-structure-runtime-integrity-plan.md"
     ).read_text(encoding="utf-8")
 
-    # A green technical inventory is necessary, but it is not release authority.
+    # A green technical inventory remains necessary; owner-recorded evidence
+    # supplies release authority for this scoped version.
     assert "- Technical release gate: ok" in status
     assert "- Repository technically eligible for public release: yes" in status
-    assert "- Repository publication authorized: no" in status
-    assert "does not authorize publication, merge, tagging, or release" in status
+    assert "- Repository publication authorized: yes" in status
+    assert "- Repository release allowed: yes" in status
+    assert "- Authorization evidence references: 1" in status
+    assert "technical gate remains independent evidence" in status
     assert "Decision record:" in status
-    assert "intentionally blocked" in decision
-    assert "| TBD |" in decision
+    assert "PR #224 owner authorization" in decision
+    assert "required human, legal, and release approvals granted" in decision
+    assert "| TBD |" not in decision
     assert "must not be presented as released merely because tests or" in structure_ssot
     assert "all repository-required approvals must be recorded" in structure_ssot

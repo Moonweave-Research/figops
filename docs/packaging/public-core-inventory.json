@@ -5,9 +5,11 @@
     "current_status": "public_package_approved",
     "public_pypi_allowed": true,
     "license_decision_required": false,
-    "repository_publication_approved": false,
-    "repository_publication_approval_evidence": [],
-    "notes": "Apache-2.0 package distribution is approved for built wheel/sdist artifacts. Repository-public technical blockers are cleared, but repository publication is not authorized until these authoritative approval fields contain the reviewed state and validated HTTPS evidence references."
+    "repository_publication_approved": true,
+    "repository_publication_approval_evidence": [
+      "https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221"
+    ],
+    "notes": "Repository owner authorization for the v0.20.0 public release is recorded in PR #224. It covers merge, tag creation, GitHub Release, TestPyPI, and PyPI publication; the linked approval records the required human, legal, and release approvals. Technical gates remain independent evidence and must be rechecked for the exact release commit."
   },
   "public_core_candidates": [
     {
