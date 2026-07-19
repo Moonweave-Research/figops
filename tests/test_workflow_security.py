@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Final
 
@@ -286,29 +289,138 @@ def _assert_actual_r_job(actual_r: dict) -> None:
 
     export_library = next(step for step in steps if step.get("name") == "Export locked R library")
     export_lines = export_library["run"].splitlines()
-    assert export_lines == [
-        'locked_r_lib="$(Rscript -e \'cat(normalizePath(.libPaths()[1], winslash = "/", mustWork = TRUE))\')"',
-        'existing_r_libs_user="${R_LIBS_USER:-}"',
-        (
-            'if [[ -z "$locked_r_lib" || "$locked_r_lib" == *$\'\\n\'* || '
-            '"$locked_r_lib" == *$\'\\r\'* || "$existing_r_libs_user" == *$\'\\n\'* || '
-            '"$existing_r_libs_user" == *$\'\\r\'* ]]; then'
-        ),
-        '  echo "Refusing unsafe R library path" >&2',
-        "  exit 1",
-        "fi",
-        'r_libs_user="$locked_r_lib"',
-        'if [[ -n "$existing_r_libs_user" ]]; then',
-        '  r_libs_user="$locked_r_lib:$existing_r_libs_user"',
-        "fi",
-        'printf \'%s\\n\' "R_LIBS_USER=$r_libs_user" >> "$GITHUB_ENV"',
-    ]
+    expected_r_command = (
+        'R_LIBS_RECORD="$locked_r_lib_record" Rscript -e \'record <- '
+        'Sys.getenv("R_LIBS_RECORD", unset = ""); if (!nzchar(record)) '
+        'stop("R library record path is required"); '
+        'writeLines(normalizePath(.libPaths()[1], winslash = "/", mustWork = TRUE), '
+        'con = record, useBytes = TRUE)\''
+    )
+    expected_path_validation = (
+        'if [[ "$locked_r_lib" != /* || "$locked_r_lib" == *:* || '
+        '"$locked_r_lib" == *$\'\\n\'* || "$locked_r_lib" == *$\'\\r\'* || '
+        '"$existing_r_libs_user" == *$\'\\n\'* || '
+        '"$existing_r_libs_user" == *$\'\\r\'* ]]; then'
+    )
+    expected_dir_identity_check = (
+        '  if [[ "$observed_owner" != "$locked_r_lib_euid" || "$observed_mode" != "700" || '
+        '"$observed_identity" != "$locked_r_lib_dir_identity" ]]; then'
+    )
+    expected_record_metadata_read = (
+        'IFS=: read -r locked_r_lib_record_owner locked_r_lib_record_mode '
+        'locked_r_lib_record_device locked_r_lib_record_inode <<< "$locked_r_lib_record_metadata"'
+    )
+    expected_export = r'''umask 077
+locked_r_lib_euid="$(id -u)"
+locked_r_lib_dir="$(mktemp -d)"
+trap 'rm -rf -- "$locked_r_lib_dir"' EXIT
+if [[ ! -d "$locked_r_lib_dir" || -L "$locked_r_lib_dir" ]]; then
+  echo "Refusing invalid R library record directory" >&2
+  exit 1
+fi
+locked_r_lib_dir_owner="$(stat -c '%u' -- "$locked_r_lib_dir")"
+locked_r_lib_dir_mode="$(stat -c '%a' -- "$locked_r_lib_dir")"
+if [[ "$locked_r_lib_dir_owner" != "$locked_r_lib_euid" || "$locked_r_lib_dir_mode" != "700" ]]; then
+  echo "Refusing insecure R library record directory" >&2
+  exit 1
+fi
+locked_r_lib_dir_identity="$(stat -c '%d:%i' -- "$locked_r_lib_dir")"
+validate_locked_r_lib_dir() {
+  local observed_owner observed_mode observed_identity
+  if [[ ! -d "$locked_r_lib_dir" || -L "$locked_r_lib_dir" ]]; then
+    echo "Refusing replaced R library record directory" >&2
+    exit 1
+  fi
+  observed_owner="$(stat -c '%u' -- "$locked_r_lib_dir")"
+  observed_mode="$(stat -c '%a' -- "$locked_r_lib_dir")"
+  observed_identity="$(stat -c '%d:%i' -- "$locked_r_lib_dir")"
+__DIR_IDENTITY_CHECK__
+    echo "Refusing replaced R library record directory" >&2
+    exit 1
+  fi
+}
+locked_r_lib_record="$(mktemp "$locked_r_lib_dir/locked-r-lib.XXXXXX")"
+__R_COMMAND__
+validate_locked_r_lib_dir
+if [[ ! -f "$locked_r_lib_record" || -L "$locked_r_lib_record" || ! -s "$locked_r_lib_record" ]]; then
+  echo "Refusing invalid R library record" >&2
+  exit 1
+fi
+validate_locked_r_lib_dir
+locked_r_lib_record_metadata="$(stat -c '%u:%a:%d:%i' -- "$locked_r_lib_record")"
+__RECORD_METADATA_READ__
+if [[ "$locked_r_lib_record_owner" != "$locked_r_lib_euid" || "$locked_r_lib_record_mode" != "600" ]]; then
+  echo "Refusing insecure R library record" >&2
+  exit 1
+fi
+locked_r_lib_record_identity="$locked_r_lib_record_device:$locked_r_lib_record_inode"
+validate_locked_r_lib_dir
+exec {locked_r_lib_validation_fd}< "$locked_r_lib_record"
+locked_r_lib_validation_fd_identity="$(stat -Lc '%d:%i' -- "/proc/$$/fd/$locked_r_lib_validation_fd")"
+if [[ "$locked_r_lib_validation_fd_identity" != "$locked_r_lib_record_identity" ]]; then
+  echo "Refusing replaced R library record before validation" >&2
+  exit 1
+fi
+if LC_ALL=C grep -qP '\x00|\r' <&"$locked_r_lib_validation_fd"; then
+  echo "Refusing unsafe R library record" >&2
+  exit 1
+else
+  locked_r_lib_grep_status=$?
+  if [[ "$locked_r_lib_grep_status" -ne 1 ]]; then
+    echo "Unable to validate R library record" >&2
+    exit 1
+  fi
+fi
+exec {locked_r_lib_validation_fd}<&-
+validate_locked_r_lib_dir
+locked_r_lib_record_identity_after_validation="$(stat -c '%d:%i' -- "$locked_r_lib_record")"
+if [[ "$locked_r_lib_record_identity_after_validation" != "$locked_r_lib_record_identity" ]]; then
+  echo "Refusing replaced R library record after validation" >&2
+  exit 1
+fi
+validate_locked_r_lib_dir
+exec {locked_r_lib_fd}< "$locked_r_lib_record"
+locked_r_lib_fd_identity="$(stat -Lc '%d:%i' -- "/proc/$$/fd/$locked_r_lib_fd")"
+if [[ "$locked_r_lib_fd_identity" != "$locked_r_lib_record_identity" ]]; then
+  echo "Refusing replaced R library record before read" >&2
+  exit 1
+fi
+mapfile -t locked_r_lib_records <&"$locked_r_lib_fd"
+locked_r_lib_fd_identity_after_read="$(stat -Lc '%d:%i' -- "/proc/$$/fd/$locked_r_lib_fd")"
+if [[ "$locked_r_lib_fd_identity_after_read" != "$locked_r_lib_record_identity" ]]; then
+  echo "Refusing replaced R library record during read" >&2
+  exit 1
+fi
+exec {locked_r_lib_fd}<&-
+if [[ "${#locked_r_lib_records[@]}" -ne 1 || -z "${locked_r_lib_records[0]}" ]]; then
+  echo "Refusing non-single R library record" >&2
+  exit 1
+fi
+locked_r_lib="${locked_r_lib_records[0]}"
+existing_r_libs_user="${R_LIBS_USER:-}"
+__PATH_VALIDATION__
+  echo "Refusing unsafe R library path" >&2
+  exit 1
+fi
+r_libs_user="$locked_r_lib"
+if [[ -n "$existing_r_libs_user" ]]; then
+  r_libs_user="$locked_r_lib:$existing_r_libs_user"
+fi
+printf '%s\n' "R_LIBS_USER=$r_libs_user" >> "$GITHUB_ENV"'''
+    assert export_library["run"].strip() == (
+        expected_export.replace("__R_COMMAND__", expected_r_command)
+        .replace("__PATH_VALIDATION__", expected_path_validation)
+        .replace("__DIR_IDENTITY_CHECK__", expected_dir_identity_check)
+        .replace("__RECORD_METADATA_READ__", expected_record_metadata_read)
+    )
     assert 'r_libs_user="$locked_r_lib"' in export_lines
     assert '  r_libs_user="$locked_r_lib:$existing_r_libs_user"' in export_lines
     assert export_lines.index('r_libs_user="$locked_r_lib"') < export_lines.index(
         '  r_libs_user="$locked_r_lib:$existing_r_libs_user"'
     )
     assert 'printf \'%s\\n\' "R_LIBS_USER=$locked_r_lib" >> "$GITHUB_ENV"' not in export_lines
+    assert not any('$(Rscript' in line for line in export_lines)
+    assert sum('GITHUB_ENV' in line for line in export_lines) == 1
 
     verify_readr = next(step for step in steps if step.get("name") == "Verify locked R and readr")
     assert verify_readr["run"].splitlines() == [
@@ -359,6 +471,136 @@ def test_actual_r_job_is_gating_locked_and_cannot_silently_skip(workflow_name: s
 
     assert isinstance(document, dict)
     _assert_actual_r_job(document["jobs"]["actual-r"])
+
+
+def test_actual_r_library_serialization_is_identical_in_ci_and_publish() -> None:
+    documents = {
+        workflow_name: yaml.load(
+            (WORKFLOW_DIR / workflow_name).read_text(encoding="utf-8"), Loader=yaml.BaseLoader
+        )
+        for workflow_name in ("ci.yml", "publish.yml")
+    }
+    export_scripts = {
+        workflow_name: next(
+            step["run"]
+            for step in document["jobs"]["actual-r"]["steps"]
+            if step.get("name") == "Export locked R library"
+        )
+        for workflow_name, document in documents.items()
+    }
+
+    assert export_scripts["ci.yml"] == export_scripts["publish.yml"]
+
+
+@pytest.mark.parametrize("workflow_name", ("ci.yml", "publish.yml"))
+def test_actual_r_library_record_transport_is_private_and_fd_bound(workflow_name: str) -> None:
+    document = yaml.load((WORKFLOW_DIR / workflow_name).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    export_script = next(
+        step["run"]
+        for step in document["jobs"]["actual-r"]["steps"]
+        if step.get("name") == "Export locked R library"
+    )
+
+    assert 'umask 077' in export_script
+    assert 'locked_r_lib_dir="$(mktemp -d)"' in export_script
+    assert 'trap \'rm -rf -- "$locked_r_lib_dir"\' EXIT' in export_script
+    assert '[[ ! -d "$locked_r_lib_dir" || -L "$locked_r_lib_dir" ]]' in export_script
+    assert 'locked_r_lib_dir_owner="$(stat -c \'%u\' -- "$locked_r_lib_dir")"' in export_script
+    assert 'locked_r_lib_dir_mode="$(stat -c \'%a\' -- "$locked_r_lib_dir")"' in export_script
+    assert 'locked_r_lib_dir_identity="$(stat -c \'%d:%i\' -- "$locked_r_lib_dir")"' in export_script
+    assert 'validate_locked_r_lib_dir() {' in export_script
+    assert '"$observed_identity" != "$locked_r_lib_dir_identity"' in export_script
+    assert 'locked_r_lib_record="$(mktemp "$locked_r_lib_dir/locked-r-lib.XXXXXX")"' in export_script
+    assert (
+        '[[ ! -f "$locked_r_lib_record" || -L "$locked_r_lib_record" || '
+        '! -s "$locked_r_lib_record" ]]'
+    ) in export_script
+    assert 'locked_r_lib_record_metadata="$(stat -c \'%u:%a:%d:%i\' -- "$locked_r_lib_record")"' in export_script
+    assert '"$locked_r_lib_record_mode" != "600"' in export_script
+    assert 'locked_r_lib_record_identity="$locked_r_lib_record_device:$locked_r_lib_record_inode"' in export_script
+    assert export_script.count('validate_locked_r_lib_dir') >= 5
+    assert 'exec {locked_r_lib_validation_fd}< "$locked_r_lib_record"' in export_script
+    assert 'stat -Lc \'%d:%i\' -- "/proc/$$/fd/$locked_r_lib_validation_fd"' in export_script
+    assert 'grep -qP \'\\x00|\\r\' <&"$locked_r_lib_validation_fd"' in export_script
+    assert 'locked_r_lib_record_identity_after_validation=' in export_script
+    assert 'exec {locked_r_lib_fd}< "$locked_r_lib_record"' in export_script
+    assert 'stat -Lc \'%d:%i\' -- "/proc/$$/fd/$locked_r_lib_fd"' in export_script
+    assert 'mapfile -t locked_r_lib_records <&"$locked_r_lib_fd"' in export_script
+    assert 'locked_r_lib_fd_identity_after_read=' in export_script
+    assert 'exec {locked_r_lib_validation_fd}<&-' in export_script
+    assert 'exec {locked_r_lib_fd}<&-' in export_script
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="requires Linux GNU stat and /proc Bash semantics")
+@pytest.mark.parametrize(
+    ("fake_r_mode", "expected_error"),
+    (
+        ("chmod666", "Refusing insecure R library record"),
+        ("replace-directory", "Refusing replaced R library record directory"),
+    ),
+)
+def test_actual_r_library_record_transport_rejects_fake_r_tampering(
+    tmp_path: Path, fake_r_mode: str, expected_error: str
+) -> None:
+    document = yaml.load((WORKFLOW_DIR / "ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    export_script = next(
+        step["run"]
+        for step in document["jobs"]["actual-r"]["steps"]
+        if step.get("name") == "Export locked R library"
+    )
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    fake_rscript = fake_bin / "Rscript"
+    fake_rscript.write_text(
+        """#!/usr/bin/env bash
+set -eu
+
+case "${FAKE_RSCRIPT_MODE:?}" in
+  chmod666)
+    printf '%s\\n' "$FAKE_R_LIB_PATH" > "$R_LIBS_RECORD"
+    chmod 666 -- "$R_LIBS_RECORD"
+    ;;
+  replace-directory)
+    record_dir="$(dirname -- "$R_LIBS_RECORD")"
+    rm -rf -- "$record_dir"
+    ln -s -- "$FAKE_EXTERNAL_DIR" "$record_dir"
+    printf '%s\\n' "$FAKE_R_LIB_PATH" > "$R_LIBS_RECORD"
+    ;;
+  *)
+    echo "unsupported fake R mode: $FAKE_RSCRIPT_MODE" >&2
+    exit 64
+    ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    fake_rscript.chmod(0o700)
+    github_env = tmp_path / "github-env"
+    external_dir = tmp_path / "external"
+    external_dir.mkdir()
+    environment = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "GITHUB_ENV": str(github_env),
+        "R_LIBS_USER": "",
+        "FAKE_RSCRIPT_MODE": fake_r_mode,
+        "FAKE_R_LIB_PATH": "/safe/locked-r-lib",
+        "FAKE_EXTERNAL_DIR": str(external_dir),
+    }
+
+    result = subprocess.run(
+        ["bash", "-e", "-c", export_script],
+        cwd=tmp_path,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert expected_error in result.stderr
+    assert not github_env.exists()
+    assert external_dir.is_dir()
 
 
 def test_publish_cannot_build_or_upload_before_actual_r_gate() -> None:
