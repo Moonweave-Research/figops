@@ -1,7 +1,8 @@
 # FigOps Project Structure and Runtime Integrity Plan
 
-**Status:** implementation and definitive non-R technical gates are green in the
-working tree; the actual-R, human/legal, merge, tag, and publication gates remain open
+**Status:** implementation, cross-platform CI, actual-R, and package gates are
+green for source head `9e4d340b718529bd0f65ba46b2124dda718918a2`; human/legal
+authorization, merge, tag, and publication gates remain open
 
 **Contract target:** `figops-project-v1.1`
 
@@ -416,7 +417,7 @@ transfer ownership in the orchestration log before the next agent edits it. New
 cross-cutting behavior goes into the named new modules rather than being copied
 into existing call sites.
 
-### 9.1 Implementation checkpoint (2026-07-16)
+### 9.1 Implementation and release-evidence checkpoint (2026-07-19)
 
 This checkpoint records working-tree integration, not merge, release, human
 approval, or fulfillment of the complete Definition of Done.
@@ -433,28 +434,34 @@ approval, or fulfillment of the complete Definition of Done.
 | WP7 | implementation complete | Reviewed application is copy-only, token/CAS guarded, rollback-aware, and publishes a verified sibling stage only through the native consuming no-replace primitive; race winners are preserved. |
 | WP8 | implementation complete; independent adversarial gate green | Runtime containment, pre-execution external-raw verification, eligible-result promotion, staged durable publication, and runtime-independent receipt verification are integrated across CLI and MCP producers. Handle-bound rollback deletion closes the hash-to-unlink swap window; the independent rollback suite passed 34 tests with two platform skips. |
 | WP9 | implementation complete | v2 exposes structure detail through `figops.describe`; compatibility apply remains write-gated without expanding the seven-tool default surface. |
-| WP10 | non-R technical gates complete; release transition open | Live references and the v2 baseline fixture are current. Full Python, public-release, docs/architecture, package build/check/scan, clean consumer install, and installed-surface gates are green. Actual R, approvals, merge, tag, and publication remain open. |
+| WP10 | technical gates complete; release authorization open | Live references and the v2 baseline fixture are current. Cross-platform Python, actual R, public-release, docs/architecture, package build/check/scan, clean consumer install, and installed-surface gates are green for the exact source head below. Human/legal authorization, merge, tag, and publication remain open. |
 
-The definitive v4 non-R technical gate on the final working tree passed 2,201
-tests with 48 skips, 104 subtests, and zero failures. Full Ruff, compile, diff,
-generated-doc freshness, architecture inventory, public-release inspection, and
-the then-current SSOT exact-node matrix also passed; that definitive run reported
-43 passed and four subtests. Independent durable-rollback verification passed 34
-tests with two platform skips, including both hash-then-inode-swap witnesses
-below. After those two exact witnesses were added to this matrix, the augmented
-documented matrix reran with 45 passed and four subtests.
+The definitive cross-platform CI run was
+[`29689087108`](https://github.com/Moonweave-Research/figops/actions/runs/29689087108)
+for source head `9e4d340b718529bd0f65ba46b2124dda718918a2`. Its macOS full
+suite passed **2,322 passed, 22 skipped, 104 subtests**; its native
+`/var`/`/private/var` alias gate passed **9/0**. Its Windows containment and
+symlink gate passed **48/0** with zero skipped security tests. The locked
+actual-R job used **R 4.4.2**, **readr 2.2.0**, and **dplyr 1.2.0**, then passed
+the two required integration nodes **2/0**. Ruff and the advisory dependency
+audit also passed in that run.
 
-The package build produced local release-candidate witnesses only: a 617,113-byte
-wheel with SHA-256
-`31618238DE39845A0647F3B43B9776592630D9A5832B2F084A671A366ED6B920` and a
-516,938-byte sdist with SHA-256
-`500AEBDE826779FE81D191358F898E52B57CCA6CBEF4DBE2821FBB3179C699E3`.
-Twine validation, package-surface inspection, and clean consumer smoke completed
-four of four checks; installed discovery exposed 7 v2 tools and 27 compatibility
-tools. These artifacts are not published release artifacts. `Rscript` remains
-unavailable on this host, so the mandatory actual-R gate is unexecuted;
-repository-required human/legal approvals, merge, tag, package publication, and
-GitHub Release also remain open.
+The final package gate rebuilt from that exact source head and produced
+non-published witnesses in the external, ephemeral package-gate artifact
+directory `figops-package-9e4d340b-r1/artifacts/` (not this checkout's
+`dist/`):
+
+- `figops-0.20.0-py3-none-any.whl` — 634,485 bytes; SHA-256
+  `9623cb8675af47a184ab83636ef390220608514957da885f8ca1dd42b8403cbd`
+- `figops-0.20.0.tar.gz` — 526,180 bytes; SHA-256
+  `b7128735c0f3eba259eea30bcadbda4e864f3bd101d05246a04a5cae9fbc7511`
+
+Twine validation, package-surface inspection, and clean consumer smoke passed.
+Installed discovery exposed 7 v2 tools and 27 compatibility tools. These
+artifacts are not published release artifacts. The authoritative public-release
+status remains `repository_public_release_authorized=false` with zero approval
+evidence references; repository-required human/legal approvals, merge, tag,
+package publication, and GitHub Release therefore remain open.
 
 ### 9.2 Token-efficient agent routing
 

@@ -40,7 +40,7 @@
   workflow is not the place to regenerate large render packs for unrelated
   changes.
 
-## Current-state scorecard (0.20.0 release candidate, 2026-07-16)
+## Current-state scorecard (0.20.0 release candidate, 2026-07-19)
 
 | Dimension | Score | Read |
 |---|---:|---|
@@ -97,20 +97,24 @@ Current release-candidate checkpoint:
   inventory/audit/plan/role-binding/apply, launcher-authorized external-raw
   execution, native no-replace result promotion, durable receipts, measured
   policy evidence, and verified project-script claims including conservative
-  dynamic-annotation discovery. The definitive v4 non-R technical matrix is
-  green: full pytest passed with 2,201 tests, 48 skips, and 104 subtests; the
-  independent durable-rollback suite passed 34 tests with two platform skips;
-  Ruff, compile, diff, generated docs, architecture, exact SSOT nodes, public
-  inspection, package validation, and clean consumer smoke passed. Installed
-  discovery remains 7 v2 tools and 27 compatibility tools. This host still lacks
-  `Rscript`, so the mandatory actual-R gate has not run; human/legal approvals,
-  merge, tag, package publication, GitHub Release, and release promotion remain
-  open.
-
-- Local v4 package witnesses are not published releases: wheel 617,113 bytes,
-  SHA-256 `31618238DE39845A0647F3B43B9776592630D9A5832B2F084A671A366ED6B920`;
-  sdist 516,938 bytes, SHA-256
-  `500AEBDE826779FE81D191358F898E52B57CCA6CBEF4DBE2821FBB3179C699E3`.
+  dynamic-annotation discovery. CI run
+  [`29689087108`](https://github.com/Moonweave-Research/figops/actions/runs/29689087108)
+  passed for source head `9e4d340b718529bd0f65ba46b2124dda718918a2`: macOS full
+  pytest was 2,322 passed, 22 skipped, and 104 subtests, including the native
+  `/var`/`/private/var` alias gate at 9/0; Windows containment and symlinks was
+  48/0 with zero skipped security tests; and actual R was 2/0 on R 4.4.2,
+  readr 2.2.0, and dplyr 1.2.0. Ruff and dependency audit passed as well.
+  Final package witnesses were built from that head in the external
+  `figops-package-9e4d340b-r1/artifacts/` directory, not repository `dist/`:
+  wheel `figops-0.20.0-py3-none-any.whl` (634,485 bytes,
+  `9623cb8675af47a184ab83636ef390220608514957da885f8ca1dd42b8403cbd`) and
+  sdist `figops-0.20.0.tar.gz` (526,180 bytes,
+  `b7128735c0f3eba259eea30bcadbda4e864f3bd101d05246a04a5cae9fbc7511`).
+  Twine validation, package-surface inspection, and clean consumer smoke
+  passed; installed discovery remains 7 v2 tools and 27 compatibility tools.
+  The artifacts are not published. `repository_public_release_authorized=false`
+  with zero approval-evidence references, so human/legal approvals, merge, tag,
+  package publication, GitHub Release, and release promotion remain open.
 
 ---
 
