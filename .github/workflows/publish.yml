@@ -46,10 +46,26 @@ jobs:
           r-version: renv
       - name: Restore locked R dependencies
         uses: r-lib/actions/setup-renv@d3c5be51b12e724e68f33216ca3c148b66d5f0b6 # v2
+      - name: Export locked R library
+        run: |
+          locked_r_lib="$(Rscript -e 'cat(normalizePath(.libPaths()[1], winslash = "/", mustWork = TRUE))')"
+          existing_r_libs_user="${R_LIBS_USER:-}"
+          if [[ -z "$locked_r_lib" || "$locked_r_lib" == *$'\n'* || "$locked_r_lib" == *$'\r'* || "$existing_r_libs_user" == *$'\n'* || "$existing_r_libs_user" == *$'\r'* ]]; then
+            echo "Refusing unsafe R library path" >&2
+            exit 1
+          fi
+          r_libs_user="$locked_r_lib"
+          if [[ -n "$existing_r_libs_user" ]]; then
+            r_libs_user="$locked_r_lib:$existing_r_libs_user"
+          fi
+          printf '%s\n' "R_LIBS_USER=$r_libs_user" >> "$GITHUB_ENV"
       - name: Verify locked R and readr
         run: |
-          Rscript -e "stopifnot(getRversion() == '4.4.2', packageVersion('readr') == '2.2.0')"
-          Rscript -e "suppressPackageStartupMessages(library(readr))"
+          verification_cwd="$(mktemp -d)"
+          trap 'rm -rf -- "$verification_cwd"' EXIT
+          cd "$verification_cwd"
+          Rscript -e "stopifnot(getRversion() == '4.4.2', packageVersion('readr') == '2.2.0', packageVersion('dplyr') == '1.2.0')"
+          Rscript -e "suppressPackageStartupMessages({library(readr); library(dplyr)})"
       - name: Run actual R integration tests
         run: >-
           uv run --locked python -m pytest -q

@@ -262,6 +262,7 @@ def _assert_actual_r_job(actual_r: dict) -> None:
         "Sync locked dependencies",
         "Install R",
         "Restore locked R dependencies",
+        "Export locked R library",
         "Verify locked R and readr",
         "Run actual R integration tests",
         "Require exactly two passed and zero skipped",
@@ -283,10 +284,42 @@ def _assert_actual_r_job(actual_r: dict) -> None:
         "r-lib/actions/setup-renv@d3c5be51b12e724e68f33216ca3c148b66d5f0b6"
     )
 
+    export_library = next(step for step in steps if step.get("name") == "Export locked R library")
+    export_lines = export_library["run"].splitlines()
+    assert export_lines == [
+        'locked_r_lib="$(Rscript -e \'cat(normalizePath(.libPaths()[1], winslash = "/", mustWork = TRUE))\')"',
+        'existing_r_libs_user="${R_LIBS_USER:-}"',
+        (
+            'if [[ -z "$locked_r_lib" || "$locked_r_lib" == *$\'\\n\'* || '
+            '"$locked_r_lib" == *$\'\\r\'* || "$existing_r_libs_user" == *$\'\\n\'* || '
+            '"$existing_r_libs_user" == *$\'\\r\'* ]]; then'
+        ),
+        '  echo "Refusing unsafe R library path" >&2',
+        "  exit 1",
+        "fi",
+        'r_libs_user="$locked_r_lib"',
+        'if [[ -n "$existing_r_libs_user" ]]; then',
+        '  r_libs_user="$locked_r_lib:$existing_r_libs_user"',
+        "fi",
+        'printf \'%s\\n\' "R_LIBS_USER=$r_libs_user" >> "$GITHUB_ENV"',
+    ]
+    assert 'r_libs_user="$locked_r_lib"' in export_lines
+    assert '  r_libs_user="$locked_r_lib:$existing_r_libs_user"' in export_lines
+    assert export_lines.index('r_libs_user="$locked_r_lib"') < export_lines.index(
+        '  r_libs_user="$locked_r_lib:$existing_r_libs_user"'
+    )
+    assert 'printf \'%s\\n\' "R_LIBS_USER=$locked_r_lib" >> "$GITHUB_ENV"' not in export_lines
+
     verify_readr = next(step for step in steps if step.get("name") == "Verify locked R and readr")
     assert verify_readr["run"].splitlines() == [
-        'Rscript -e "stopifnot(getRversion() == \'4.4.2\', packageVersion(\'readr\') == \'2.2.0\')"',
-        'Rscript -e "suppressPackageStartupMessages(library(readr))"',
+        'verification_cwd="$(mktemp -d)"',
+        'trap \'rm -rf -- "$verification_cwd"\' EXIT',
+        'cd "$verification_cwd"',
+        (
+            'Rscript -e "stopifnot(getRversion() == \'4.4.2\', '
+            "packageVersion('readr') == '2.2.0', packageVersion('dplyr') == '1.2.0')\""
+        ),
+        'Rscript -e "suppressPackageStartupMessages({library(readr); library(dplyr)})"',
     ]
     execution = next(step for step in steps if step.get("name") == "Run actual R integration tests")
     assert execution["run"].split() == [
