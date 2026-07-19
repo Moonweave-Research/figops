@@ -1,8 +1,12 @@
 import hashlib
 import json
 import os
+import re
+import struct
 import subprocess
 import sys
+import zlib
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,6 +19,14 @@ DEFAULT_PYTHON_LOCK_CANDIDATES = ("uv.lock",)
 DEFAULT_R_LOCK_CANDIDATE = "renv.lock"
 
 logger = get_logger(__name__)
+
+_SVG_FINGERPRINT_COMMENT = re.compile(
+    r"<!--\s*Research-Fingerprint:\s*(?P<payload>.*?)\s*-->",
+    re.DOTALL,
+)
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_PNG_FINGERPRINT_KEY = b"Research-Fingerprint"
+_PNG_TEXT_CHUNKS = {b"tEXt", b"zTXt", b"iTXt"}
 
 
 def reproducible_timestamp() -> str:
@@ -312,32 +324,209 @@ def embed_provenance_fingerprint(output_path: str, fingerprint: dict) -> bool:
     return False
 
 
+def _fingerprint_payload_matches(existing: object, expected_payload: str) -> bool:
+    """Return whether a persisted JSON fingerprint has the requested value.
+
+    The canonical serializer normally makes the string comparison sufficient,
+    but accepting an equivalent legacy JSON spelling avoids an unnecessary
+    artifact rewrite solely because its key order or whitespace differs.
+    """
+    if not isinstance(existing, str):
+        return False
+    if existing == expected_payload:
+        return True
+    try:
+        return _json_value_matches(json.loads(existing), json.loads(expected_payload))
+    except (TypeError, ValueError):
+        return False
+
+
+def _json_value_matches(left: object, right: object) -> bool:
+    """Compare decoded JSON without Python's bool/int or int/float coercion."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return set(left) == set(right) and all(_json_value_matches(left[key], right[key]) for key in left)
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_json_value_matches(a, b) for a, b in zip(left, right))
+    return left == right
+
+
 def _embed_png_fingerprint(path: str, payload_str: str) -> bool:
     """PIL tEXt 청크에 Research-Fingerprint 키로 임베딩합니다."""
     try:
-        from PIL import Image, PngImagePlugin
-    except ImportError:
-        return False
+        content = Path(path).read_bytes()
+        chunks = _parse_png_chunks(content)
+        if chunks is None:
+            return False
+        if not _pillow_verifies_png(path):
+            return False
+        fingerprints = [
+            _png_fingerprint_payload(chunk_type, data)
+            for chunk_type, data, _raw_chunk in chunks
+            if chunk_type in _PNG_TEXT_CHUNKS and _png_text_chunk_key(data) == _PNG_FINGERPRINT_KEY
+        ]
+        # A matching payload is authoritative only after raw PNG structure and
+        # CRC validation, and only in its canonical single-marker form.  This
+        # prevents a duplicated or corrupted legacy marker from bypassing the
+        # normalization path merely because Pillow happens to expose one value.
+        if len(fingerprints) == 1 and _fingerprint_payload_matches(fingerprints[0], payload_str):
+            return True
 
-    try:
-        img = Image.open(path)
-        meta = PngImagePlugin.PngInfo()
-
-        # 기존 메타데이터 보존
-        existing = img.info or {}
-        for key, val in existing.items():
-            if isinstance(key, str) and isinstance(val, str):
-                meta.add_text(key, val)
-        save_kwargs = {}
-        if isinstance(existing.get("dpi"), tuple):
-            save_kwargs["dpi"] = existing["dpi"]
-
-        meta.add_text("Research-Fingerprint", payload_str)
-        img.save(path, pnginfo=meta, **save_kwargs)
-        img.close()
+        rewritten = _upsert_png_fingerprint(content, payload_str, chunks=chunks)
+        if rewritten is None:
+            return False
+        # Do not resave through Pillow: it silently drops or normalizes
+        # ancillary chunks (EXIF, ICC, iTXt, pHYs, etc.).  This byte-level
+        # upsert changes only our fingerprint chunk, preserving all other
+        # metadata and image bytes.  It retains the pre-existing in-place
+        # write behavior; promotion/no-clobber is owned by the outer runtime
+        # boundary, not by metadata tagging.
+        with open(path, "wb") as stream:
+            stream.write(rewritten)
         return True
     except Exception:
         return False
+
+
+def _upsert_png_fingerprint(
+    content: bytes,
+    payload_str: str,
+    *,
+    chunks: list[tuple[bytes, bytes, bytes]] | None = None,
+) -> bytes | None:
+    """Replace all FigOps PNG fingerprint chunks without rewriting other data."""
+    chunks = chunks if chunks is not None else _parse_png_chunks(content)
+    if chunks is None:
+        return None
+
+    fingerprint_chunk = _png_text_chunk(payload_str)
+    output = bytearray(_PNG_SIGNATURE)
+    inserted = False
+    for chunk_type, data, raw_chunk in chunks:
+        if chunk_type in _PNG_TEXT_CHUNKS and _png_text_chunk_key(data) == _PNG_FINGERPRINT_KEY:
+            continue
+        # Place the replacement before image data so common PNG consumers can
+        # expose it during header parsing, while preserving IDAT contiguity.
+        if chunk_type == b"IDAT" and not inserted:
+            output.extend(fingerprint_chunk)
+            inserted = True
+        output.extend(raw_chunk)
+    return bytes(output) if inserted else None
+
+
+def _parse_png_chunks(content: bytes) -> list[tuple[bytes, bytes, bytes]] | None:
+    """Validate and return a complete PNG chunk stream without modifying it."""
+    if not content.startswith(_PNG_SIGNATURE):
+        return None
+
+    chunks: list[tuple[bytes, bytes, bytes]] = []
+    cursor = len(_PNG_SIGNATURE)
+    saw_ihdr = False
+    saw_iend = False
+    saw_idat = False
+    idat_ended = False
+    while cursor < len(content):
+        if cursor + 12 > len(content):
+            return None
+        length = struct.unpack(">I", content[cursor : cursor + 4])[0]
+        end = cursor + 12 + length
+        if end > len(content):
+            return None
+        chunk_type = content[cursor + 4 : cursor + 8]
+        data = content[cursor + 8 : cursor + 8 + length]
+        crc = struct.unpack(">I", content[cursor + 8 + length : end])[0]
+        if zlib.crc32(chunk_type + data) & 0xFFFFFFFF != crc:
+            return None
+        raw_chunk = content[cursor:end]
+        if not saw_ihdr:
+            if chunk_type != b"IHDR" or length != 13:
+                return None
+            width, height = struct.unpack(">II", data[:8])
+            if width == 0 or height == 0:
+                return None
+            saw_ihdr = True
+        elif chunk_type == b"IHDR":
+            return None
+
+        if chunk_type == b"IEND":
+            if length != 0 or end != len(content):
+                return None
+            saw_iend = True
+        elif chunk_type == b"IDAT":
+            if idat_ended:
+                return None
+            saw_idat = True
+        elif saw_idat:
+            idat_ended = True
+        chunks.append((chunk_type, data, raw_chunk))
+        cursor = end
+
+    if not saw_ihdr or not saw_iend or not saw_idat:
+        return None
+    return chunks
+
+
+def _pillow_verifies_png(path: str) -> bool:
+    """Apply Pillow's decoder checks before changing a structurally valid PNG."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return False
+    try:
+        with Image.open(path) as image:
+            image.verify()
+        return True
+    except Exception:
+        return False
+
+
+def _png_text_chunk(payload_str: str) -> bytes:
+    try:
+        payload = payload_str.encode("latin-1")
+    except UnicodeEncodeError:
+        chunk_type = b"iTXt"
+        data = _PNG_FINGERPRINT_KEY + b"\x00\x00\x00\x00\x00" + payload_str.encode("utf-8")
+    else:
+        chunk_type = b"tEXt"
+        data = _PNG_FINGERPRINT_KEY + b"\x00" + payload
+    return _png_chunk(chunk_type, data)
+
+
+def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+    crc = struct.pack(">I", zlib.crc32(chunk_type + data) & 0xFFFFFFFF)
+    return struct.pack(">I", len(data)) + chunk_type + data + crc
+
+
+def _png_text_chunk_key(data: bytes) -> bytes:
+    return data.split(b"\x00", 1)[0]
+
+
+def _png_fingerprint_payload(chunk_type: bytes, data: bytes) -> str | None:
+    """Decode a FigOps tEXt/zTXt/iTXt payload for the no-op predicate."""
+    try:
+        _keyword, encoded = data.split(b"\x00", 1)
+        if chunk_type == b"tEXt":
+            return encoded.decode("latin-1")
+        if chunk_type == b"zTXt":
+            if not encoded or encoded[0] != 0:
+                return None
+            return zlib.decompress(encoded[1:]).decode("latin-1")
+        if chunk_type == b"iTXt":
+            if len(encoded) < 2:
+                return None
+            compressed, compression_method = encoded[0], encoded[1]
+            if compressed not in {0, 1} or compression_method != 0:
+                return None
+            language_and_text = encoded[2:]
+            _language, language_and_text = language_and_text.split(b"\x00", 1)
+            _translated, text = language_and_text.split(b"\x00", 1)
+            if compressed:
+                text = zlib.decompress(text)
+            return text.decode("utf-8")
+    except (UnicodeDecodeError, ValueError, zlib.error):
+        return None
+    return None
 
 
 def _embed_pdf_fingerprint(path: str, payload_str: str) -> bool:
@@ -351,14 +540,29 @@ def _embed_pdf_fingerprint(path: str, payload_str: str) -> bool:
     try:
         parsed = json.loads(payload_str) if isinstance(payload_str, str) else {}
         reader = PdfReader(path)
+        existing = reader.metadata
+        if _pdf_fingerprint_metadata_matches(existing, payload_str, parsed):
+            return True
         writer = PdfWriter()
         writer.append(reader)
-        writer.add_metadata(
+        preserved_metadata = {
+            str(key): str(value)
+            for key, value in (existing or {}).items()
+            if value is not None
+        }
+        # Update all fields managed by this fingerprint as one record.  This
+        # repairs legacy files that have only one of the short hash fields,
+        # while retaining unrelated PDF document metadata such as title and
+        # author.
+        preserved_metadata.update(
             {
                 "/Research-Fingerprint": payload_str,
-                "/Research-Config-Hash": parsed.get("config", ""),
-                "/Research-Env-Hash": parsed.get("env", ""),
+                "/Research-Config-Hash": str(parsed.get("config", "")),
+                "/Research-Env-Hash": str(parsed.get("env", "")),
             }
+        )
+        writer.add_metadata(
+            preserved_metadata
         )
         with open(tmp, "wb") as f:
             writer.write(f)
@@ -377,9 +581,27 @@ def _embed_svg_fingerprint(path: str, payload_str: str) -> bool:
             content = f.read()
 
         comment = f"<!-- Research-Fingerprint: {payload_str} -->"
+        fingerprint_comments = list(_SVG_FINGERPRINT_COMMENT.finditer(content))
 
+        # Leave a canonical, matching fingerprint untouched.  Apart from
+        # preserving cache identity, this avoids needless mtime churn for
+        # figures that are already reproducibly tagged.
+        if len(fingerprint_comments) == 1 and _fingerprint_payload_matches(
+            fingerprint_comments[0].group("payload"), payload_str
+        ):
+            return True
+
+        if fingerprint_comments:
+            replacement_count = 0
+
+            def replace_fingerprint(_match):
+                nonlocal replacement_count
+                replacement_count += 1
+                return comment if replacement_count == 1 else ""
+
+            content = _SVG_FINGERPRINT_COMMENT.sub(replace_fingerprint, content)
         # <?xml ... ?> 선언 직후 삽입, 없으면 파일 선두에 삽입
-        if "?>" in content:
+        elif "?>" in content:
             idx = content.index("?>") + 2
             content = content[:idx] + "\n" + comment + content[idx:]
         else:
@@ -390,6 +612,17 @@ def _embed_svg_fingerprint(path: str, payload_str: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _pdf_fingerprint_metadata_matches(existing: object, payload_str: str, parsed: object) -> bool:
+    """Require a complete matching PDF fingerprint record before a no-op."""
+    if not isinstance(existing, Mapping) or not isinstance(parsed, Mapping):
+        return False
+    return (
+        _fingerprint_payload_matches(existing.get("/Research-Fingerprint"), payload_str)
+        and str(existing.get("/Research-Config-Hash", "")) == str(parsed.get("config", ""))
+        and str(existing.get("/Research-Env-Hash", "")) == str(parsed.get("env", ""))
+    )
 
 
 def embed_figures_fingerprint(
@@ -492,7 +725,7 @@ def _read_png_fingerprint(path: str) -> dict | None:
         from PIL import Image
 
         with Image.open(path) as img:
-            raw = img.info.get("Research-Fingerprint")
+            raw = img.info.get("Research-Fingerprint") or getattr(img, "text", {}).get("Research-Fingerprint")
             if raw:
                 return json.loads(raw)
     except Exception:
@@ -515,14 +748,11 @@ def _read_pdf_fingerprint(path: str) -> dict | None:
 
 def _read_svg_fingerprint(path: str) -> dict | None:
     try:
-        import re
-
         with open(path, encoding="utf-8") as f:
-            # 주석 형태 탐색: <!-- Research-Fingerprint: {...} -->
-            content = f.read(4096)  # 성능을 위해 선두 4KB만 읽음
-            match = re.search(r"<!-- Research-Fingerprint:\s*({.*?})\s*-->", content)
+            content = f.read()
+            match = _SVG_FINGERPRINT_COMMENT.search(content)
             if match:
-                return json.loads(match.group(1))
+                return json.loads(match.group("payload"))
     except Exception:
         pass
     return None
