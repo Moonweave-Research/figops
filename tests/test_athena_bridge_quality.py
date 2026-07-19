@@ -5,6 +5,7 @@ Covers: _read_quality_sidecar, _apply_quality_overlay
 """
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,7 @@ import matplotlib.pyplot as plt  # noqa: I001, E402
 from PIL import Image  # noqa: E402
 
 from hub_core.athena_bridge import AthenaBridge  # noqa: E402
+from hub_core.runtime_paths import resolve_diagnostics_dir  # noqa: E402
 from themes.journal_theme import apply_publication_layout, mm_to_inch  # noqa: E402
 
 
@@ -25,7 +27,7 @@ class TestReadQualitySidecar(unittest.TestCase):
     """Tests for AthenaBridge._read_quality_sidecar (static method)."""
 
     def test_reads_valid_sidecar(self, tmp_path=None):
-        """Valid quality_metrics.json should be returned as a dict."""
+        """Legacy project-local quality diagnostics remain readable."""
         import tempfile
         from pathlib import Path
 
@@ -40,6 +42,25 @@ class TestReadQualitySidecar(unittest.TestCase):
             result = AthenaBridge._read_quality_sidecar(output_path)
             self.assertIsNotNone(result)
             self.assertFalse(result["quality_passed"])
+
+    def test_prefers_external_runtime_sidecar_without_project_local_write(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            project = root / "project"
+            runtime = root / "runtime"
+            output_path = project / "results" / "figures" / "fig.png"
+            output_path.parent.mkdir(parents=True)
+            payload = {"quality_passed": False, "cv_warnings": [{"column": "x", "cv": 0.5}]}
+
+            with patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime)}, clear=False):
+                sidecar = Path(resolve_diagnostics_dir(project)) / "data_contract" / "quality_metrics.json"
+                sidecar.parent.mkdir(parents=True)
+                sidecar.write_text(json.dumps(payload), encoding="utf-8")
+                result = AthenaBridge._read_quality_sidecar(str(output_path))
+
+            self.assertEqual(result, payload)
+            self.assertTrue(sidecar.is_relative_to(runtime))
+            self.assertFalse((project / "results" / "diagnostics" / "quality_metrics.json").exists())
 
     def test_missing_sidecar_returns_none(self):
         """No sidecar file should return None."""
@@ -138,8 +159,17 @@ class TestAthenaBridgeRenderSave(unittest.TestCase):
             }
 
             with tempfile.TemporaryDirectory(prefix="athena_bridge_render_") as tmpdir:
-                output_path = Path(tmpdir) / "fig.png"
-                with patch.object(bridge, "load_engine", return_value=True):
+                root = Path(tmpdir)
+                output_path = root / "project" / "results" / "figures" / "fig.png"
+                runtime_root = root / "runtime"
+                with (
+                    patch.dict(
+                        os.environ,
+                        {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime_root)},
+                        clear=False,
+                    ),
+                    patch.object(bridge, "load_engine", return_value=True),
+                ):
                     ok = bridge.render(
                         {"layers": [], "target_format": "nature", "dpi": 600},
                         str(output_path),
@@ -147,8 +177,77 @@ class TestAthenaBridgeRenderSave(unittest.TestCase):
 
                 self.assertTrue(ok)
                 self.assertTrue(output_path.exists())
+                self.assertFalse(output_path.with_suffix(".manifest.json").exists())
+                manifests = list(runtime_root.rglob("*.manifest.json"))
+                self.assertEqual(len(manifests), 1)
+                self.assertTrue(manifests[0].is_relative_to(runtime_root))
                 with Image.open(output_path) as saved:
                     self.assertEqual(saved.size, (2102, 1771))
+        finally:
+            bridge._engine = original_engine
+            plt.close(fig)
+
+    def test_manifest_failure_never_leaves_a_durable_output(self):
+        bridge = AthenaBridge()
+        original_engine = bridge._engine
+        fig, ax = plt.subplots(figsize=(2, 1))
+        try:
+            bridge._engine = {"build_device_figure": lambda **kwargs: (fig, ax, {})}
+            with tempfile.TemporaryDirectory(prefix="athena_bridge_failure_") as tmpdir:
+                root = Path(tmpdir)
+                output_path = root / "project" / "results" / "figures" / "fig.png"
+                runtime_root = root / "runtime"
+                with (
+                    patch.dict(
+                        os.environ,
+                        {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime_root)},
+                        clear=False,
+                    ),
+                    patch.object(bridge, "load_engine", return_value=True),
+                    patch.object(bridge, "_write_manifest", side_effect=OSError("manifest failed")),
+                ):
+                    ok = bridge.render(
+                        {"layers": [], "target_format": "nature", "dpi": 300},
+                        str(output_path),
+                    )
+
+                self.assertFalse(ok)
+                self.assertFalse(output_path.exists())
+                self.assertTrue(list(runtime_root.rglob("*.png")))
+        finally:
+            bridge._engine = original_engine
+            plt.close(fig)
+
+    def test_promotion_failure_never_leaves_a_durable_output(self):
+        bridge = AthenaBridge()
+        original_engine = bridge._engine
+        fig, ax = plt.subplots(figsize=(2, 1))
+        try:
+            bridge._engine = {"build_device_figure": lambda **kwargs: (fig, ax, {})}
+            with tempfile.TemporaryDirectory(prefix="athena_bridge_promotion_failure_") as tmpdir:
+                root = Path(tmpdir)
+                output_path = root / "project" / "results" / "figures" / "fig.png"
+                runtime_root = root / "runtime"
+                with (
+                    patch.dict(
+                        os.environ,
+                        {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime_root)},
+                        clear=False,
+                    ),
+                    patch.object(bridge, "load_engine", return_value=True),
+                    patch(
+                        "hub_core.athena_bridge.promote_runtime_artifact",
+                        side_effect=OSError("promotion failed"),
+                    ),
+                ):
+                    ok = bridge.render(
+                        {"layers": [], "target_format": "nature", "dpi": 300},
+                        str(output_path),
+                    )
+
+                self.assertFalse(ok)
+                self.assertFalse(output_path.exists())
+                self.assertTrue(list(runtime_root.rglob("*.png")))
         finally:
             bridge._engine = original_engine
             plt.close(fig)

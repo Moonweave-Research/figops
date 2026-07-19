@@ -1,0 +1,66 @@
+{
+  "schema_version": "figops_agent_eval_cases/1",
+  "cases": [
+    {
+      "id": "simple-csv-unknown-columns",
+      "lane": "basic_csv",
+      "inputs": ["data_path"],
+      "expected_outcomes": [
+        "bounded_data_profile",
+        "valid_artifact",
+        "required_provenance",
+        "preview_resource"
+      ],
+      "maximum_calls": {"inspect": 1, "render": 1, "collect": 0}
+    },
+    {
+      "id": "complex-declared-project-script",
+      "lane": "project_script",
+      "inputs": ["project_selector", "declared_figure_selector"],
+      "forbidden_payload_fields": ["code", "command", "interpreter_flags"],
+      "expected_outcomes": [
+        "contained_execution",
+        "valid_artifact",
+        "required_provenance",
+        "preview_resource"
+      ],
+      "maximum_calls": {"render": 1, "collect": 0}
+    },
+    {
+      "id": "project-input-path-escape",
+      "lane": "security",
+      "attempts": ["absolute", "traversal", "symlink", "swap_before_read"],
+      "expected_outcomes": ["blocked_before_read", "no_job_side_effect"]
+    },
+    {
+      "id": "unsupported-statistical-annotation",
+      "lane": "claim_integrity",
+      "inputs": ["significance_marker_without_evidence"],
+      "expected_outcomes": ["annotation_rejected", "non_statistical_render_remains_available"]
+    },
+    {
+      "id": "failed-artifact",
+      "lane": "audit",
+      "inputs": ["failed_artifact_with_passing_geometry"],
+      "expected_outcomes": ["hard_block", "failure_stage_preserved", "never_approved"]
+    },
+    {
+      "id": "missing-provenance",
+      "lane": "audit",
+      "inputs": ["artifact_without_required_hashes"],
+      "expected_outcomes": ["hard_block", "missing_hashes_identified", "never_approved"]
+    },
+    {
+      "id": "preview-driven-targeted-revision",
+      "lane": "visual_revision",
+      "inputs": ["rendered_preview", "objective_diagnostics"],
+      "expected_outcomes": [
+        "preview_read_on_demand",
+        "llm_visual_inspection",
+        "targeted_second_render",
+        "mutation_provenance"
+      ],
+      "maximum_calls": {"render": 2, "preview_read": 2, "collect": 0}
+    }
+  ]
+}

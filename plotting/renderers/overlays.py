@@ -9,8 +9,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.font_manager import FontProperties
 
+from plotting.renderers.annotation_normalization import (
+    CALLOUT_OFFSET_PRESETS as CALLOUT_OFFSET_PRESETS,
+)
+from plotting.renderers.annotation_normalization import (
+    normalized_annotations,
+)
+from plotting.renderers.annotation_normalization import (
+    normalized_callout_offset as normalized_callout_offset,
+)
+from plotting.renderers.annotation_normalization import (
+    normalized_span_annotation as normalized_span_annotation,
+)
+from plotting.renderers.annotation_normalization import (
+    reject_non_point_callout_fields as reject_non_point_callout_fields,
+)
 from plotting.renderers.axes import visible_plot_axes
-from plotting.renderers.labels import AVOID_OVERLAP_OFFSETS
 from plotting.renderers.legend import apply_legend
 from plotting.utils import annotate_significance
 
@@ -33,6 +47,11 @@ def validate_manual_overlays(spec: Any) -> None:
         )
     if spec.y_break_range is not None:
         raise ValueError("manual overlays do not support y_break_range")
+    for index, band in enumerate(spec.fill_between or ()):
+        if isinstance(band, dict) and band.get("band_kind") == "confidence_interval":
+            raise ValueError(
+                f"fill_between[{index}] confidence_interval is unavailable until interval evidence is linked"
+            )
 
 
 def validate_statistical_overlays(points: list[dict], spec: Any) -> None:
@@ -48,10 +67,14 @@ def validate_statistical_overlays(points: list[dict], spec: Any) -> None:
         )
     if spec.y_break_range is not None:
         raise ValueError("statistical overlays do not support y_break_range")
+    if spec.ci_band:
+        raise ValueError(
+            "ci_band is unavailable in quick/compat rendering until independently produced bounds are linked"
+        )
     if spec.fit_line or spec.ci_band:
         min_points = 3 if spec.ci_band else 2
         numeric_xy_arrays(points, min_points=min_points, context="fit_line/ci_band")
-    normalized_significance_markers(spec.significance_markers)
+    normalized_significance_markers(spec.significance_markers, calculation_evidence=spec.calculation_evidence)
 
 
 def numeric_xy_arrays(points: list[dict], *, min_points: int, context: str) -> tuple[np.ndarray, np.ndarray]:
@@ -251,186 +274,6 @@ def tag_annotation_text(artist, *, role: str) -> None:
     artist._graph_hub_annotation_text_role = role
 
 
-CALLOUT_OFFSET_PRESETS: dict[str, tuple[float, float]] = {
-    "above": (0.0, 10.0),
-    "below": (0.0, -10.0),
-    "left": (-10.0, 0.0),
-    "right": (10.0, 0.0),
-    "upper_left": (-8.0, 8.0),
-    "upper_right": (8.0, 8.0),
-    "lower_left": (-8.0, -8.0),
-    "lower_right": (8.0, -8.0),
-}
-
-
-def reject_non_point_callout_fields(annotation: dict[str, object], index: int) -> None:
-    unsupported = [
-        key
-        for key in ("xytext_offset", "placement_preset", "avoid_overlap")
-        if key in annotation and annotation.get(key) is not None
-    ]
-    if unsupported:
-        joined = ", ".join(unsupported)
-        raise ValueError(f"annotations[{index}] {joined} only apply to point annotations")
-
-
-def normalized_callout_offset(annotation: dict[str, object], index: int) -> tuple[float, float] | None:
-    raw_offset = annotation.get("xytext_offset")
-    if raw_offset is not None:
-        if not isinstance(raw_offset, dict):
-            raise ValueError(f"annotations[{index}].xytext_offset must be an object")
-        try:
-            dx = float(raw_offset["dx"])
-            dy = float(raw_offset["dy"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(f"annotations[{index}].xytext_offset requires numeric dx and dy") from exc
-        if not math.isfinite(dx) or not math.isfinite(dy):
-            raise ValueError(f"annotations[{index}].xytext_offset dx and dy must be finite")
-        return (dx, dy)
-    preset = str(annotation.get("placement_preset") or "").strip().lower().replace("-", "_")
-    if preset:
-        if preset not in CALLOUT_OFFSET_PRESETS:
-            allowed = ", ".join(sorted(CALLOUT_OFFSET_PRESETS))
-            raise ValueError(f"annotations[{index}].placement_preset must be one of: {allowed}")
-        return CALLOUT_OFFSET_PRESETS[preset]
-    raw_avoid_overlap = annotation.get("avoid_overlap", False)
-    if not isinstance(raw_avoid_overlap, bool):
-        raise ValueError(f"annotations[{index}].avoid_overlap must be a boolean")
-    if raw_avoid_overlap:
-        return AVOID_OVERLAP_OFFSETS[index % len(AVOID_OVERLAP_OFFSETS)]
-    return None
-
-
-def normalized_span_annotation(
-    annotation: dict[str, object],
-    index: int,
-    *,
-    field: str,
-    bounds: tuple[str, str],
-) -> dict[str, object]:
-    span = annotation[field]
-    if not isinstance(span, dict):
-        raise ValueError(f"annotations[{index}].{field} must be an object")
-    lower_key, upper_key = bounds
-    try:
-        lower = float(span[lower_key])
-        upper = float(span[upper_key])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError(f"annotations[{index}].{field} requires numeric {lower_key} and {upper_key}") from exc
-    if not math.isfinite(lower) or not math.isfinite(upper):
-        raise ValueError(f"annotations[{index}].{field} bounds must be finite")
-    try:
-        alpha = float(annotation.get("alpha", 0.12))
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"annotations[{index}].alpha must be numeric") from exc
-    return {
-        "kind": field,
-        lower_key: lower,
-        upper_key: upper,
-        "text": str(annotation.get("text") or "").strip(),
-        "color": str(annotation.get("color") or "black"),
-        "alpha": alpha,
-    }
-
-
-def normalized_annotations(annotations: object) -> tuple[dict[str, object], ...]:
-    if annotations in (None, (), []):
-        return ()
-    if not isinstance(annotations, (list, tuple)):
-        raise ValueError("annotations must be an array of objects")
-    normalized: list[dict[str, object]] = []
-    for index, annotation in enumerate(annotations):
-        if not isinstance(annotation, dict):
-            raise ValueError(f"annotations[{index}] must be an object")
-        region = annotation.get("region")
-        if region is not None:
-            reject_non_point_callout_fields(annotation, index)
-            if not isinstance(region, dict):
-                raise ValueError(f"annotations[{index}].region must be an object")
-            try:
-                xmin = float(region["xmin"])
-                xmax = float(region["xmax"])
-                ymin = float(region["ymin"])
-                ymax = float(region["ymax"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ValueError(f"annotations[{index}].region requires numeric xmin, xmax, ymin, ymax") from exc
-            if not all(math.isfinite(value) for value in (xmin, xmax, ymin, ymax)):
-                raise ValueError(f"annotations[{index}].region bounds must be finite")
-            try:
-                alpha = float(annotation.get("alpha", 0.12))
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"annotations[{index}].alpha must be numeric") from exc
-            normalized.append(
-                {
-                    "kind": "region",
-                    "xmin": xmin,
-                    "xmax": xmax,
-                    "ymin": ymin,
-                    "ymax": ymax,
-                    "text": str(annotation.get("text") or "").strip(),
-                    "color": str(annotation.get("color") or "black"),
-                    "alpha": alpha,
-                }
-            )
-            continue
-        if annotation.get("hspan") is not None:
-            reject_non_point_callout_fields(annotation, index)
-            normalized.append(
-                normalized_span_annotation(annotation, index, field="hspan", bounds=("ymin", "ymax"))
-            )
-            continue
-        if annotation.get("vspan") is not None:
-            reject_non_point_callout_fields(annotation, index)
-            normalized.append(
-                normalized_span_annotation(annotation, index, field="vspan", bounds=("xmin", "xmax"))
-            )
-            continue
-        missing = [key for key in ("x", "y") if key not in annotation]
-        if missing:
-            raise ValueError(f"annotations[{index}] missing required field(s): {', '.join(missing)}")
-        try:
-            x = float(annotation["x"])
-            y = float(annotation["y"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"annotations[{index}] x and y must be numeric") from exc
-        if not math.isfinite(x) or not math.isfinite(y):
-            raise ValueError(f"annotations[{index}] x and y must be finite")
-        text = str(annotation.get("text") or "").strip()
-        arrow_to = annotation.get("arrow_to")
-        if not text and arrow_to is None:
-            raise ValueError(f"annotations[{index}] text must be non-empty unless arrow_to is provided")
-        normalized_arrow = None
-        if arrow_to is not None:
-            if not isinstance(arrow_to, dict):
-                raise ValueError(f"annotations[{index}].arrow_to must be an object")
-            try:
-                arrow_x = float(arrow_to["x"])
-                arrow_y = float(arrow_to["y"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ValueError(f"annotations[{index}].arrow_to requires numeric x and y") from exc
-            if not math.isfinite(arrow_x) or not math.isfinite(arrow_y):
-                raise ValueError(f"annotations[{index}].arrow_to x and y must be finite")
-            normalized_arrow = {"x": arrow_x, "y": arrow_y}
-        arrowstyle = str(annotation.get("arrowstyle") or "->").strip() or "->"
-        connectionstyle = str(annotation.get("connectionstyle") or "").strip()
-        item = {
-            "kind": "point",
-            "x": x,
-            "y": y,
-            "text": text,
-            "arrow_to": normalized_arrow,
-            "color": str(annotation.get("color") or "black"),
-            "arrowstyle": arrowstyle,
-        }
-        callout_offset = normalized_callout_offset(annotation, index)
-        if callout_offset is not None:
-            item["xytext_offset"] = callout_offset
-        if connectionstyle:
-            item["connectionstyle"] = connectionstyle
-        normalized.append(item)
-    return tuple(normalized)
-
-
 def annotation_font_size() -> float:
     for key in ("xtick.labelsize", "legend.fontsize"):
         try:
@@ -446,7 +289,10 @@ def span_midpoint(lower: float, upper: float) -> float:
 
 def draw_annotations(ax, spec: Any) -> None:
     font_size = annotation_font_size()
-    for annotation in normalized_annotations(spec.annotations):
+    for annotation in normalized_annotations(
+        spec.annotations,
+        calculation_evidence=spec.calculation_evidence,
+    ):
         color = str(annotation["color"])
         if annotation.get("kind") == "region":
             xmin = float(annotation["xmin"])
@@ -595,29 +441,86 @@ def draw_annotations_on_visible_axes(fig, fallback_ax, spec: Any) -> None:
         draw_annotations(axis, spec)
 
 
-def normalized_significance_markers(markers: object) -> tuple[dict[str, float | str | None], ...]:
+def normalized_significance_markers(
+    markers: object,
+    *,
+    calculation_evidence: object = (),
+) -> tuple[dict[str, float | str | None], ...]:
     if markers in (None, (), []):
         return ()
     if not isinstance(markers, (list, tuple)):
         raise ValueError("significance_markers must be an array of objects")
 
+    if not isinstance(calculation_evidence, (list, tuple)):
+        raise ValueError("calculation_evidence must be an array of produced calculation checks")
+    evidence_by_id = {
+        str(item.get("evidence_id")): item
+        for item in calculation_evidence
+        if isinstance(item, dict) and item.get("evidence_id")
+    }
+    if len(evidence_by_id) != len(calculation_evidence):
+        raise ValueError("calculation_evidence evidence_id values must be globally unique")
+    allowed_marker_fields = {
+        "x1",
+        "x2",
+        "y",
+        "h",
+        "label",
+        "color",
+        "calculation_evidence_id",
+        "analysis_artifact_sha256",
+        "test_metadata",
+    }
     normalized = []
     for idx, marker in enumerate(markers):
         if not isinstance(marker, dict):
             raise ValueError(f"significance_markers[{idx}] must be an object")
-        missing = [key for key in ("x1", "x2", "y") if key not in marker]
+        if set(marker) - allowed_marker_fields:
+            raise ValueError(f"significance_markers[{idx}] contains unsupported fields")
+        missing = [key for key in ("x1", "x2", "y", "label") if key not in marker]
         if missing:
             raise ValueError(f"significance_markers[{idx}] missing required field(s): {', '.join(missing)}")
-        try:
-            x1 = float(marker["x1"])
-            x2 = float(marker["x2"])
-            y = float(marker["y"])
-            h = float(marker["h"]) if marker.get("h") is not None else None
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"significance_markers[{idx}] x1, x2, y, and h must be numeric") from exc
+        raw_numbers = {field: marker.get(field) for field in ("x1", "x2", "y", "h")}
+        if any(
+            value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)))
+            for value in raw_numbers.values()
+        ):
+            raise ValueError(f"significance_markers[{idx}] x1, x2, y, and h must be JSON numbers")
+        x1 = float(marker["x1"])
+        x2 = float(marker["x2"])
+        y = float(marker["y"])
+        h = float(marker["h"]) if marker.get("h") is not None else None
         if not all(math.isfinite(value) for value in (x1, x2, y)) or (h is not None and not math.isfinite(h)):
             raise ValueError(f"significance_markers[{idx}] x1, x2, y, and h must be finite")
-        label = str(marker.get("label") or marker.get("text") or "*")
+        evidence_id = str(marker.get("calculation_evidence_id") or "")
+        evidence = evidence_by_id.get(evidence_id)
+        if evidence is None:
+            raise ValueError(
+                f"significance_markers[{idx}].calculation_evidence_id must reference produced calculation evidence"
+            )
+        result = evidence.get("result") if isinstance(evidence.get("result"), dict) else {}
+        if result.get("status") != "passed" or "p_value" not in result:
+            raise ValueError(f"significance_markers[{idx}] references calculation evidence that did not pass")
+        if marker.get("analysis_artifact_sha256") != evidence.get("analysis_artifact_sha256"):
+            raise ValueError(
+                f"significance_markers[{idx}].analysis_artifact_sha256 does not match calculation evidence"
+            )
+        metadata = marker.get("test_metadata")
+        if isinstance(metadata, dict) and set(metadata) - {"test_name", "model"}:
+            raise ValueError(f"significance_markers[{idx}].test_metadata contains unsupported fields")
+        if not isinstance(metadata, dict) or metadata != evidence.get("test_metadata"):
+            raise ValueError(f"significance_markers[{idx}].test_metadata does not match calculation evidence")
+        if not isinstance(metadata.get("model"), str) or not metadata["model"].strip():
+            raise ValueError(f"significance_markers[{idx}].test_metadata.model is required")
+        label = marker.get("label")
+        if not isinstance(label, str) or not label.strip() or len(label) > 128:
+            raise ValueError(f"significance_markers[{idx}].label must be a bounded non-empty string")
+        assertion = evidence.get("assertion") if isinstance(evidence.get("assertion"), dict) else {}
+        if label != assertion.get("display_label"):
+            raise ValueError(f"significance_markers[{idx}].label does not match calculation evidence annotation")
+        binding = evidence.get("marker_binding") if isinstance(evidence.get("marker_binding"), dict) else {}
+        if x1 != float(binding.get("x1", float("nan"))) or x2 != float(binding.get("x2", float("nan"))):
+            raise ValueError(f"significance_markers[{idx}] coordinates do not match calculation evidence binding")
         color = str(marker.get("color") or "black")
         normalized.append({"x1": x1, "x2": x2, "y": y, "h": h, "label": label, "color": color})
     return tuple(normalized)
@@ -628,7 +531,10 @@ def draw_statistical_overlays(ax, points: list[dict], spec: Any) -> None:
         return
     if spec.fit_line or spec.ci_band:
         draw_linear_fit_overlay(ax, points, spec)
-    for marker in normalized_significance_markers(spec.significance_markers):
+    for marker in normalized_significance_markers(
+        spec.significance_markers,
+        calculation_evidence=spec.calculation_evidence,
+    ):
         annotate_significance(
             ax,
             marker["x1"],

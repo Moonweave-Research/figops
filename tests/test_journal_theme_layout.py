@@ -506,7 +506,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
         finally:
             plt.rcParams.update(saved_rc)
 
-    def test_apply_theme_clamps_subfloor_font_and_line_values_with_warning(self):
+    def test_apply_theme_validate_mode_preserves_subfloor_authored_values(self):
         saved_rc = plt.rcParams.copy()
         try:
             with warnings.catch_warnings(record=True) as captured:
@@ -514,16 +514,10 @@ class JournalThemeLayoutTest(unittest.TestCase):
                 apply_journal_theme("science", font_scale=0.1)
 
             messages = [str(item.message) for item in captured]
-            self.assertTrue(any("journal compliance" in message and "font" in message for message in messages))
-            self.assertTrue(any("journal compliance" in message and "line" in message for message in messages))
-            self.assertEqual(plt.rcParams["font.size"], 5.0)
-            self.assertEqual(plt.rcParams["axes.labelsize"], 5.0)
-            self.assertEqual(plt.rcParams["legend.fontsize"], 5.0)
-            self.assertEqual(plt.rcParams["xtick.labelsize"], 5.0)
-            self.assertEqual(plt.rcParams["ytick.labelsize"], 5.0)
-            self.assertEqual(plt.rcParams["lines.linewidth"], 0.5)
-            self.assertEqual(plt.rcParams["axes.linewidth"], 0.5)
-            self.assertEqual(plt.rcParams["lines.markeredgewidth"], 0.5)
+            self.assertFalse(any("journal compliance: clamped" in message for message in messages))
+            self.assertLess(plt.rcParams["font.size"], 5.0)
+            self.assertLess(plt.rcParams["axes.labelsize"], 5.0)
+            self.assertLess(plt.rcParams["lines.linewidth"], 0.5)
         finally:
             plt.rcParams.update(saved_rc)
 
@@ -559,9 +553,19 @@ class JournalThemeLayoutTest(unittest.TestCase):
                         os.environ.pop("GEOMETRY_DIAGNOSTICS_OUT", None)
                     else:
                         os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = prior
-                payload = Path(tmpdir, "geometry.json").read_text(encoding="utf-8")
-                self.assertIn("font_size_token_drift", payload)
-                self.assertIn("drift", payload)
+                payload = json.loads(Path(tmpdir, "geometry.json").read_text(encoding="utf-8"))
+                measurement = next(
+                    item for item in payload["measurements"]
+                    if item["metric_id"] == "style_geometry_observations"
+                )
+                observed_sizes = {
+                    item["fontsize_pt"] for item in measurement["value"]["font_sizes"]
+                }
+                self.assertIn(font_tokens(INTERNAL_STYLE_TARGET_FORMAT).label, observed_sizes)
+                self.assertIn(5.5, observed_sizes)
+                serialized = json.dumps(measurement, sort_keys=True)
+                for policy_field in ('"passed"', '"policy_id"', '"threshold"', '"verdict"'):
+                    self.assertNotIn(policy_field, serialized)
         finally:
             plt.close(fig)
 
@@ -586,19 +590,26 @@ class JournalThemeLayoutTest(unittest.TestCase):
                     else:
                         os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = prior
                 payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
-                compliance = next(check for check in payload["checks"] if check["name"] == "journal_compliance")
-                self.assertTrue(compliance["passed"])
-                self.assertEqual(compliance["data"]["target_format"], "science")
-                self.assertEqual(compliance["data"]["min_font_size_pt"], 5.0)
-                self.assertEqual(compliance["data"]["min_line_width_pt"], 0.5)
-                self.assertEqual(compliance["data"]["max_figure_height_mm"], 234.0)
+                observations = next(
+                    item for item in payload["measurements"] if item["metric_id"] == "style_geometry_observations"
+                )
+                self.assertEqual(observations["availability"], "available")
+                self.assertIn("figure_height_mm", observations["value"])
+                self.assertIn("font_sizes", observations["value"])
+                self.assertIn("line_widths", observations["value"])
+                self.assertNotIn("policy_id", observations["value"])
         finally:
             plt.close(fig)
 
     def test_non_baseline_profile_clamps_and_reports_journal_compliance(self):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            apply_journal_theme("science", font_scale=0.1, profile_name=INTERNAL_RESISTANCE_PROFILE)
+            apply_journal_theme(
+                "science",
+                font_scale=0.1,
+                profile_name=INTERNAL_RESISTANCE_PROFILE,
+                compliance_mode="clamp",
+            )
 
         self.assertGreaterEqual(plt.rcParams["font.size"], 5.0)
         self.assertGreaterEqual(plt.rcParams["lines.linewidth"], 0.5)
@@ -623,11 +634,11 @@ class JournalThemeLayoutTest(unittest.TestCase):
                     else:
                         os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = prior
                 payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
-                compliance = next(check for check in payload["checks"] if check["name"] == "journal_compliance")
-                self.assertTrue(compliance["passed"])
-                self.assertEqual(compliance["data"]["target_format"], "science")
-                self.assertEqual(compliance["data"]["min_font_size_pt"], 5.0)
-                self.assertEqual(compliance["data"]["min_line_width_pt"], 0.5)
+                observations = next(
+                    item for item in payload["measurements"] if item["metric_id"] == "style_geometry_observations"
+                )
+                self.assertEqual(observations["availability"], "available")
+                self.assertNotIn("policy_id", observations["value"])
         finally:
             plt.close(fig)
 
@@ -640,7 +651,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
             with tempfile.TemporaryDirectory(prefix="journal_artist_clamp_") as tmpdir:
                 with warnings.catch_warnings(record=True) as caught:
                     warnings.simplefilter("always")
-                    save_journal_fig(fig, Path(tmpdir) / "clamped.png", dpi=150)
+                    save_journal_fig(fig, Path(tmpdir) / "clamped.png", compliance_mode="clamp", dpi=150)
 
             self.assertEqual(text.get_fontsize(), 5.0)
             self.assertEqual(line.get_linewidth(), 0.5)

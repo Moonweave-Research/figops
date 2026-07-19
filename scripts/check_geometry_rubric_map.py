@@ -12,7 +12,7 @@ from enum import StrEnum, unique
 from pathlib import Path
 from typing import Final, Mapping, assert_never
 
-from hub_core.mcp.render_geometry_schemas import GEOMETRY_METRIC_NAMES
+from hub_core.mcp.render_geometry_schemas import LEGACY_GEOMETRY_METRIC_NAMES as GEOMETRY_METRIC_NAMES
 
 HUB_ROOT: Final = Path(__file__).resolve().parent.parent
 MAP_PATH: Final = HUB_ROOT / "docs" / "specs" / "geometry-diagnostic-rubric-map.json"

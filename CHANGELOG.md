@@ -15,6 +15,85 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.20.0] - 2026-07-15
+
+Source release-candidate entry. The latest published PyPI package and GitHub
+Release remain `0.19.0` pending the separate PR #224 release gates and promotion.
+
+### Added
+
+- Add the AI-native v2 MCP profile: a compact, evidence-first default surface with
+  bounded inspection, one-call CSV/project rendering, explicit-policy audit, lazy
+  preview resources, raw-integrity evidence, and scientific-claim linkage.
+- Add generated references for the compact v2 and frozen compatibility profiles,
+  verified runtime-manifest reads, bounded raster/PDF preview conversion, and a
+  persisted live-model preview/revision witness.
+- Add the `figops-project-v1.1` declared-role contract, schema-less legacy
+  in-memory resolution, trusted external-raw descriptors, and a shared layout
+  inventory for config validation, scaffolding, and normalization.
+- Add semantic structure inventory/audit/planning, reviewed copy-only apply with
+  token and config compare-and-swap guards, destination-filesystem staged result
+  promotion through a native consuming same-filesystem no-replace move, and
+  closed durable receipts that remain verifiable after runtime deletion.
+
+### Changed
+
+- Change launcher `tools/list` discovery to the `v2` profile by default. Existing
+  handlers, request payloads, canonical tool names, and legacy aliases remain
+  available; clients that require the complete pre-v2 discovery list must explicitly
+  select the `compatibility` profile. This is a breaking-adjacent discovery migration,
+  not a removal of the underlying wire contract.
+- Shift agent guidance from forced choreography and fixed revision counts to
+  outcome-based verification: FigOps supplies bounded evidence and catches omissions
+  while leaving planning, interpretation, and revision decisions to the model.
+- Keep journal policies as minimum-compliance constraints and explicit audit
+  projections without overwriting authored labels, raw data, or unsupported claims.
+- Make `neutral` the implicit v2/v1.1 render policy while preserving the
+  explicitly selected compatibility Nature default; validation targets measure
+  supplied artifact bytes independently of render policy.
+- Keep disposable jobs, logs, caches, previews, diagnostics, snapshots, and
+  materialized inputs below the external runtime root while durable data,
+  tables, figures, evidence, and publication results remain project-contained.
+- Use minor version `0.20.0` because the default discovery profile changes and new
+  backward-compatible capabilities are added, while compatibility discovery and the
+  existing handler/payload contracts remain available by explicit opt-in.
+
+### Fixed
+
+- Bind calculation evidence to the declared durable artifact and complete
+  producer/input/output/claim lineage instead of permitting evidence-document
+  self-hashes.
+- Require publication-mode project-script renders to provide a verified claim
+  inventory, reject vacuous strict raw-integrity seals, and persist recomputable
+  artifact-derived journal-minimum measurements.
+- Reject project/result/runtime overlap, destination collisions, stale reviewed
+  plans/configs, unresolved hard-coded migration dependencies, and runtime paths
+  in durable receipts.
+- Preserve destination race winners during structure apply and result promotion,
+  fail closed when a native no-replace move is unavailable, and reject private
+  hardlink aliases instead of using a link/replace fallback.
+- Bind durable rollback cleanup to the opened file identity so a competitor
+  installed between hash verification and deletion is preserved for both result
+  artifacts and receipts.
+- Verify launcher-authorized external raw bytes before both CLI and MCP producer
+  execution, conservatively flag undeclared dynamic statistical annotations,
+  and admit runtime-rendered results to durable promotion only after persisted
+  manifest, claim, policy, and eligibility gates pass.
+
+### Release-candidate verification
+
+- The definitive v4 non-R technical gate passed 2,201 tests with 48 skips and
+  104 subtests, plus Ruff, compile, diff, generated-doc, architecture, exact-node,
+  public-release, package, Twine, package-surface, and clean-consumer checks.
+  Independent durable-rollback verification passed 34 tests with two platform
+  skips; installed discovery exposed 7 v2 tools and 27 compatibility tools.
+- Local, unpublished build witnesses are a 617,113-byte wheel with SHA-256
+  `31618238DE39845A0647F3B43B9776592630D9A5832B2F084A671A366ED6B920` and a
+  516,938-byte sdist with SHA-256
+  `500AEBDE826779FE81D191358F898E52B57CCA6CBEF4DBE2821FBB3179C699E3`.
+  Actual R execution, human/legal approvals, merge, tag, package publication,
+  and GitHub Release remain open; this entry does not claim a release.
+
 ## [0.19.0] - 2026-07-12
 
 ### Added

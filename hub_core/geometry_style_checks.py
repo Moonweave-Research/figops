@@ -123,8 +123,61 @@ def _font_size_token_drift(data_axes: list[Axes], font_token_sizes: list[float] 
     }
 
 
+def _style_geometry_observations(fig: Figure, data_axes: list[Axes]) -> dict[str, Any]:
+    """Measure actual style geometry without applying thresholds or policy."""
+    font_sizes: list[dict[str, Any]] = []
+    line_widths: list[dict[str, Any]] = []
+    for axis_index, ax in enumerate(data_axes):
+        texts = [
+            ("title", ax.title),
+            ("x_axis", ax.xaxis.label),
+            ("y_axis", ax.yaxis.label),
+            *(("tick", text) for text in _visible_tick_labels(list(ax.get_xticklabels()))),
+            *(("tick", text) for text in _visible_tick_labels(list(ax.get_yticklabels()))),
+            *(("text", text) for text in ax.texts if text.get_text() and _is_paintable_artist(text)),
+        ]
+        for role, text in texts:
+            if text is not None and text.get_text() and _is_paintable_artist(text):
+                font_sizes.append(
+                    {"axes": axis_index, "role": role, "fontsize_pt": round(float(text.get_fontsize()), 3)}
+                )
+        for role, artists in (
+            ("line", ax.get_lines()),
+            ("patch", ax.patches),
+            ("spine", ax.spines.values()),
+        ):
+            for artist_index, artist in enumerate(artists):
+                if _is_paintable_artist(artist):
+                    line_widths.append(
+                        {
+                            "axes": axis_index,
+                            "role": role,
+                            "artist_index": artist_index,
+                            "linewidth_pt": round(float(artist.get_linewidth()), 3),
+                        }
+                    )
+    return {
+        "name": "style_geometry_observations",
+        "passed": True,
+        "detail": "observed font sizes, line widths, and figure height; no policy applied",
+        "data": {
+            "figure_height_mm": round(float(fig.get_size_inches()[1] * 25.4), 3),
+            "font_sizes": font_sizes,
+            "line_widths": line_widths,
+        },
+    }
+
+
 def _journal_compliance(fig: Figure, data_axes: list[Axes], compliance: dict[str, Any]) -> dict[str, Any]:
     name = "journal_compliance"
+    policy_id = str(compliance.get("policy_id") or "").strip()
+    if not policy_id:
+        return {
+            "name": name,
+            "passed": None,
+            "detail": "skipped: font/line minima require a declared selected policy",
+            "data": {"reason": "policy_id_missing"},
+        }
     target_format = str(compliance.get("target_format", "unknown"))
     min_font = float(compliance["min_font_size_pt"])
     min_line = float(compliance["min_line_width_pt"])
@@ -145,6 +198,7 @@ def _journal_compliance(fig: Figure, data_axes: list[Axes], compliance: dict[str
         ),
         "data": {
             "target_format": target_format,
+            "policy_id": policy_id,
             "min_font_size_pt": min_font,
             "min_line_width_pt": min_line,
             "max_figure_height_mm": max_height,

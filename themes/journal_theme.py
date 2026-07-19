@@ -1,5 +1,4 @@
-"""
-[Graph_making_hub]/themes/journal_theme.py
+"""[Graph_making_hub]/themes/journal_theme.py
 ==========================================
 📐 저널 투고용 matplotlib 전역 테마 설정 (Theme Library Vending Machine)
 
@@ -7,7 +6,6 @@
 - target_format 파라미터에 따라 딕셔너리를 로드하고, font_scale에 따라 크기를 보정하는 순수 함수.
 - 환경 변수 직접 참조를 배제하여 순수 함수(Pure function) 원칙 준수.
 """
-
 import copy
 import json
 import os
@@ -19,22 +17,39 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 
 try:
-    from .compliance import _clamp_figure_artists_to_journal_compliance, _clamp_rc_to_journal_compliance
-    from .declutter import _declutter_text_artists
+    from .compliance import (
+        _clamp_rc_to_journal_compliance,
+        append_authored_output_evidence,
+        apply_explicit_save_mutations,
+        apply_runtime_font_resolution,
+        resolve_journal_compliance_tokens,
+        resolved_font_token_values,
+    )
     from .font_token_resolver import build_font_token_presets, resolve_font_tokens
 except ImportError:
-    from compliance import _clamp_figure_artists_to_journal_compliance, _clamp_rc_to_journal_compliance
-    from declutter import _declutter_text_artists
+    from compliance import (
+        _clamp_rc_to_journal_compliance,
+        append_authored_output_evidence,
+        apply_explicit_save_mutations,
+        apply_runtime_font_resolution,
+        resolve_journal_compliance_tokens,
+        resolved_font_token_values,
+    )
     from font_token_resolver import build_font_token_presets, resolve_font_tokens
+
+try:
+    from .journal_annotations import panel_label
+except ImportError:
+    from journal_annotations import panel_label
 
 try:
     # Package import path: from themes.journal_theme import ...
     from .palettes import get_palette
 
     try:
-        from .style_profiles import get_profile_rc_overrides, get_render_style_tokens, resolve_profile_name
+        from .style_profiles import get_profile_rc_overrides, resolve_profile_name
     except ImportError:
-        from style_profiles import get_profile_rc_overrides, get_render_style_tokens, resolve_profile_name
+        from style_profiles import get_profile_rc_overrides, resolve_profile_name
 except ImportError:
     # Backward compatibility for direct path import: sys.path += ['themes']
     from palettes import get_palette
@@ -48,9 +63,6 @@ except ImportError:
 
         def get_profile_rc_overrides(profile_name=None):
             return {}, "baseline"
-
-        def get_render_style_tokens(target_format="nature", profile_name=None):
-            return {}, {"target_format": str(target_format or "nature").lower(), "profile": "baseline"}
 
 try:
     from .layout import (
@@ -155,6 +167,7 @@ _FONT_TOKEN_PRESETS: dict[str, FontTokens] = build_font_token_presets(FontTokens
 _ACTIVE_FONT_TOKENS = _FONT_TOKEN_PRESETS["nature"]
 _ACTIVE_TARGET_FORMAT = "nature"
 _ACTIVE_COMPLIANCE_TOKENS: dict[str, float | str] | None = None
+_ACTIVE_COMPLIANCE_MODE = "validate"
 
 
 def font_tokens(target: str = "nature", font_scale: float = 1.0, profile_name=None) -> FontTokens:
@@ -473,60 +486,19 @@ STYLE_PRESETS[INTERNAL_STYLE_TARGET_FORMAT].update(
 )
 
 STYLE_PRESETS["default"] = copy.deepcopy(STYLE_PRESETS["nature"])
+# Neutral is intentionally not an alias for ``default``.  ``default`` remains
+# the frozen Nature-derived compatibility preset, while neutral means that no
+# journal rcParams, palette, or compliance mutation is applied.
+STYLE_PRESETS["neutral"] = {}
 
-_FALLBACK_SANS_FONTS = ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"]
-
-
-def _resolve_sans_fonts(preferred_fonts):
-    preferred = preferred_fonts if isinstance(preferred_fonts, list) else _FALLBACK_SANS_FONTS
-    resolved = list(dict.fromkeys(preferred))
-    if "DejaVu Sans" not in resolved:
-        # Keep a universal fallback at the end for non-Docker environments.
-        resolved.append("DejaVu Sans")
-    return resolved
-
-
-def _apply_runtime_font_resolution(theme_rc):
-    sans_fonts = _resolve_sans_fonts(theme_rc.get("font.sans-serif"))
-    theme_rc["font.sans-serif"] = sans_fonts
-    primary_font = sans_fonts[0]
-
-    if theme_rc.get("mathtext.fontset") == "custom":
-        if primary_font == "DejaVu Sans":
-            theme_rc["mathtext.fontset"] = "dejavusans"
-            theme_rc.pop("mathtext.rm", None)
-            theme_rc.pop("mathtext.it", None)
-            theme_rc.pop("mathtext.bf", None)
-        else:
-            theme_rc["mathtext.rm"] = primary_font
-            theme_rc["mathtext.it"] = f"{primary_font}:italic"
-            theme_rc["mathtext.bf"] = f"{primary_font}:bold"
-
-
-def _journal_compliance_tokens(target_format: str, profile_name: str) -> dict[str, float | str] | None:
-    render_tokens, meta = get_render_style_tokens(target_format, profile_name)
-    required_keys = ("min_font_size_pt", "min_line_width_pt", "max_figure_height_mm")
-    if not all(key in render_tokens for key in required_keys):
-        return None
-    return {
-        "target_format": meta["target_format"],
-        "profile": meta["profile"],
-        "min_font_size_pt": float(render_tokens["min_font_size_pt"]),
-        "min_line_width_pt": float(render_tokens["min_line_width_pt"]),
-        "max_figure_height_mm": float(render_tokens["max_figure_height_mm"]),
-    }
-
-
-def _font_tokens_from_rc(target_format: str, theme_rc: dict, font_scale: float, profile_name: str) -> FontTokens:
-    fallback = font_tokens(target_format, font_scale, profile_name)
-    axis = float(theme_rc.get("axes.labelsize", fallback.axis))
-    tick = float(theme_rc.get("xtick.labelsize", theme_rc.get("ytick.labelsize", fallback.tick)))
-    legend = float(theme_rc.get("legend.fontsize", fallback.legend))
-    tag = float(theme_rc.get("axes.titlesize", fallback.tag))
-    return FontTokens(tag=tag, label=axis, annot=axis, legend=legend, axis=axis, tick=tick)
-
-
-def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=None):
+def apply_journal_theme(
+    target_format="nature",
+    font_scale=1.0,
+    profile_name=None,
+    *,
+    compliance_mode: str = "validate",
+    palette=None,
+):
     """
     지정된 포맷과 폰트 스케일을 기반으로 전역 rcParams에 저널 스타일을 적용합니다.
     (순수 함수 지향: 환경 변수를 내부에서 읽지 않고 인자로만 작동)
@@ -537,12 +509,22 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
         font_scale (float): 기준 테마 폰트 사이즈 대비 보정 배율
         profile_name (str): 세부 스타일 프로파일 이름 (예: baseline, internal profiles)
     """
-    global _ACTIVE_COMPLIANCE_TOKENS, _ACTIVE_FONT_TOKENS, _ACTIVE_TARGET_FORMAT
+    global _ACTIVE_COMPLIANCE_MODE, _ACTIVE_COMPLIANCE_TOKENS, _ACTIVE_FONT_TOKENS, _ACTIVE_TARGET_FORMAT
 
     # 1. 포맷 가져오기 (fallback: nature)
     target_format = target_format.lower()
     if target_format not in STYLE_PRESETS:
         target_format = "nature"
+
+    if target_format == "neutral":
+        resolved_profile = resolve_profile_name(profile_name)
+        fallback_font_tokens = font_tokens("neutral", font_scale, resolved_profile)
+        _ACTIVE_FONT_TOKENS = fallback_font_tokens
+        _ACTIVE_TARGET_FORMAT = "neutral"
+        _ACTIVE_COMPLIANCE_TOKENS = None
+        _ACTIVE_COMPLIANCE_MODE = "validate"
+        append_authored_output_evidence(mutation_ledger=[])
+        return
 
     theme_rc = copy.deepcopy(STYLE_PRESETS[target_format])
 
@@ -578,7 +560,7 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
                 theme_rc[k] = theme_rc[k] * line_scale
 
     # 2.5. 런타임 폰트 해상도 (프로필보다 먼저 적용하여 프로필이 우선)
-    _apply_runtime_font_resolution(theme_rc)
+    apply_runtime_font_resolution(theme_rc)
 
     # 2.6. profile별 rc override 적용 (최종 우선)
     resolved_profile = resolve_profile_name(profile_name)
@@ -586,8 +568,15 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
     if profile_rc:
         theme_rc.update(profile_rc)
 
-    compliance_tokens = _journal_compliance_tokens(target_format, resolved_profile)
-    _clamp_rc_to_journal_compliance(theme_rc, compliance_tokens)
+    compliance_tokens = resolve_journal_compliance_tokens(target_format, resolved_profile)
+    compliance_mode = str(compliance_mode or "validate").strip().lower()
+    if compliance_mode not in {"validate", "clamp"}:
+        raise ValueError("compliance_mode must be 'validate' or 'clamp'")
+    rc_mutations = (
+        _clamp_rc_to_journal_compliance(theme_rc, compliance_tokens)
+        if compliance_mode == "clamp"
+        else []
+    )
 
     # 2.7. SVG Baseline Alignment Correction (Zenith Audit Fix)
     # Matplotlib's default SVG path rendering can sometimes shift baselines.
@@ -597,15 +586,29 @@ def apply_journal_theme(target_format="nature", font_scale=1.0, profile_name=Non
         theme_rc["savefig.dpi"] = 1200  # Extreme resolution for submission
         theme_rc["mathtext.fallback"] = None
 
-    # 2.8. CVD-safe Palette (Okabe-Ito) Injection
-    # Zenith Masterpiece: All journal plots must be CVD-safe by default.
-    theme_rc["axes.prop_cycle"] = cycler(color=get_palette("Okabe-Ito"))
+    # 2.8. Palette precedence: explicit caller > profile/preset > accessible fallback.
+    if palette is not None:
+        colors = get_palette(palette) if isinstance(palette, str) else list(palette)
+        if not colors or not all(isinstance(color, str) and color for color in colors):
+            raise ValueError("palette must name a palette or contain non-empty color strings")
+        theme_rc["axes.prop_cycle"] = cycler(color=colors)
+    elif "axes.prop_cycle" not in theme_rc:
+        theme_rc["axes.prop_cycle"] = cycler(color=get_palette("Okabe-Ito"))
+
+    # Reset keys owned by other presets so sequential theme application is deterministic.
+    preset_keys = set().union(*(preset.keys() for preset in STYLE_PRESETS.values()))
+    for key in preset_keys - theme_rc.keys():
+        if key in plt.rcParamsDefault:
+            theme_rc[key] = copy.deepcopy(plt.rcParamsDefault[key])
 
     # 3. 전역 적용
     plt.rcParams.update(theme_rc)
-    _ACTIVE_FONT_TOKENS = _font_tokens_from_rc(target_format, theme_rc, font_scale, resolved_profile)
+    fallback_font_tokens = font_tokens(target_format, font_scale, resolved_profile)
+    _ACTIVE_FONT_TOKENS = FontTokens(**resolved_font_token_values(theme_rc, fallback_font_tokens))
     _ACTIVE_TARGET_FORMAT = target_format
     _ACTIVE_COMPLIANCE_TOKENS = compliance_tokens
+    _ACTIVE_COMPLIANCE_MODE = compliance_mode
+    append_authored_output_evidence(mutation_ledger=rc_mutations)
 
 
 # 별칭 (Sulfur 프로젝트 호환성)
@@ -623,41 +626,6 @@ def set_figure_size(width_mm, height_mm=None, ratio=0.8):
 get_figsize = set_figure_size
 
 
-_PANEL_LABEL_LOCS = {
-    "upper left": (0.03, 0.97, "left", "top"),
-    "upper right": (0.97, 0.97, "right", "top"),
-    "lower left": (0.03, 0.03, "left", "bottom"),
-    "lower right": (0.97, 0.03, "right", "bottom"),
-}
-
-
-def panel_label(ax, text: str, loc: str = "upper left", color=None, box: bool = True, **kw):
-    """Place readable in-panel text in axes-fraction corner coordinates."""
-    loc_key = str(loc).lower().replace("_", " ").strip()
-    if loc_key not in _PANEL_LABEL_LOCS:
-        allowed = ", ".join(sorted(_PANEL_LABEL_LOCS))
-        raise ValueError(f"Unsupported panel_label loc {loc!r}; expected one of: {allowed}")
-
-    x, y, ha, va = _PANEL_LABEL_LOCS[loc_key]
-    text_kwargs = {
-        "transform": ax.transAxes,
-        "ha": ha,
-        "va": va,
-        "color": "black" if color is None else color,
-        "zorder": 20,
-    }
-    if box and "bbox" not in kw:
-        text_kwargs["bbox"] = {
-            "boxstyle": "round,pad=0.12",
-            "facecolor": "white",
-            "alpha": 0.72,
-            "edgecolor": "none",
-            "linewidth": 0.0,
-        }
-    text_kwargs.update(kw)
-    return ax.text(x, y, text, **text_kwargs)
-
-
 def _safe_geometry_diagnostics_inline(fig) -> dict:
     """Run geometry diagnostics in the same frame that holds the live figure.
 
@@ -668,14 +636,13 @@ def _safe_geometry_diagnostics_inline(fig) -> dict:
     os.environ, so it must not be read here.
     """
     try:
-        from hub_core.geometry_diagnostics import SCHEMA_VERSION, diagnose_figure_geometry
+        from hub_core.geometry_diagnostics import RAW_SCHEMA_VERSION, diagnose_figure_geometry
 
         deadline = float(os.environ.get("GEOMETRY_DIAGNOSTICS_DEADLINE", "inf"))
         if deadline - time.time() < DIAG_BUDGET_FLOOR_SECONDS:
             return {
-                "schema_version": SCHEMA_VERSION,
-                "passed": None,
-                "checks": [],
+                "schema_version": RAW_SCHEMA_VERSION,
+                "measurements": [],
                 "warnings": ["skipped: render budget"],
             }
         data_axes = [
@@ -688,19 +655,16 @@ def _safe_geometry_diagnostics_inline(fig) -> dict:
             layout_locked=layout_locked,
             font_token_sizes=_active_font_token_sizes(),
             journal_compliance=_ACTIVE_COMPLIANCE_TOKENS,
+            contract_version="raw",
         )
     except Exception as exc:
-        from hub_core.geometry_diagnostics import SCHEMA_VERSION
+        from hub_core.geometry_diagnostics import RAW_SCHEMA_VERSION
 
-        return {"schema_version": SCHEMA_VERSION, "passed": None, "checks": [], "warnings": [str(exc)]}
+        return {"schema_version": RAW_SCHEMA_VERSION, "measurements": [], "warnings": [str(exc)]}
 
 
 def _active_font_token_sizes() -> list[float]:
     return list(_ACTIVE_FONT_TOKENS.as_dict().values())
-
-
-def _env_truthy(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def save_journal_fig(
@@ -711,6 +675,9 @@ def save_journal_fig(
     preset: str | None = None,
     tiff_companion: bool = True,
     auto_declutter: bool | None = None,
+    declutter_mode: str | None = None,
+    compliance_mode: str | None = None,
+    mutation_ledger_out: list[dict] | None = None,
     **kwargs,
 ):
     """
@@ -731,13 +698,14 @@ def save_journal_fig(
         kwargs.pop("bbox_inches", None)
         save_ctx = plt.rc_context({"savefig.bbox": None, "savefig.pad_inches": 0})
     else:
-        kwargs.setdefault("bbox_inches", "tight")
+        if _ACTIVE_TARGET_FORMAT != "neutral":
+            kwargs.setdefault("bbox_inches", "tight")
         save_ctx = contextlib.nullcontext()
 
     metadata = kwargs.pop("metadata", {}) or {}
     file_path = Path(filename)
     suffix = file_path.suffix.lower()
-    if suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff"}:
+    if _ACTIVE_TARGET_FORMAT != "neutral" and suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff"}:
         kwargs.setdefault("dpi", 600)
 
     # 도구 버전 정보 차단 — 환경별 바이너리 해시 불일치 방지
@@ -753,13 +721,30 @@ def save_journal_fig(
         metadata.setdefault("CreationDate", None)
         metadata.setdefault("ModDate", None)
 
-    if auto_declutter is None:
-        auto_declutter = _env_truthy("GRAPH_HUB_AUTO_DECLUTTER")
+    effective_compliance = str(compliance_mode or _ACTIVE_COMPLIANCE_MODE or "validate").strip().lower()
+    if effective_compliance not in {"validate", "clamp"}:
+        raise ValueError("compliance_mode must be 'validate' or 'clamp'")
+    if declutter_mode is None:
+        effective_declutter = "declutter" if auto_declutter is True else "none"
+    else:
+        effective_declutter = str(declutter_mode).strip().lower()
+    if effective_declutter not in {"none", "declutter"}:
+        raise ValueError("declutter_mode must be 'none' or 'declutter'")
 
     with save_ctx:
-        if auto_declutter:
-            _declutter_text_artists(fig)
-        _clamp_figure_artists_to_journal_compliance(fig, _ACTIVE_COMPLIANCE_TOKENS)
+        ledger, declutter_evidence = apply_explicit_save_mutations(
+            fig,
+            compliance_mode=effective_compliance,
+            compliance_tokens=_ACTIVE_COMPLIANCE_TOKENS,
+            declutter_mode=effective_declutter,
+        )
+        if mutation_ledger_out is not None:
+            mutation_ledger_out.extend(ledger)
+        append_authored_output_evidence(
+            mutation_ledger=ledger,
+            compliance={"mode": effective_compliance, "policy": _ACTIVE_COMPLIANCE_TOKENS},
+            declutter=declutter_evidence,
+        )
         fig.savefig(filename, metadata=metadata, **kwargs)
 
         # Geometry diagnostics: run once, AFTER the primary artifact is durably written,

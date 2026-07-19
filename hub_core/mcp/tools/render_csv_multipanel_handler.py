@@ -6,20 +6,27 @@ runtime-root, envelope, and monkeypatch behaviour remains on that instance.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import sys
 from contextlib import redirect_stdout
+from pathlib import Path
 from typing import Any
 
 from hub_core.adapters import select_adapters
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.tools.render_csv_args import _normalized_multipanel_render_settings
 from hub_core.mcp.tools.render_csv_multipanel import prepare_multipanel_render_payload, validate_multipanel_panel_specs
+from hub_core.render_evidence import build_render_evidence
 from themes.style_profiles import DEFAULT_PROFILE
 
 
 def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str, Any]:
     """Render a CSV multipanel figure through the supplied tool mixin instance."""
+    guarded = renderer._authorize_write_tool("figops.render_csv_multipanel", arguments)
+    if guarded is not None:
+        return guarded
     dry_run = bool(arguments.get("dry_run", False))
     overwrite = bool(arguments.get("overwrite", False))
     job_id = renderer._render_job_id(arguments.get("job_id"))
@@ -124,6 +131,10 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
     panel_specs = panel_validation["panel_specs"]
     contract_errors = panel_validation["contract_errors"]
     calculation_checks = panel_validation["calculation_checks"]
+    calculation_evidence = panel_validation["calculation_evidence"]
+    panel_calculation_evidence = panel_validation["panel_calculation_evidence"]
+    statistical_claims = panel_validation["statistical_claims"]
+    claim_candidates = panel_validation["claim_candidates"]
     if contract_errors:
         return renderer._csv_render_error(
             arguments,
@@ -135,15 +146,18 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
             tool_name="figops.render_csv_multipanel",
         )
     if dry_run:
+        dry_manual_review = bool(calculation_checks.get("manual_review_needed")) or bool(claim_candidates)
         return renderer._envelope(
             "figops.render_csv_multipanel",
             arguments,
-            status="ok",
+            status="warning" if dry_manual_review else "ok",
             summary="Multipanel CSV render dry run passed.",
             warnings=renderer._calculation_warnings(calculation_checks),
-            manual_review_needed=bool(calculation_checks.get("manual_review_needed")),
+            manual_review_needed=dry_manual_review,
             is_dry_run=True,
             calculation_checks=calculation_checks,
+            statistical_claims=statistical_claims,
+            claim_candidates=claim_candidates,
         )
     if job_root.exists() and not overwrite:
         return renderer._csv_render_error(
@@ -229,11 +243,39 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
         copied_data_paths = prepared["copied_data_paths"]
         created_paths.extend(prepared["created_paths"])
         with renderer._geometry_diagnostics_env(job_root):
-            renderer._run_render_multipanel_figure(render_payload)
+            if any(panel_calculation_evidence):
+                renderer._run_render_multipanel_figure(
+                    render_payload,
+                    verified_calculation_evidence=tuple(panel_calculation_evidence),
+                )
+            else:
+                renderer._run_render_multipanel_figure(render_payload)
         geometry_diagnostics = render_helpers._read_geometry_sidecar(job_root)
+        authored_output_path = job_root / "authored_output.json"
+        authored_output = (
+            json.loads(authored_output_path.read_text(encoding="utf-8"))
+            if authored_output_path.is_file()
+            else {"mode": "raw", "mappings": [], "collisions": [], "mutation_ledger": []}
+        )
+        descriptive_overlays = [
+            {
+                "panel_index": index,
+                "kind": "linear_fit",
+                "algorithm": "ordinary_least_squares",
+                "descriptive_only": True,
+            }
+            for index, panel in enumerate(panel_specs)
+            if panel.get("fit_line")
+        ]
         geometry_warnings = render_helpers._geometry_warnings(geometry_diagnostics)
         layout_report = render_helpers._layout_report_from_geometry(geometry_diagnostics)
         figures = renderer._rendered_figure_artifacts(output_path)
+        preview_artifacts = render_helpers._build_preview_artifacts(
+            job_root=job_root,
+            output_path=output_path,
+            figures=figures,
+        )
+        preview_references = render_helpers._preview_resource_references(job_id, preview_artifacts)
         created_paths.extend(str(figure["path"]) for figure in figures)
         preflight = renderer._visual_preflight_with_geometry_overlaps(output_path, target_format, geometry_diagnostics)
         preflight_warnings = renderer._preflight_warnings(preflight)
@@ -246,19 +288,48 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
             or (baseline_comparison["checked"] and not baseline_comparison["matched"])
             or bool(calculation_checks.get("manual_review_needed"))
             or geometry_diagnostics.get("passed") is False
+            or bool(claim_candidates)
         )
         status = "warning" if manual_review_needed else "ok"
         artifact_status = renderer._artifact_status(preflight, baseline_comparison)
-        provenance = {
-            "job_id": job_id,
-            "renderer": "plotting.bridge_renderer.render_multipanel_figure",
-            "renderer_surface": "figops.render_csv_multipanel",
-            "mcp_surface_version": renderer._read_version(),
-            "hub_git_commit": renderer._git_commit(),
-            "source_data_paths": [str(path) for path in source_paths],
-            "copied_data_paths": copied_data_paths,
-            "output_sha256": renderer._file_sha256(output_path) if output_path.is_file() else "",
-        }
+        provenance = renderer._mcp_render_provenance(
+            job_id=job_id,
+            source_data_path=source_paths[0],
+            copied_data_path=Path(copied_data_paths[0]),
+            config_path=config_path,
+            output_path=output_path,
+            target_format=target_format,
+            profile=profile,
+            output_format=output_format,
+        )
+        source_hashes = [renderer._file_sha256(path) for path in source_paths]
+        copied_hashes = [renderer._file_sha256(Path(path)) for path in copied_data_paths]
+        provenance.update(
+            {
+                "renderer": "plotting.bridge_renderer.render_multipanel_figure",
+                "renderer_surface": "figops.render_csv_multipanel",
+                "input_sha256": hashlib.sha256(
+                    json.dumps(source_hashes, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                ).hexdigest(),
+                "source_data_sha256": hashlib.sha256(
+                    json.dumps(source_hashes, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                ).hexdigest(),
+                "copied_data_sha256": hashlib.sha256(
+                    json.dumps(copied_hashes, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                ).hexdigest(),
+                "source_data_paths": [str(path) for path in source_paths],
+                "copied_data_paths": copied_data_paths,
+            }
+        )
+        if calculation_evidence:
+            provenance["calculation_evidence_refs"] = [
+                {
+                    "artifact_ref": item["artifact_ref"],
+                    "sha256": item["analysis_artifact_sha256"],
+                    "evidence_id": item["evidence_id"],
+                }
+                for item in calculation_evidence
+            ]
         created_paths.extend([str(manifest_path), str(status_path)])
         manifest = render_helpers._build_manifest(
             job_id=job_id,
@@ -276,7 +347,28 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
             baseline_comparison=baseline_comparison,
             manual_review_needed=manual_review_needed,
             provenance=provenance,
+            data_contract={"schema_version": "data_contract_summary/1", "passed": True},
             calculation_checks=calculation_checks,
+            statistical_claims=statistical_claims,
+            calculation_evidence=calculation_evidence,
+            descriptive_overlays=descriptive_overlays,
+            claim_candidates=claim_candidates,
+            label_transformations=authored_output,
+            mutation_ledger=authored_output.get("mutation_ledger", []),
+            preview_artifacts=preview_artifacts,
+        )
+        manifest["evidence"] = build_render_evidence(
+            manifest,
+            job_root=job_root,
+            producer_kind="mcp-csv-multipanel-render",
+            producer_version=renderer._read_version(),
+            baseline_reference_sha256=(
+                renderer._file_sha256(Path(baseline_comparison["baseline_path"]))
+                if baseline_comparison.get("checked")
+                and isinstance(baseline_comparison.get("baseline_path"), str)
+                and Path(baseline_comparison["baseline_path"]).is_file()
+                else None
+            ),
         )
         status_payload = renderer._render_status_payload(
             job_id=job_id,
@@ -292,6 +384,11 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
         status_payload["calculation_checks"] = calculation_checks
         status_payload["provenance"] = provenance
         status_payload["layout_report"] = layout_report
+        status_payload["statistical_claims"] = statistical_claims
+        status_payload["calculation_evidence"] = calculation_evidence
+        status_payload["descriptive_overlays"] = descriptive_overlays
+        status_payload["claim_candidates"] = claim_candidates
+        status_payload["label_transformations"] = authored_output
         render_helpers._write_manifest_and_status(manifest, manifest_path, status_payload, status_path, latest_dir)
     except Exception as exc:
         return renderer._csv_render_error(
@@ -312,7 +409,8 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
         status=status,
         summary="Rendered CSV multipanel." if status == "ok" else "Rendered CSV multipanel with warnings.",
         created_paths=created_paths,
-        artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
+        artifact_resources=preview_references["artifact_resources"],
+        preview_resources=preview_references["preview_resources"],
         warnings=preflight_warnings + baseline_warnings + calculation_warnings + geometry_warnings,
         manual_review_needed=manual_review_needed,
         is_dry_run=False,
@@ -334,4 +432,11 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
         baseline_comparison=baseline_comparison,
         calculation_checks=calculation_checks,
         provenance=provenance,
+        statistical_claims=statistical_claims,
+        calculation_evidence=calculation_evidence,
+        descriptive_overlays=descriptive_overlays,
+        claim_candidates=claim_candidates,
+        label_transformations=authored_output,
+        mutation_ledger=authored_output.get("mutation_ledger", []),
+        evidence=manifest["evidence"],
     )

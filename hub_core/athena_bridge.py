@@ -1,7 +1,9 @@
+import hashlib
 import json
 import math
 import os
 import re
+import secrets
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,7 +11,10 @@ from typing import Any, Dict, Optional, Tuple, TypedDict
 
 import matplotlib.pyplot as plt
 
+from .durable_promotion import file_sha256, promote_runtime_artifact
 from .logging import get_logger
+from .path_identity import canonical_is_relative_to, canonical_path, lexical_absolute_path
+from .runtime_paths import resolve_diagnostics_dir, resolve_runtime_root
 
 logger = get_logger(__name__)
 
@@ -184,16 +189,19 @@ class AthenaBridge:
 
     @staticmethod
     def _read_quality_sidecar(output_path: str) -> Optional[Dict[str, Any]]:
-        """output_path 기준으로 프로젝트의 quality_metrics.json 사이드카를 탐색하여 읽습니다."""
+        """Read runtime quality diagnostics, falling back to legacy project-local state."""
         try:
-            out = Path(output_path).resolve()
-            # results/ 디렉토리를 기준으로 프로젝트 루트를 추론
+            out = lexical_absolute_path(output_path)
             for parent in out.parents:
-                sidecar = parent / "results" / "diagnostics" / "quality_metrics.json"
-                if sidecar.exists():
-                    payload = json.loads(sidecar.read_text(encoding="utf-8"))
-                    if isinstance(payload, dict) and "quality_passed" in payload:
-                        return payload
+                sidecars = (
+                    Path(resolve_diagnostics_dir(str(parent))) / "data_contract" / "quality_metrics.json",
+                    parent / "results" / "diagnostics" / "quality_metrics.json",
+                )
+                for sidecar in sidecars:
+                    if sidecar.exists():
+                        payload = json.loads(sidecar.read_text(encoding="utf-8"))
+                        if isinstance(payload, dict) and "quality_passed" in payload:
+                            return payload
         except Exception:
             pass
         return None
@@ -248,11 +256,47 @@ class AthenaBridge:
         return str(raw).upper()
 
     def _write_manifest(self, output_path: str, manifest: RenderManifest) -> str:
-        """Write render manifest JSON sidecar next to the artifact."""
-        manifest_path = os.path.splitext(output_path)[0] + '.manifest.json'
-        with open(manifest_path, 'w', encoding='utf-8') as f:
+        """Write detailed Athena diagnostics below disposable external runtime."""
+        output = lexical_absolute_path(output_path)
+        configured_project = os.environ.get("PROJECT_ROOT")
+        project_root = None
+        if configured_project:
+            candidate = lexical_absolute_path(configured_project)
+            if canonical_is_relative_to(output, candidate):
+                project_root = candidate
+        if project_root is None:
+            project_root = next(
+                (parent.parent for parent in output.parents if parent.name.lower() == "results"),
+                output.parent,
+            )
+        runtime_dir = Path(resolve_diagnostics_dir(str(project_root))) / "athena"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        output_id = hashlib.sha256(str(canonical_path(output)).encode("utf-8")).hexdigest()[:20]
+        manifest_path = runtime_dir / f"render-{output_id}.manifest.json"
+        with manifest_path.open('w', encoding='utf-8') as f:
             json.dump(manifest, f, indent=2, ensure_ascii=False)
-        return manifest_path
+        return str(manifest_path)
+
+    @staticmethod
+    def _runtime_stage_path(output_path: str) -> tuple[Path, Path]:
+        output = lexical_absolute_path(output_path)
+        configured_project = os.environ.get("PROJECT_ROOT")
+        project_root = None
+        if configured_project:
+            candidate = lexical_absolute_path(configured_project)
+            if canonical_is_relative_to(output, candidate):
+                project_root = candidate
+        if project_root is None:
+            project_root = next(
+                (parent.parent for parent in output.parents if parent.name.lower() == "results"),
+                output.parent,
+            )
+        runtime_root = Path(resolve_runtime_root(project_root=str(project_root)))
+        stage_dir = Path(resolve_diagnostics_dir(str(project_root))) / "athena" / "artifacts"
+        stage_dir.mkdir(parents=True, exist_ok=True)
+        output_id = hashlib.sha256(str(canonical_path(output)).encode("utf-8")).hexdigest()[:20]
+        stage = stage_dir / f"render-{output_id}-{secrets.token_hex(8)}{output.suffix}"
+        return runtime_root, stage
 
     def render(self, spec: Dict[str, Any], output_path: str, data_context: Optional[Dict] = None) -> bool:
         """Full-Feature 매핑을 통해 고품질 도식을 렌더링합니다."""
@@ -315,11 +359,11 @@ class AthenaBridge:
                     len(quality_info.get("cv_warnings", [])),
                 )
 
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            runtime_root, staged_output = self._runtime_stage_path(output_path)
             if save_func:
-                save_func(fig, output_path, dpi=dpi)
+                save_func(fig, str(staged_output), dpi=dpi)
             else:
-                fig.savefig(output_path, dpi=dpi, bbox_inches='tight')
+                fig.savefig(staged_output, dpi=dpi, bbox_inches='tight')
 
             # Write manifest sidecar for assembly pipeline
             fig_w_inch, fig_h_inch = fig.get_size_inches()
@@ -338,6 +382,12 @@ class AthenaBridge:
             }
             manifest_path = self._write_manifest(output_path, manifest)
 
+            promote_runtime_artifact(
+                staged_output,
+                output_path,
+                runtime_root=runtime_root,
+                expected_sha256=file_sha256(staged_output),
+            )
             manifest_name = os.path.basename(manifest_path)
             logger.info(
                 "✅ [Athena Bridge V2] Rendered: %s "

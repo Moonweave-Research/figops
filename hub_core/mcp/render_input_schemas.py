@@ -152,31 +152,51 @@ POINT_ANNOTATION_PROPERTIES = {
     "avoid_overlap": {"type": "boolean", "default": False},
     "color": {"type": "string", "default": "black"},
 }
+ANNOTATION_CLAIM_PROPERTIES = {
+    "annotation_kind": {
+        "type": "string",
+        "enum": ["auto", "literal", "statistical_claim"],
+        "default": "auto",
+    },
+    "calculation_evidence_id": {"type": "string", "minLength": 1},
+    "analysis_artifact_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+    "test_metadata": object_schema(
+        {
+            "test_name": {"type": "string", "minLength": 1},
+            "model": {"type": "string", "minLength": 1},
+        },
+        required=["test_name", "model"],
+    ),
+}
+POINT_ANNOTATION_PROPERTIES.update(ANNOTATION_CLAIM_PROPERTIES)
 REGION_ANNOTATION_PROPERTIES = {
     "region": REGION_ANNOTATION_BOUNDS_SCHEMA,
     "text": {"type": "string"},
     "color": {"type": "string", "default": "black"},
     "alpha": NUMBER_OR_STRING_SCHEMA,
+    **ANNOTATION_CLAIM_PROPERTIES,
 }
 HSPAN_ANNOTATION_PROPERTIES = {
     "hspan": HSPAN_ANNOTATION_BOUNDS_SCHEMA,
     "text": {"type": "string"},
     "color": {"type": "string", "default": "black"},
     "alpha": NUMBER_OR_STRING_SCHEMA,
+    **ANNOTATION_CLAIM_PROPERTIES,
 }
 VSPAN_ANNOTATION_PROPERTIES = {
     "vspan": VSPAN_ANNOTATION_BOUNDS_SCHEMA,
     "text": {"type": "string"},
     "color": {"type": "string", "default": "black"},
     "alpha": NUMBER_OR_STRING_SCHEMA,
+    **ANNOTATION_CLAIM_PROPERTIES,
 }
 ANNOTATION_SCHEMA = {
     "anyOf": [
-        open_object_schema(POINT_ANNOTATION_PROPERTIES, required=["x", "y", "text"]),
-        open_object_schema(POINT_ANNOTATION_PROPERTIES, required=["x", "y", "arrow_to"]),
-        open_object_schema(REGION_ANNOTATION_PROPERTIES, required=["region"]),
-        open_object_schema(HSPAN_ANNOTATION_PROPERTIES, required=["hspan"]),
-        open_object_schema(VSPAN_ANNOTATION_PROPERTIES, required=["vspan"]),
+        object_schema(POINT_ANNOTATION_PROPERTIES, required=["x", "y", "text"]),
+        object_schema(POINT_ANNOTATION_PROPERTIES, required=["x", "y", "arrow_to"]),
+        object_schema(REGION_ANNOTATION_PROPERTIES, required=["region"]),
+        object_schema(HSPAN_ANNOTATION_PROPERTIES, required=["hspan"]),
+        object_schema(VSPAN_ANNOTATION_PROPERTIES, required=["vspan"]),
     ],
 }
 
@@ -278,7 +298,7 @@ FIT_OPTIONS_SCHEMA = object_schema(
 )
 
 FILL_BETWEEN_SCHEMA = {
-    **open_object_schema(
+    **object_schema(
         {
             "points": {"type": "array", "items": FILL_BETWEEN_POINT_SCHEMA, "minItems": 2},
             "x_column": {"type": "string"},
@@ -287,6 +307,7 @@ FILL_BETWEEN_SCHEMA = {
             "color": {"type": "string"},
             "alpha": {"type": ["number", "string"], "default": 0.2},
             "label": {"type": "string"},
+            "band_kind": {"type": "string", "enum": ["literal", "confidence_interval"]},
             "zorder": NUMBER_OR_STRING_SCHEMA,
         }
     ),

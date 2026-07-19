@@ -8,8 +8,6 @@ import pytest
 
 from hub_core.mcp import GraphHubMCPServer
 from tests.fixture_tools.journal_track_assertions import (
-    EXPECTED_CROWDED_LABEL_FINDINGS,
-    EXPECTED_DENSE_LEGEND_CHECKS,
     FIXTURE_CLASSES,
     FIXTURE_ROOT,
     FORBIDDEN_PUBLICATION_CLAIMS,
@@ -52,48 +50,68 @@ def _selected_token_floors(track: str):
     return {key: tokens[key] for key in TOKEN_FLOOR_KEYS}
 
 
+def _assert_raw_geometry_contract(geometry_diagnostics) -> dict[str, dict]:
+    assert geometry_diagnostics["schema_version"] == "geometry_diagnostics/2"
+    assert isinstance(geometry_diagnostics["measurements"], list)
+    assert geometry_diagnostics["measurements"]
+    assert isinstance(geometry_diagnostics["warnings"], list)
+
+    measurements = {}
+    forbidden_policy_fields = {"passed", "severity", "hard_gate", "manual_review_needed", "quality_passed"}
+    for measurement in geometry_diagnostics["measurements"]:
+        assert forbidden_policy_fields.isdisjoint(measurement)
+        assert measurement["metric_id"] not in measurements
+        assert measurement["availability"] in {"available", "unavailable"}
+        if measurement["availability"] == "available":
+            assert "value" in measurement
+            assert "reason" not in measurement
+        else:
+            assert "reason" in measurement
+            assert "value" not in measurement
+        measurements[measurement["metric_id"]] = measurement
+    return measurements
+
+
+def _measurement_with_prefix(measurements: dict[str, dict], prefix: str) -> dict:
+    matches = [measurement for metric_id, measurement in measurements.items() if metric_id.startswith(prefix)]
+    assert len(matches) == 1, prefix
+    return matches[0]
+
+
 def _assert_basic_render_matches_expected_summary(result, expected_summary) -> None:
     assert result["status"] == "ok"
     assert result["manual_review_needed"] is False
     assert result["summary"] == "Rendered CSV graph."
 
     assert result["style_summary"] == expected_summary["style_summary"]
-    assert result["geometry_diagnostics"]["schema_version"] == "geometry_diagnostics/1"
+    _assert_raw_geometry_contract(result["geometry_diagnostics"])
     assert result["layout_report"]["schema_version"] == "layout_report/1"
-    assert all(check["passed"] is not False for check in result["geometry_diagnostics"]["checks"])
-    assert result["layout_report"]["passed"] is True
+    assert result["layout_report"]["passed"] is None
     assert _selected_token_floors(expected_summary["track"]) == expected_summary["selected_token_floors"]
 
     manifest = read_json(Path(result["manifest_path"]))
     assert manifest["style_summary"] == result["style_summary"]
-    assert manifest["geometry_diagnostics"]["schema_version"] == "geometry_diagnostics/1"
+    assert manifest["geometry_diagnostics"] == result["geometry_diagnostics"]
     assert manifest["layout_report"]["schema_version"] == "layout_report/1"
     assert manifest["manual_review_needed"] == result["manual_review_needed"]
 
 
-def _checks_by_name(geometry_diagnostics):
-    checks = {}
-    for check in geometry_diagnostics["checks"]:
-        checks.setdefault(check["name"], []).append(check)
-    return checks
-
-
 def _assert_crowded_label_render_surfaces_findings(result, expected_summary) -> None:
-    assert result["status"] == "warning"
-    assert result["manual_review_needed"] is True
+    assert result["status"] == "ok"
+    assert result["manual_review_needed"] is False
+    assert result["summary"] == "Rendered CSV graph."
     assert result["style_summary"] == expected_summary["style_summary"]
-    assert result["geometry_diagnostics"]["schema_version"] == "geometry_diagnostics/1"
+    measurements = _assert_raw_geometry_contract(result["geometry_diagnostics"])
     assert result["layout_report"]["schema_version"] == "layout_report/1"
-    assert result["layout_report"]["passed"] is False
+    assert result["layout_report"]["passed"] is None
 
-    checks_by_name = _checks_by_name(result["geometry_diagnostics"])
-    for check_name in EXPECTED_CROWDED_LABEL_FINDINGS:
-        assert any(check["passed"] is False for check in checks_by_name[check_name]), check_name
-
-    unmeasured = [check for check in result["geometry_diagnostics"]["checks"] if check["passed"] is None]
-    assert unmeasured, "crowded-label stress should expose at least one unmeasured check"
-    measured_passes = [check["name"] for check in result["geometry_diagnostics"]["checks"] if check["passed"] is True]
-    assert all(check["name"] not in measured_passes for check in unmeasured)
+    tick_overlaps = _measurement_with_prefix(measurements, "tick_label_overlaps[")
+    assert tick_overlaps["value"]["x_overlap_pairs"]
+    edge_distances = _measurement_with_prefix(measurements, "text_axis_edge_distances[")
+    assert edge_distances["value"]["artist_count"] > 0
+    pair_iou = _measurement_with_prefix(measurements, "artist_pair_iou[")
+    assert any(pair["iou"] > 0 for pair in pair_iou["value"]["pairs"])
+    assert any(measurement["availability"] == "unavailable" for measurement in measurements.values())
 
     result_text = json.dumps(result, sort_keys=True).lower()
     for claim in FORBIDDEN_PUBLICATION_CLAIMS:
@@ -102,35 +120,27 @@ def _assert_crowded_label_render_surfaces_findings(result, expected_summary) -> 
     manifest = read_json(Path(result["manifest_path"]))
     assert manifest["geometry_diagnostics"] == result["geometry_diagnostics"]
     assert manifest["layout_report"]["schema_version"] == "layout_report/1"
-    assert manifest["manual_review_needed"] is True
+    assert manifest["manual_review_needed"] is False
 
 
 def _assert_dense_legend_render_surfaces_track_diagnostics(result, expected_summary) -> None:
-    failed_checks = tuple(
-        check["name"] for check in result["geometry_diagnostics"]["checks"] if check["passed"] is False
-    )
-    has_failed_checks = bool(failed_checks)
-    if has_failed_checks:
-        assert result["status"] == "warning"
-        assert result["manual_review_needed"] is True
-        assert result["summary"] != "Rendered CSV graph."
-    else:
-        assert result["status"] == "ok"
-        assert result["manual_review_needed"] is False
-        assert result["summary"] == "Rendered CSV graph."
+    assert result["status"] == "ok"
+    assert result["manual_review_needed"] is False
+    assert result["summary"] == "Rendered CSV graph."
 
     assert result["style_summary"] == expected_summary["style_summary"]
-    assert result["geometry_diagnostics"]["schema_version"] == "geometry_diagnostics/1"
+    measurements = _assert_raw_geometry_contract(result["geometry_diagnostics"])
     assert result["layout_report"]["schema_version"] == "layout_report/1"
     assert not result["layout_report"]["overlaps"]
     assert not result["layout_report"]["clipped"]
     assert _selected_token_floors(expected_summary["track"]) == expected_summary["selected_token_floors"]
 
-    checks_by_name = _checks_by_name(result["geometry_diagnostics"])
-    for check_name in EXPECTED_DENSE_LEGEND_CHECKS:
-        assert any(check["passed"] is True for check in checks_by_name[check_name]), check_name
-
-    assert result["layout_report"]["passed"] is (not has_failed_checks)
+    legend_collision = _measurement_with_prefix(measurements, "legend_data_collision[")
+    assert legend_collision["availability"] == "available"
+    assert isinstance(legend_collision["value"]["overlap_frac"], int | float)
+    pair_iou = _measurement_with_prefix(measurements, "artist_pair_iou[")
+    assert pair_iou["value"]["candidate_count"] > 0
+    assert result["layout_report"]["passed"] is None
 
     result_text = json.dumps(result, sort_keys=True).lower()
     for claim in FORBIDDEN_PUBLICATION_CLAIMS:
@@ -139,7 +149,7 @@ def _assert_dense_legend_render_surfaces_track_diagnostics(result, expected_summ
     manifest = read_json(Path(result["manifest_path"]))
     assert manifest["geometry_diagnostics"] == result["geometry_diagnostics"]
     assert manifest["layout_report"] == result["layout_report"]
-    assert manifest["manual_review_needed"] is has_failed_checks
+    assert manifest["manual_review_needed"] is False
 
 
 def test_journal_track_fixture_manifest_is_complete() -> None:

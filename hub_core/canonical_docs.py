@@ -4,19 +4,56 @@ from pathlib import Path
 from typing import Any
 
 from .config_parser import module_default_contract_bool
+from .project_paths import ProjectPathError, project_path_has_symlink_component, resolve_project_input
 
 
 def canonical_docs_registry(project_path: str | Path, config: dict[str, Any]) -> dict[str, Any]:
     docs = []
     for precedence, entry in enumerate(canonical_docs_entries(config)):
-        doc_path = Path(project_path) / entry["path"]
-        exists = doc_path.exists()
+        declaration = entry["path"]
+        path_evidence = {
+            "exists": False,
+            "contained": False,
+            "regular_file": False,
+            "symlinked": False,
+            "status": "invalid",
+            "error": "",
+        }
+        try:
+            prospective = resolve_project_input(
+                project_path,
+                declaration,
+                must_exist=False,
+                purpose=f"canonical_docs[{precedence + 1}].path",
+            )
+            path_evidence["contained"] = True
+            path_evidence["symlinked"] = project_path_has_symlink_component(
+                project_path,
+                declaration,
+                purpose=f"canonical_docs[{precedence + 1}].path",
+            )
+            if path_evidence["symlinked"]:
+                path_evidence["status"] = "invalid"
+                path_evidence["error"] = (
+                    f"canonical_docs[{precedence + 1}].path must not be a symlink: {declaration!r}."
+                )
+            elif not prospective.exists():
+                path_evidence["status"] = "missing"
+            else:
+                resolve_project_input(
+                    project_path,
+                    declaration,
+                    purpose=f"canonical_docs[{precedence + 1}].path",
+                )
+                path_evidence.update({"exists": True, "regular_file": True, "status": "ready"})
+        except (FileNotFoundError, ProjectPathError) as exc:
+            path_evidence["error"] = str(exc)
         docs.append(
             {
                 "precedence": precedence,
-                "path": entry["path"],
+                "path": declaration,
                 "label": entry["label"],
-                "exists": exists,
+                **path_evidence,
             }
         )
     missing = [doc["path"] for doc in docs if not doc["exists"]]
@@ -59,4 +96,6 @@ def missing_canonical_doc_message(missing: list[str]) -> str:
 
 
 def _normalize_doc_path(path: str) -> str:
-    return path.strip().replace("\\", "/").strip("/")
+    # Do not strip a leading slash: callers may inspect invalid configs and the
+    # registry must report an unsafe declaration, never rewrite it as safe.
+    return path.strip().replace("\\", "/")

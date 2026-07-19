@@ -11,12 +11,15 @@
 - Sub-agent responsibilities: `SUB_AGENTS.md`
 - Current architecture inventory: `docs/architecture.md`
 - Current roadmap and release-state reading guide: `docs/ROADMAP.md`
+- Current PR #224 corrective SSOT: `docs/specs/2026-07-15-project-structure-runtime-integrity-plan.md`
 - Historical architecture blueprint: `Research_Central_Architecture.md` (Modular Phoenix / Graph Hub terminology)
 - Historical execution backlog and handover memory: `task.md`
 
 Use `docs/architecture.md` and `docs/ROADMAP.md` for current implementation
 state. Use `Research_Central_Architecture.md` and `task.md` as historical
-context unless a current document explicitly points back to them.
+context unless a current document explicitly points back to them. For the
+project-structure/runtime-integrity requirements and release gates in PR #224,
+the dated corrective SSOT above takes priority until that work is promoted.
 
 ---
 
@@ -42,7 +45,7 @@ Coordinate end-to-end planning, implementation, and verification across the modu
 Orchestrator injects the following vars:
 - `RESEARCH_HUB_PATH`: Absolute path to the hub.
 - `PROJECT_ROOT`: Absolute path to the active research project.
-- `THEME_FORMAT`: `nature | internal_style_format | science | ppt | default | acs | rsc | elsevier | wiley | cell`. The live source of truth is `ALLOWED_TARGET_FORMATS` in `hub_core/config_parser.py`; agents can also call `figops.list_styles` or consult generated `docs/tools.md`.
+- `THEME_FORMAT`: `neutral | nature | internal_style_format | science | ppt | default | acs | rsc | elsevier | wiley | cell`. The live source of truth is `ALLOWED_TARGET_FORMATS` in `hub_core/config_parser.py`; agents can also call `figops.list_styles` or consult generated `docs/tools.md`.
 - `THEME_SCALE`: Font scaling factor.
 - `THEME_PROFILE`: Active style profile name.
 
@@ -92,6 +95,10 @@ python orchestrator.py --check-all --step all --force --strict-lock
 
 - `orchestrator.py`: CLI entry point and top-level pipeline coordinator.
 - `hub_core/`: Config loading, validation, cache logic, provenance, process execution, scaffolding, and runtime helpers.
+- `hub_core/project_structure_contract.py`, `project_layout.py`, `structure_inventory.py`, `structure_audit.py`, `structure_plan.py`, `structure_role_binding.py`, and `structure_apply.py`: Declared-role resolution, shared scaffolding layout, read-only structure analysis, approved destination binding, and reviewed copy-only application.
+- `hub_core/runtime_boundary.py`, `atomic_no_clobber.py`, `durable_promotion.py`, `result_promotion.py`, and `durable_receipt.py`: External runtime containment, native consuming no-replace publication, production eligibility admission, and runtime-independent lineage receipts.
+- `hub_core/external_raw.py` and `external_raw_execution.py`: Trusted descriptor identity and launcher-authorized, post-prefetch verification before CLI/MCP producer execution.
+- `hub_core/calculation_evidence.py`, `claim_inventory.py`, and `claim_script_inspection.py`: Durable calculation/claim lineage and conservative dynamic statistical-annotation discovery.
 - `analysis_helpers/`: Shared R-side analysis utilities.
 - `plotting/`: Shared Python plotting helpers and reusable style logic.
 - `themes/`: Journal and presentation style presets.
@@ -128,6 +135,9 @@ report warnings through `figops.health`.
   execute render jobs. It defaults closed when unset.
 - `GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES`: limits MCP CSV render input size.
   Invalid or non-positive values are ignored in favor of the default limit.
+- `GRAPH_HUB_MCP_INSPECT_MAX_BYTES`: limits MCP inspection input and hash reads.
+  Operators may lower the validated cap but cannot raise it above the fixed
+  inspection ceiling.
 - `RESEARCH_HUB_RUNTIME_ROOT` / `RESEARCH_HUB_RUNTIME_HOME`: select where MCP
   jobs, manifests, logs, and generated artifacts are stored. Runtime access
   must stay under the resolved runtime root.
@@ -168,4 +178,5 @@ unless they start widening roots, write access, or adapter trust.
 
 ---
 
-**Last Update**: 2026-06-21 (v0.15.0 docs drift correction; MCP decomposition, style enum, research-ops, and env docs aligned)
+**Last Update**: 2026-07-16 (v0.20.0 release-candidate structure contract,
+external runtime boundary, and durable-result ownership aligned)

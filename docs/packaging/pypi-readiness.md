@@ -43,7 +43,7 @@ wheel gets working `figops` and `figops-mcp` commands.
 For the locally documented public release, the primary install path is PyPI:
 
 ```bash
-APPROVED_VERSION=0.18.0  # replace with the approved release version
+APPROVED_VERSION=0.19.0  # replace with the approved release version
 python -m pip install "figops==$APPROVED_VERSION"
 figops-mcp --smoke
 ```
@@ -52,7 +52,7 @@ The locally documented GitHub Release asset remains available when an exact
 attached artifact is needed:
 
 ```bash
-APPROVED_VERSION=0.18.0  # replace with the approved GitHub Release version
+APPROVED_VERSION=0.19.0  # replace with the approved GitHub Release version
 gh release download "v$APPROVED_VERSION" --repo Moonweave-Research/figops --pattern '*.whl' --dir dist-release
 python -m pip install "dist-release/figops-$APPROVED_VERSION-py3-none-any.whl"
 figops-mcp --smoke
@@ -61,13 +61,13 @@ figops-mcp --smoke
 Maintainers should attach both built artifacts to each release and verify them:
 
 ```bash
-APPROVED_VERSION=0.18.0  # replace with the approved GitHub Release version
+APPROVED_VERSION=0.19.0  # replace with the approved GitHub Release version
 gh release upload "v$APPROVED_VERSION" "dist/figops-$APPROVED_VERSION-py3-none-any.whl" "dist/figops-$APPROVED_VERSION.tar.gz"
 python scripts/github_release_asset_smoke.py
 ```
 
 The examples above are local documentation anchors: PyPI is pinned to
-`0.18.0`, and the GitHub Release asset is also pinned to `0.18.0`. Update either
+`0.19.0`, and the GitHub Release asset is also pinned to `0.19.0`. Update either
 only after explicit release-maintainer approval and public index/release-asset
 verification.
 
@@ -128,7 +128,7 @@ python scripts/consumer_install_smoke.py
 python scripts/github_release_asset_smoke.py
 python scripts/guarded_pypi_upload.py --repository testpypi
 gh workflow run publish.yml --repo Moonweave-Research/figops --ref main -f repository=testpypi
-APPROVED_VERSION=0.18.0  # replace with the approved release version
+APPROVED_VERSION=0.19.0  # replace with the approved release version
 python -m pip download --no-deps --index-url https://test.pypi.org/simple/ "figops==$APPROVED_VERSION" -d /tmp/figops-testpypi-dist
 python -m pip install "/tmp/figops-testpypi-dist/figops-$APPROVED_VERSION-py3-none-any.whl"
 python scripts/guarded_pypi_upload.py --repository pypi

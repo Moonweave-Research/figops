@@ -14,12 +14,51 @@ from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMAT
 from hub_core.data_contract import _read_data_safe, _validate_semantic_constraints
 from hub_core.figure_preflight import validate_figure_preflight
 from hub_core.mcp import render_orchestration as render_helpers
+from hub_core.path_identity import canonical_relative_to
 from hub_core.project_discovery import ProjectDiscoveryService
+from hub_core.project_paths import normalize_project_relative_path
 from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
 
 
 class McpRenderToolSupportMixin:
     """Private helpers shared by FigOps MCP tool handlers."""
+
+    def _csv_render_error(
+        self,
+        arguments: dict[str, Any],
+        *,
+        summary: str,
+        errors: list[str],
+        failure_stage: str,
+        resolution_hint: str,
+        is_dry_run: bool | None = None,
+        tool_name: str = "figops.render_csv_graph",
+        **extra: Any,
+    ) -> dict[str, Any]:
+        geometry_diagnostics = extra.pop(
+            "geometry_diagnostics",
+            render_helpers._geometry_stub("no figure"),
+        )
+        layout_report = extra.pop(
+            "layout_report",
+            render_helpers._layout_report_from_geometry(geometry_diagnostics),
+        )
+        return self._envelope(
+            tool_name,
+            arguments,
+            status="error",
+            summary=summary,
+            errors=errors,
+            manual_review_needed=True,
+            is_dry_run=False if is_dry_run is None else is_dry_run,
+            artifact_status="failed",
+            baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
+            geometry_diagnostics=geometry_diagnostics,
+            layout_report=layout_report,
+            failure_stage=failure_stage,
+            resolution_hint=resolution_hint,
+            **extra,
+        )
 
     @staticmethod
     def _manifest_path_list(manifest: dict[str, Any], key: str) -> list[str]:
@@ -429,7 +468,12 @@ class McpRenderToolSupportMixin:
         axis_scales: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         calculation_checks: list[dict[str, Any]] = []
-        empty_summary = {"checks": [], "quality_passed": True, "manual_review_needed": False}
+        empty_summary = {
+            "schema_version": "1.0",
+            "checks": [],
+            "quality_passed": True,
+            "manual_review_needed": False,
+        }
         try:
             import pandas as pd
 
@@ -483,6 +527,7 @@ class McpRenderToolSupportMixin:
         return {
             "errors": [*scale_errors, *list(semantic_errors)],
             "calculation_checks": {
+                "schema_version": "1.0",
                 "checks": calculation_checks,
                 "quality_passed": not any(
                     check.get("status") in {"warning", "failed"} for check in calculation_checks
@@ -515,6 +560,9 @@ class McpRenderToolSupportMixin:
             },
             "language_policy": {"analysis_lang": "r", "plot_lang": "python", "allow_nonstandard": False},
             "data_contract": {
+                # Quick CSV jobs do not declare a project sample/condition
+                # registry, so the scoped research-ops relaxation is explicit.
+                "require_figure_traceability": False,
                 "csv_checks": [
                     {
                         "path": "data/input.csv",
@@ -570,14 +618,18 @@ class McpRenderToolSupportMixin:
 
     @staticmethod
     def _artist_overlaps_from_geometry(geometry_diagnostics: dict[str, Any]) -> list[dict[str, Any]]:
-        checks = geometry_diagnostics.get("checks") if isinstance(geometry_diagnostics, dict) else None
-        if not isinstance(checks, list):
+        measurements = geometry_diagnostics.get("measurements") if isinstance(geometry_diagnostics, dict) else None
+        if not isinstance(measurements, list):
             return []
         overlaps: list[dict[str, Any]] = []
-        for check in checks:
-            if not isinstance(check, dict) or check.get("name") != "artist_overlaps":
+        for measurement in measurements:
+            if (
+                not isinstance(measurement, dict)
+                or str(measurement.get("metric_id") or "").split("[", 1)[0] != "artist_overlaps"
+                or measurement.get("availability") != "available"
+            ):
                 continue
-            data = check.get("data") if isinstance(check.get("data"), dict) else {}
+            data = measurement.get("value") if isinstance(measurement.get("value"), dict) else {}
             raw_overlaps = data.get("overlaps") if isinstance(data, dict) else []
             if not isinstance(raw_overlaps, list):
                 continue
@@ -597,7 +649,7 @@ class McpRenderToolSupportMixin:
         # tools/call validation enforces exactly one of project_id/project_path,
         # so only the single-selector path-or-id resolution is reachable here.
         if arguments.get("project_path"):
-            return self._resolve_under_root(arguments["project_path"], field_name="project_path")
+            return self._resolve_execution_project_path(arguments["project_path"])
         return self._resolve_project_path(arguments)
 
     def _project_figure_entries(self, config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -665,18 +717,13 @@ class McpRenderToolSupportMixin:
 
     def _public_project_path(self, project_path: Path) -> str:
         try:
-            return project_path.resolve().relative_to(self.research_root).as_posix()
-        except ValueError:
+            return canonical_relative_to(project_path, self.research_root).as_posix()
+        except (OSError, RuntimeError, ValueError):
             return "input://project_path"
 
     @staticmethod
     def _project_relative_path(raw_path: Any, field_name: str) -> Path:
-        if not isinstance(raw_path, str) or not raw_path.strip():
-            raise ValueError(f"{field_name} must be a non-empty project-relative path.")
-        relpath = Path(raw_path.strip())
-        if relpath.is_absolute() or ".." in relpath.parts:
-            raise ValueError(f"{field_name} must be project-relative and must not contain '..'.")
-        return relpath
+        return Path(normalize_project_relative_path(raw_path, purpose=field_name))
 
     @staticmethod
     def _selected_figure_style_summary(

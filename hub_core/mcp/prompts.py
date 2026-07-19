@@ -19,23 +19,41 @@ class McpPromptsMixin:
             data_path = self._prompt_quote(arguments["data_path"])
             x_column = self._prompt_quote(arguments["x_column"])
             y_column = self._prompt_quote(arguments["y_column"])
-            target_format = self._prompt_quote(arguments.get("target_format", "nature"))
+            effective_style = arguments.get("target_format", "neutral" if self.surface_profile == "v2" else "nature")
+            target_format = self._prompt_quote(effective_style)
             plot_type = self._prompt_quote(arguments.get("plot_type", "scatter"))
+            v2 = self.surface_profile == "v2"
+            render_tool = "figops.render_basic_csv" if v2 else "figops.render_csv_graph"
+            x_argument = "x" if v2 else "x_column"
+            y_argument = "y" if v2 else "y_column"
+            style_argument = "style_policy" if v2 else "target_format"
+            render_arguments: dict[str, Any] = {
+                "data_path": str(arguments["data_path"]),
+                x_argument: str(arguments["x_column"]),
+                y_argument: str(arguments["y_column"]),
+                "plot_type": str(arguments.get("plot_type", "scatter")),
+            }
+            if "target_format" in arguments or not v2:
+                render_arguments[style_argument] = str(effective_style)
+            discovery_guidance = (
+                "figops.inspect_data is optional when schema facts are uncertain; figops.list_styles is optional "
+                "when style support is uncertain."
+                if v2
+                else "figops.list_styles and figops.collect_artifacts remain optional compatibility views."
+            )
             text = (
-                "Render a publication-style FigOps figure from structured CSV data.\n"
+                "Author and render a FigOps figure from structured CSV data.\n"
                 f"- data_path: {data_path}\n"
-                f"- x_column: {x_column}\n"
-                f"- y_column: {y_column}\n"
-                f"- target_format: {target_format}\n"
+                f"- {x_argument}: {x_column}\n"
+                f"- {y_argument}: {y_column}\n"
+                f"- {style_argument}: {target_format}\n"
                 f"- plot_type: {plot_type}\n\n"
-                "Workflow:\n"
-                "1. If style support is uncertain, call figops.list_styles.\n"
-                "2. Call figops.render_csv_graph with dry_run=true using the supplied CSV and columns.\n"
-                "3. Inspect calculation_checks, visual_preflight_status, failure_stage, and resolution_hint.\n"
-                "4. Rerun figops.render_csv_graph without dry_run only when the dry run is clean "
-                "or the user accepts warnings.\n"
-                "5. Call figops.collect_artifacts for the returned job_id.\n"
-                "6. If manual_review_needed=true, do not claim publication readiness without manual review."
+                "Callable arguments:\n"
+                f"{json.dumps(render_arguments, ensure_ascii=False, sort_keys=True)}\n\n"
+                f"The columns are known, so {render_tool} can render in one call; no dry-run or collect call is a "
+                f"prerequisite. {discovery_guidance} "
+                "Inspect the returned evidence and preview URI, use visual judgment, and make revisions "
+                "proportional to the observed issue. If manual_review_needed=true, do not claim publication approval."
             )
             return self._prompt_payload(
                 "Workflow for rendering a publication-style graph from structured CSV data.",
@@ -59,12 +77,12 @@ class McpPromptsMixin:
             text = (
                 "Inspect FigOps project quality without executing analysis or plotting scripts.\n"
                 f"- {selector}\n\n"
-                "Workflow:\n"
-                "1. Call figops.inspect_project for the selected project.\n"
-                "2. Call figops.validate_project for the same selector.\n"
-                "3. Inspect config_errors, data_contract_errors, style_errors, missing_inputs, missing_outputs, "
-                "and normalization_needed.\n"
-                "4. Avoid rendering or normalization unless the user explicitly asks."
+                "On the compact v2 surface, call figops.describe with kind=project_structure and the project "
+                "selector. On the compatibility surface, use figops.inspect_project or figops.validate_project "
+                "according to the evidence needed. "
+                "Inspect config_errors, data_contract_errors, style_errors, missing_inputs, missing_outputs, "
+                "normalization_needed, roles, graph, findings, unknowns, and proposed_changes. Avoid rendering "
+                "or normalization unless the user asks."
             )
             return self._prompt_payload("Workflow for inspecting graph project quality.", text)
 
@@ -81,12 +99,9 @@ class McpPromptsMixin:
                 "Plan safe FigOps project normalization.\n"
                 f"- project_path: {project_path}\n"
                 f"- move_policy: {move_policy}\n\n"
-                "Workflow:\n"
-                "1. Call figops.inspect_project.\n"
-                "2. Call figops.normalize_project_structure with dry_run=true.\n"
-                "3. Show the manifest and preserve project style choices.\n"
-                "4. Apply only after user approval.\n"
-                "5. Call figops.validate_project after apply."
+                "Because normalization mutates source structure, call figops.normalize_project_structure with "
+                "dry_run=true, show its manifest, preserve project style choices, and apply only after explicit "
+                "user approval. figops.inspect_project and figops.validate_project are optional evidence views."
             )
             return self._prompt_payload("Workflow for planning safe project normalization.", text)
 
@@ -100,15 +115,21 @@ class McpPromptsMixin:
             if not arguments.get("project_id") and not arguments.get("project_path"):
                 raise ValueError("render_project_figure requires project_id or project_path.")
             selector = arguments.get("figure_id") or arguments.get("figure_output") or "<single configured figure>"
+            render_tool = (
+                "figops.render_project_script" if self.surface_profile == "v2" else "figops.render_project_figure"
+            )
+            optional_views = (
+                "Use figops.describe kind=project_structure only when declared-role or dependency detail is needed."
+                if self.surface_profile == "v2"
+                else "figops.inspect_project, figops.validate_project, and figops.collect_artifacts are optional "
+                "compatibility views."
+            )
             text = (
-                "Project figure workflow:\n"
-                "1. Call figops.inspect_project for the selected project.\n"
-                "2. Call figops.validate_project and stop on status=error.\n"
-                f"3. Call figops.render_project_figure for selector {selector!r} with dry_run=true first.\n"
-                "4. If dry_run is clean, call figops.render_project_figure without dry_run.\n"
-                "5. Call figops.collect_artifacts for the returned job_id.\n"
-                "6. Report manifest_path, status_path, provenance, failure_stage, resolution_hint, "
-                "and manual_review_needed."
+                f"Render configured selector {selector!r} with {render_tool} in one call; a dry run or collect call "
+                f"is not a prerequisite. {optional_views} "
+                "Inspect returned evidence and preview, then make revisions proportional to observed issues. Preserve "
+                "provenance, failure_stage, resolution_hint, and manual_review_needed; never treat automatic QA "
+                "as publication approval."
             )
             return self._prompt_payload(
                 "Workflow for rendering one configured project figure through FigOps MCP.",

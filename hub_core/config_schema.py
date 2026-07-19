@@ -6,8 +6,9 @@ from copy import deepcopy
 
 import yaml
 
-CURRENT_CONFIG_SCHEMA_VERSION = "1.0"
-SUPPORTED_CONFIG_SCHEMA_VERSIONS = ("0.9", CURRENT_CONFIG_SCHEMA_VERSION)
+LEGACY_CONFIG_SCHEMA_VERSION = "1.0"
+CURRENT_CONFIG_SCHEMA_VERSION = "1.1"
+SUPPORTED_CONFIG_SCHEMA_VERSIONS = ("0.9", LEGACY_CONFIG_SCHEMA_VERSION, CURRENT_CONFIG_SCHEMA_VERSION)
 
 
 class ConfigMigrationError(ValueError):
@@ -51,13 +52,24 @@ def schema_version_key(version: str) -> tuple[int, ...]:
 
 
 def schema_version(config: dict) -> str:
-    raw_version = config.get("schema_version", CURRENT_CONFIG_SCHEMA_VERSION)
+    # A schema-less document predates the additive v1.1 contract.  Treat it as
+    # v1.0 and advance only the detached, in-memory mapping returned by
+    # ``migrate_config``; loading must never rewrite the project file.
+    raw_version = config.get("schema_version", LEGACY_CONFIG_SCHEMA_VERSION)
     if raw_version is None:
-        return CURRENT_CONFIG_SCHEMA_VERSION
+        return LEGACY_CONFIG_SCHEMA_VERSION
     return str(raw_version)
 
 
 def migrate_0_9_to_1_0(config: dict) -> dict:
+    migrated = deepcopy(config)
+    migrated["schema_version"] = LEGACY_CONFIG_SCHEMA_VERSION
+    return migrated
+
+
+def migrate_1_0_to_1_1(config: dict) -> dict:
+    """Advance config syntax without inventing an explicit structure layout."""
+
     migrated = deepcopy(config)
     migrated["schema_version"] = CURRENT_CONFIG_SCHEMA_VERSION
     return migrated
@@ -65,6 +77,7 @@ def migrate_0_9_to_1_0(config: dict) -> dict:
 
 CONFIG_MIGRATIONS = {
     "0.9": migrate_0_9_to_1_0,
+    LEGACY_CONFIG_SCHEMA_VERSION: migrate_1_0_to_1_1,
 }
 
 

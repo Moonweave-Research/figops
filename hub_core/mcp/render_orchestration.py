@@ -9,12 +9,12 @@ import sys
 import tempfile
 import time
 import traceback
-import uuid
 from contextlib import contextmanager, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from hub_core.external_raw_execution import external_raw_signatures, is_external_raw_declaration
 from hub_core.mcp.render_errors import ProjectRenderExportError, ProjectRenderScriptError  # noqa: F401
 from hub_core.mcp.render_geometry import (
     SCRIPT_OUTPUT_TAIL_LINES,
@@ -23,20 +23,63 @@ from hub_core.mcp.render_geometry import (
     _layout_report_from_geometry,
     _read_geometry_sidecar,  # noqa: F401
 )
+from hub_core.mcp.render_manifest import (
+    atomic_json_write as _atomic_json_write,
+)
+from hub_core.mcp.render_manifest import (
+    build_manifest as _build_manifest,
+)
+from hub_core.mcp.render_manifest import (
+    build_preview_artifacts as _build_preview_artifacts,
+)
+from hub_core.mcp.render_manifest import (
+    ensure_no_symlinked_runtime_path as _ensure_no_symlinked_runtime_path,
+)
+from hub_core.mcp.render_manifest import (
+    first_symlink_component as _first_symlink_component,
+)
+from hub_core.mcp.render_manifest import (
+    preview_media_type_from_header as _preview_media_type_from_header,
+)
+from hub_core.mcp.render_manifest import (
+    preview_resource_references as _preview_resource_references,
+)
+from hub_core.mcp.render_manifest import (
+    render_stat_identity as _render_stat_identity,
+)
+from hub_core.mcp.render_manifest import (
+    write_manifest_and_status as _write_manifest_and_status,
+)
 from hub_core.mcp.render_project_runtime import McpProjectRuntimeMixin
+from hub_core.path_identity import canonical_is_relative_to, canonical_path
 from hub_core.project_discovery import ProjectDiscoveryService
+from hub_core.project_paths import open_verified_project_input, snapshot_project_input
+from hub_core.provenance_inputs import expand_project_input_files
+from hub_core.runtime_paths import resolve_temp_dir
+
+__all__ = [
+    "McpRenderOrchestrationMixin",
+    "_atomic_json_write",
+    "_build_manifest",
+    "_build_preview_artifacts",
+    "_ensure_no_symlinked_runtime_path",
+    "_first_symlink_component",
+    "_preview_media_type_from_header",
+    "_preview_resource_references",
+    "_render_stat_identity",
+    "_write_manifest_and_status",
+]
 
 MCP_RENDER_CSV_MAX_BYTES = 64 * 1024 * 1024
 MCP_RENDER_TIMEOUT_SECONDS = 120.0
 MCP_BATCH_TIMEOUT_SECONDS = 30.0
 MCP_WORKER_RESULT_MAX_BYTES = 16 * 1024 * 1024
 
-
 def _ensure_matplotlib_runtime_env(config_root: str | Path | None = None) -> None:
     os.environ.setdefault("MPLBACKEND", "Agg")
     if os.environ.get("MPLCONFIGDIR"):
         return
-    root = Path(config_root) if config_root is not None else Path(tempfile.gettempdir())
+    root = Path(config_root) if config_root is not None else Path(resolve_temp_dir("mcp_matplotlib"))
     config_dir = root / ".matplotlib"
     config_dir.mkdir(parents=True, exist_ok=True)
     os.environ["MPLCONFIGDIR"] = str(config_dir)
@@ -81,13 +124,19 @@ def _read_worker_result(result_path: str | Path, worker_label: str) -> dict[str,
     return result
 
 
-def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_path: str) -> None:
+def _render_bridge_figure_worker(
+    spec_payload: dict[str, Any],
+    result_path: str,
+    verified_calculation_evidence: tuple[dict[str, Any], ...] = (),
+) -> None:
     _ensure_matplotlib_runtime_env(Path(spec_payload["output_path"]).parent)
     try:
         with redirect_stdout(sys.stderr):
             from plotting.bridge_renderer import BridgeFigureSpec, render_bridge_figure
 
-            output_path = render_bridge_figure(BridgeFigureSpec(**spec_payload))
+            spec = BridgeFigureSpec(**spec_payload)
+            object.__setattr__(spec, "calculation_evidence", verified_calculation_evidence)
+            output_path = render_bridge_figure(spec)
         _write_worker_result(result_path, {"status": "ok", "output_path": output_path})
     except Exception as exc:
         _write_worker_result(
@@ -96,13 +145,23 @@ def _render_bridge_figure_worker(spec_payload: dict[str, Any], result_path: str)
         )
 
 
-def _render_multipanel_figure_worker(spec_payload: dict[str, Any], result_path: str) -> None:
+def _render_multipanel_figure_worker(
+    spec_payload: dict[str, Any],
+    result_path: str,
+    verified_calculation_evidence: tuple[tuple[dict[str, Any], ...], ...] = (),
+) -> None:
     _ensure_matplotlib_runtime_env(Path(spec_payload["output_path"]).parent)
     try:
         with redirect_stdout(sys.stderr):
             from plotting.bridge_renderer import BridgeFigureSpec, MultiPanelSpec, render_multipanel_figure
 
-            panel_specs = tuple(BridgeFigureSpec(**panel) for panel in spec_payload.pop("panels"))
+            panel_specs_list = []
+            for index, panel in enumerate(spec_payload.pop("panels")):
+                panel_spec = BridgeFigureSpec(**panel)
+                records = verified_calculation_evidence[index] if index < len(verified_calculation_evidence) else ()
+                object.__setattr__(panel_spec, "calculation_evidence", records)
+                panel_specs_list.append(panel_spec)
+            panel_specs = tuple(panel_specs_list)
             output_path = render_multipanel_figure(MultiPanelSpec(panels=panel_specs, **spec_payload))
         _write_worker_result(result_path, {"status": "ok", "output_path": output_path})
     except Exception as exc:
@@ -113,7 +172,7 @@ def _render_multipanel_figure_worker(spec_payload: dict[str, Any], result_path: 
 
 
 def _batch_discovery_worker(root: str, max_depth: int, result_path: str) -> None:
-    _ensure_matplotlib_runtime_env()
+    _ensure_matplotlib_runtime_env(Path(result_path).parent)
     try:
         with redirect_stdout(sys.stderr):
             projects = ProjectDiscoveryService(
@@ -127,127 +186,6 @@ def _batch_discovery_worker(root: str, max_depth: int, result_path: str) -> None
             result_path,
             {"status": "error", "error": str(exc), "traceback": traceback.format_exc().splitlines()},
         )
-
-
-def _write_manifest_and_status(
-    manifest: dict[str, Any],
-    manifest_path: Path,
-    status_payload: dict[str, Any],
-    status_path: Path,
-    latest_dir: Path,
-) -> None:
-    """Write manifest and status payload to disk, then copy both to latest_dir.
-
-    Shared boilerplate for render success and failure artifact methods.
-    """
-    _ensure_no_symlinked_runtime_path(manifest_path)
-    _ensure_no_symlinked_runtime_path(status_path)
-    _ensure_no_symlinked_runtime_path(latest_dir)
-    latest_dir.mkdir(parents=True, exist_ok=True)
-    latest_manifest_path = latest_dir / "manifest.json"
-    latest_status_path = latest_dir / "status.json"
-    _ensure_no_symlinked_runtime_path(latest_manifest_path)
-    _ensure_no_symlinked_runtime_path(latest_status_path)
-    _atomic_json_write(manifest_path, manifest)
-    _atomic_json_write(status_path, status_payload)
-    _atomic_json_write(latest_manifest_path, manifest)
-    _atomic_json_write(latest_status_path, status_payload)
-
-
-def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
-    """Write one runtime JSON leaf atomically after validating its full path."""
-    _ensure_no_symlinked_runtime_path(path)
-    if path.exists() and path.is_symlink():
-        raise RuntimeError(f"Runtime write target must not be a symlink: {path}")
-    encoded = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
-    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    nofollow = getattr(os, "O_NOFOLLOW", 0)
-    try:
-        descriptor = os.open(temporary_path, flags | nofollow, 0o600)
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(encoded)
-            handle.flush()
-            os.fsync(handle.fileno())
-        _ensure_no_symlinked_runtime_path(path)
-        os.replace(temporary_path, path)
-    except OSError:
-        try:
-            temporary_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
-
-
-def _first_symlink_component(path: Path) -> Path | None:
-    raw_path = Path(path)
-    current = Path(raw_path.anchor) if raw_path.is_absolute() else Path()
-    parts = raw_path.parts[1:] if raw_path.is_absolute() else raw_path.parts
-    for part in parts:
-        current = current / part
-        if current.is_symlink():
-            return current
-    return None
-
-
-def _ensure_no_symlinked_runtime_path(path: Path) -> None:
-    symlink = _first_symlink_component(path)
-    if symlink is not None:
-        raise RuntimeError(f"Runtime write target must not include symlinked path components: {symlink}")
-
-
-def _build_manifest(
-    *,
-    job_id: str,
-    job_root: Path,
-    config_path: Path,
-    status_path: Path,
-    latest_dir: Path,
-    figures: list[dict[str, Any]],
-    created_paths: list[str],
-    style_summary: dict[str, Any],
-    visual_preflight_status: dict[str, Any],
-    geometry_diagnostics: dict[str, Any],
-    layout_report: dict[str, Any],
-    artifact_status: str,
-    baseline_comparison: dict[str, Any],
-    manual_review_needed: bool,
-    provenance: dict[str, Any],
-    **extra: Any,
-) -> dict[str, Any]:
-    """Build a standard render manifest dict.
-
-    Renders the common skeleton shared by CSV graph and project figure
-    manifests.  Callers pass extra keyword arguments for render-type-specific
-    fields (e.g. *source_data_path*, *project_id*, *selected_figure*).
-    """
-    manifest: dict[str, Any] = {
-        "job_id": job_id,
-        "job_root": str(job_root),
-        "config_path": str(config_path),
-        "status_path": str(status_path),
-        "latest_dir": str(latest_dir),
-        "latest_alias": str(latest_dir),
-        "figures": figures,
-        "diagrams": [],
-        "assemblies": [],
-        "logs": [],
-        "created_paths": created_paths,
-        "modified_paths": [],
-        "skipped_paths": [],
-        "style_summary": style_summary,
-        "visual_preflight_status": visual_preflight_status,
-        "geometry_diagnostics": geometry_diagnostics,
-        "layout_report": layout_report,
-        "failure_stage": "",
-        "resolution_hint": "",
-        "artifact_status": artifact_status,
-        "baseline_comparison": baseline_comparison,
-        "manual_review_needed": manual_review_needed,
-        "provenance": provenance,
-    }
-    manifest.update(extra)
-    return manifest
 
 
 class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
@@ -380,14 +318,17 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
         """
         prior_out = os.environ.get("GEOMETRY_DIAGNOSTICS_OUT")
         prior_deadline = os.environ.get("GEOMETRY_DIAGNOSTICS_DEADLINE")
+        prior_authored = os.environ.get("AUTHORED_OUTPUT_EVIDENCE_OUT")
         os.environ["GEOMETRY_DIAGNOSTICS_OUT"] = str(job_root / "geometry_diagnostics.json")
         os.environ["GEOMETRY_DIAGNOSTICS_DEADLINE"] = str(time.time() + MCP_RENDER_TIMEOUT_SECONDS)
+        os.environ["AUTHORED_OUTPUT_EVIDENCE_OUT"] = str(job_root / "authored_output.json")
         try:
             yield
         finally:
             for key, prior in (
                 ("GEOMETRY_DIAGNOSTICS_OUT", prior_out),
                 ("GEOMETRY_DIAGNOSTICS_DEADLINE", prior_deadline),
+                ("AUTHORED_OUTPUT_EVIDENCE_OUT", prior_authored),
             ):
                 if prior is None:
                     os.environ.pop(key, None)
@@ -395,12 +336,22 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
                     os.environ[key] = prior
 
     @staticmethod
-    def _run_render_bridge_figure(spec_payload: dict[str, Any]) -> None:
-        with tempfile.TemporaryDirectory(prefix="figops_mcp_render_worker_") as tmpdir:
+    def _run_render_bridge_figure(
+        spec_payload: dict[str, Any],
+        *,
+        verified_calculation_evidence: tuple[dict[str, Any], ...] = (),
+    ) -> None:
+        temp_root = Path(resolve_temp_dir("mcp_render_worker"))
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_render_worker_", dir=temp_root) as tmpdir:
             result_path = Path(tmpdir) / "result.json"
+            worker_args = (
+                (spec_payload, str(result_path), verified_calculation_evidence)
+                if verified_calculation_evidence
+                else (spec_payload, str(result_path))
+            )
             process = multiprocessing.Process(
                 target=_render_bridge_figure_worker,
-                args=(spec_payload, str(result_path)),
+                args=worker_args,
                 name="figops-mcp-render",
             )
             process.start()
@@ -423,12 +374,22 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
                 raise RuntimeError(message)
 
     @staticmethod
-    def _run_render_multipanel_figure(spec_payload: dict[str, Any]) -> None:
-        with tempfile.TemporaryDirectory(prefix="figops_mcp_multipanel_worker_") as tmpdir:
+    def _run_render_multipanel_figure(
+        spec_payload: dict[str, Any],
+        *,
+        verified_calculation_evidence: tuple[tuple[dict[str, Any], ...], ...] = (),
+    ) -> None:
+        temp_root = Path(resolve_temp_dir("mcp_multipanel_worker"))
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_multipanel_worker_", dir=temp_root) as tmpdir:
             result_path = Path(tmpdir) / "result.json"
+            worker_args = (
+                (spec_payload, str(result_path), verified_calculation_evidence)
+                if verified_calculation_evidence
+                else (spec_payload, str(result_path))
+            )
             process = multiprocessing.Process(
                 target=_render_multipanel_figure_worker,
-                args=(spec_payload, str(result_path)),
+                args=worker_args,
                 name="figops-mcp-multipanel-render",
             )
             process.start()
@@ -499,6 +460,9 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
                     provenance=provenance,
                     style_summary=style_summary,
                     layout_report=layout_report,
+                    raw_integrity_status=extra.get("raw_integrity_status"),
+                    canonical_docs_registry=extra.get("canonical_docs_registry"),
+                    research_ops_policy=extra.get("research_ops_policy"),
                 )
                 extra["manifest_path"] = self._public_runtime_path(manifest_path)
                 extra["status_path"] = self._public_runtime_path(status_path)
@@ -533,8 +497,8 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
 
     def _public_runtime_path(self, path: Path) -> str:
         """Expose runtime artifacts only as runtime URIs, never host-local paths."""
-        resolved = path.resolve()
-        if not resolved.is_relative_to(self.runtime_root.resolve()):
+        resolved = canonical_path(path)
+        if not canonical_is_relative_to(resolved, self.runtime_root):
             return ""
         return self._runtime_uri(resolved)
 
@@ -659,6 +623,8 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
         copied_hash = self._file_sha256(copied_data_path) if copied_data_path.is_file() else ""
         config_hash = self._file_sha256(config_path) if config_path.is_file() else ""
         output_hash = self._file_sha256(output_path) if output_path.is_file() else ""
+        renderer_path = self.hub_path / "plotting" / "bridge_renderer.py"
+        script_hash = self._file_sha256(renderer_path) if renderer_path.is_file() else ""
         lock_status = self._mcp_lock_status()
         env_payload = {
             "python_executable": sys.executable,
@@ -685,6 +651,7 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
             "source_data_sha256": source_hash,
             "copied_data_sha256": copied_hash,
             "config_sha256": config_hash,
+            "script_sha256": script_hash,
             "output_sha256": output_hash,
             "environment_sha256": environment_hash,
             "lock_status": lock_status,
@@ -700,9 +667,12 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
         output_path: Path,
         selected_figure: dict[str, Any],
         style_summary: dict[str, str],
+        pre_execution_hashes: dict[str, str],
     ) -> dict[str, Any]:
-        config_hash = self._file_sha256(config_path) if config_path.is_file() else ""
+        config_hash = pre_execution_hashes.get("config_sha256", "")
         output_hash = self._file_sha256(output_path) if output_path.is_file() else ""
+        script_hash = pre_execution_hashes.get("script_sha256", "")
+        input_hash = pre_execution_hashes.get("input_sha256", "")
         project_files = sorted(path for path in snapshot_project_path.rglob("*") if path.is_file())
         snapshot_payload = [
             {
@@ -741,8 +711,68 @@ class McpRenderOrchestrationMixin(McpProjectRuntimeMixin):
             "snapshot_files_sha256": hashlib.sha256(
                 json.dumps(snapshot_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
             ).hexdigest(),
+            "input_sha256": input_hash,
             "config_sha256": config_hash,
+            "script_sha256": script_hash,
             "output_sha256": output_hash,
             "environment_sha256": environment_hash,
             "lock_status": lock_status,
+        }
+
+    @staticmethod
+    def _verified_project_file_sha256(project_root: Path, declaration: str) -> str:
+        snapshot = snapshot_project_input(project_root, declaration, purpose="project provenance input")
+        digest = hashlib.sha256()
+        with open_verified_project_input(
+            project_root,
+            declaration,
+            expected_snapshot=snapshot,
+            purpose="project provenance input",
+        ) as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _mcp_project_pre_execution_hashes(
+        self,
+        *,
+        snapshot_project_path: Path,
+        config_path: Path,
+        config: dict[str, Any],
+        selected_figure: dict[str, Any],
+    ) -> dict[str, str]:
+        input_declarations = selected_figure.get("inputs")
+        if not isinstance(input_declarations, list):
+            input_declarations = []
+        declarations = [str(declaration) for declaration in input_declarations]
+        project_declarations = [item for item in declarations if not is_external_raw_declaration(item)]
+        input_files = expand_project_input_files(
+            snapshot_project_path,
+            project_declarations,
+            require_matches=True,
+        )
+        input_payload = [
+            {
+                "path": path.relative_to(snapshot_project_path).as_posix(),
+                "sha256": self._verified_project_file_sha256(
+                    snapshot_project_path,
+                    path.relative_to(snapshot_project_path).as_posix(),
+                ),
+            }
+            for path in input_files
+        ]
+        input_payload.extend(external_raw_signatures(config, declarations))
+        script_declaration = str(selected_figure.get("script") or "").split("::", 1)[0]
+        return {
+            "input_sha256": hashlib.sha256(
+                json.dumps(input_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            ).hexdigest(),
+            "config_sha256": self._verified_project_file_sha256(
+                snapshot_project_path,
+                config_path.relative_to(snapshot_project_path).as_posix(),
+            ),
+            "script_sha256": self._verified_project_file_sha256(
+                snapshot_project_path,
+                script_declaration,
+            ),
         }

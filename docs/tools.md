@@ -4,7 +4,7 @@ This file is generated from the live FigOps MCP registries.
 Regenerate it with:
 
 ```bash
-uv run python scripts/gen_tool_reference.py --write
+python hub_uv.py run python scripts/gen_tool_reference.py --write
 ```
 
 The freshness test fails if this committed file drifts from the registry output.
@@ -75,6 +75,9 @@ Return FigOps server health and discovery status.
       },
       "type": "array"
     },
+    "exposed_tool_count": {
+      "type": "integer"
+    },
     "failure_stage": {
       "type": "string"
     },
@@ -107,6 +110,51 @@ Return FigOps server health and discovery status.
     },
     "operation_id": {
       "type": "string"
+    },
+    "preview_worker_limits": {
+      "additionalProperties": false,
+      "properties": {
+        "base64_output_byte_limit": {
+          "type": "integer"
+        },
+        "cpu_limit_enforced": {
+          "type": "boolean"
+        },
+        "edge_limit": {
+          "type": "integer"
+        },
+        "file_size_limit_enforced": {
+          "type": "boolean"
+        },
+        "memory_limit_bytes": {
+          "type": "integer"
+        },
+        "memory_limit_enforced": {
+          "type": "boolean"
+        },
+        "memory_limit_limitation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pixel_limit": {
+          "type": "integer"
+        },
+        "process_tree_containment": {
+          "type": "boolean"
+        },
+        "raw_output_byte_limit": {
+          "type": "integer"
+        },
+        "source_byte_limit": {
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "type": "number"
+        }
+      },
+      "type": "object"
     },
     "python_executable": {
       "type": "string"
@@ -144,6 +192,9 @@ Return FigOps server health and discovery status.
       "type": "integer"
     },
     "summary": {
+      "type": "string"
+    },
+    "surface_profile": {
       "type": "string"
     },
     "version": {
@@ -908,6 +959,51 @@ Summarize one project config without running analysis, plotting, or report write
     "status_path": {
       "type": "string"
     },
+    "structure_audit": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "graph": {
+          "type": "object"
+        },
+        "proposed_changes": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "roles": {
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string"
+        },
+        "status_code": {
+          "type": "string"
+        },
+        "unknowns": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status_code",
+        "roles",
+        "graph",
+        "findings",
+        "unknowns",
+        "proposed_changes"
+      ],
+      "type": "object"
+    },
     "style_summary": {
       "type": "object"
     },
@@ -1156,7 +1252,21 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "items": {
         "anyOf": [
           {
+            "additionalProperties": false,
             "properties": {
+              "analysis_artifact_sha256": {
+                "pattern": "^[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              "annotation_kind": {
+                "default": "auto",
+                "enum": [
+                  "auto",
+                  "literal",
+                  "statistical_claim"
+                ],
+                "type": "string"
+              },
               "arrow_to": {
                 "properties": {
                   "x": {
@@ -1186,6 +1296,10 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                 "default": false,
                 "type": "boolean"
               },
+              "calculation_evidence_id": {
+                "minLength": 1,
+                "type": "string"
+              },
               "color": {
                 "default": "black",
                 "type": "string"
@@ -1205,6 +1319,24 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                   "lower_right"
                 ],
                 "type": "string"
+              },
+              "test_metadata": {
+                "additionalProperties": false,
+                "properties": {
+                  "model": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "test_name": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "test_name",
+                  "model"
+                ],
+                "type": "object"
               },
               "text": {
                 "type": "string"
@@ -1251,7 +1383,21 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
+              "analysis_artifact_sha256": {
+                "pattern": "^[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              "annotation_kind": {
+                "default": "auto",
+                "enum": [
+                  "auto",
+                  "literal",
+                  "statistical_claim"
+                ],
+                "type": "string"
+              },
               "arrow_to": {
                 "properties": {
                   "x": {
@@ -1281,6 +1427,10 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                 "default": false,
                 "type": "boolean"
               },
+              "calculation_evidence_id": {
+                "minLength": 1,
+                "type": "string"
+              },
               "color": {
                 "default": "black",
                 "type": "string"
@@ -1300,6 +1450,24 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                   "lower_right"
                 ],
                 "type": "string"
+              },
+              "test_metadata": {
+                "additionalProperties": false,
+                "properties": {
+                  "model": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "test_name": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "test_name",
+                  "model"
+                ],
+                "type": "object"
               },
               "text": {
                 "type": "string"
@@ -1346,12 +1514,30 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
               "alpha": {
                 "type": [
                   "number",
                   "string"
                 ]
+              },
+              "analysis_artifact_sha256": {
+                "pattern": "^[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              "annotation_kind": {
+                "default": "auto",
+                "enum": [
+                  "auto",
+                  "literal",
+                  "statistical_claim"
+                ],
+                "type": "string"
+              },
+              "calculation_evidence_id": {
+                "minLength": 1,
+                "type": "string"
               },
               "color": {
                 "default": "black",
@@ -1392,6 +1578,24 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                 ],
                 "type": "object"
               },
+              "test_metadata": {
+                "additionalProperties": false,
+                "properties": {
+                  "model": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "test_name": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "test_name",
+                  "model"
+                ],
+                "type": "object"
+              },
               "text": {
                 "type": "string"
               }
@@ -1402,12 +1606,30 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
               "alpha": {
                 "type": [
                   "number",
                   "string"
                 ]
+              },
+              "analysis_artifact_sha256": {
+                "pattern": "^[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              "annotation_kind": {
+                "default": "auto",
+                "enum": [
+                  "auto",
+                  "literal",
+                  "statistical_claim"
+                ],
+                "type": "string"
+              },
+              "calculation_evidence_id": {
+                "minLength": 1,
+                "type": "string"
               },
               "color": {
                 "default": "black",
@@ -1434,6 +1656,24 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                 ],
                 "type": "object"
               },
+              "test_metadata": {
+                "additionalProperties": false,
+                "properties": {
+                  "model": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "test_name": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "test_name",
+                  "model"
+                ],
+                "type": "object"
+              },
               "text": {
                 "type": "string"
               }
@@ -1444,6 +1684,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
               "alpha": {
                 "type": [
@@ -1451,9 +1692,44 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
                   "string"
                 ]
               },
+              "analysis_artifact_sha256": {
+                "pattern": "^[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              "annotation_kind": {
+                "default": "auto",
+                "enum": [
+                  "auto",
+                  "literal",
+                  "statistical_claim"
+                ],
+                "type": "string"
+              },
+              "calculation_evidence_id": {
+                "minLength": 1,
+                "type": "string"
+              },
               "color": {
                 "default": "black",
                 "type": "string"
+              },
+              "test_metadata": {
+                "additionalProperties": false,
+                "properties": {
+                  "model": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "test_name": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "test_name",
+                  "model"
+                ],
+                "type": "object"
               },
               "text": {
                 "type": "string"
@@ -1526,6 +1802,18 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "description": "Optional baseline figure path to compare the rendered output against.",
       "type": "string"
     },
+    "calculation_evidence_path": {
+      "description": "CSV input path under an allowed data root.",
+      "type": "string"
+    },
+    "calculation_evidence_paths": {
+      "items": {
+        "description": "CSV input path under an allowed data root.",
+        "type": "string"
+      },
+      "maxItems": 32,
+      "type": "array"
+    },
     "category_order": {
       "items": {
         "type": [
@@ -1538,8 +1826,24 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "ci_band": {
       "type": "boolean"
     },
+    "compliance_mode": {
+      "default": "validate",
+      "enum": [
+        "validate",
+        "clamp"
+      ],
+      "type": "string"
+    },
     "data_path": {
       "description": "CSV input path under an allowed data root.",
+      "type": "string"
+    },
+    "declutter_mode": {
+      "default": "none",
+      "enum": [
+        "none",
+        "declutter"
+      ],
       "type": "string"
     },
     "dry_run": {
@@ -1574,6 +1878,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "fill_between": {
       "description": "Manual filled bands from point triplets or CSV x/y1/y2 columns.",
       "items": {
+        "additionalProperties": false,
         "anyOf": [
           {
             "required": [
@@ -1595,6 +1900,13 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
               "number",
               "string"
             ]
+          },
+          "band_kind": {
+            "enum": [
+              "literal",
+              "confidence_interval"
+            ],
+            "type": "string"
           },
           "color": {
             "type": "string"
@@ -1790,6 +2102,20 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "label_column": {
       "type": "string"
     },
+    "label_map": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "label_transform": {
+      "default": "raw",
+      "enum": [
+        "raw",
+        "legacy_compress"
+      ],
+      "type": "string"
+    },
     "legend_layout": {
       "default": "auto",
       "enum": [
@@ -1902,10 +2228,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
         "cell",
         "cell_press",
         "default",
-        "premium",
         "publication",
-        "resistance",
-        "internal_style_profile",
         "wiley"
       ],
       "type": "string"
@@ -2034,6 +2357,62 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     },
     "significance_markers": {
       "items": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_artifact_sha256": {
+            "pattern": "^[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "calculation_evidence_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "h": {
+            "type": "number"
+          },
+          "label": {
+            "type": "string"
+          },
+          "test_metadata": {
+            "additionalProperties": false,
+            "properties": {
+              "model": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "test_name": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "test_name",
+              "model"
+            ],
+            "type": "object"
+          },
+          "x1": {
+            "type": "number"
+          },
+          "x2": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "x1",
+          "x2",
+          "y",
+          "label",
+          "calculation_evidence_id",
+          "analysis_artifact_sha256",
+          "test_metadata"
+        ],
         "type": "object"
       },
       "type": "array"
@@ -2046,7 +2425,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
         "default",
         "elsevier",
         "nature",
-        "internal_style_format",
+        "neutral",
         "ppt",
         "rsc",
         "science",
@@ -2139,8 +2518,11 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
   "properties": {
     "artifact_resources": {
       "items": {
+        "maxLength": 256,
+        "pattern": "^figops://jobs/[A-Za-z0-9_-]{1,80}/artifacts/[A-Za-z0-9_.%:-]{1,240}/(?:0|[1-9][0-9]{0,2})$",
         "type": "string"
       },
+      "maxItems": 256,
       "type": "array"
     },
     "artifact_status": {
@@ -2152,12 +2534,30 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "calculation_checks": {
       "type": "object"
     },
+    "calculation_evidence": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "claim_candidates": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
     "config_path": {
       "type": "string"
     },
     "created_paths": {
       "items": {
         "type": "string"
+      },
+      "type": "array"
+    },
+    "descriptive_overlays": {
+      "items": {
+        "type": "object"
       },
       "type": "array"
     },
@@ -2179,69 +2579,96 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       },
       "type": "array"
     },
+    "evidence": {
+      "type": "object"
+    },
     "failure_stage": {
       "type": "string"
     },
     "geometry_diagnostics": {
+      "additionalProperties": false,
       "properties": {
-        "checks": {
+        "measurements": {
           "items": {
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "else": {
+                  "not": {
+                    "required": [
+                      "value"
+                    ]
+                  },
+                  "required": [
+                    "reason"
+                  ]
+                },
+                "if": {
+                  "properties": {
+                    "availability": {
+                      "const": "available"
+                    }
+                  }
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "reason"
+                    ]
+                  },
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            ],
             "properties": {
-              "data": {
-                "type": "object"
-              },
-              "detail": {
-                "type": "string"
-              },
-              "name": {
+              "availability": {
                 "enum": [
-                  "tick_label_overlaps",
-                  "tick_label_crowding",
-                  "artists_outside_axes",
-                  "artists_outside_figure",
-                  "legend_data_collision",
-                  "axis_label_title_overlap",
-                  "figure_title_panel_title_overlap",
-                  "colorbar_overlap",
-                  "blank_area_ratio",
-                  "point_annotation_overlaps",
-                  "artist_overlaps",
-                  "legend_internal_overlaps",
-                  "marker_marker_overlaps",
-                  "text_axis_edge_proximity",
-                  "legend_marker_consistency",
-                  "label_offset_consistency",
-                  "point_label_skips",
-                  "annotation_overlay_contrast",
-                  "font_size_token_drift",
-                  "journal_compliance"
-                ],
+                  "available",
+                  "unavailable"
+                ]
+              },
+              "metric_id": {
+                "minLength": 1,
                 "type": "string"
               },
-              "passed": {
+              "reason": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "scope": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "unit": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "value": {
                 "type": [
+                  "object",
+                  "array",
+                  "string",
+                  "number",
+                  "integer",
                   "boolean",
                   "null"
                 ]
               }
             },
             "required": [
-              "name",
-              "passed",
-              "detail"
+              "metric_id",
+              "availability",
+              "unit",
+              "scope"
             ],
             "type": "object"
           },
           "type": "array"
         },
-        "passed": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
         "schema_version": {
-          "type": "string"
+          "const": "geometry_diagnostics/2"
         },
         "warnings": {
           "items": {
@@ -2252,8 +2679,7 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       },
       "required": [
         "schema_version",
-        "passed",
-        "checks",
+        "measurements",
         "warnings"
       ],
       "type": "object"
@@ -2269,6 +2695,9 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     },
     "jsonrpc_code": {
       "type": "integer"
+    },
+    "label_transformations": {
+      "type": "object"
     },
     "latest_alias": {
       "type": "string"
@@ -2349,11 +2778,26 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       },
       "type": "array"
     },
+    "mutation_ledger": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
     "operation_id": {
       "type": "string"
     },
     "output_path": {
       "type": "string"
+    },
+    "preview_resources": {
+      "items": {
+        "maxLength": 256,
+        "pattern": "^figops://jobs/[A-Za-z0-9_-]{1,80}/previews/[A-Za-z0-9_.%:-]{1,240}/(?:0|[1-9][0-9]{0,2})$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "type": "array"
     },
     "resolution_hint": {
       "type": "string"
@@ -2367,6 +2811,12 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
     "skipped_paths": {
       "items": {
         "type": "string"
+      },
+      "type": "array"
+    },
+    "statistical_claims": {
+      "items": {
+        "type": "object"
       },
       "type": "array"
     },
@@ -2512,7 +2962,21 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             "items": {
               "anyOf": [
                 {
+                  "additionalProperties": false,
                   "properties": {
+                    "analysis_artifact_sha256": {
+                      "pattern": "^[0-9a-fA-F]{64}$",
+                      "type": "string"
+                    },
+                    "annotation_kind": {
+                      "default": "auto",
+                      "enum": [
+                        "auto",
+                        "literal",
+                        "statistical_claim"
+                      ],
+                      "type": "string"
+                    },
                     "arrow_to": {
                       "properties": {
                         "x": {
@@ -2542,6 +3006,10 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                       "default": false,
                       "type": "boolean"
                     },
+                    "calculation_evidence_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
                     "color": {
                       "default": "black",
                       "type": "string"
@@ -2561,6 +3029,24 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                         "lower_right"
                       ],
                       "type": "string"
+                    },
+                    "test_metadata": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "model": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "test_name": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "test_name",
+                        "model"
+                      ],
+                      "type": "object"
                     },
                     "text": {
                       "type": "string"
@@ -2607,7 +3093,21 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                   "type": "object"
                 },
                 {
+                  "additionalProperties": false,
                   "properties": {
+                    "analysis_artifact_sha256": {
+                      "pattern": "^[0-9a-fA-F]{64}$",
+                      "type": "string"
+                    },
+                    "annotation_kind": {
+                      "default": "auto",
+                      "enum": [
+                        "auto",
+                        "literal",
+                        "statistical_claim"
+                      ],
+                      "type": "string"
+                    },
                     "arrow_to": {
                       "properties": {
                         "x": {
@@ -2637,6 +3137,10 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                       "default": false,
                       "type": "boolean"
                     },
+                    "calculation_evidence_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
                     "color": {
                       "default": "black",
                       "type": "string"
@@ -2656,6 +3160,24 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                         "lower_right"
                       ],
                       "type": "string"
+                    },
+                    "test_metadata": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "model": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "test_name": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "test_name",
+                        "model"
+                      ],
+                      "type": "object"
                     },
                     "text": {
                       "type": "string"
@@ -2702,12 +3224,30 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                   "type": "object"
                 },
                 {
+                  "additionalProperties": false,
                   "properties": {
                     "alpha": {
                       "type": [
                         "number",
                         "string"
                       ]
+                    },
+                    "analysis_artifact_sha256": {
+                      "pattern": "^[0-9a-fA-F]{64}$",
+                      "type": "string"
+                    },
+                    "annotation_kind": {
+                      "default": "auto",
+                      "enum": [
+                        "auto",
+                        "literal",
+                        "statistical_claim"
+                      ],
+                      "type": "string"
+                    },
+                    "calculation_evidence_id": {
+                      "minLength": 1,
+                      "type": "string"
                     },
                     "color": {
                       "default": "black",
@@ -2748,6 +3288,24 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                       ],
                       "type": "object"
                     },
+                    "test_metadata": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "model": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "test_name": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "test_name",
+                        "model"
+                      ],
+                      "type": "object"
+                    },
                     "text": {
                       "type": "string"
                     }
@@ -2758,12 +3316,30 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                   "type": "object"
                 },
                 {
+                  "additionalProperties": false,
                   "properties": {
                     "alpha": {
                       "type": [
                         "number",
                         "string"
                       ]
+                    },
+                    "analysis_artifact_sha256": {
+                      "pattern": "^[0-9a-fA-F]{64}$",
+                      "type": "string"
+                    },
+                    "annotation_kind": {
+                      "default": "auto",
+                      "enum": [
+                        "auto",
+                        "literal",
+                        "statistical_claim"
+                      ],
+                      "type": "string"
+                    },
+                    "calculation_evidence_id": {
+                      "minLength": 1,
+                      "type": "string"
                     },
                     "color": {
                       "default": "black",
@@ -2790,6 +3366,24 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                       ],
                       "type": "object"
                     },
+                    "test_metadata": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "model": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "test_name": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "test_name",
+                        "model"
+                      ],
+                      "type": "object"
+                    },
                     "text": {
                       "type": "string"
                     }
@@ -2800,6 +3394,7 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                   "type": "object"
                 },
                 {
+                  "additionalProperties": false,
                   "properties": {
                     "alpha": {
                       "type": [
@@ -2807,9 +3402,44 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                         "string"
                       ]
                     },
+                    "analysis_artifact_sha256": {
+                      "pattern": "^[0-9a-fA-F]{64}$",
+                      "type": "string"
+                    },
+                    "annotation_kind": {
+                      "default": "auto",
+                      "enum": [
+                        "auto",
+                        "literal",
+                        "statistical_claim"
+                      ],
+                      "type": "string"
+                    },
+                    "calculation_evidence_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
                     "color": {
                       "default": "black",
                       "type": "string"
+                    },
+                    "test_metadata": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "model": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "test_name": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "test_name",
+                        "model"
+                      ],
+                      "type": "object"
                     },
                     "text": {
                       "type": "string"
@@ -2875,11 +3505,39 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             },
             "type": "object"
           },
+          "calculation_evidence_path": {
+            "description": "CSV input path under an allowed data root.",
+            "type": "string"
+          },
+          "calculation_evidence_paths": {
+            "items": {
+              "description": "CSV input path under an allowed data root.",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
           "ci_band": {
             "type": "boolean"
           },
+          "compliance_mode": {
+            "default": "validate",
+            "enum": [
+              "validate",
+              "clamp"
+            ],
+            "type": "string"
+          },
           "data_path": {
             "description": "CSV input path under an allowed data root.",
+            "type": "string"
+          },
+          "declutter_mode": {
+            "default": "none",
+            "enum": [
+              "none",
+              "declutter"
+            ],
             "type": "string"
           },
           "facet_column": {
@@ -2888,6 +3546,7 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
           "fill_between": {
             "description": "Manual filled bands from point triplets or CSV x/y1/y2 columns.",
             "items": {
+              "additionalProperties": false,
               "anyOf": [
                 {
                   "required": [
@@ -2909,6 +3568,13 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
                     "number",
                     "string"
                   ]
+                },
+                "band_kind": {
+                  "enum": [
+                    "literal",
+                    "confidence_interval"
+                  ],
+                  "type": "string"
                 },
                 "color": {
                   "type": "string"
@@ -3098,6 +3764,20 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
             "type": "array"
           },
           "label_column": {
+            "type": "string"
+          },
+          "label_map": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "label_transform": {
+            "default": "raw",
+            "enum": [
+              "raw",
+              "legacy_compress"
+            ],
             "type": "string"
           },
           "legend_layout": {
@@ -3311,6 +3991,62 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
           },
           "significance_markers": {
             "items": {
+              "additionalProperties": false,
+              "properties": {
+                "analysis_artifact_sha256": {
+                  "pattern": "^[0-9a-fA-F]{64}$",
+                  "type": "string"
+                },
+                "calculation_evidence_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "color": {
+                  "type": "string"
+                },
+                "h": {
+                  "type": "number"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "test_metadata": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "model": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "test_name": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "test_name",
+                    "model"
+                  ],
+                  "type": "object"
+                },
+                "x1": {
+                  "type": "number"
+                },
+                "x2": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x1",
+                "x2",
+                "y",
+                "label",
+                "calculation_evidence_id",
+                "analysis_artifact_sha256",
+                "test_metadata"
+              ],
               "type": "object"
             },
             "type": "array"
@@ -3401,10 +4137,7 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
         "cell",
         "cell_press",
         "default",
-        "premium",
         "publication",
-        "resistance",
-        "internal_style_profile",
         "wiley"
       ],
       "type": "string"
@@ -3454,7 +4187,7 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
         "default",
         "elsevier",
         "nature",
-        "internal_style_format",
+        "neutral",
         "ppt",
         "rsc",
         "science",
@@ -3478,8 +4211,11 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
   "properties": {
     "artifact_resources": {
       "items": {
+        "maxLength": 256,
+        "pattern": "^figops://jobs/[A-Za-z0-9_-]{1,80}/artifacts/[A-Za-z0-9_.%:-]{1,240}/(?:0|[1-9][0-9]{0,2})$",
         "type": "string"
       },
+      "maxItems": 256,
       "type": "array"
     },
     "artifact_status": {
@@ -3491,12 +4227,30 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
     "calculation_checks": {
       "type": "object"
     },
+    "calculation_evidence": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "claim_candidates": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
     "config_path": {
       "type": "string"
     },
     "created_paths": {
       "items": {
         "type": "string"
+      },
+      "type": "array"
+    },
+    "descriptive_overlays": {
+      "items": {
+        "type": "object"
       },
       "type": "array"
     },
@@ -3518,69 +4272,96 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
       },
       "type": "array"
     },
+    "evidence": {
+      "type": "object"
+    },
     "failure_stage": {
       "type": "string"
     },
     "geometry_diagnostics": {
+      "additionalProperties": false,
       "properties": {
-        "checks": {
+        "measurements": {
           "items": {
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "else": {
+                  "not": {
+                    "required": [
+                      "value"
+                    ]
+                  },
+                  "required": [
+                    "reason"
+                  ]
+                },
+                "if": {
+                  "properties": {
+                    "availability": {
+                      "const": "available"
+                    }
+                  }
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "reason"
+                    ]
+                  },
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            ],
             "properties": {
-              "data": {
-                "type": "object"
-              },
-              "detail": {
-                "type": "string"
-              },
-              "name": {
+              "availability": {
                 "enum": [
-                  "tick_label_overlaps",
-                  "tick_label_crowding",
-                  "artists_outside_axes",
-                  "artists_outside_figure",
-                  "legend_data_collision",
-                  "axis_label_title_overlap",
-                  "figure_title_panel_title_overlap",
-                  "colorbar_overlap",
-                  "blank_area_ratio",
-                  "point_annotation_overlaps",
-                  "artist_overlaps",
-                  "legend_internal_overlaps",
-                  "marker_marker_overlaps",
-                  "text_axis_edge_proximity",
-                  "legend_marker_consistency",
-                  "label_offset_consistency",
-                  "point_label_skips",
-                  "annotation_overlay_contrast",
-                  "font_size_token_drift",
-                  "journal_compliance"
-                ],
+                  "available",
+                  "unavailable"
+                ]
+              },
+              "metric_id": {
+                "minLength": 1,
                 "type": "string"
               },
-              "passed": {
+              "reason": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "scope": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "unit": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "value": {
                 "type": [
+                  "object",
+                  "array",
+                  "string",
+                  "number",
+                  "integer",
                   "boolean",
                   "null"
                 ]
               }
             },
             "required": [
-              "name",
-              "passed",
-              "detail"
+              "metric_id",
+              "availability",
+              "unit",
+              "scope"
             ],
             "type": "object"
           },
           "type": "array"
         },
-        "passed": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
         "schema_version": {
-          "type": "string"
+          "const": "geometry_diagnostics/2"
         },
         "warnings": {
           "items": {
@@ -3591,8 +4372,7 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
       },
       "required": [
         "schema_version",
-        "passed",
-        "checks",
+        "measurements",
         "warnings"
       ],
       "type": "object"
@@ -3608,6 +4388,9 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
     },
     "jsonrpc_code": {
       "type": "integer"
+    },
+    "label_transformations": {
+      "type": "object"
     },
     "latest_alias": {
       "type": "string"
@@ -3688,11 +4471,26 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
       },
       "type": "array"
     },
+    "mutation_ledger": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
     "operation_id": {
       "type": "string"
     },
     "output_path": {
       "type": "string"
+    },
+    "preview_resources": {
+      "items": {
+        "maxLength": 256,
+        "pattern": "^figops://jobs/[A-Za-z0-9_-]{1,80}/previews/[A-Za-z0-9_.%:-]{1,240}/(?:0|[1-9][0-9]{0,2})$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "type": "array"
     },
     "provenance": {
       "type": "object"
@@ -3709,6 +4507,12 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
     "skipped_paths": {
       "items": {
         "type": "string"
+      },
+      "type": "array"
+    },
+    "statistical_claims": {
+      "items": {
+        "type": "object"
       },
       "type": "array"
     },
@@ -3808,10 +4612,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
         "cell",
         "cell_press",
         "default",
-        "premium",
         "publication",
-        "resistance",
-        "internal_style_profile",
         "wiley"
       ],
       "type": "string"
@@ -3835,7 +4636,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
         "default",
         "elsevier",
         "nature",
-        "internal_style_format",
+        "neutral",
         "ppt",
         "rsc",
         "science",
@@ -3856,14 +4657,20 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
   "properties": {
     "artifact_resources": {
       "items": {
+        "maxLength": 256,
+        "pattern": "^figops://jobs/[A-Za-z0-9_-]{1,80}/artifacts/[A-Za-z0-9_.%:-]{1,240}/(?:0|[1-9][0-9]{0,2})$",
         "type": "string"
       },
+      "maxItems": 256,
       "type": "array"
     },
     "artifact_status": {
       "type": "string"
     },
     "baseline_comparison": {
+      "type": "object"
+    },
+    "claim_inventory": {
       "type": "object"
     },
     "config_path": {
@@ -3893,6 +4700,9 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
       },
       "type": "array"
     },
+    "evidence": {
+      "type": "object"
+    },
     "failure_stage": {
       "type": "string"
     },
@@ -3900,65 +4710,89 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
       "type": "object"
     },
     "geometry_diagnostics": {
+      "additionalProperties": false,
       "properties": {
-        "checks": {
+        "measurements": {
           "items": {
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "else": {
+                  "not": {
+                    "required": [
+                      "value"
+                    ]
+                  },
+                  "required": [
+                    "reason"
+                  ]
+                },
+                "if": {
+                  "properties": {
+                    "availability": {
+                      "const": "available"
+                    }
+                  }
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "reason"
+                    ]
+                  },
+                  "required": [
+                    "value"
+                  ]
+                }
+              }
+            ],
             "properties": {
-              "data": {
-                "type": "object"
-              },
-              "detail": {
-                "type": "string"
-              },
-              "name": {
+              "availability": {
                 "enum": [
-                  "tick_label_overlaps",
-                  "tick_label_crowding",
-                  "artists_outside_axes",
-                  "artists_outside_figure",
-                  "legend_data_collision",
-                  "axis_label_title_overlap",
-                  "figure_title_panel_title_overlap",
-                  "colorbar_overlap",
-                  "blank_area_ratio",
-                  "point_annotation_overlaps",
-                  "artist_overlaps",
-                  "legend_internal_overlaps",
-                  "marker_marker_overlaps",
-                  "text_axis_edge_proximity",
-                  "legend_marker_consistency",
-                  "label_offset_consistency",
-                  "point_label_skips",
-                  "annotation_overlay_contrast",
-                  "font_size_token_drift",
-                  "journal_compliance"
-                ],
+                  "available",
+                  "unavailable"
+                ]
+              },
+              "metric_id": {
+                "minLength": 1,
                 "type": "string"
               },
-              "passed": {
+              "reason": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "scope": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "unit": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "value": {
                 "type": [
+                  "object",
+                  "array",
+                  "string",
+                  "number",
+                  "integer",
                   "boolean",
                   "null"
                 ]
               }
             },
             "required": [
-              "name",
-              "passed",
-              "detail"
+              "metric_id",
+              "availability",
+              "unit",
+              "scope"
             ],
             "type": "object"
           },
           "type": "array"
         },
-        "passed": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
         "schema_version": {
-          "type": "string"
+          "const": "geometry_diagnostics/2"
         },
         "warnings": {
           "items": {
@@ -3969,8 +4803,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
       },
       "required": [
         "schema_version",
-        "passed",
-        "checks",
+        "measurements",
         "warnings"
       ],
       "type": "object"
@@ -4072,11 +4905,30 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
     "output_path": {
       "type": "string"
     },
+    "preview_resources": {
+      "items": {
+        "maxLength": 256,
+        "pattern": "^figops://jobs/[A-Za-z0-9_-]{1,80}/previews/[A-Za-z0-9_.%:-]{1,240}/(?:0|[1-9][0-9]{0,2})$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "type": "array"
+    },
     "project_id": {
       "type": "string"
     },
+    "promotion_eligible": {
+      "type": "boolean"
+    },
     "provenance": {
       "type": "object"
+    },
+    "publication_status": {
+      "enum": [
+        "verified",
+        "unverified"
+      ],
+      "type": "string"
     },
     "resolution_hint": {
       "type": "string"
@@ -4530,7 +5382,7 @@ Plan or create a standard FigOps project scaffold.
         "default",
         "elsevier",
         "nature",
-        "internal_style_format",
+        "neutral",
         "ppt",
         "rsc",
         "science",
@@ -4687,7 +5539,7 @@ Plan or create a standard FigOps project scaffold.
 
 ### `figops.normalize_project_structure`
 
-Plan or apply migration of an existing graph folder into standard FigOps structure.
+Propose migration mappings or apply an explicitly reviewed copy-only structure plan.
 
 **Input schema**
 
@@ -4695,18 +5547,60 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
 {
   "additionalProperties": false,
   "properties": {
+    "approved_mappings": {
+      "description": "Explicit mappings accepted by the user after reviewing an adopt proposal.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "destination": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "destination",
+          "role"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "config_diff": {
+      "description": "Reviewed typed project_config.yaml compare-and-swap edits.",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "confirmation_token": {
+      "description": "Exact token returned by the reviewed copy-only dry-run.",
+      "type": "string"
+    },
     "dry_run": {
       "default": true,
       "description": "Preview without writing files. Defaults True like scaffold_project and batch_check; the two render tools default dry_run False.",
       "type": "boolean"
+    },
+    "hardcoded_unresolved_references": {
+      "description": "Unresolved dependencies that intentionally block apply.",
+      "items": {},
+      "type": "array"
     },
     "include_raw": {
       "default": false,
       "type": "boolean"
     },
     "move_policy": {
-      "default": "copy",
+      "default": "adopt",
+      "description": "adopt returns read-only proposals; copy requires approved_mappings. move and symlink remain accepted only to return a stable deprecation error.",
       "enum": [
+        "adopt",
         "copy",
         "move",
         "symlink"
@@ -4715,6 +5609,7 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
     },
     "overwrite": {
       "default": false,
+      "description": "Deprecated compatibility argument; true always fails closed.",
       "type": "boolean"
     },
     "project_path": {
@@ -4741,6 +5636,9 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
       "type": "array"
     },
     "config_path": {
+      "type": "string"
+    },
+    "confirmation_token": {
       "type": "string"
     },
     "created_paths": {
@@ -4800,6 +5698,12 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
     "operation_id": {
       "type": "string"
     },
+    "originals_preserved": {
+      "type": "boolean"
+    },
+    "plan_digest": {
+      "type": "string"
+    },
     "planned_paths": {
       "items": {
         "type": "string"
@@ -4809,8 +5713,20 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
     "project_root": {
       "type": "string"
     },
+    "proposed_mappings": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "provenance_receipt": {
+      "type": "object"
+    },
     "resolution_hint": {
       "type": "string"
+    },
+    "rollback_journal": {
+      "type": "object"
     },
     "script_output": {
       "items": {
@@ -4840,6 +5756,12 @@ Plan or apply migration of an existing graph folder into standard FigOps structu
     },
     "summary": {
       "type": "string"
+    },
+    "unresolved_proposals": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
     },
     "validation": {
       "type": "object"
@@ -5049,6 +5971,590 @@ Run a bounded project discovery and validation batch check with optional runtime
 }
 ```
 
+### `figops.inspect_data`
+
+Inspect an allowed CSV or TSV under declared sensitivity policy; undeclared, unspecified, and restricted data return metadata only.
+
+**Input schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "items": {
+        "maxLength": 512,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 256,
+      "type": "array"
+    },
+    "data_path": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "type": "string"
+    },
+    "external_raw_id": {
+      "description": "Required for value samples from a declared external_raw source; must match the descriptor id bound to its launcher-approved root.",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "include_samples": {
+      "default": false,
+      "type": "boolean"
+    },
+    "sample_rows": {
+      "default": 0,
+      "maximum": 20,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "data_path"
+  ],
+  "type": "object"
+}
+```
+
+**Output schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "access_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": [
+            "public",
+            "internal",
+            "restricted",
+            "unspecified",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "declaration_source": {
+          "type": "string"
+        },
+        "external_raw_identity": {
+          "type": "object"
+        },
+        "materialized_sha256_verified": {
+          "type": "boolean"
+        },
+        "mode": {
+          "enum": [
+            "metadata_only",
+            "bounded_values"
+          ],
+          "type": "string"
+        },
+        "reason_code": {
+          "type": "string"
+        },
+        "samples_allowed": {
+          "type": "boolean"
+        },
+        "samples_requested": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "classification",
+        "declaration_source",
+        "mode",
+        "samples_requested",
+        "samples_allowed",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "availability": {
+      "type": "object"
+    },
+    "columns": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "limits": {
+      "type": "object"
+    },
+    "sample_columns": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "samples": {
+      "items": {
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "scan": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "source": {
+      "type": "object"
+    },
+    "status": {
+      "enum": [
+        "available",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "status_code": {
+      "type": "string"
+    },
+    "truncation": {
+      "type": "object"
+    },
+    "warnings": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `figops.render_basic_csv`
+
+Render one quick CSV chart with raw labels and no statistics DSL.
+
+**Input schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "data_path": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "type": "string"
+    },
+    "facet": {
+      "maxLength": 512,
+      "minLength": 1,
+      "type": "string"
+    },
+    "job_id": {
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9_-]{1,80}$",
+      "type": "string"
+    },
+    "labels": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "maxLength": 512,
+          "type": "string"
+        },
+        "x_axis": {
+          "maxLength": 512,
+          "type": "string"
+        },
+        "y_axis": {
+          "maxLength": 512,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "output_format": {
+      "default": "png",
+      "enum": [
+        "pdf",
+        "png",
+        "svg"
+      ],
+      "type": "string"
+    },
+    "overwrite": {
+      "default": false,
+      "type": "boolean"
+    },
+    "plot_type": {
+      "default": "scatter",
+      "enum": [
+        "scatter",
+        "line",
+        "bar"
+      ],
+      "type": "string"
+    },
+    "series": {
+      "maxLength": 512,
+      "minLength": 1,
+      "type": "string"
+    },
+    "style_policy": {
+      "default": "neutral",
+      "enum": [
+        "acs",
+        "cell",
+        "default",
+        "elsevier",
+        "nature",
+        "neutral",
+        "ppt",
+        "rsc",
+        "science",
+        "wiley"
+      ],
+      "type": "string"
+    },
+    "validation_target": {
+      "enum": [
+        "acs",
+        "cell",
+        "elsevier",
+        "nature",
+        "rsc",
+        "science",
+        "wiley"
+      ],
+      "type": "string"
+    },
+    "x": {
+      "maxLength": 512,
+      "minLength": 1,
+      "type": "string"
+    },
+    "y": {
+      "maxLength": 512,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "data_path",
+    "x",
+    "y"
+  ],
+  "type": "object"
+}
+```
+
+**Output schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "errors": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "evidence": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "manifest_uri": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "manual_review_needed": {
+      "type": "boolean"
+    },
+    "preview_uri": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "tool": {
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `figops.render_project_script`
+
+Render one configured project-local .py or .R figure; code and command strings are forbidden.
+
+**Input schema**
+
+```json
+{
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "required": [
+        "project_id"
+      ]
+    },
+    {
+      "required": [
+        "project_path"
+      ]
+    }
+  ],
+  "properties": {
+    "figure_id": {
+      "maxLength": 512,
+      "minLength": 1,
+      "type": "string"
+    },
+    "figure_output": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "type": "string"
+    },
+    "job_id": {
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9_-]{1,80}$",
+      "type": "string"
+    },
+    "overwrite": {
+      "default": false,
+      "type": "boolean"
+    },
+    "project_id": {
+      "description": "Discovered project ID; mutually exclusive with project_path, supply exactly one.",
+      "type": "string"
+    },
+    "project_path": {
+      "description": "Project path; mutually exclusive with project_id, supply exactly one.",
+      "type": "string"
+    },
+    "style_policy": {
+      "default": "neutral",
+      "enum": [
+        "acs",
+        "cell",
+        "default",
+        "elsevier",
+        "nature",
+        "neutral",
+        "ppt",
+        "rsc",
+        "science",
+        "wiley"
+      ],
+      "type": "string"
+    },
+    "validation_target": {
+      "enum": [
+        "acs",
+        "cell",
+        "elsevier",
+        "nature",
+        "rsc",
+        "science",
+        "wiley"
+      ],
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+**Output schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "errors": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "evidence": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "manifest_uri": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "manual_review_needed": {
+      "type": "boolean"
+    },
+    "preview_uri": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "runtime_availability": {
+      "type": "object"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "tool": {
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `figops.audit_artifact`
+
+Audit validated completed-job evidence with zero or more explicit policy packs.
+
+**Input schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "job_id": {
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9_-]{1,80}$",
+      "type": "string"
+    },
+    "policy_packs": {
+      "default": [],
+      "items": {
+        "enum": [
+          "publication-readiness-v1"
+        ],
+        "type": "string"
+      },
+      "maxItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "job_id"
+  ],
+  "type": "object"
+}
+```
+
+**Output schema**
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "audit": {
+      "type": "object"
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "manifest_uri": {
+      "type": "string"
+    },
+    "preview_uri": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "blocked",
+        "needs_revision",
+        "needs_review"
+      ],
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
 ## Plot Types
 
 ### `bar`
@@ -5104,14 +6610,6 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
-    "aggregate": "mean",
-    "bar_error_column": "sem",
-    "category_order": [
-      "day 0",
-      "day 7",
-      "day 14",
-      "day 28"
-    ],
     "data_path": "/path/to/data.csv",
     "job_id": "example-bar",
     "output_format": "png",
@@ -5174,12 +6672,6 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
-    "category_order": [
-      "day 0",
-      "day 7",
-      "day 14",
-      "day 28"
-    ],
     "data_path": "/path/to/data.csv",
     "job_id": "example-box",
     "output_format": "png",
@@ -5410,25 +6902,11 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
-    "ci_band": true,
     "data_path": "/path/to/data.csv",
-    "fit_line": true,
-    "fit_options": {
-      "label": "Linear fit",
-      "model": "linear"
-    },
     "job_id": "example-line",
     "output_format": "png",
     "plot_type": "line",
     "profile": "baseline",
-    "significance_markers": [
-      {
-        "label": "p<0.05",
-        "x1": 0,
-        "x2": 1,
-        "y": 2
-      }
-    ],
     "target_format": "nature",
     "x_column": "x",
     "y_column": "y"
@@ -5523,25 +7001,11 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
-    "ci_band": true,
     "data_path": "/path/to/data.csv",
-    "fit_line": true,
-    "fit_options": {
-      "label": "Linear fit",
-      "model": "linear"
-    },
     "job_id": "example-scatter",
     "output_format": "png",
     "plot_type": "scatter",
     "profile": "baseline",
-    "significance_markers": [
-      {
-        "label": "p<0.05",
-        "x1": 0,
-        "x2": 1,
-        "y": 2
-      }
-    ],
     "target_format": "nature",
     "x_column": "x",
     "y_column": "y"
@@ -5600,12 +7064,6 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
-    "category_order": [
-      "day 0",
-      "day 7",
-      "day 14",
-      "day 28"
-    ],
     "data_path": "/path/to/data.csv",
     "job_id": "example-violin",
     "output_format": "png",
@@ -5705,25 +7163,11 @@ Run a bounded project discovery and validation batch check with optional runtime
 ```json
 {
   "arguments": {
-    "ci_band": true,
     "data_path": "/path/to/data.csv",
-    "fit_line": true,
-    "fit_options": {
-      "label": "Linear fit",
-      "model": "linear"
-    },
     "job_id": "example-xy",
     "output_format": "png",
     "plot_type": "xy",
     "profile": "baseline",
-    "significance_markers": [
-      {
-        "label": "p<0.05",
-        "x1": 0,
-        "x2": 1,
-        "y": 2
-      }
-    ],
     "target_format": "nature",
     "x_column": "x",
     "y_column": "y"

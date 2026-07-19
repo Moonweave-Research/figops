@@ -35,11 +35,36 @@ def validate_multipanel_panel_specs(
     panel_specs = []
     contract_errors: list[str] = []
     calculation_checks = {"checks": [], "quality_passed": True, "manual_review_needed": False}
+    panel_evidence_paths: list[tuple[str, ...]] = []
+    all_evidence_paths: list[str] = []
+    for index, panel in enumerate(panels_arg):
+        if not isinstance(panel, dict):
+            panel_evidence_paths.append(())
+            continue
+        try:
+            paths = renderer._calculation_evidence_path_args(
+                panel.get("calculation_evidence_path"),
+                panel.get("calculation_evidence_paths"),
+            )
+        except ValueError as exc:
+            contract_errors.append(f"panels[{index}]: {exc}")
+            paths = ()
+        panel_evidence_paths.append(paths)
+        all_evidence_paths.extend(paths)
+    try:
+        verified_evidence_records = renderer._verified_calculation_evidence(None, all_evidence_paths)
+    except ValueError as exc:
+        contract_errors.append(str(exc))
+        verified_evidence_records = []
+    evidence_by_ref = {record["artifact_ref"]: record for record in verified_evidence_records}
+
     for index, panel in enumerate(panels_arg):
         if not isinstance(panel, dict):
             contract_errors.append(f"panels[{index}] must be an object.")
             continue
         try:
+            from plotting.utils import normalize_label_map
+
             data_path = renderer._input_file_path(panel.get("data_path"))
             x_column = renderer._required_string(panel, "x_column")
             y_column = renderer._required_string(panel, "y_column")
@@ -68,6 +93,16 @@ def validate_multipanel_panel_specs(
             facet_column = str(panel.get("facet_column") or "").strip()
             series_column = str(panel.get("series_column") or "").strip()
             label_column = str(panel.get("label_column") or "").strip()
+            label_map = normalize_label_map(panel.get("label_map"))
+            label_transform = str(panel.get("label_transform") or "raw").strip().lower().replace("-", "_")
+            if label_transform not in {"raw", "legacy_compress"}:
+                raise ValueError("label_transform must be 'raw' or 'legacy_compress'")
+            compliance_mode = str(panel.get("compliance_mode") or "validate").strip().lower()
+            declutter_mode = str(panel.get("declutter_mode") or "none").strip().lower()
+            if compliance_mode not in {"validate", "clamp"}:
+                raise ValueError("compliance_mode must be 'validate' or 'clamp'")
+            if declutter_mode not in {"none", "declutter"}:
+                raise ValueError("declutter_mode must be 'none' or 'declutter'")
             point_label_options = _normalized_point_label_options_arg(
                 panel.get("point_label_options"), field_name=f"panels[{index}].point_label_options"
             )
@@ -76,7 +111,14 @@ def validate_multipanel_panel_specs(
             yerr_cap_width = float(panel.get("yerr_cap_width", 3.0))
             fit_line = panel.get("fit_line", False)
             ci_band = panel.get("ci_band", False)
-            significance_markers = panel.get("significance_markers", ())
+            significance_markers = renderer._normalized_significance_markers_arg(
+                panel.get("significance_markers")
+            )
+            calculation_evidence = [
+                evidence_by_ref[path]
+                for path in panel_evidence_paths[index]
+                if path in evidence_by_ref
+            ]
         except (TypeError, ValueError) as exc:
             contract_errors.append(f"panels[{index}]: {exc}")
             continue
@@ -204,6 +246,10 @@ def validate_multipanel_panel_specs(
                 "facet_column": facet_column,
                 "series_column": series_column,
                 "label_column": label_column,
+                "label_map": label_map,
+                "label_transform": label_transform,
+                "compliance_mode": compliance_mode,
+                "declutter_mode": declutter_mode,
                 "point_label_options": point_label_options,
                 "series_styles": series_styles,
                 "x_scale": x_scale,
@@ -222,6 +268,7 @@ def validate_multipanel_panel_specs(
                 "ci_band": ci_band,
                 "fit_options": fit_options,
                 "significance_markers": significance_markers,
+                "verified_calculation_evidence": tuple(calculation_evidence),
                 "title": str(panel.get("title") or ""),
                 "x_axis_label": str(panel.get("x_axis_label") or x_column),
                 "y_axis_label": str(panel.get("y_axis_label") or y_column),
@@ -229,11 +276,55 @@ def validate_multipanel_panel_specs(
                 "profile_name": profile,
             }
         )
+    panel_calculation_evidence: list[tuple[dict[str, Any], ...]] = []
+    claimed_ids: set[str] = set()
+    statistical_claims: list[dict[str, Any]] = []
+    claim_candidates: list[dict[str, Any]] = []
+    for index, panel_spec in enumerate(panel_specs):
+        panel_records = tuple(panel_spec.get("verified_calculation_evidence", ()))
+        panel_calculation_evidence.append(panel_records)
+        linkage_errors = renderer._statistical_claim_linkage_errors(
+            panel_spec.get("significance_markers"),
+            list(panel_records),
+        )
+        contract_errors.extend(f"panels[{index}]: {error}" for error in linkage_errors)
+        for marker in panel_spec.get("significance_markers", ()):
+            evidence_id = marker["calculation_evidence_id"]
+            if evidence_id in claimed_ids:
+                contract_errors.append(
+                    f"panels[{index}]: calculation evidence {evidence_id!r} is claimed more than once "
+                    "without panel scope."
+                )
+            claimed_ids.add(evidence_id)
+            statistical_claims.append({"panel_index": index, **marker})
+        annotation_claims = renderer._annotation_claim_evidence(
+            panel_spec.get("annotations"),
+            list(panel_records),
+            claimed_ids=claimed_ids,
+        )
+        band_claims = renderer._fill_band_claim_evidence(panel_spec.get("fill_between"))
+        contract_errors.extend(f"panels[{index}]: {error}" for error in annotation_claims["errors"])
+        contract_errors.extend(f"panels[{index}]: {error}" for error in band_claims["errors"])
+        statistical_claims.extend(
+            {"panel_index": index, **claim} for claim in annotation_claims["claims"]
+        )
+        claim_candidates.extend(
+            {"panel_index": index, **candidate}
+            for candidate in [
+                *annotation_claims["claim_candidates"],
+                *band_claims["claim_candidates"],
+            ]
+        )
+        panel_spec.pop("verified_calculation_evidence", None)
     return {
         "source_paths": source_paths,
         "panel_specs": panel_specs,
         "contract_errors": contract_errors,
         "calculation_checks": calculation_checks,
+        "calculation_evidence": verified_evidence_records,
+        "panel_calculation_evidence": panel_calculation_evidence,
+        "statistical_claims": statistical_claims,
+        "claim_candidates": claim_candidates,
     }
 
 

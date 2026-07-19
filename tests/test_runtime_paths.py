@@ -10,13 +10,113 @@ from hub_core.attempt_provenance import build_attempt_provenance
 from hub_core.error_dumper import dump_exception_failure, dump_pipeline_failure
 from hub_core.execution_log import write_execution_log
 from hub_core.redaction import redact_secrets, redact_text
-from hub_core.runtime_paths import preview_runtime_root, resolve_runtime_root
+from hub_core.runtime_boundary import RuntimeBoundaryError, validate_runtime_location
+from hub_core.runtime_paths import (
+    preview_runtime_root,
+    resolve_build_state_path,
+    resolve_diagnostics_dir,
+    resolve_runtime_root,
+)
 from hub_core.visual_regression import write_check_all_report
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
 
 
 class RuntimePathTest(unittest.TestCase):
+    def test_runtime_boundary_uses_native_path_flavour_when_os_name_is_mocked(self):
+        with tempfile.TemporaryDirectory(prefix="figops_native_path_") as tmpdir:
+            missing_runtime = Path(tmpdir) / "missing" / "runtime"
+            mocked_name = "posix" if os.name == "nt" else "nt"
+
+            with patch("hub_core.runtime_boundary.os.name", mocked_name):
+                resolved = validate_runtime_location(missing_runtime)
+
+            self.assertEqual(resolved, missing_runtime.resolve(strict=False))
+            self.assertFalse(missing_runtime.exists())
+
+    def test_runtime_root_is_disjoint_from_project_and_durable_roots(self):
+        with tempfile.TemporaryDirectory(prefix="figops_boundary_") as tmpdir:
+            project = Path(tmpdir) / "project"
+            results = project / "results"
+            results.mkdir(parents=True)
+            for rejected in (project, results, results / "runtime", project.parent):
+                with (
+                    self.subTest(rejected=rejected),
+                    patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(rejected)}, clear=False),
+                    self.assertRaises(RuntimeBoundaryError),
+                ):
+                    resolve_runtime_root(project_root=project, durable_roots=(results,))
+
+    def test_all_runtime_producers_stay_external_and_disposable(self):
+        with tempfile.TemporaryDirectory(prefix="figops_external_") as tmpdir:
+            root = Path(tmpdir)
+            project = root / "project"
+            runtime = root / "runtime"
+            project.mkdir()
+            legacy = project / ".build_state.json"
+            legacy.write_text('{"version": 4, "config_hash": "legacy"}', encoding="utf-8")
+            with patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime)}, clear=False):
+                from hub_core.cache_manager import load_build_state, save_build_state
+
+                state, state_path = load_build_state(project)
+                self.assertEqual(state["config_hash"], "legacy")
+                self.assertTrue(save_build_state(state_path, state))
+                failure_path = dump_pipeline_failure(project, message="failed")
+                diagnostic_dir = resolve_diagnostics_dir(project)
+                resolved_state_path = resolve_build_state_path(project)
+
+            for path in (state_path, failure_path, diagnostic_dir, resolved_state_path):
+                self.assertTrue(Path(path).resolve().is_relative_to(runtime.resolve()))
+            self.assertEqual(legacy.read_text(encoding="utf-8"), '{"version": 4, "config_hash": "legacy"}')
+            self.assertFalse((project / "results").exists())
+
+    def test_mcp_trusted_runtime_root_is_still_boundary_validated(self):
+        from hub_core.mcp.server import FigOpsMCPServer
+
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_boundary_") as tmpdir:
+            research_root = Path(tmpdir) / "research"
+            project = research_root / "project"
+            project.mkdir(parents=True)
+            server = FigOpsMCPServer(
+                hub_path=HUB_ROOT,
+                research_root=research_root,
+                runtime_root=project / "results" / "runtime",
+            )
+            with self.assertRaises(RuntimeBoundaryError):
+                server._resolve_project_path({"project_path": str(project)})
+            with self.assertRaises(RuntimeBoundaryError):
+                server._resolve_project_render_path({"project_path": str(project)})
+
+    def test_mcp_runtime_root_may_be_under_research_root_but_outside_projects(self):
+        from hub_core.mcp.server import FigOpsMCPServer
+
+        with tempfile.TemporaryDirectory(prefix="figops_mcp_boundary_") as tmpdir:
+            research_root = Path(tmpdir) / "research"
+            project = research_root / "project"
+            runtime = research_root / "runtime"
+            project.mkdir(parents=True)
+
+            server = FigOpsMCPServer(
+                hub_path=HUB_ROOT,
+                research_root=research_root,
+                runtime_root=runtime,
+            )
+
+            self.assertEqual(server.runtime_root, runtime.resolve())
+            self.assertEqual(server._resolve_project_path({"project_path": str(project)}), project.resolve())
+
+    def test_unresolved_home_marker_never_creates_repo_local_tilde_runtime(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch("hub_core.runtime_paths.os.path.expanduser", side_effect=lambda value: value),
+                patch("hub_core.runtime_paths.tempfile.gettempdir", return_value=tmpdir),
+            ):
+                resolved = resolve_runtime_root()
+
+            self.assertTrue(Path(resolved).is_relative_to(Path(tmpdir)))
+            self.assertNotIn("~", Path(resolved).parts)
+
     def test_preview_runtime_root_does_not_create_directory(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_runtime_") as tmpdir:
             runtime_root = Path(tmpdir) / "preview-only"

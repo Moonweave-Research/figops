@@ -4,7 +4,12 @@ import os
 from . import data_contract_io as _data_contract_io
 from . import data_contract_semantics as _data_contract_semantics
 from .logging import get_logger
-from .utils import resolve_path
+from .project_paths import (
+    ProjectPathError,
+    resolve_project_input,
+    revalidate_project_input,
+    snapshot_project_input,
+)
 
 logger = get_logger(__name__)
 
@@ -49,6 +54,16 @@ def _read_data_safe(data_path, pd, hdf_key: str = "/data"):
 
 def _resolve_prefetcher(config, prefetcher=None):
     return _data_contract_io.resolve_prefetcher(config, prefetcher=prefetcher)
+
+
+def _read_project_data_safe(project_dir, declared_path, pd, *, expected_snapshot, hdf_key: str = "/data"):
+    return _data_contract_io.read_project_data_safe(
+        project_dir,
+        declared_path,
+        pd,
+        expected_snapshot=expected_snapshot,
+        hdf_key=hdf_key,
+    )
 
 
 _MONOTONIC_MODES = _data_contract_semantics._MONOTONIC_MODES
@@ -170,7 +185,14 @@ def _dtype_matches(series, expected, pd):
     )
 
 
-def validate_data_contract_preflight(project_dir, config, require_existing: bool = False, prefetcher=None):
+def validate_data_contract_preflight(
+    project_dir,
+    config,
+    require_existing: bool = False,
+    prefetcher=None,
+    *,
+    raise_path_contract_errors: bool = False,
+):
     prefetcher = _resolve_prefetcher(config, prefetcher)
     contract = config.get("data_contract", {})
     checks = contract.get("csv_checks", []) if isinstance(contract, dict) else []
@@ -186,7 +208,22 @@ def validate_data_contract_preflight(project_dir, config, require_existing: bool
             return False
 
         rel_path = rel_path.strip()
-        resolved_path = resolve_path(project_dir, rel_path)
+        purpose = f"data_contract.csv_checks[{i}].path"
+        try:
+            resolved_path = resolve_project_input(
+                project_dir,
+                rel_path,
+                must_exist=require_existing,
+                purpose=purpose,
+            )
+        except FileNotFoundError as exc:
+            _log(f"      ❌ {exc}")
+            return False
+        except ProjectPathError as exc:
+            _log(f"      ❌ {exc}")
+            if raise_path_contract_errors:
+                raise
+            return False
         suffix = os.path.splitext(resolved_path)[1].lower()
         _log(f"   ➤ Check {i}: {rel_path}")
 
@@ -203,10 +240,23 @@ def validate_data_contract_preflight(project_dir, config, require_existing: bool
                 return False
 
         if require_existing:
-            if not os.path.exists(resolved_path):
-                _log(f"      ❌ Required data_contract file not found: {resolved_path}")
+            prefetcher.ensure_local([str(resolved_path)])
+            try:
+                snapshot = snapshot_project_input(project_dir, rel_path, purpose=purpose)
+                revalidate_project_input(
+                    project_dir,
+                    rel_path,
+                    expected_snapshot=snapshot,
+                    purpose=purpose,
+                )
+            except FileNotFoundError as exc:
+                _log(f"      ❌ {exc}")
                 return False
-            prefetcher.ensure_local([resolved_path])
+            except ProjectPathError as exc:
+                _log(f"      ❌ {exc}")
+                if raise_path_contract_errors:
+                    raise
+                return False
 
         _log("      ✅ Preflight passed")
 
@@ -236,28 +286,40 @@ def validate_data_contract(project_dir, config, prefetcher=None, *, write_sideca
     calculation_checks = []
     contract_failed = False
     for i, check in enumerate(checks, 1):
-        csv_path = resolve_path(project_dir, check["path"])
+        declared_path = check["path"]
+        purpose = f"data_contract.csv_checks[{i}].path"
         required_cols = check.get("required_columns", []) or []
         dtypes = check.get("dtypes", {}) or {}
         min_rows = check.get("min_rows", None)
 
         _log(f"   ➤ Check {i}: {check['path']}")
-        if not os.path.exists(csv_path):
-            _log(f"      ❌ Required CSV not found: {csv_path}")
+        try:
+            csv_path = resolve_project_input(project_dir, declared_path, purpose=purpose)
+        except (FileNotFoundError, ProjectPathError) as exc:
+            _log(f"      ❌ {exc}")
             return False
 
-        prefetcher.ensure_local([csv_path])
+        prefetcher.ensure_local([str(csv_path)])
 
         try:
-            df = _read_data_safe(csv_path, pd)
+            snapshot = snapshot_project_input(project_dir, declared_path, purpose=purpose)
+            df = _read_project_data_safe(
+                project_dir,
+                declared_path,
+                pd,
+                expected_snapshot=snapshot,
+            )
         except FileNotFoundError:
-            _log(f"      ❌ CSV file not found: {csv_path}")
+            _log(f"      ❌ data_contract input does not exist: {declared_path!r}.")
+            return False
+        except ProjectPathError as exc:
+            _log(f"      ❌ {exc}")
             return False
         except PermissionError:
-            _log(f"      ❌ Permission denied: Cannot read {csv_path}. Check file locks.")
+            _log(f"      ❌ Permission denied: Cannot read {declared_path!r}. Check file locks.")
             return False
         except Exception as e:
-            _log(f"      ❌ Failed to read CSV: {csv_path}\n      └─ Detail: {type(e).__name__}: {e}")
+            _log(f"      ❌ Failed to read data_contract input {declared_path!r}: {type(e).__name__}: {e}")
             return False
 
         if min_rows is not None and len(df) < min_rows:
@@ -329,17 +391,31 @@ def validate_data_contract(project_dir, config, prefetcher=None, *, write_sideca
                 contract_failed = True
                 continue
 
-        # --- Statistical Quality Score ---
-        cv_threshold = contract.get("cv_threshold", 0.10)
-        quality_result = _check_statistical_quality(
-            df,
-            check["path"],
-            cv_threshold,
-            project_dir,
-            write_diagnostics=write_sidecar,
-        )
-        if not quality_result["quality_passed"]:
-            _log(f"      🟠 quality_passed=False for '{check['path']}' (CV threshold: {cv_threshold:.0%})")
+        # --- Opt-in Statistical Quality Score ---
+        # Generic numeric columns may be identifiers, time, or concentrations;
+        # do not assign a measurement/noise meaning unless the project declares
+        # this legacy CV policy explicitly.
+        cv_columns = contract.get("cv_columns")
+        if "cv_threshold" in contract and isinstance(cv_columns, list) and cv_columns:
+            cv_threshold = contract["cv_threshold"]
+            missing_cv_columns = [str(column) for column in cv_columns if str(column) not in df.columns]
+            if missing_cv_columns:
+                _log(
+                    f"      ❌ CV measurement column(s) missing for '{check['path']}': "
+                    f"{', '.join(missing_cv_columns)}"
+                )
+                contract_failed = True
+                continue
+            declared_columns = [str(column) for column in cv_columns]
+            quality_result = _check_statistical_quality(
+                df[declared_columns],
+                check["path"],
+                cv_threshold,
+                project_dir,
+                write_diagnostics=write_sidecar,
+            )
+            if not quality_result["quality_passed"]:
+                _log(f"      🟠 quality_passed=False for '{check['path']}' (CV threshold: {cv_threshold:.0%})")
 
         _log(f"      ✅ Passed ({len(df)} rows)")
 

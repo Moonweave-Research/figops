@@ -4,6 +4,8 @@ import json
 import math
 from pathlib import Path
 
+from .runtime_paths import resolve_diagnostics_dir
+
 
 def calculation_summary(checks: list[dict]) -> dict:
     return {
@@ -14,7 +16,7 @@ def calculation_summary(checks: list[dict]) -> dict:
 
 
 def write_calculation_checks_sidecar(project_dir, checks: list[dict]) -> None:
-    diag_dir = Path(project_dir).expanduser().resolve() / "results" / "diagnostics"
+    diag_dir = Path(resolve_diagnostics_dir(project_dir)) / "data_contract"
     sidecar = diag_dir / "calculation_checks.json"
     if not checks:
         if sidecar.exists():

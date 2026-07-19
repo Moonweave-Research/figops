@@ -1,345 +1,115 @@
-# HKS 05 MCP Tool Playbook
+# HKS 05 — AI-Native FigOps MCP Playbook
 
-This playbook maps common user requests to FigOps MCP tools.
+FigOps supplies bounded data facts, contained execution, artifact integrity,
+provenance, and objective evidence. The agent chooses the plot, authors complex
+project-local code, inspects the rendered image, and decides what to revise.
+Automatic QA is not publication approval.
 
-## Tool Coverage Matrix
+## Surface profiles
 
-Agents should prefer canonical `figops.*` tool names. Legacy `graphhub.*`
-aliases are handler-backed compatibility names, not the preferred guidance
-surface.
+- `v2` is the launcher default. It exposes at most seven concise tools and
+  omits render tools from discovery when writes are disabled.
+- `compatibility` exposes the frozen 14 canonical tools and 13 `graphhub.*`
+  aliases. Select it with `--surface-profile compatibility` or
+  `GRAPH_HUB_MCP_SURFACE_PROFILE=compatibility`.
+- Profile selection changes discovery, not security. Containment, provenance,
+  statistical-claim checks, and the write guard apply to every handler and
+  alias.
 
-| Tool | Agent guidance |
+Use `figops.describe` without arguments for a small capability index. Add
+`kind` and optionally `name` only when detail is needed. Resources do not repeat
+full tool schemas.
+
+## Default evidence-first tools
+
+| Tool | Use |
 | --- | --- |
-| `figops.health` | Check server readiness, roots, write-tool state, adapters, and discovery health. |
-| `figops.describe` | Inspect the registered FigOps surface when tool, plot-type, or semantic-check support is unknown. |
-| `figops.list_styles` | List supported target formats, output formats, profiles, aliases, and public style packs. |
-| `figops.list_projects` | Discover known projects before selecting a project ID or path. |
-| `figops.inspect_project` | Read project metadata, figures, style summary, and readiness context without executing scripts. |
-| `figops.validate_project` | Validate config, data contracts, lockfiles, and style compatibility before project renders. |
-| `figops.render_csv_graph` | Render an explicit single-panel CSV graph from structured columns. |
-| `figops.render_csv_multipanel` | Render explicit multi-panel CSV figures when the request supplies panel specs. |
-| `figops.render_project_figure` | Render configured `project_config.yaml` figures; use `dry_run=true` first. |
-| `figops.collect_artifacts` | Collect manifest, status, output, and related artifacts after a render job. |
-| `figops.scaffold_project` | Scaffold a new project only after the user asks for project creation; keep dry-run previews visible. |
-| `figops.normalize_project_structure` | Preview and then apply project folder normalization only after user approval. |
-| `figops.batch_check` | Review multiple active projects for graph readiness and quality-report generation. |
-| `figops.evaluate_publication_readiness` | Evaluate an existing render job's bounded manifest evidence; treat the result as an automatic QA triage that still requires human review. |
+| `figops.health` | Inspect readiness, active surface, and write state. |
+| `figops.describe` | Fetch a summary, filtered kind list, or one named detail. |
+| `figops.list_styles` | Fetch style names only when style support is uncertain. |
+| `figops.inspect_data` | Learn bounded columns, types, nulls, ranges, cardinality, and hashes; rows are opt-in. |
+| `figops.render_basic_csv` | Render a known-schema scatter, line, or bar figure in one call. |
+| `figops.render_project_script` | Execute one declared project-local Python/R figure without code or command strings. |
+| `figops.audit_artifact` | Apply explicit policy packs to validated evidence; never returns approval. |
 
-## Publication Readiness Evaluation
+A known-schema CSV normally needs one render call. If columns are unknown, use
+one bounded inspection first. A configured project script normally needs one
+render call after its source and config exist. The render response already
+contains evidence, artifact metadata, manifest URI, and preview URI; neither a
+dry run nor a collect call is a prerequisite.
 
-This is automatic evidence triage, not publication approval and not automatically publication-ready.
-A `needs_review` result still requires cited hard gates to pass and manual scientific review.
+After rendering, inspect the preview image and objective evidence. Revise only
+what the evidence or visual review justifies. Preserve raw labels unless an
+explicit label map or compatibility transform is requested. Unsupported
+statistical annotations must be removed or linked to valid calculation
+evidence; they are not stylistic warnings.
 
-After a render returns a `job_id`, call `figops.evaluate_publication_readiness`
-with that ID. The tool is read-only and remains available when MCP write tools
-are disabled. Inspect `readiness_report.readiness_status` and `findings`; never
-interpret `needs_review` as human approval or a publication guarantee.
+## Source mutation
 
-## Explicit CSV Render
+Source-creating or source-restructuring operations remain approval-gated.
+`figops.scaffold_project` and `figops.normalize_project_structure` should first
+run with `dry_run=true`; show the manifest and apply only after explicit user
+approval. This rule does not impose dry-run choreography on isolated render
+jobs.
 
-User request:
+## Compatibility catalog
 
-```text
-Render this CSV as a Nature-style line plot with x=time and y=voltage.
-```
+Compatibility mode retains these canonical handlers:
 
-Tool sequence:
+- `figops.health`, `figops.describe`, `figops.list_styles`,
+  `figops.list_projects`, `figops.inspect_project`,
+  `figops.validate_project`, `figops.render_csv_graph`,
+  `figops.render_csv_multipanel`, `figops.render_project_figure`,
+  `figops.collect_artifacts`, `figops.scaffold_project`,
+  `figops.normalize_project_structure`, `figops.batch_check`, and
+  `figops.evaluate_publication_readiness`.
 
-```text
-figops.list_styles
-figops.render_csv_graph
-figops.collect_artifacts
-```
+The four v2 handlers remain callable by their canonical names:
+`figops.inspect_data`, `figops.render_basic_csv`,
+`figops.render_project_script`, and `figops.audit_artifact`.
 
-Required result inspection:
+The frozen aliases are `graphhub.health`, `graphhub.describe`,
+`graphhub.list_styles`, `graphhub.list_projects`, `graphhub.inspect_project`,
+`graphhub.validate_project`, `graphhub.render_csv_graph`,
+`graphhub.render_csv_multipanel`, `graphhub.render_project_figure`,
+`graphhub.collect_artifacts`, `graphhub.scaffold_project`,
+`graphhub.normalize_project_structure`, and `graphhub.batch_check`. They cannot
+bypass the write guard or strengthened kernel.
 
-- `status`
-- `output_path`
-- `manifest_path`
-- `status_path`
-- `failure_stage`
-- `resolution_hint`
-- `manual_review_needed`
-- `geometry_diagnostics`
+Legacy render fields remain available for reproduction. Use explicit
+`label_transform="legacy_compress"` only when reproducing old output. New work
+uses raw labels and explicit authored mappings.
 
-Same-dataset, all-public-journal render example:
+## Compatibility render example
+
+This example demonstrates the same dataset across public journal styles. These
+are independent render calls, not a mandatory sequence. Keep data encodings
+fixed and change only style/output controls.
 
 ```json
 [
-  {
-    "tool": "figops.list_styles",
-    "arguments": {}
-  },
-  {
-    "tool": "figops.render_csv_graph",
-    "arguments": {
-      "data_path": "/allowed/measurements.csv",
-      "x_column": "strain",
-      "y_column": "stress",
-      "series_column": "sample",
-      "plot_type": "line",
-      "target_format": "nature",
-      "output_format": "png",
-      "job_id": "journal-nature"
-    }
-  },
-  {
-    "tool": "figops.render_csv_graph",
-    "arguments": {
-      "data_path": "/allowed/measurements.csv",
-      "x_column": "strain",
-      "y_column": "stress",
-      "series_column": "sample",
-      "plot_type": "line",
-      "target_format": "science",
-      "output_format": "png",
-      "job_id": "journal-science"
-    }
-  },
-  {
-    "tool": "figops.render_csv_graph",
-    "arguments": {
-      "data_path": "/allowed/measurements.csv",
-      "x_column": "strain",
-      "y_column": "stress",
-      "series_column": "sample",
-      "plot_type": "line",
-      "target_format": "acs",
-      "output_format": "png",
-      "job_id": "journal-acs"
-    }
-  },
-  {
-    "tool": "figops.render_csv_graph",
-    "arguments": {
-      "data_path": "/allowed/measurements.csv",
-      "x_column": "strain",
-      "y_column": "stress",
-      "series_column": "sample",
-      "plot_type": "line",
-      "target_format": "rsc",
-      "output_format": "png",
-      "job_id": "journal-rsc"
-    }
-  },
-  {
-    "tool": "figops.render_csv_graph",
-    "arguments": {
-      "data_path": "/allowed/measurements.csv",
-      "x_column": "strain",
-      "y_column": "stress",
-      "series_column": "sample",
-      "plot_type": "line",
-      "target_format": "elsevier",
-      "output_format": "png",
-      "job_id": "journal-elsevier"
-    }
-  },
-  {
-    "tool": "figops.render_csv_graph",
-    "arguments": {
-      "data_path": "/allowed/measurements.csv",
-      "x_column": "strain",
-      "y_column": "stress",
-      "series_column": "sample",
-      "plot_type": "line",
-      "target_format": "wiley",
-      "output_format": "png",
-      "job_id": "journal-wiley"
-    }
-  },
-  {
-    "tool": "figops.render_csv_graph",
-    "arguments": {
-      "data_path": "/allowed/measurements.csv",
-      "x_column": "strain",
-      "y_column": "stress",
-      "series_column": "sample",
-      "plot_type": "line",
-      "target_format": "cell",
-      "output_format": "png",
-      "job_id": "journal-cell"
-    }
-  }
+  {"tool":"figops.render_csv_graph","arguments":{"data_path":"/allowed/measurements.csv","x_column":"strain","y_column":"stress","series_column":"sample","plot_type":"line","target_format":"nature","output_format":"png","job_id":"journal-nature"}},
+  {"tool":"figops.render_csv_graph","arguments":{"data_path":"/allowed/measurements.csv","x_column":"strain","y_column":"stress","series_column":"sample","plot_type":"line","target_format":"science","output_format":"png","job_id":"journal-science"}},
+  {"tool":"figops.render_csv_graph","arguments":{"data_path":"/allowed/measurements.csv","x_column":"strain","y_column":"stress","series_column":"sample","plot_type":"line","target_format":"acs","output_format":"png","job_id":"journal-acs"}},
+  {"tool":"figops.render_csv_graph","arguments":{"data_path":"/allowed/measurements.csv","x_column":"strain","y_column":"stress","series_column":"sample","plot_type":"line","target_format":"rsc","output_format":"png","job_id":"journal-rsc"}},
+  {"tool":"figops.render_csv_graph","arguments":{"data_path":"/allowed/measurements.csv","x_column":"strain","y_column":"stress","series_column":"sample","plot_type":"line","target_format":"elsevier","output_format":"png","job_id":"journal-elsevier"}},
+  {"tool":"figops.render_csv_graph","arguments":{"data_path":"/allowed/measurements.csv","x_column":"strain","y_column":"stress","series_column":"sample","plot_type":"line","target_format":"wiley","output_format":"png","job_id":"journal-wiley"}},
+  {"tool":"figops.render_csv_graph","arguments":{"data_path":"/allowed/measurements.csv","x_column":"strain","y_column":"stress","series_column":"sample","plot_type":"line","target_format":"cell","output_format":"png","job_id":"journal-cell"}}
 ]
 ```
 
-Use the same `data_path`, `x_column`, `y_column`, `series_column`, and
-`plot_type` across tracks; change only journal style/output controls such as
-`target_format`, `output_format`, and `job_id`. Do not use stale `x`, `y`, or
-`chart_type` keys.
+## Evidence interpretation
 
-## Project Figure Render
+- Integrity, containment, declared data contracts, missing required provenance,
+  corrupt artifacts, and unsupported claims are hard failures.
+- Geometry is raw measurement. Severity appears only through an explicitly
+  selected policy pack; informational findings do not become hard failures via
+  a flat aggregate.
+- Hash identity and visual similarity are separate evidence.
+- `manual_review_needed=false` is not human or venue approval.
+- Preview resources are lazy, manifest-bound, MIME-checked, and size-bounded.
 
-User request:
-
-```text
-Render Fig1 for this FigOps project using its project_config.yaml style.
-```
-
-Tool sequence:
-
-```text
-figops.list_projects
-figops.inspect_project
-figops.validate_project
-figops.render_project_figure with dry_run=true
-figops.render_project_figure
-figops.collect_artifacts
-```
-
-Required result inspection:
-
-- `selected_figure`
-- `snapshot_project_path`
-- `output_path`
-- `manifest_path`
-- `status_path`
-- `failure_stage`
-- `resolution_hint`
-- `manual_review_needed`
-- `visual_preflight_status`
-- `geometry_diagnostics`
-- `provenance`
-
-Do not mutate the source project. Default project renders run under
-`runtime_root/mcp_project_jobs/<job_id>/project`.
-
-## Geometry Diagnostics
-
-Both render tools attach a `geometry_diagnostics` object (and embed it in the
-manifest) reporting deterministic, objective matplotlib geometry facts measured
-on the fully-drawn figure: tick-label overlaps/crowding, out-of-axes/out-of-figure
-artists, legend/colorbar collisions, blank-area ratio, and point-annotation
-overlaps. There is no subjective scoring — every number traces to an artist extent.
-
-Consumption rules:
-
-- Read `schema_version` (`geometry_diagnostics/1`) before branching on check names.
-- `passed` is tri-state: test `passed is False` for a real finding and `passed is None`
-  for "not measured" (dry-run, render budget skip, no sidecar emitted, or engine error).
-  Never use truthiness (`if not passed:` conflates `None` and `False`).
-- Branch only on `name` + `passed` + `detail`; the per-check `data` sub-dict is advisory.
-- Warning-eligible findings (`passed is False`) flip top-level `status` to `warning`
-  through the existing `manual_review_needed` path, intentionally raising the `warning`
-  rate (mainly on dense/rotated ticks). Diagnostics never hard-fail a render: the artifact
-  is saved before they run, and an engine error degrades to `passed:null`.
-
-Diagnostics are render-scoped via two env vars (`GEOMETRY_DIAGNOSTICS_OUT`,
-`GEOMETRY_DIAGNOSTICS_DEADLINE`) that are set and cleared per render, and enter no
-provenance/fingerprint hash. For fully cross-platform tick reproducibility, normalize
-`LC_NUMERIC`/the tick formatter in the render environment (the two tick metrics depend
-on per-machine font metrics; a `near_boundary` flag softens locale-driven width drift).
-
-## Surfur Project Render
-
-The Surfur root is a master workspace, not a direct render target:
-
-```text
-ResearchOS/synthetic_polymer_project
-```
-
-For graph-only requests, call FigOps MCP directly against a concrete
-subproject. The current gold target is:
-
-```text
-ResearchOS/synthetic_polymer_project/measurement_data/control_sample
-figure_id = FigPI_CvS_Fits
-```
-
-Use the same project render sequence:
-
-```text
-figops.inspect_project
-figops.validate_project
-figops.render_project_figure with dry_run=true
-figops.render_project_figure
-figops.collect_artifacts
-```
-
-Do not use Athena as a graph router for this case. Use Athena only when the
-same user request also needs a separate non-graph solver, literature, or local
-knowledge-base step.
-
-## Health Check
-
-User request:
-
-```text
-Check whether FigOps MCP is ready.
-```
-
-Tool sequence:
-
-```text
-figops.health
-```
-
-Use this for readiness and discovery health. Do not use it to generate reports or write workspace state.
-
-## Project Validation
-
-User request:
-
-```text
-Check whether this project is ready for FigOps rendering.
-```
-
-Tool sequence:
-
-```text
-figops.inspect_project
-figops.validate_project
-```
-
-If invalid, report exact config, data contract, lockfile, and style errors.
-
-## Project Normalization
-
-User request:
-
-```text
-Standardize this graph project folder.
-```
-
-Tool sequence:
-
-```text
-figops.inspect_project
-figops.normalize_project_structure with dry_run=true
-```
-
-Apply only after the user approves the dry-run manifest.
-
-## Batch Quality Review
-
-User request:
-
-```text
-Review active projects for graph readiness.
-```
-
-Tool sequence:
-
-```text
-figops.batch_check
-```
-
-Do not use passive health checks for write/report generation.
-
-## Optional Non-Graph Toolbox Escalation
-
-Do not use Athena as the graph router or default natural-language router.
-The agent using FigOps should decide whether the request is graph-only,
-mixed, or out of scope.
-
-Use Athena or another explicit toolbox only when the request needs a separate
-non-graph capability:
-
-- solver or literature reasoning,
-- Zotero/local knowledge-base context,
-- legacy Athena slash-command compatibility explicitly requested by the user,
-- a mixed workflow where the non-graph result is passed back into FigOps MCP.
-
-If FigOps MCP is unavailable, fix or report FigOps MCP. Do not hide that
-failure by routing graph work through Athena.
+When writes are disabled, `figops.inspect_data`, `figops.audit_artifact`, and
+manifest/preview reads remain available. Render, scaffold, normalize, and batch
+write handlers are omitted from discovery and fail closed without side effects
+if called by a remembered canonical or compatibility name.

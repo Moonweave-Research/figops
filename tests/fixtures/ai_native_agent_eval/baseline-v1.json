@@ -1,0 +1,78 @@
+{
+  "schema_version": "figops_agent_eval_baseline/1",
+  "captured_at": "2026-07-14",
+  "source_commit": "55ce4fcd0512",
+  "surface": "compatibility-v1",
+  "measurement_method": {
+    "command": "python hub_uv.py run --offline --locked --no-sync python -c <live JSON-RPC measurement>",
+    "json_encoding": "UTF-8; ensure_ascii=false; separators=(',', ':')",
+    "runtime": "external FigOps uv environment"
+  },
+  "tool_surface": {
+    "canonical_tool_count": 14,
+    "legacy_alias_count": 13,
+    "emitted_tool_definition_count": 14,
+    "tools_list_response_bytes": 51499,
+    "tools_array_bytes": 51455,
+    "maximum_input_schema_bytes": 9682,
+    "maximum_input_schema_tool": "figops.render_csv_multipanel",
+    "render_csv_graph_input_schema_bytes": 8971,
+    "render_csv_graph_top_level_properties": 46,
+    "render_csv_multipanel_top_level_properties": 18,
+    "render_csv_multipanel_panel_properties": 30,
+    "render_project_figure_input_schema_bytes": 1252,
+    "describe_input_schema_bytes": 62
+  },
+  "generated_reference": {
+    "path": "docs/tools.md",
+    "bytes": 129241,
+    "lines": 6263
+  },
+  "guided_call_baseline": {
+    "csv": {
+      "minimum_tool_calls_when_style_is_known": 3,
+      "render_calls": 2,
+      "requires_follow_up_collect": true
+    },
+    "project": {
+      "minimum_tool_calls": 5,
+      "render_calls": 2,
+      "requires_follow_up_collect": true
+    }
+  },
+  "target_budgets": {
+    "default_figure_tools": 7,
+    "tools_list_bytes": 24576,
+    "single_input_schema_bytes": 6144,
+    "render_basic_csv_top_level_properties": 14,
+    "known_schema_render_calls": 1,
+    "project_script_render_calls": 1
+  },
+  "open_witnesses": [
+    {
+      "id": "P0-PATH-ESCAPE",
+      "owner": "WP1-containment",
+      "expiry": "2026-08-15"
+    },
+    {
+      "id": "P0-LABEL-MUTATION",
+      "owner": "WP3-authored-output",
+      "expiry": "2026-08-15"
+    },
+    {
+      "id": "P0-READINESS-INTEGRITY",
+      "owner": "WP2-evidence-integrity",
+      "expiry": "2026-08-15"
+    },
+    {
+      "id": "P0-RAW-UNSEALED",
+      "owner": "WP2-evidence-integrity",
+      "expiry": "2026-08-15"
+    },
+    {
+      "id": "P0-UNSUPPORTED-STAT-CLAIM",
+      "owner": "WP3-authored-output",
+      "expiry": "2026-08-15"
+    }
+  ]
+}

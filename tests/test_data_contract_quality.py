@@ -1,18 +1,35 @@
 """Unit tests for _check_statistical_quality() in hub_core.data_contract."""
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
 from hub_core.data_contract import _check_statistical_quality
+from hub_core.runtime_paths import resolve_diagnostics_dir
 
 
 class TestCheckStatisticalQuality(unittest.TestCase):
     """Tests for the CV-based statistical quality checker."""
+
+    def setUp(self):
+        self._runtime_tmp = tempfile.TemporaryDirectory(prefix="quality_runtime_")
+        self._runtime_root = Path(self._runtime_tmp.name)
+        self._runtime_env = patch.dict(
+            os.environ,
+            {"RESEARCH_HUB_RUNTIME_ROOT": str(self._runtime_root)},
+            clear=False,
+        )
+        self._runtime_env.start()
+
+    def tearDown(self):
+        self._runtime_env.stop()
+        self._runtime_tmp.cleanup()
 
     # ------------------------------------------------------------------
     # 1. Low CV -> quality_passed=True, no warnings
@@ -55,7 +72,7 @@ class TestCheckStatisticalQuality(unittest.TestCase):
     # 3. Sidecar JSON written when warnings exist
     # ------------------------------------------------------------------
     def test_quality_sidecar_written(self):
-        """quality_metrics.json is created under results/diagnostics/."""
+        """quality_metrics.json is created under external runtime diagnostics."""
         rng = np.random.default_rng(0)
         df = pd.DataFrame({
             "wild": rng.normal(loc=1.0, scale=5.0, size=20).tolist(),
@@ -63,8 +80,10 @@ class TestCheckStatisticalQuality(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="quality_sidecar_") as tmpdir:
             result = _check_statistical_quality(df, "wild.csv", 0.05, tmpdir)
 
-            sidecar = Path(tmpdir) / "results" / "diagnostics" / "quality_metrics.json"
+            sidecar = Path(resolve_diagnostics_dir(tmpdir)) / "data_contract" / "quality_metrics.json"
             self.assertTrue(sidecar.exists(), "quality_metrics.json not created")
+            self.assertTrue(sidecar.is_relative_to(self._runtime_root))
+            self.assertFalse((Path(tmpdir) / "results" / "diagnostics" / "quality_metrics.json").exists())
 
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             for key in ("timestamp", "csv_path", "cv_warnings", "cv_threshold", "quality_passed"):

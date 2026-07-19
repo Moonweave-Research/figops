@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 
 def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) -> dict:
     """Opt-in, conservative text nudge pass for obvious text/marker overlaps."""
@@ -19,6 +21,12 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
         return {"enabled": True, "applied": False, "iterations": 0, "reason": str(exc)}
 
     axes = [axis for axis in fig.axes if axis.get_visible() and getattr(axis, "_graph_hub_role", None) != "colorbar"]
+    initial_positions = {
+        text: tuple(float(value) for value in text.get_position())
+        for axis in axes
+        for text in axis.texts
+        if isinstance(text, Text) and text.get_text() and text.get_visible()
+    }
     moved = 0
     iterations = 0
     residual_overlap_pairs = 0
@@ -174,11 +182,45 @@ def _declutter_text_artists(fig, *, max_iter: int = 24, step_px: float = 4.0) ->
                 inter = Bbox.intersection(box_a, box_b)
                 if inter is not None and inter.width > 0 and inter.height > 0:
                     residual_overlap_pairs += 1
+    before_after: list[dict] = []
+    ledger: list[dict] = []
+    for axis_index, axis in enumerate(axes):
+        for text_index, text in enumerate(axis.texts):
+            if text not in initial_positions:
+                continue
+            before = initial_positions[text]
+            after = tuple(float(value) for value in text.get_position())
+            if before == after:
+                continue
+            record = {
+                "axis_index": axis_index,
+                "text_index": text_index,
+                "text": text.get_text(),
+                "before": list(before),
+                "after": list(after),
+            }
+            before_after.append(record)
+            digest = hashlib.sha256(
+                f"{axis_index}\0{text_index}\0{text.get_text()}\0{before!r}\0{after!r}".encode("utf-8")
+            ).hexdigest()[:16]
+            ledger.append(
+                {
+                    "mutation_id": f"declutter-{digest}",
+                    "transform": "declutter",
+                    "mode": "explicit",
+                    "before": list(before),
+                    "after": list(after),
+                    "policy_id": "authored-layout/declutter-1",
+                    "reason": f"explicit text declutter; axes={axis_index}; text={text_index}",
+                }
+            )
     return {
         "enabled": True,
-        "applied": moved > 0,
+        "applied": bool(before_after),
         "iterations": int(iterations if moved else 0),
-        "moved_text_artists": int(moved),
+        "moved_text_artists": len(before_after),
         "converged": residual_overlap_pairs == 0,
         "residual_overlap_pairs": int(residual_overlap_pairs),
+        "before_after": before_after,
+        "mutation_ledger": ledger,
     }

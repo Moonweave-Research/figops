@@ -4,11 +4,13 @@
 > publication-quality plotting, self-describing MCP tools, and honest
 > operational guardrails.
 >
-> Status baseline: source checkout `0.19.0` development line, adding the
-> Publication Readiness MVP—bounded automatic QA that requires cited hard-gate evidence and manual review—
-> after the `0.18.0` journal-style, runtime, packaging,
-> and release-hardening release. The latest published PyPI package and GitHub
-> Release remain `0.18.0`. M1 through
+> Status baseline: source checkout `0.20.0` release-candidate line, with the
+> AI-native v2 surface and bounded evidence/policy-projection path
+> implemented after the `0.19.0` publication-readiness release. PR #224 adds
+> the `figops-project-v1.1` role contract, external runtime/durable-result
+> boundary, receipt/claim/raw-integrity corrections, and reviewed copy-only
+> organization workflow. The latest published PyPI package and GitHub Release
+> remain `0.19.0` until a separate approved promotion. M1 through
 > M5 have shipped across the 0.5.0+ release line. The
 > remaining roadmap is maintenance, scoped debt reduction, and bounded
 > polish-layer waves that preserve journal constraints.
@@ -38,22 +40,25 @@
   workflow is not the place to regenerate large render packs for unrelated
   changes.
 
-## Current-state scorecard (0.19.0 development source line, 2026-07-12)
+## Current-state scorecard (0.20.0 release candidate, 2026-07-19)
 
 | Dimension | Score | Read |
 |---|---:|---|
 | Vision and feature breadth | 9/10 | Data contracts, provenance, regression checks, geometry QA, semantic checks, journal styles, and domain helpers are deep for a lab tool. |
-| Fundamentals and security | 9/10 | Audit-fix issues #153-158 are resolved; MCP root/runtime trust, duplicate-key YAML loading, symlink guards, and runtime-root isolation are in place. |
-| Code maintainability | 8/10 | The MCP monolith is decomposed, data-contract IO/semantics are split, and the 2026-06-29 decomposition wave brought the prior primary hotspots below 1000 lines with compatibility shims intact. Remaining size debt is narrower and tracked as maintenance, not a blocking milestone. |
-| Generality / portability | 7/10 | Prefetch, Athena, and conventions adapters are opt-in with generic defaults; project status and schema versioning are explicit. |
-| DX / docs / discoverability | 8/10 | Registry-backed `figops.describe`, generated `docs/tools.md`, `docs/mcp_errors.md`, and `figops.doctor` have shipped. |
+| Fundamentals and security | 9/10 | Project/allowed-data inputs share contained descriptors; v1.1 roles, runtime/result disjointness, native no-replace promotion, durable receipts, raw-integrity, dynamic-claim review, and write gating fail closed. |
+| Code maintainability | 8/10 | Structure contract/layout/inventory/audit/plan/role-binding/apply, runtime boundary/result promotion/receipt, external-raw execution, claim inspection, preview, schema, and inspection responsibilities are focused modules guarded by the live architecture inventory. |
+| Generality / portability | 8/10 | Declared roles replace mandatory folder names; legacy projects resolve in memory, external raw stays launcher-authorized, and bespoke adapters remain opt-in. |
+| DX / docs / discoverability | 9/10 | AI-native v2 discovery is compact and filterable; generated `tools-v2.md`, `tools-compatibility.md`, and the full maintenance reference keep the frozen surface available on demand. |
 
 Roadmap goal: keep fundamentals and DX >=8 while paying down concentrated module
 size debt without reintroducing broad refactors.
 
-Post-release total QA checkpoint:
+Current release-candidate checkpoint:
 
-- Current checkpoint: `docs/specs/2026-07-04-post-release-total-qa-plan.md`.
+- Current checkpoint: PR #224 and
+  `docs/specs/2026-07-15-project-structure-runtime-integrity-plan.md`. That
+  corrective SSOT governs the remaining acceptance matrix, actual-R gate,
+  independent review, approvals, and promotion sequence.
 - Journal tracks are implemented as encoded minimum-compliance token
   differences, not only labels:
   Nature, Science, ACS, RSC, Elsevier, Wiley, and Cell resolve distinct width,
@@ -67,23 +72,52 @@ Post-release total QA checkpoint:
 - MCP agent surface is complete for the current contract: 14 canonical
   `figops.*` tools, 13 frozen legacy `graphhub.*` aliases, generated schemas, and
   handler mappings are present.
+- MCP discovery is now profile-aware. The launcher defaults to `v2` with at
+  most seven evidence-first tools; `compatibility` exposes the frozen 14 + 13
+  contract. Writes-disabled discovery omits denied operations while the
+  independent handler guard rejects remembered canonical and alias names.
 - Operational release controls are in place: latest checked `main` CI passed,
   publish is manual-only and main-branch guarded, and PyPI/TestPyPI/GitHub
   Release install-smoke evidence is documented.
 - Public claim wording remains publication-oriented; `manual_review_needed=false`
   is not by itself a publishable verdict. `publishable` or `journal-ready`
   wording requires cited hard-gate evidence and `manual_review_needed` not true.
-- The 0.19.0 Publication Readiness MVP is being added as a read-only synthesis
+- The 0.19.0 Publication Readiness MVP remains a read-only synthesis
   layer over existing evidence. It reports `blocked`, `needs_revision`, or
   `needs_review`; approval lifecycle and submission packaging remain future work.
 - Current journal-style dogfood evidence for Todo 10 is recorded at
   `.omo/evidence/task-10-journal-style-real-use-hardening-final/render-pack/`;
   it supports review of rendered differences but is not a publisher acceptance
   signal.
-- Remaining work is quality hardening rather than release repair: journal-track
-  fixture qualification, MCP agent-consumability guards, local operator
-  readiness around `uv`, diagnostic-to-rubric mapping, and maintenance
-  decomposition.
+- The AI-native rearchitecture remains implemented in the working tree: bounded data
+  inspection, one-call basic/project rendering, explicit-policy audit, lazy
+  preview resources, raw-preserving authored output, and outcome-based agent
+  guidance are covered by runtime witnesses. The newer corrective implementation
+  adds the v1.1 declared-role contract, one shared layout, semantic structure
+  inventory/audit/plan/role-binding/apply, launcher-authorized external-raw
+  execution, native no-replace result promotion, durable receipts, measured
+  policy evidence, and verified project-script claims including conservative
+  dynamic-annotation discovery. CI run
+  [`29689087108`](https://github.com/Moonweave-Research/figops/actions/runs/29689087108)
+  passed for source head `9e4d340b718529bd0f65ba46b2124dda718918a2`: macOS full
+  pytest was 2,322 passed, 22 skipped, and 104 subtests, including the native
+  `/var`/`/private/var` alias gate at 9/0; Windows containment and symlinks was
+  48/0 with zero skipped security tests; and actual R was 2/0 on R 4.4.2,
+  readr 2.2.0, and dplyr 1.2.0. Ruff and dependency audit passed as well.
+  Final package witnesses were built from that head in the external
+  `figops-package-9e4d340b-r1/artifacts/` directory, not repository `dist/`:
+  wheel `figops-0.20.0-py3-none-any.whl` (634,485 bytes,
+  `9623cb8675af47a184ab83636ef390220608514957da885f8ca1dd42b8403cbd`) and
+  sdist `figops-0.20.0.tar.gz` (526,180 bytes,
+  `b7128735c0f3eba259eea30bcadbda4e864f3bd101d05246a04a5cae9fbc7511`).
+  Twine validation, package-surface inspection, and clean consumer smoke
+  passed; installed discovery remains 7 v2 tools and 27 compatibility tools.
+  The artifacts are not yet published. Repository owner authorization for the
+  v0.20.0 public release is recorded as
+  `repository_public_release_authorized=true` with one approval-evidence
+  reference: [PR #224 owner authorization](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221).
+  Execute merge, tag, package publication, GitHub Release, and release
+  promotion only after rechecking technical gates for the exact release commit.
 
 ---
 
@@ -94,15 +128,20 @@ figops_mcp_server.py        # thin stdio entrypoint and --smoke
 hub_core/
   mcp/                        # shipped decomposition of the former mcp_surface.py
     transport.py              # JSON-RPC framing, dispatch, batch, lifecycle
-    server.py                 # GraphHubMCPServer facade
+    server.py                 # FigOps facade + historical GraphHub Python alias
     config.py                 # trusted root/runtime/server config
     security.py               # path guards, write gating, env trust
     errors.py                 # MCP/tool error mapping
     schemas.py                # shared schema helpers
     tools/                    # grouped handlers backed by live schemas
     render_orchestration.py   # worker spawn, snapshots, geometry env wiring
+    render_manifest.py        # immutable job manifest and preview sealing
+    manifest_io.py            # verified, bounded runtime-manifest reads
+    preview_artifacts.py      # safe lazy preview/resource validation
+    preview_worker.py         # bounded raster/PDF conversion worker
     render_geometry.py        # render geometry helpers
     resources.py / prompts.py # MCP resources and prompts
+    surface_profiles.py       # compact v2 and frozen compatibility discovery
   adapters/                   # opt-in prefetch, Athena, and conventions adapters
   rendering/                  # plot-type registry and render backend surface
   domain_analysis.py          # registered domain analysis helpers
@@ -110,8 +149,36 @@ hub_core/
   data_contract_io.py         # table loading, supported formats, path collection
   data_contract_semantics.py  # compatibility surface for semantic validators
   data_contract_semantic_*    # focused semantic validator families
+  project_paths.py            # contained project I/O resolver
+  project_config_reader.py    # verified config discovery/resource reads
+  project_structure_contract.py # v1.1 role/DAG/alias resolution
+  legacy_structure_resolver.py  # legacy 1.0 in-memory compatibility view
+  project_layout.py             # shared scaffold/normalization inventory
+  structure_inventory.py / structure_audit.py / structure_plan.py
+                               # read-only semantic discovery and reviewed plan
+  structure_role_binding.py    # approved destinations bound to declared roots
+  structure_apply.py           # write-gated copy-only apply transaction
+  runtime_boundary.py          # project/result/runtime disjointness
+  atomic_no_clobber.py         # native consuming same-FS no-replace publication
+  durable_promotion.py         # staged same-filesystem result promotion
+  durable_receipt.py           # runtime-independent lineage receipt
+  result_promotion.py          # production eligibility/admission integration
+  external_raw.py / external_raw_execution.py
+                               # trusted identity and verified runtime materialization
+  calculation_evidence.py / claim_inventory.py / claim_script_inspection.py
+                               # durable lineage and conservative dynamic-claim review
+  artifact_policy_measurement.py / render_evidence.py
+                               # artifact-derived policy measurements
+  evidence_contract.py        # closed figops_evidence/2 validation
+  evidence_artifact_section.py # focused artifact/evidence validation
+  artifact_integrity.py       # verified artifact facts
+  artifact_audit.py           # integrity kernel + explicit policy packs
+  data_inspection*.py         # bounded data facts and worker limits
   process_runner.py           # pipeline execution helpers
 themes/                       # journal styles, palettes, font tokens
+plotting/renderers/
+  overlays.py                 # overlay rendering compatibility façade
+  annotation_normalization.py # bounded annotation/callout normalization
 docs/                         # quickstart, generated tool refs, specs, roadmap
 ```
 

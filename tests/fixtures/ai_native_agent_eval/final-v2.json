@@ -1,0 +1,117 @@
+{
+  "schema_version": "figops_agent_eval_measurement/2",
+  "captured_at": "2026-07-16",
+  "source_commit": "983db8d6ec93+working-tree",
+  "surface": "default-v2",
+  "measurement_method": {
+    "command": "%LOCALAPPDATA%\\FigOps\\uv_envs\\figops\\Scripts\\python.exe -c <live JSON-RPC measurement>",
+    "json_encoding": "UTF-8; ensure_ascii=false; separators=(',', ':')",
+    "runtime": "external FigOps uv environment"
+  },
+  "tool_surface": {
+    "names": [
+      "figops.health",
+      "figops.describe",
+      "figops.list_styles",
+      "figops.inspect_data",
+      "figops.render_basic_csv",
+      "figops.render_project_script",
+      "figops.audit_artifact"
+    ],
+    "emitted_tool_definition_count": 7,
+    "tools_list_response_bytes": 11973,
+    "tools_array_bytes": 11929,
+    "maximum_input_schema_bytes": 1102,
+    "maximum_input_schema_tool": "figops.render_basic_csv",
+    "render_basic_csv_top_level_properties": 12
+  },
+  "writes_disabled_surface": {
+    "names": [
+      "figops.health",
+      "figops.describe",
+      "figops.list_styles",
+      "figops.inspect_data",
+      "figops.audit_artifact"
+    ],
+    "emitted_tool_definition_count": 5,
+    "tools_list_response_bytes": 8334,
+    "tools_array_bytes": 8290
+  },
+  "compatibility_surface": {
+    "canonical_tool_count": 14,
+    "legacy_alias_count": 13,
+    "emitted_tool_definition_count": 27
+  },
+  "generated_references": {
+    "default_full": {
+      "path": "docs/tools.md",
+      "bytes": 157174,
+      "lines": 7707
+    },
+    "v2": {
+      "path": "docs/tools-v2.md",
+      "bytes": 18389,
+      "lines": 1071
+    },
+    "compatibility": {
+      "path": "docs/tools-compatibility.md",
+      "bytes": 131686,
+      "lines": 5992
+    }
+  },
+  "guided_call_contract": {
+    "unknown_schema_csv": {
+      "inspect_calls": 1,
+      "render_calls": 1,
+      "collect_calls": 0
+    },
+    "known_schema_csv": {
+      "render_calls": 1,
+      "collect_calls": 0
+    },
+    "project_script": {
+      "render_calls": 1,
+      "collect_calls": 0
+    }
+  },
+  "evaluation_summary": {
+    "task_contracts": {"total": 7, "runtime_witnessed": 7},
+    "hard_error_cases": {"total": 4, "caught": 4, "catch_rate": 1.0},
+    "required_provenance_cases": {"total": 2, "returned": 2, "rate": 1.0},
+    "preview_driven_revision": {
+      "resource_and_protocol_witnessed": true,
+      "live_model_run": true,
+      "status": "passed",
+      "witness_path": "tests/fixtures/ai_native_agent_eval/live-preview-revision-v1.json",
+      "surface_profile": "v2",
+      "call_counts": {"render": 2, "preview_read": 2, "collect": 0},
+      "targeted_revision": ["series", "authored_labels"],
+      "invented_statistics": false,
+      "sha_consistency": true,
+      "initial_primary_immutable": true,
+      "temporary_workspace_cleaned": true,
+      "human_or_publication_approval_claimed": false
+    }
+  },
+  "preview_limits": {
+    "worker_timeout_seconds": 5.0,
+    "maximum_pixels": 8000000,
+    "worker_memory_bytes": 268435456,
+    "maximum_edge_pixels": 2048,
+    "maximum_raw_bytes": 2097152,
+    "maximum_base64_bytes": 2796204,
+    "svg_status": "unavailable_until_windows_safety_smoke_passes"
+  },
+  "environment_limitations": {
+    "rscript_available": false,
+    "effect": "Python and mocked R dispatch witnesses pass; a real local R render was not run on this host."
+  },
+  "open_witnesses": [],
+  "closed_witnesses": [
+    "P0-PATH-ESCAPE",
+    "P0-LABEL-MUTATION",
+    "P0-READINESS-INTEGRITY",
+    "P0-RAW-UNSEALED",
+    "P0-UNSUPPORTED-STAT-CLAIM"
+  ]
+}

@@ -1,8 +1,13 @@
+import json
 import re
 import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Final
+
+import pytest
+
+from hub_core.claim_inventory import evaluate_project_claim_inventory
 
 _ROOT_INIT_MODULE: Final = "__init__"
 _ROOT_INIT_PATH: Final = Path(__file__).resolve().parents[1] / "__init__.py"
@@ -189,3 +194,328 @@ def test_publication_oriented_readme_wording_is_preserved() -> None:
     # Then: publication-oriented wording remains allowed and unqualified claims stay absent.
     assert "publication-oriented" in text
     assert not violations
+
+
+def test_publication_project_script_requires_verified_claim_inventory(tmp_path: Path) -> None:
+    script = tmp_path / "hub_scripts" / "figures" / "plot.py"
+    inventory = tmp_path / "results" / "evidence" / "Fig1.claims.json"
+    script.parent.mkdir(parents=True)
+    inventory.parent.mkdir(parents=True)
+    selected = {
+        "id": "Fig1",
+        "script": script.relative_to(tmp_path).as_posix(),
+        "claim_inventory": inventory.relative_to(tmp_path).as_posix(),
+    }
+    empty_inventory = {
+        "schema_version": "figops_claim_inventory/1",
+        "figure_id": "Fig1",
+        "calculation_evidence_paths": [],
+        "claims": [],
+    }
+    inventory.write_text(json.dumps(empty_inventory), encoding="utf-8")
+
+    # A raster-producing script that displays a statistical claim contradicts
+    # an empty inventory. Discovery is only a conservative blocker, never proof.
+    script.write_text(
+        "from PIL import Image, ImageDraw\n"
+        "image = Image.new('RGB', (80, 40), 'white')\n"
+        "ImageDraw.Draw(image).text((2, 2), 'p < 0.05', fill='black')\n",
+        encoding="utf-8",
+    )
+    raster_claim = evaluate_project_claim_inventory(tmp_path, selected)
+    assert raster_claim["status"] == "unverified"
+    assert raster_claim["manual_review_needed"] is True
+    assert raster_claim["promotion_eligible"] is False
+
+    # An inspectable no-claim script with an explicit empty inventory is the
+    # auditable no-claim publication path.
+    script.write_text(
+        "from PIL import Image\nImage.new('RGB', (80, 40), 'white').save('figure.png')\n",
+        encoding="utf-8",
+    )
+    no_claim = evaluate_project_claim_inventory(tmp_path, selected)
+    assert no_claim["status"] == "verified"
+    assert no_claim["explicit_no_claims"] is True
+    assert no_claim["promotion_eligible"] is True
+
+    missing = evaluate_project_claim_inventory(tmp_path, {"id": "Fig1", "script": selected["script"]})
+    assert missing["status"] == "unverified"
+    assert missing["manual_review_needed"] is True
+
+    script.write_bytes(b"\xff\xfe\x00")
+    uninspectable = evaluate_project_claim_inventory(tmp_path, selected)
+    assert uninspectable["status"] == "unverified"
+    assert uninspectable["promotion_eligible"] is False
+
+
+@pytest.mark.parametrize(
+    ("suffix", "script_text"),
+    [
+        (
+            ".py",
+            "import matplotlib.pyplot as plt\n"
+            "p = 0.0123\n"
+            "fig, ax = plt.subplots()\n"
+            "ax.text(0.1, 0.9, f'p={p:.3g}')\n",
+        ),
+        (
+            ".py",
+            "import matplotlib.pyplot as plt\n"
+            "p_value = 0.0123\n"
+            "claim_label = 'p={:.3g}'.format(p_value)\n"
+            "fig, ax = plt.subplots()\n"
+            "ax.annotate(claim_label, (0.1, 0.9))\n",
+        ),
+        (
+            ".py",
+            "from PIL import Image, ImageDraw\n"
+            "p = 0.0123\n"
+            "claim_label = 'p=' + str(p)\n"
+            "image = Image.new('RGB', (80, 40), 'white')\n"
+            "ImageDraw.Draw(image).text((2, 2), claim_label, fill='black')\n",
+        ),
+        (
+            ".py",
+            "def add_claim(ax, p_value_label):\n"
+            "    ax.text(0.1, 0.9, p_value_label)\n",
+        ),
+        (
+            ".py",
+            "import matplotlib.pyplot as plt\n"
+            "p = 0.0123\n"
+            "fig, ax = plt.subplots()\n"
+            "ax.set_xlabel(f'p={p:.3g}')\n",
+        ),
+        (
+            ".py",
+            "import matplotlib.pyplot as plt\n"
+            "p = 0.0123\n"
+            "fig, ax = plt.subplots()\n"
+            "write_label = ax.text\n"
+            "write_label(0.1, 0.9, f'p={p:.3g}')\n",
+        ),
+        (
+            ".py",
+            "def decorate(axis, label):\n"
+            "    axis.text(0.1, 0.9, label)\n"
+            "p = 0.0123\n"
+            "decorate(ax, f'p={p:.3g}')\n",
+        ),
+        (
+            ".py",
+            "from local_plot_helpers import decorate\n"
+            "p = 0.0123\n"
+            "decorate(ax, f'p={p:.3g}')\n",
+        ),
+        (
+            ".py",
+            "import matplotlib.pyplot as plt\n"
+            "p = 0.0123\n"
+            "fig, ax = plt.subplots()\n"
+            "ax.legend([f'p={p:.3g}'])\n",
+        ),
+        (
+            ".R",
+            "p <- 0.0123\n"
+            "claim_label <- sprintf('p=%.3g', p)\n"
+            "plot(1, 1)\n"
+            "text(1, 1, labels = claim_label)\n",
+        ),
+        (
+            ".R",
+            "p <- 0.0123\n"
+            "plot(1, 1)\n"
+            "text(1, 1, paste0('p=', format(p)))\n",
+        ),
+        (
+            ".R",
+            "p <- 0.0123\n"
+            "plot(1, 1)\n"
+            "legend('topright', legend = sprintf('p=%.3g', p))\n",
+        ),
+        (
+            ".R",
+            "p <- 0.0123\n"
+            "plot(1, 1)\n"
+            "axis(1, labels = paste0('p=', p))\n",
+        ),
+        (
+            ".R",
+            "add_marker <- function(label) { text(1, 1, labels = label) }\n"
+            "p <- 0.0123\n"
+            "add_marker(paste0('p=', format(p)))\n",
+        ),
+        (
+            ".R",
+            "add_marker <- function(label) { text(1, 1, labels = label) }\n"
+            "relay_marker <- function(message) { add_marker(message) }\n"
+            "p_value <- 0.0123\n"
+            "relay_marker(sprintf('p=%.3g', p_value))\n",
+        ),
+        (
+            ".R",
+            "add_marker <- function(label) { text(1, 1, labels = label) }\n"
+            "marker_alias <- add_marker\n"
+            "p <- 0.0123\n"
+            "marker_alias(paste0('p=', p))\n",
+        ),
+        (
+            ".R",
+            "write_label <- text\n"
+            "add_marker <- function(label) { write_label(1, 1, labels = label) }\n"
+            "p <- 0.0123\n"
+            "add_marker(paste0('p=', p))\n",
+        ),
+    ],
+)
+def test_dynamic_claim_annotations_cannot_bypass_explicit_empty_inventory(
+    tmp_path: Path, suffix: str, script_text: str
+) -> None:
+    """Dynamic displayed claims need review even when an inventory says no claims."""
+
+    script = tmp_path / "hub_scripts" / "figures" / f"plot{suffix}"
+    inventory = tmp_path / "results" / "evidence" / "Fig1.claims.json"
+    script.parent.mkdir(parents=True)
+    inventory.parent.mkdir(parents=True)
+    script.write_text(script_text, encoding="utf-8")
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema_version": "figops_claim_inventory/1",
+                "figure_id": "Fig1",
+                "calculation_evidence_paths": [],
+                "claims": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = evaluate_project_claim_inventory(
+        tmp_path,
+        {
+            "id": "Fig1",
+            "script": script.relative_to(tmp_path).as_posix(),
+            "claim_inventory": inventory.relative_to(tmp_path).as_posix(),
+        },
+    )
+
+    assert result["status"] == "unverified"
+    assert result["manual_review_needed"] is True
+    assert result["promotion_eligible"] is False
+    assert result["dynamic_candidates"]
+    assert "dynamic statistical-claim annotation" in result["errors"][0]
+
+
+def test_constant_folded_claim_text_is_compared_with_empty_inventory(tmp_path: Path) -> None:
+    script = tmp_path / "hub_scripts" / "figures" / "plot.py"
+    inventory = tmp_path / "results" / "evidence" / "Fig1.claims.json"
+    script.parent.mkdir(parents=True)
+    inventory.parent.mkdir(parents=True)
+    script.write_text(
+        "import matplotlib.pyplot as plt\n"
+        "fig, ax = plt.subplots()\n"
+        "ax.text(0.1, 0.9, 'p ' + '< ' + '0.05')\n",
+        encoding="utf-8",
+    )
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema_version": "figops_claim_inventory/1",
+                "figure_id": "Fig1",
+                "calculation_evidence_paths": [],
+                "claims": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = evaluate_project_claim_inventory(
+        tmp_path,
+        {
+            "id": "Fig1",
+            "script": script.relative_to(tmp_path).as_posix(),
+            "claim_inventory": inventory.relative_to(tmp_path).as_posix(),
+        },
+    )
+
+    assert result["status"] == "unverified"
+    assert result["promotion_eligible"] is False
+    assert result["discovered_candidates"] == [{"source": "script_literal", "text": "p < 0.05"}]
+    assert result["dynamic_candidates"] == []
+
+
+def test_unrelated_dynamic_annotation_does_not_reduce_author_freedom(tmp_path: Path) -> None:
+    script = tmp_path / "hub_scripts" / "figures" / "plot.py"
+    inventory = tmp_path / "results" / "evidence" / "Fig1.claims.json"
+    script.parent.mkdir(parents=True)
+    inventory.parent.mkdir(parents=True)
+    script.write_text(
+        "import matplotlib.pyplot as plt\n"
+        "sample_name = 'control'\n"
+        "fig, ax = plt.subplots()\n"
+        "ax.set_title(f'Sample: {sample_name}')\n",
+        encoding="utf-8",
+    )
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema_version": "figops_claim_inventory/1",
+                "figure_id": "Fig1",
+                "calculation_evidence_paths": [],
+                "claims": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = evaluate_project_claim_inventory(
+        tmp_path,
+        {
+            "id": "Fig1",
+            "script": script.relative_to(tmp_path).as_posix(),
+            "claim_inventory": inventory.relative_to(tmp_path).as_posix(),
+        },
+    )
+
+    assert result["status"] == "verified"
+    assert result["promotion_eligible"] is True
+    assert result["dynamic_candidates"] == []
+
+
+def test_unrelated_dynamic_r_wrapper_annotation_does_not_reduce_author_freedom(
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "hub_scripts" / "figures" / "plot.R"
+    inventory = tmp_path / "results" / "evidence" / "Fig1.claims.json"
+    script.parent.mkdir(parents=True)
+    inventory.parent.mkdir(parents=True)
+    script.write_text(
+        "add_marker <- function(label) { text(1, 1, labels = label) }\n"
+        "sample_id <- 'control'\n"
+        "add_marker(paste0('Sample: ', sample_id))\n",
+        encoding="utf-8",
+    )
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema_version": "figops_claim_inventory/1",
+                "figure_id": "Fig1",
+                "calculation_evidence_paths": [],
+                "claims": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = evaluate_project_claim_inventory(
+        tmp_path,
+        {
+            "id": "Fig1",
+            "script": script.relative_to(tmp_path).as_posix(),
+            "claim_inventory": inventory.relative_to(tmp_path).as_posix(),
+        },
+    )
+
+    assert result["status"] == "verified"
+    assert result["promotion_eligible"] is True
+    assert result["dynamic_candidates"] == []

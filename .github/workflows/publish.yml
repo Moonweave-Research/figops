@@ -27,10 +27,10 @@ jobs:
             exit 1
           fi
 
-  build:
-    name: Build and verify distributions
+  actual-r:
+    name: Actual R integration (gating)
     needs: release-ref
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install locked uv
@@ -43,7 +43,150 @@ jobs:
       - name: Install R
         uses: r-lib/actions/setup-r@d3c5be51b12e724e68f33216ca3c148b66d5f0b6 # v2
         with:
-          r-version: release
+          r-version: renv
+      - name: Restore locked R dependencies
+        uses: r-lib/actions/setup-renv@d3c5be51b12e724e68f33216ca3c148b66d5f0b6 # v2
+      - name: Export locked R library
+        run: |
+          umask 077
+          locked_r_lib_euid="$(id -u)"
+          locked_r_lib_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$locked_r_lib_dir"' EXIT
+          if [[ ! -d "$locked_r_lib_dir" || -L "$locked_r_lib_dir" ]]; then
+            echo "Refusing invalid R library record directory" >&2
+            exit 1
+          fi
+          locked_r_lib_dir_owner="$(stat -c '%u' -- "$locked_r_lib_dir")"
+          locked_r_lib_dir_mode="$(stat -c '%a' -- "$locked_r_lib_dir")"
+          if [[ "$locked_r_lib_dir_owner" != "$locked_r_lib_euid" || "$locked_r_lib_dir_mode" != "700" ]]; then
+            echo "Refusing insecure R library record directory" >&2
+            exit 1
+          fi
+          locked_r_lib_dir_identity="$(stat -c '%d:%i' -- "$locked_r_lib_dir")"
+          validate_locked_r_lib_dir() {
+            local observed_owner observed_mode observed_identity
+            if [[ ! -d "$locked_r_lib_dir" || -L "$locked_r_lib_dir" ]]; then
+              echo "Refusing replaced R library record directory" >&2
+              exit 1
+            fi
+            observed_owner="$(stat -c '%u' -- "$locked_r_lib_dir")"
+            observed_mode="$(stat -c '%a' -- "$locked_r_lib_dir")"
+            observed_identity="$(stat -c '%d:%i' -- "$locked_r_lib_dir")"
+            if [[ "$observed_owner" != "$locked_r_lib_euid" || "$observed_mode" != "700" || "$observed_identity" != "$locked_r_lib_dir_identity" ]]; then
+              echo "Refusing replaced R library record directory" >&2
+              exit 1
+            fi
+          }
+          locked_r_lib_record="$(mktemp "$locked_r_lib_dir/locked-r-lib.XXXXXX")"
+          R_LIBS_RECORD="$locked_r_lib_record" Rscript -e 'record <- Sys.getenv("R_LIBS_RECORD", unset = ""); if (!nzchar(record)) stop("R library record path is required"); writeLines(normalizePath(.libPaths()[1], winslash = "/", mustWork = TRUE), con = record, useBytes = TRUE)'
+          validate_locked_r_lib_dir
+          if [[ ! -f "$locked_r_lib_record" || -L "$locked_r_lib_record" || ! -s "$locked_r_lib_record" ]]; then
+            echo "Refusing invalid R library record" >&2
+            exit 1
+          fi
+          validate_locked_r_lib_dir
+          locked_r_lib_record_metadata="$(stat -c '%u:%a:%d:%i' -- "$locked_r_lib_record")"
+          IFS=: read -r locked_r_lib_record_owner locked_r_lib_record_mode locked_r_lib_record_device locked_r_lib_record_inode <<< "$locked_r_lib_record_metadata"
+          if [[ "$locked_r_lib_record_owner" != "$locked_r_lib_euid" || "$locked_r_lib_record_mode" != "600" ]]; then
+            echo "Refusing insecure R library record" >&2
+            exit 1
+          fi
+          locked_r_lib_record_identity="$locked_r_lib_record_device:$locked_r_lib_record_inode"
+          validate_locked_r_lib_dir
+          exec {locked_r_lib_validation_fd}< "$locked_r_lib_record"
+          locked_r_lib_validation_fd_identity="$(stat -Lc '%d:%i' -- "/proc/$$/fd/$locked_r_lib_validation_fd")"
+          if [[ "$locked_r_lib_validation_fd_identity" != "$locked_r_lib_record_identity" ]]; then
+            echo "Refusing replaced R library record before validation" >&2
+            exit 1
+          fi
+          if LC_ALL=C grep -qP '\x00|\r' <&"$locked_r_lib_validation_fd"; then
+            echo "Refusing unsafe R library record" >&2
+            exit 1
+          else
+            locked_r_lib_grep_status=$?
+            if [[ "$locked_r_lib_grep_status" -ne 1 ]]; then
+              echo "Unable to validate R library record" >&2
+              exit 1
+            fi
+          fi
+          exec {locked_r_lib_validation_fd}<&-
+          validate_locked_r_lib_dir
+          locked_r_lib_record_identity_after_validation="$(stat -c '%d:%i' -- "$locked_r_lib_record")"
+          if [[ "$locked_r_lib_record_identity_after_validation" != "$locked_r_lib_record_identity" ]]; then
+            echo "Refusing replaced R library record after validation" >&2
+            exit 1
+          fi
+          validate_locked_r_lib_dir
+          exec {locked_r_lib_fd}< "$locked_r_lib_record"
+          locked_r_lib_fd_identity="$(stat -Lc '%d:%i' -- "/proc/$$/fd/$locked_r_lib_fd")"
+          if [[ "$locked_r_lib_fd_identity" != "$locked_r_lib_record_identity" ]]; then
+            echo "Refusing replaced R library record before read" >&2
+            exit 1
+          fi
+          mapfile -t locked_r_lib_records <&"$locked_r_lib_fd"
+          locked_r_lib_fd_identity_after_read="$(stat -Lc '%d:%i' -- "/proc/$$/fd/$locked_r_lib_fd")"
+          if [[ "$locked_r_lib_fd_identity_after_read" != "$locked_r_lib_record_identity" ]]; then
+            echo "Refusing replaced R library record during read" >&2
+            exit 1
+          fi
+          exec {locked_r_lib_fd}<&-
+          if [[ "${#locked_r_lib_records[@]}" -ne 1 || -z "${locked_r_lib_records[0]}" ]]; then
+            echo "Refusing non-single R library record" >&2
+            exit 1
+          fi
+          locked_r_lib="${locked_r_lib_records[0]}"
+          existing_r_libs_user="${R_LIBS_USER:-}"
+          if [[ "$locked_r_lib" != /* || "$locked_r_lib" == *:* || "$locked_r_lib" == *$'\n'* || "$locked_r_lib" == *$'\r'* || "$existing_r_libs_user" == *$'\n'* || "$existing_r_libs_user" == *$'\r'* ]]; then
+            echo "Refusing unsafe R library path" >&2
+            exit 1
+          fi
+          r_libs_user="$locked_r_lib"
+          if [[ -n "$existing_r_libs_user" ]]; then
+            r_libs_user="$locked_r_lib:$existing_r_libs_user"
+          fi
+          printf '%s\n' "R_LIBS_USER=$r_libs_user" >> "$GITHUB_ENV"
+      - name: Verify locked R and readr
+        run: |
+          verification_cwd="$(mktemp -d)"
+          trap 'rm -rf -- "$verification_cwd"' EXIT
+          cd "$verification_cwd"
+          Rscript -e "stopifnot(getRversion() == '4.4.2', packageVersion('readr') == '2.2.0', packageVersion('dplyr') == '1.2.0')"
+          Rscript -e "suppressPackageStartupMessages({library(readr); library(dplyr)})"
+      - name: Run actual R integration tests
+        run: >-
+          uv run --locked python -m pytest -q
+          --junitxml=actual-r-junit.xml
+          tests/test_smoke.py::HubSmokeTest::test_scaffold_all_and_cache
+          tests/test_process_runner_new.py::TestScaffoldRAnalysisInputContract::test_scaffold_r_analysis_reads_real_data_from_normalized_raw_dir
+      - name: Require exactly two passed and zero skipped
+        run: |
+          uv run --locked python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("actual-r-junit.xml").getroot()
+          suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
+          counts = {
+              key: sum(int(suite.attrib.get(key, "0")) for suite in suites)
+              for key in ("tests", "failures", "errors", "skipped")
+          }
+          passed = counts["tests"] - counts["failures"] - counts["errors"] - counts["skipped"]
+          if passed != 2 or counts["tests"] != 2 or any(counts[key] for key in ("failures", "errors", "skipped")):
+              raise SystemExit(f"actual-R gate requires 2 passed/0 skipped; observed {counts}, passed={passed}")
+          PY
+
+  build:
+    name: Build and verify distributions
+    needs: [release-ref, actual-r]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install locked uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+          version: "0.11.25"
+      - name: Sync locked dependencies
+        run: uv sync --locked --group dev
       - name: Run release-critical tests
         run: >-
           uv run --locked python -m pytest -q

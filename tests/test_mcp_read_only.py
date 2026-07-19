@@ -11,7 +11,7 @@ from pathlib import Path
 import hub_core.mcp.render_geometry_schemas as render_geometry_schemas
 import hub_core.mcp.render_input_schemas as render_input_schemas
 import hub_core.mcp.schemas as mcp_schemas
-from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_TARGET_FORMATS
+from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, INTERNAL_STYLE_TARGET_FORMAT, PUBLIC_TARGET_FORMATS
 from hub_core.mcp import GraphHubMCPServer, McpServerConfig, discovery_schemas
 from hub_core.mcp.config import ROOT_ADAPTER_SECURITY_ENV_VARS
 from hub_core.mcp.schemas import list_tool_definitions
@@ -25,8 +25,7 @@ from hub_core.mcp.transport import (
 )
 from hub_core.project_discovery import ProjectDiscoveryService
 from tests._symlink import symlink_or_skip
-from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
-from themes.style_profiles import PROFILE_ALIASES, list_profiles
+from themes.style_profiles import PUBLIC_PROFILE_ALIASES, list_public_profiles
 
 HUB_ROOT = Path(__file__).resolve().parent.parent
 
@@ -48,10 +47,19 @@ pipeline:
     - script: hub_scripts/analysis.R
       inputs: ["data/raw.csv"]
       outputs: ["results/data/summary.csv"]
+sample_registry:
+  - sample_id: sample-a
+experimental_conditions:
+  conditions:
+    - id: condition-a
+      parameters: {{}}
 figures:
   - id: Fig1
     script: hub_scripts/plot.py
     output: results/figures/Fig1.png
+    claim: "Fixture output preserves the declared x/y relationship."
+    samples: [sample-a]
+    conditions: [condition-a]
 diagrams:
   - id: Diagram1
     script: hub_scripts/diagram.py
@@ -175,6 +183,33 @@ class ReadOnlyMCPTest(unittest.TestCase):
         self.assertFalse(server.write_tools_enabled)
         self.assertEqual(health["runtime_root"], str(runtime_root.resolve()))
 
+    def test_health_reports_darwin_preview_memory_capability_without_hiding_other_bounds(self):
+        capabilities = {
+            "memory_limit_bytes": 256 * 1024 * 1024,
+            "memory_limit_enforced": False,
+            "memory_limit_limitation": "Hard worker memory enforcement is unavailable on macOS.",
+            "timeout_seconds": 5.0,
+            "source_byte_limit": 16 * 1024 * 1024,
+            "raw_output_byte_limit": 2 * 1024 * 1024,
+            "base64_output_byte_limit": 2_796_204,
+            "pixel_limit": 8_000_000,
+            "edge_limit": 2_048,
+            "cpu_limit_enforced": True,
+            "file_size_limit_enforced": True,
+            "process_tree_containment": True,
+        }
+        with unittest.mock.patch(
+            "hub_core.mcp.tools.read_tools.preview_worker_capabilities",
+            return_value=capabilities,
+        ):
+            health = self._call(GraphHubMCPServer(), "figops.health")
+
+        self.assertEqual(health["preview_worker_limits"], capabilities)
+        self.assertFalse(health["preview_worker_limits"]["memory_limit_enforced"])
+        self.assertTrue(health["preview_worker_limits"]["cpu_limit_enforced"])
+        self.assertTrue(health["preview_worker_limits"]["file_size_limit_enforced"])
+        self.assertTrue(health["preview_worker_limits"]["process_tree_containment"])
+
     def test_env_trust_model_documents_root_adapter_security_env_vars(self):
         trust_model = (HUB_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
@@ -260,13 +295,12 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
         result = self._call(server, "figops.list_styles")
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["target_formats"], sorted(ALLOWED_TARGET_FORMATS))
+        self.assertEqual(result["target_formats"], sorted(PUBLIC_TARGET_FORMATS))
         self.assertEqual(result["output_formats"], sorted(ALLOWED_OUTPUT_FORMATS))
-        self.assertEqual(result["profiles"], list_profiles())
-        self.assertEqual(result["profile_aliases"], dict(sorted(PROFILE_ALIASES.items())))
+        self.assertEqual(result["profiles"], list_public_profiles())
+        self.assertEqual(result["profile_aliases"], dict(sorted(PUBLIC_PROFILE_ALIASES.items())))
         self.assertIn("style_packs", result)
         self.assertTrue(all(pack["visibility"] == "public_core" for pack in result["style_packs"]))
-        self.assertIn(INTERNAL_STYLE_TARGET_FORMAT, result["target_formats"])
 
     def test_describe_exposes_registry_backed_capabilities(self):
         server = GraphHubMCPServer()
@@ -525,7 +559,7 @@ assert result["structuredContent"]["status"] in ("ok", "warning")
             with self.assertRaises(ValueError):
                 server._resolve_allowed_data_path(str(outside), field_name="data_path")
 
-    def test_allowed_data_path_rejects_symlink_component_into_allowed_root(self):
+    def test_allowed_data_path_allows_internal_alias_and_rejects_external_target(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_containment_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
             root.mkdir()
@@ -737,7 +771,7 @@ project:
         self.assertIn("figops.describe", listed_tools)
         self.assertIn("structuredContent", called["result"])
         self.assertFalse(called["result"]["isError"])
-        self.assertEqual(called["result"]["structuredContent"]["target_formats"], sorted(ALLOWED_TARGET_FORMATS))
+        self.assertEqual(called["result"]["structuredContent"]["target_formats"], sorted(PUBLIC_TARGET_FORMATS))
 
     def test_json_rpc_initialize_advertises_resources_and_prompts(self):
         server = GraphHubMCPServer()
@@ -777,7 +811,6 @@ project:
 
         self.assertEqual(content["mimeType"], "application/json")
         self.assertEqual(payload["target_formats"], styles["target_formats"])
-        self.assertIn(INTERNAL_STYLE_TARGET_FORMAT, payload["target_formats"])
 
     def test_resources_read_projects_and_legacy_config_are_read_only(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_resource_") as tmpdir:
@@ -939,9 +972,10 @@ project:
         text = response["result"]["messages"][0]["content"]["text"]
 
         self.assertIn("figops.render_csv_graph", text)
-        self.assertIn("dry_run=true", text)
-        self.assertIn("calculation_checks", text)
-        self.assertIn("visual_preflight_status", text)
+        self.assertNotIn("dry_run=true", text)
+        self.assertIn("one call", text)
+        self.assertIn("evidence", text)
+        self.assertIn("preview", text)
         self.assertIn("figops.collect_artifacts", text)
         self.assertIn("manual_review_needed", text)
 
@@ -965,7 +999,9 @@ project:
         self.assertIn("figops.inspect_project", text)
         self.assertIn("figops.validate_project", text)
         self.assertIn("figops.render_project_figure", text)
-        self.assertIn("dry_run=true", text)
+        self.assertNotIn("dry_run=true", text)
+        self.assertIn("one call", text)
+        self.assertIn("preview", text)
         self.assertIn("figops.collect_artifacts", text)
         self.assertIn("manual_review_needed", text)
 
@@ -1032,6 +1068,85 @@ project:
         self.assertFalse(_matches_json_schema_type(True, "number"))
         self.assertFalse(_matches_json_schema_type("1", "number"))
         self.assertFalse(_matches_json_schema_type("x", "unknown"))
+        self.assertTrue(_matches_json_schema_type("1", ["number", "string"]))
+        self.assertTrue(_matches_json_schema_type(None, ["object", "null"]))
+        self.assertFalse(_matches_json_schema_type(True, ["integer", "number"]))
+        self.assertFalse(_matches_json_schema_type("x", []))
+        self.assertFalse(_matches_json_schema_type("x", ["string", 1]))
+
+    def test_recursive_json_schema_validation_rejects_adversarial_nested_values(self):
+        definitions = [
+            {
+                "name": "figops.schema_probe",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "payload": {
+                            "type": "object",
+                            "properties": {
+                                "value": {"type": ["number", "string"], "enum": [1, "one"]},
+                                "items": {
+                                    "type": "array",
+                                    "items": {
+                                        "anyOf": [
+                                            {
+                                                "type": "object",
+                                                "properties": {"x": {"type": "number"}},
+                                                "required": ["x"],
+                                                "additionalProperties": False,
+                                            },
+                                            {
+                                                "type": "object",
+                                                "properties": {"label": {"type": "string"}},
+                                                "required": ["label"],
+                                                "additionalProperties": False,
+                                            },
+                                        ]
+                                    },
+                                },
+                            },
+                            "required": ["value", "items"],
+                            "additionalProperties": False,
+                        }
+                    },
+                    "required": ["payload"],
+                    "additionalProperties": False,
+                },
+            }
+        ]
+
+        accepted = _validate_tool_arguments(
+            "figops.schema_probe",
+            {"payload": {"value": "one", "items": [{"x": 1}, {"label": "ok"}]}},
+            definitions,
+        )
+        rejected = _validate_tool_arguments(
+            "figops.schema_probe",
+            {"payload": {"value": True, "items": [{"x": True}, {"label": "ok", "extra": 1}]}},
+            definitions,
+        )
+
+        self.assertEqual(accepted, [])
+        self.assertTrue(any("payload.value" in error for error in rejected))
+        self.assertTrue(any("payload.items[0]" in error for error in rejected))
+        self.assertTrue(any("payload.items[1]" in error for error in rejected))
+        wrong_case = _validate_tool_arguments(
+            "figops.schema_probe",
+            {"payload": {"value": "ONE", "items": [{"x": 1}, {"label": "ok"}]}},
+            definitions,
+        )
+        self.assertTrue(any("payload.value" in error for error in wrong_case))
+
+        compact_definitions = list_tool_definitions(profile="v2", write_tools_enabled=True)
+        hidden_alias_errors = _validate_tool_arguments(
+            "graphhub.render_csv_graph",
+            {"data_path": "data.csv", "x_column": "x", "y_column": "y", "unexpected": True},
+            compact_definitions,
+        )
+        self.assertEqual(
+            hidden_alias_errors,
+            ["Tool is not available on this callable surface: graphhub.render_csv_graph."],
+        )
 
     def _call_rpc(self, server: GraphHubMCPServer, tool_name: str, arguments: dict) -> dict:
         return _handle_json_rpc(
@@ -1153,27 +1268,27 @@ project:
     def test_rpc_accepts_in_enum_profile_alias(self):
         argument_errors = _validate_tool_arguments(
             "figops.render_csv_graph",
-            {"data_path": "a.csv", "x_column": "x", "y_column": "y", "profile": "premium"},
+            {"data_path": "a.csv", "x_column": "x", "y_column": "y", "profile": "base"},
         )
 
         self.assertEqual(argument_errors, [])
 
-    def test_validate_accepts_mixed_case_case_normalized_enums(self):
-        # Handler lowercases profile/target_format/output_format, so the enum check
-        # must accept mixed-case input it would normalize rather than reject it.
+    def test_validate_rejects_mixed_case_enums_by_exact_schema_contract(self):
         argument_errors = _validate_tool_arguments(
             "figops.render_csv_graph",
             {
                 "data_path": "a.csv",
                 "x_column": "x",
                 "y_column": "y",
-                "profile": "Premium",
+                "profile": "Base",
                 "target_format": "Nature",
                 "output_format": "PNG",
             },
         )
 
-        self.assertEqual(argument_errors, [])
+        self.assertTrue(any("profile" in error and '"base"' in error for error in argument_errors))
+        self.assertTrue(any("target_format" in error and '"nature"' in error for error in argument_errors))
+        self.assertTrue(any("output_format" in error and '"png"' in error for error in argument_errors))
 
     def test_validate_rejects_render_project_figure_without_selector(self):
         argument_errors = _validate_tool_arguments(

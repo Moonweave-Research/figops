@@ -14,6 +14,7 @@ import yaml
 from hub_core.mcp import GraphHubMCPServer
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.schemas import list_tool_definitions
+from hub_core.mcp.security import PROJECT_ID_REPARSE_ERROR
 from hub_core.mcp.transport import _handle_json_rpc
 from tests._symlink import symlink_or_skip
 from themes.style_packs import INTERNAL_STYLE_TARGET_FORMAT
@@ -87,6 +88,21 @@ def _write_csv(path: Path) -> Path:
     return path
 
 
+def _runtime_artifact_path(value: str, runtime_root: Path) -> Path:
+    """Map an outward runtime URI back to its known test boundary."""
+
+    prefix = "runtime://"
+    if value.startswith(prefix):
+        return runtime_root.joinpath(*value[len(prefix) :].split("/"))
+    return Path(value)
+
+
+def _write_valid_png(path: str | Path) -> None:
+    from PIL import Image
+
+    Image.new("RGB", (8, 6), "navy").save(path, format="PNG")
+
+
 def _write_grid_csv(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -119,8 +135,9 @@ def _write_project_render_fixture(root: Path, name: str = "01_Project") -> Path:
     (project / "raw" / "large-secret.bin").write_bytes(b"do-not-copy")
     (project / "hub_scripts" / "plot.py").write_text(
         "from pathlib import Path\n"
+        "from PIL import Image\n"
         "Path('results/figures').mkdir(parents=True, exist_ok=True)\n"
-        "Path('results/figures/Fig1.png').write_bytes(b'png')\n",
+        "Image.new('RGB', (64, 48), 'navy').save('results/figures/Fig1.png', format='PNG')\n",
         encoding="utf-8",
     )
     (project / "project_config.yaml").write_text(
@@ -130,6 +147,11 @@ project:
 visual_style:
   target_format: nature
   profile: baseline
+sample_registry:
+  - sample_id: S1
+experimental_conditions:
+  conditions:
+    - id: condition_a
 data_contract:
   csv_checks:
     - path: results/data/summary.csv
@@ -140,6 +162,9 @@ figures:
     script: hub_scripts/plot.py
     inputs: ["results/data/summary.csv"]
     output: results/figures/Fig1.png
+    claim: Fixture render completes.
+    samples: [S1]
+    conditions: [condition_a]
 """,
         encoding="utf-8",
     )
@@ -191,6 +216,11 @@ project:
 visual_style:
   target_format: nature
   profile: baseline
+sample_registry:
+  - sample_id: S1
+experimental_conditions:
+  conditions:
+    - id: condition_a
 data_contract:
   csv_checks:
     - path: results/data/summary.csv
@@ -201,6 +231,9 @@ figures:
     script: hub_scripts/plot.py
     inputs: ["results/data/summary.csv"]
     output: results/figures/Fig1.png
+    claim: Fixture render completes.
+    samples: [S1]
+    conditions: [condition_a]
 """,
         encoding="utf-8",
     )
@@ -232,10 +265,12 @@ def _write_project_legacy_context_fixture(root: Path, name: str = "01_Project") 
         "from project_context import setup_hub_path\n"
         "\n"
         "setup_hub_path()\n"
+        "from PIL import Image\n"
         "from themes.style_profiles import DEFAULT_PROFILE\n"
         "\n"
         "Path('results/figures').mkdir(parents=True, exist_ok=True)\n"
-        "Path('results/figures/Fig1.png').write_bytes(DEFAULT_PROFILE.encode('utf-8'))\n",
+        "assert DEFAULT_PROFILE\n"
+        "Image.new('RGB', (64, 48), 'navy').save('results/figures/Fig1.png', format='PNG')\n",
         encoding="utf-8",
     )
     (project / "project_config.yaml").write_text(
@@ -245,6 +280,11 @@ project:
 visual_style:
   target_format: nature
   profile: baseline
+sample_registry:
+  - sample_id: S1
+experimental_conditions:
+  conditions:
+    - id: condition_a
 data_contract:
   csv_checks:
     - path: results/data/summary.csv
@@ -255,6 +295,9 @@ figures:
     script: hub_scripts/plot.py
     inputs: ["results/data/summary.csv"]
     output: results/figures/Fig1.png
+    claim: Fixture render completes.
+    samples: [S1]
+    conditions: [condition_a]
 """,
         encoding="utf-8",
     )
@@ -456,7 +499,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             runtime_root = tmp_root / "runtime"
             source_snapshot = _snapshot_tree(tmp_root / "input")
 
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
             result = self._call(
                 server,
                 "figops.render_csv_graph",
@@ -664,14 +711,22 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             expected_dry_root = runtime_root / "mcp_project_jobs" / "path-parity"
             expected_render_root = runtime_root / "mcp_project_jobs" / "path-parity-real"
-            self.assertEqual(Path(dry_result["job_root"]).resolve(), expected_dry_root.resolve())
+            self.assertEqual(dry_result["status"], "ok", json.dumps(dry_result, sort_keys=True))
+            self.assertIn(render_result["status"], {"ok", "warning"}, json.dumps(render_result, sort_keys=True))
             self.assertEqual(
-                Path(dry_result["snapshot_project_path"]).resolve(),
+                _runtime_artifact_path(dry_result["job_root"], runtime_root).resolve(),
+                expected_dry_root.resolve(),
+            )
+            self.assertEqual(
+                _runtime_artifact_path(dry_result["snapshot_project_path"], runtime_root).resolve(),
                 (expected_dry_root / "project").resolve(),
             )
-            self.assertEqual(Path(render_result["job_root"]).resolve(), expected_render_root.resolve())
             self.assertEqual(
-                Path(render_result["snapshot_project_path"]).resolve(),
+                _runtime_artifact_path(render_result["job_root"], runtime_root).resolve(),
+                expected_render_root.resolve(),
+            )
+            self.assertEqual(
+                _runtime_artifact_path(render_result["snapshot_project_path"], runtime_root).resolve(),
                 (expected_render_root / "project").resolve(),
             )
 
@@ -824,7 +879,14 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             config_path = project / "project_config.yaml"
             config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
             config["figures"].append(
-                {"id": "Fig2", "script": "hub_scripts/plot.py", "output": "results/figures/Fig2.png"}
+                {
+                    "id": "Fig2",
+                    "script": "hub_scripts/plot.py",
+                    "output": "results/figures/Fig2.png",
+                    "claim": "Second fixture render completes.",
+                    "samples": ["S1"],
+                    "conditions": ["condition_a"],
+                }
             )
             config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
             runtime_root = Path(tmpdir) / "runtime"
@@ -876,6 +938,29 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertFalse(outside_output.exists())
             self.assertFalse((runtime_root / "mcp_project_jobs").exists())
 
+    def test_render_project_figure_classifies_unsafe_declared_data_path_as_contract_without_writing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            config_path = project / "project_config.yaml"
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            config["data_contract"]["csv_checks"][0]["path"] = "../outside.csv"
+            config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "unsafe-data-path"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["error_category"], "validation")
+            self.assertEqual(result["error_code"], "PROJECT_DECLARATION_PATH_INVALID")
+            self.assertFalse(runtime_root.exists())
+
     def test_render_project_invalid_style_persists_failure_artifacts(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
@@ -896,14 +981,15 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             job_root = runtime_root / "mcp_project_jobs" / "invalid-style"
             self.assertEqual(result["status"], "error")
-            self.assertEqual(result["failure_stage"], "CONFIG")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
             self.assertTrue((job_root / "manifest.json").is_file())
             self.assertTrue((job_root / "status.json").is_file())
             manifest = json.loads((job_root / "manifest.json").read_text(encoding="utf-8"))
             status = json.loads((job_root / "status.json").read_text(encoding="utf-8"))
-            self.assertEqual(result["style_summary"]["target_format"], "not-a-style")
-            self.assertEqual(manifest["style_summary"], result["style_summary"])
-            self.assertEqual(status["style_summary"], result["style_summary"])
+            self.assertEqual(manifest["failure_stage"], "CONTRACT")
+            self.assertEqual(status["failure_stage"], "CONTRACT")
+            self.assertEqual(manifest["style_summary"], {})
+            self.assertEqual(status["style_summary"], {})
             self.assertEqual(
                 manifest["provenance"]["attempt"],
                 result["provenance"]["attempt"],
@@ -925,7 +1011,36 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["error_category"], "validation")
+            self.assertEqual(result["error_code"], "GRAPHHUB_VALIDATION")
             self.assertIn("project_path must stay under", result["errors"][0])
+            self.assertNotIn(str(external_root), result["errors"][0])
+            self.assertEqual(result["created_paths"], [])
+            self.assertFalse((runtime_root / "mcp_project_jobs").exists())
+
+    def test_render_project_figure_missing_script_is_contract_error_without_writing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            research_root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(research_root)
+            (project / "hub_scripts" / "plot.py").unlink()
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=research_root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "missing-script"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["error_category"], "validation")
+            self.assertEqual(result["error_code"], "GRAPHHUB_VALIDATION")
+            self.assertEqual(
+                result["errors"],
+                ["Configured project render paths must stay inside the project and resolve to available files."],
+            )
+            self.assertEqual(result["created_paths"], [])
             self.assertFalse((runtime_root / "mcp_project_jobs").exists())
 
     def test_render_project_figure_missing_input_fails_data_contract_before_render(self):
@@ -952,6 +1067,28 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(result["manifest_path"].startswith("runtime://"))
             persisted = json.loads((job_root / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(persisted["provenance"]["attempt"], result["provenance"]["attempt"])
+
+    def test_render_project_figure_malformed_data_remains_validation_failure(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            project = _write_project_render_fixture(root)
+            (project / "results" / "data" / "summary.csv").write_text(
+                'x,y\n1,"unterminated\n',
+                encoding="utf-8",
+            )
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_project_figure",
+                {"project_path": str(project), "figure_id": "Fig1", "job_id": "malformed-input"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "VALIDATE")
+            self.assertNotEqual(result["error_code"], "PROJECT_DECLARATION_PATH_INVALID")
+            self.assertEqual(result["errors"], ["Data contract validation failed for project render."])
 
     def test_render_project_invalid_config_persists_public_safe_failure_artifacts(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -1012,21 +1149,47 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             data_path = project / "results" / "data" / "summary.csv"
             data_path.unlink()
             symlink_or_skip(data_path, target)
-            server = GraphHubMCPServer(research_root=root, runtime_root=Path(tmpdir) / "runtime")
+            runtime_root = Path(tmpdir) / "runtime"
+            before = _snapshot_tree(project)
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
 
-            result = self._call(
-                server,
-                "figops.render_project_figure",
-                {"project_path": str(project), "figure_id": "Fig1", "job_id": "symlink-input"},
-            )
+            with (
+                patch.object(server, "_copy_project_snapshot", wraps=server._copy_project_snapshot) as copy_snapshot,
+                patch.object(
+                    server,
+                    "_run_project_figure_script",
+                    wraps=server._run_project_figure_script,
+                ) as run_script,
+                patch(
+                    "hub_core.mcp.tools.render_project.promote_eligible_project_result",
+                ) as promote_result,
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_project_figure",
+                    {"project_path": str(project), "figure_id": "Fig1", "job_id": "symlink-input"},
+                )
 
             self.assertEqual(result["status"], "error")
-            self.assertEqual(result["failure_stage"], "EXPORT")
+            self.assertEqual(result["failure_stage"], "CONTRACT", json.dumps(result, sort_keys=True))
+            self.assertEqual(result["error_category"], "validation")
+            self.assertEqual(result["error_code"], "PROJECT_DECLARATION_PATH_INVALID")
             error = result["errors"][0]
+            normalized_error = error.lower()
             self.assertTrue(
-                "symlink" in error or "escapes project root" in error,
+                "symlink" in normalized_error
+                or "escapes project root" in normalized_error
+                or error == "Failed to read config: Project config must stay inside the project root."
+                or ("project_path" in normalized_error and "research root" in normalized_error)
+                or error == "Data contract preflight failed for project render.",
                 f"unexpected snapshot-input rejection: {error}",
             )
+            copy_snapshot.assert_not_called()
+            run_script.assert_not_called()
+            promote_result.assert_not_called()
+            self.assertFalse((runtime_root / "mcp_project_jobs" / "symlink-input" / "project").exists())
+            self.assertEqual(_snapshot_tree(project), before)
+            self.assertFalse((project / "results" / "figures" / "Fig1.png").exists())
 
     def test_render_project_figure_expands_declared_input_globs_in_snapshot(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_render_") as tmpdir:
@@ -1267,7 +1430,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                from PIL import Image
+
+                Image.new("RGB", (8, 6), "navy").save(spec_payload["output_path"], format="PNG")
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -1309,7 +1474,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -1352,7 +1517,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -1396,7 +1561,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -1449,7 +1614,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -1561,7 +1726,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -1636,7 +1801,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(Path(result["output_path"]).is_file())
             self.assertEqual(result["job_id"], "render-legend-axis-polish-smoke")
 
-    def test_render_csv_graph_smoke_reports_point_label_skips(self):
+    def test_render_csv_graph_does_not_project_point_label_policy_into_raw_geometry(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             tmp_root = Path(tmpdir)
             data_path = tmp_root / "input" / "labels.csv"
@@ -1668,11 +1833,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             self.assertIn(result["status"], {"ok", "warning"})
             self.assertTrue(Path(result["output_path"]).is_file())
-            checks = result["geometry_diagnostics"]["checks"]
-            point_label_check = next(check for check in checks if check["name"] == "point_label_skips")
-            self.assertFalse(point_label_check["passed"])
-            self.assertEqual(point_label_check["data"]["skipped_labels"], 2)
-            self.assertIn(point_label_check["detail"], result["warnings"])
+            measurements = result["geometry_diagnostics"]["measurements"]
+            self.assertFalse(any(item["metric_id"].startswith("point_label_skips") for item in measurements))
+            self.assertTrue(any(item["metric_id"].startswith("text_axis_edge_distances") for item in measurements))
 
     def test_render_csv_graph_smoke_reports_annotation_overlay_contrast(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -1698,10 +1861,11 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             )
 
             self.assertIn(result["status"], {"ok", "warning"})
-            checks = result["geometry_diagnostics"]["checks"]
-            contrast_check = next(check for check in checks if check["name"] == "annotation_overlay_contrast")
-            self.assertFalse(contrast_check["passed"])
-            self.assertIn(contrast_check["detail"], result["warnings"])
+            measurements = result["geometry_diagnostics"]["measurements"]
+            contrast_measurement = next(
+                item for item in measurements if item["metric_id"].startswith("annotation_overlay_contrast")
+            )
+            self.assertTrue(contrast_measurement["value"]["pairs"])
 
     def test_render_csv_graph_forwards_log_scale_series_and_annotations(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -1718,7 +1882,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -1837,7 +2001,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -1887,7 +2051,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -1906,7 +2070,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                         "y_column": "y",
                         "plot_type": "scatter",
                         "fit_line": True,
-                        "ci_band": True,
+                        "ci_band": False,
                         "fit_options": {
                             "model": "linear",
                             "label": "least-squares fit",
@@ -1978,7 +2142,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -2082,7 +2246,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -2186,7 +2350,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_multipanel_figure", side_effect=capture_render),
@@ -2245,14 +2409,13 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                                     }
                                 ],
                                 "fit_line": True,
-                                "ci_band": True,
+                                "ci_band": False,
                                 "fit_options": {
                                     "model": "linear",
                                     "label": "panel fit",
                                     "color": "tab:blue",
                                     "ci_alpha": 0.15,
                                 },
-                                "significance_markers": [{"x1": 100, "x2": 1000, "y": 11, "label": "p<0.05"}],
                                 "title": "panel b",
                             },
                         ],
@@ -2294,10 +2457,9 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertEqual(captured["panels"][1]["guide_curves"][0]["color"], "black")
             self.assertEqual(captured["panels"][1]["fill_between"][0]["alpha"], 0.2)
             self.assertTrue(captured["panels"][1]["fit_line"])
-            self.assertTrue(captured["panels"][1]["ci_band"])
+            self.assertFalse(captured["panels"][1]["ci_band"])
             self.assertEqual(captured["panels"][1]["fit_options"]["label"], "panel fit")
             self.assertEqual(captured["panels"][1]["fit_options"]["ci_alpha"], 0.15)
-            self.assertEqual(captured["panels"][1]["significance_markers"][0]["label"], "p<0.05")
             self.assertEqual(result["provenance"]["renderer_surface"], "figops.render_csv_multipanel")
             config = yaml.safe_load(Path(result["config_path"]).read_text(encoding="utf-8"))
             self.assertEqual(config["render_payload"]["panels"][1]["secondary_y"]["column"], "sem")
@@ -2315,7 +2477,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             server = GraphHubMCPServer(research_root=tmp_root, runtime_root=runtime_root)
 
             def capture_render(spec_payload):
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_multipanel_figure", side_effect=capture_render),
@@ -2350,7 +2512,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_multipanel_figure", side_effect=capture_render),
@@ -2654,7 +2816,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_multipanel_figure", side_effect=capture_render),
@@ -2791,7 +2953,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
 
             def capture_render(spec_payload):
                 captured.update(spec_payload)
-                Path(spec_payload["output_path"]).write_bytes(b"png")
+                _write_valid_png(spec_payload["output_path"])
 
             with (
                 patch.object(GraphHubMCPServer, "_run_render_bridge_figure", side_effect=capture_render),
@@ -3281,10 +3443,14 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertIn("timeout", result["resolution_hint"].lower())
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("timed out", result["errors"][0])
-            self.assertTrue(str(Path(result["job_root"]).resolve()).startswith(str(runtime_root.resolve())))
-            self.assertTrue(Path(result["manifest_path"]).is_file())
-            self.assertTrue(Path(result["status_path"]).is_file())
-            self.assertTrue(Path(result["latest_dir"]).is_dir())
+            self.assertTrue(
+                _runtime_artifact_path(result["job_root"], runtime_root)
+                .resolve()
+                .is_relative_to(runtime_root.resolve())
+            )
+            self.assertTrue(_runtime_artifact_path(result["manifest_path"], runtime_root).is_file())
+            self.assertTrue(_runtime_artifact_path(result["status_path"], runtime_root).is_file())
+            self.assertTrue(_runtime_artifact_path(result["latest_dir"], runtime_root).is_dir())
             self.assertEqual(result["latest_alias"], result["latest_dir"])
 
     def test_render_csv_graph_execution_error_sanitizes_runtime_path(self):
@@ -3306,14 +3472,17 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(result["manual_review_needed"])
             self.assertIn("runtime://mcp_jobs/path-demo/results/figures/graph.png", result["errors"][0])
             self.assertNotIn(str(runtime_root.resolve()), result["errors"][0])
-            self.assertTrue(Path(result["manifest_path"]).is_file())
-            self.assertTrue(Path(result["status_path"]).is_file())
-            self.assertTrue(Path(result["latest_dir"]).is_dir())
+            manifest_path = _runtime_artifact_path(result["manifest_path"], runtime_root)
+            status_path = _runtime_artifact_path(result["status_path"], runtime_root)
+            latest_dir = _runtime_artifact_path(result["latest_dir"], runtime_root)
+            self.assertTrue(manifest_path.is_file())
+            self.assertTrue(status_path.is_file())
+            self.assertTrue(latest_dir.is_dir())
             self.assertEqual(result["latest_alias"], result["latest_dir"])
-            self.assertTrue((Path(result["latest_dir"]) / "manifest.json").is_file())
-            self.assertTrue((Path(result["latest_dir"]) / "status.json").is_file())
-            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
-            status = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
+            self.assertTrue((latest_dir / "manifest.json").is_file())
+            self.assertTrue((latest_dir / "status.json").is_file())
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            status = json.loads(status_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["failure_stage"], "PLOT")
             self.assertEqual(manifest["resolution_hint"], result["resolution_hint"])
             self.assertEqual(manifest["status_path"], result["status_path"])
@@ -3346,8 +3515,30 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                 {"data_path": str(link_dir / data_path.name), "x_column": "x", "y_column": "y"},
             )
 
-            self.assertIn(result["status"], {"ok", "warning"})
+            self.assertIn(result["status"], {"ok", "warning"}, json.dumps(result, sort_keys=True))
             self.assertFalse(any("symlinked path components" in error for error in result["errors"]))
+
+    def test_render_csv_graph_rejects_external_symlinked_data_path_without_writing(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_symlink_data_") as tmpdir:
+            workspace = Path(tmpdir)
+            root = workspace / "root"
+            root.mkdir()
+            outside = _write_csv(workspace / "outside" / "data.csv")
+            link = root / "external.csv"
+            symlink_or_skip(link, outside)
+            runtime_root = workspace / "runtime"
+            server = GraphHubMCPServer(research_root=root, runtime_root=runtime_root)
+
+            result = self._call(
+                server,
+                "figops.render_csv_graph",
+                {"data_path": str(link), "x_column": "x", "y_column": "y"},
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["error_category"], "validation")
+            self.assertFalse(runtime_root.exists())
 
     def test_render_csv_graph_failure_manifest_preserves_requested_baseline_state(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -3686,6 +3877,127 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             # The id render reports back must equal the id list emitted.
             self.assertEqual(server._stable_project_id_for_path(project), project_id)
 
+    def test_external_project_alias_is_listed_but_project_id_render_is_rejected_without_writes(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_alias_") as tmpdir:
+            workspace = Path(tmpdir)
+            research_root = workspace / "ResearchOS"
+            external_project = _write_project_render_fixture(workspace / "external", name="01_External")
+            research_root.mkdir()
+            alias = research_root / "01_Alias"
+            symlink_or_skip(alias, external_project, target_is_directory=True)
+            runtime_root = workspace / "runtime"
+            server = GraphHubMCPServer(
+                research_root=research_root,
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
+
+            listed = self._call(server, "figops.list_projects")
+            alias_entry = next(project for project in listed["projects"] if project["project_root"] == "01_Alias")
+
+            with (
+                patch.object(server, "_load_project_config", wraps=server._load_project_config) as load_config,
+                patch.object(server, "_copy_project_snapshot", wraps=server._copy_project_snapshot) as copy_snapshot,
+                patch.object(
+                    server,
+                    "_run_project_figure_script",
+                    wraps=server._run_project_figure_script,
+                ) as run_script,
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_project_figure",
+                    {
+                        "project_id": alias_entry["project_id"],
+                        "figure_id": "Fig1",
+                        "job_id": "external-alias",
+                    },
+                )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["error_category"], "validation")
+            self.assertEqual(result["error_code"], "GRAPHHUB_VALIDATION")
+            self.assertEqual(len(result["errors"]), 1)
+            self.assertIn(
+                result["errors"][0],
+                {
+                    PROJECT_ID_REPARSE_ERROR,
+                    "project_id must stay under the research root.",
+                },
+            )
+            load_config.assert_not_called()
+            copy_snapshot.assert_not_called()
+            run_script.assert_not_called()
+            self.assertFalse((runtime_root / "mcp_project_jobs" / "external-alias").exists())
+            self.assertFalse((external_project / "results" / "figures" / "Fig1.png").exists())
+
+    def test_internal_project_alias_is_listed_but_project_id_render_is_rejected_without_writes(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_alias_") as tmpdir:
+            workspace = Path(tmpdir)
+            research_root = workspace / "ResearchOS"
+            internal_project = _write_project_render_fixture(research_root / ".venv", name="01_Internal")
+            alias = research_root / "01_Alias"
+            symlink_or_skip(alias, internal_project, target_is_directory=True)
+            runtime_root = workspace / "runtime"
+            server = GraphHubMCPServer(
+                research_root=research_root,
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
+
+            listed = self._call(server, "figops.list_projects")
+            alias_entry = next(project for project in listed["projects"] if project["project_root"] == "01_Alias")
+
+            with (
+                patch.object(server, "_load_project_config", wraps=server._load_project_config) as load_config,
+                patch.object(server, "_copy_project_snapshot", wraps=server._copy_project_snapshot) as copy_snapshot,
+                patch.object(
+                    server,
+                    "_run_project_figure_script",
+                    wraps=server._run_project_figure_script,
+                ) as run_script,
+            ):
+                result = self._call(
+                    server,
+                    "figops.render_project_figure",
+                    {
+                        "project_id": alias_entry["project_id"],
+                        "figure_id": "Fig1",
+                        "job_id": "internal-alias",
+                    },
+                )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["failure_stage"], "CONTRACT")
+            self.assertEqual(result["errors"], [PROJECT_ID_REPARSE_ERROR])
+            load_config.assert_not_called()
+            copy_snapshot.assert_not_called()
+            run_script.assert_not_called()
+            self.assertFalse((runtime_root / "mcp_project_jobs" / "internal-alias").exists())
+            self.assertFalse((internal_project / "results" / "figures" / "Fig1.png").exists())
+
+    def test_real_project_id_still_resolves_without_execution_or_writes(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_project_id_") as tmpdir:
+            workspace = Path(tmpdir)
+            research_root = workspace / "ResearchOS"
+            project = _write_project_render_fixture(research_root, name="01_Real")
+            runtime_root = workspace / "runtime"
+            server = GraphHubMCPServer(
+                research_root=research_root,
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
+
+            listed = self._call(server, "figops.list_projects")
+            project_id = next(
+                item["project_id"] for item in listed["projects"] if item["project_root"] == "01_Real"
+            )
+            resolved = server._resolve_project_path({"project_id": project_id})
+
+            self.assertEqual(resolved, project.resolve())
+            self.assertFalse(runtime_root.exists())
+
 
 def _write_dense_csv(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -3720,12 +4032,12 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             _, result = self._render_csv(tmpdir)
             self.assertIn(result["status"], {"ok", "warning"})
             diag = result["geometry_diagnostics"]
-            self.assertEqual(diag["schema_version"], "geometry_diagnostics/1")
-            self.assertTrue(diag["checks"])
+            self.assertEqual(diag["schema_version"], "geometry_diagnostics/2")
+            self.assertTrue(diag["measurements"])
             self.assertEqual(result["layout_report"]["schema_version"], "layout_report/1")
             manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
             self.assertIn("geometry_diagnostics", manifest)
-            self.assertEqual(manifest["geometry_diagnostics"]["schema_version"], "geometry_diagnostics/1")
+            self.assertEqual(manifest["geometry_diagnostics"]["schema_version"], "geometry_diagnostics/2")
             self.assertEqual(manifest["layout_report"]["schema_version"], "layout_report/1")
             status = json.loads(Path(result["status_path"]).read_text(encoding="utf-8"))
             self.assertEqual(status["layout_report"]["schema_version"], "layout_report/1")
@@ -3744,7 +4056,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             self.assertIn(result["status"], {"ok", "warning"})
             self.assertIn("geometry_diagnostics", result)
             self.assertIn("layout_report", result)
-            self.assertEqual(result["geometry_diagnostics"]["schema_version"], "geometry_diagnostics/1")
+            self.assertEqual(result["geometry_diagnostics"]["schema_version"], "geometry_diagnostics/2")
             self.assertEqual(result["layout_report"]["schema_version"], "layout_report/1")
             snapshot = Path(result["snapshot_project_path"])
             self.assertFalse((snapshot / "geometry_diagnostics.json").exists())
@@ -3765,9 +4077,8 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             )
             self.assertIn(result["status"], {"ok", "warning"})
             diag = result["geometry_diagnostics"]
-            self.assertIsNotNone(diag["passed"])
-            self.assertTrue(len(diag["checks"]) > 0)
-            self.assertEqual(diag["schema_version"], "geometry_diagnostics/1")
+            self.assertTrue(diag["measurements"])
+            self.assertEqual(diag["schema_version"], "geometry_diagnostics/2")
             job_root = Path(result["snapshot_project_path"]).parent
             self.assertTrue((job_root / "geometry_diagnostics.json").is_file())
             snapshot = Path(result["snapshot_project_path"])
@@ -3889,12 +4200,18 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
                     "script": "hub_scripts/plot.py",
                     "inputs": ["results/data/summary.csv"],
                     "output": "results/figures/fig_cvs_fits/FigPI_CvS_Fits.png",
+                    "claim": "PI fixture panel is rendered.",
+                    "samples": ["S1"],
+                    "conditions": ["condition_a"],
                 },
                 {
                     "id": "FigPTFE_CvS_Fits",
                     "script": "hub_scripts/plot.py",
                     "inputs": ["results/data/summary.csv"],
                     "output": "results/figures/fig_cvs_fits/FigPTFE_CvS_Fits.png",
+                    "claim": "PTFE fixture panel is rendered.",
+                    "samples": ["S1"],
+                    "conditions": ["condition_a"],
                 },
             ]
             config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
@@ -3940,12 +4257,18 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
                     "script": "hub_scripts/plot.py",
                     "inputs": ["results/data/summary.csv"],
                     "output": "results/figures/fig_cvs_fits/FigPI_CvS_Fits.png",
+                    "claim": "PI fixture panel is rendered.",
+                    "samples": ["S1"],
+                    "conditions": ["condition_a"],
                 },
                 {
                     "id": "FigPTFE_CvS_Fits",
                     "script": "hub_scripts/plot.py",
                     "inputs": ["results/data/summary.csv"],
                     "output": "results/figures/fig_cvs_fits/FigPTFE_CvS_Fits.png",
+                    "claim": "PTFE fixture panel is rendered.",
+                    "samples": ["S1"],
+                    "conditions": ["condition_a"],
                 },
             ]
             config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
@@ -3982,12 +4305,18 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
                     "script": "hub_scripts/plot.py",
                     "inputs": ["results/data/summary.csv"],
                     "output": "results/figures/Setup_A.png",
+                    "claim": "Setup fixture panel is rendered.",
+                    "samples": ["S1"],
+                    "conditions": ["condition_a"],
                 },
                 {
                     "id": "Result_A",
                     "script": "hub_scripts/plot.py",
                     "inputs": ["results/data/summary.csv"],
                     "output": "results/figures/Result_A.png",
+                    "claim": "Result fixture panel is rendered.",
+                    "samples": ["S1"],
+                    "conditions": ["condition_a"],
                 },
             ]
             config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
@@ -4002,7 +4331,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             self.assertTrue(result["figure_metadata"]["family_check"]["passed"])
             self.assertEqual(result["figure_metadata"]["family_check"]["siblings"], [])
 
-    def test_project_render_surfaces_artist_overlaps_in_visual_preflight_status(self):
+    def test_project_render_keeps_artist_overlap_iou_raw_until_policy_selection(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
             project = _write_project_save_journal_fixture(root)
@@ -4033,12 +4362,13 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             )
 
             self.assertEqual(result["status"], "warning")
-            overlaps = result["visual_preflight_status"]["overlaps"]
-            self.assertTrue(any("S70" in item["a"] or "S70" in item["b"] for item in overlaps))
-            self.assertTrue(any("marker:" in item["a"] or "marker:" in item["b"] for item in overlaps))
-            layout_overlaps = result["layout_report"]["overlaps"]
-            self.assertTrue(any(item["kind"] == "text-marker" for item in layout_overlaps))
-            self.assertTrue(any("S70" in item["a"] or "S70" in item["b"] for item in layout_overlaps))
+            self.assertEqual(result["publication_status"], "unverified")
+            self.assertFalse(result["promotion_eligible"])
+            measurement = next(
+                item for item in result["geometry_diagnostics"]["measurements"]
+                if item["metric_id"] == "artist_pair_iou[axis=0]"
+            )
+            self.assertTrue(any(pair["iou"] > 0 for pair in measurement["value"]["pairs"]))
 
     def test_project_engine_error_degrades_real_render(self):
         # Drives the diagnostics-engine failure through a real project render: the engine is
@@ -4056,7 +4386,10 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "geom-project-boom"},
             )
             self.assertNotEqual(result["status"], "error")
-            self.assertIsNone(result["geometry_diagnostics"]["passed"])
+            self.assertEqual(result["geometry_diagnostics"]["measurements"], [])
+            self.assertTrue(
+                any("boom" in warning for warning in result["geometry_diagnostics"]["warnings"])
+            )
             self.assertTrue(Path(result["output_path"]).is_file())
 
     def test_manifest_round_trips_native_types(self):
@@ -4064,7 +4397,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             _, result = self._render_csv(tmpdir)
             text = Path(result["manifest_path"]).read_text(encoding="utf-8")
             reloaded = json.loads(text)  # numpy/tuple leak would have failed the manifest write
-            self.assertEqual(reloaded["geometry_diagnostics"]["schema_version"], "geometry_diagnostics/1")
+            self.assertEqual(reloaded["geometry_diagnostics"]["schema_version"], "geometry_diagnostics/2")
 
     def test_reproducibility_hashes_unbroken(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
@@ -4077,8 +4410,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             _, result = self._render_csv(tmpdir, dry_run=True)
             diag = result["geometry_diagnostics"]
-            self.assertIsNone(diag["passed"])
-            self.assertEqual(diag["checks"], [])
+            self.assertEqual(diag["measurements"][0]["availability"], "unavailable")
             self.assertEqual(diag["warnings"], ["dry_run"])
 
     def test_contract_stage_error_carries_stub(self):
@@ -4094,7 +4426,9 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             self.assertEqual(missing_column["status"], "error")
             self.assertEqual(missing_column["failure_stage"], "CONTRACT")
             self.assertIn("geometry_diagnostics", missing_column)
-            self.assertIsNone(missing_column["geometry_diagnostics"]["passed"])
+            self.assertEqual(
+                missing_column["geometry_diagnostics"]["measurements"][0]["availability"], "unavailable"
+            )
 
             file_missing = self._call(
                 server,
@@ -4103,7 +4437,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             )
             self.assertEqual(file_missing["status"], "error")
             self.assertIn("geometry_diagnostics", file_missing)
-            self.assertIsNone(file_missing["geometry_diagnostics"]["passed"])
+            self.assertEqual(file_missing["geometry_diagnostics"]["measurements"][0]["availability"], "unavailable")
 
     def test_warn_only_never_errors(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
@@ -4119,29 +4453,28 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
         # and _geometry_warnings surfacing that a real render (preflight-masked) cannot.
         clean_preflight = {"passed": True, "checks": [], "warnings": []}
         finding = {
-            "schema_version": "geometry_diagnostics/1",
-            "passed": False,
-            "checks": [
+            "schema_version": "geometry_diagnostics/2",
+            "measurements": [
                 {
-                    "name": "tick_label_overlaps",
-                    "passed": False,
-                    "detail": "x: 3 overlapping pairs; y: 0 overlapping pairs (axis 0)",
-                    "data": {"axis_index": 0},
+                    "metric_id": "tick_label_overlaps[axis=0]",
+                    "availability": "available",
+                    "unit": "structured",
+                    "scope": "axis=0",
+                    "value": {"summary": "3 overlapping pairs", "axis_index": 0},
                 }
             ],
             "warnings": [],
         }
-        clean = {"schema_version": "geometry_diagnostics/1", "passed": True, "checks": [], "warnings": []}
+        clean = {"schema_version": "geometry_diagnostics/2", "measurements": [], "warnings": []}
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             with (
                 patch.object(GraphHubMCPServer, "_safe_preflight", return_value=clean_preflight),
                 patch("hub_core.mcp.render_orchestration._read_geometry_sidecar", return_value=finding),
             ):
                 _, result = self._render_csv(tmpdir, job_id="geom-flip")
-            self.assertEqual(result["status"], "warning")
+            self.assertEqual(result["status"], "ok")
             self.assertEqual(result["errors"], [])
-            self.assertTrue(result["manual_review_needed"])
-            self.assertIn("x: 3 overlapping pairs; y: 0 overlapping pairs (axis 0)", result["warnings"])
+            self.assertFalse(result["manual_review_needed"])
 
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             with (
@@ -4173,8 +4506,7 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
                 side_effect=RuntimeError("boom"),
             ):
                 result = _safe_geometry_diagnostics_inline(fig)
-            self.assertIsNone(result["passed"])
-            self.assertEqual(result["checks"], [])
+            self.assertEqual(result["measurements"], [])
             self.assertEqual(result["warnings"], ["boom"])
         finally:
             if prior is None:
@@ -4186,12 +4518,11 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
     def test_tri_state_discriminator(self):
         # An agent-style `passed is False` branch must distinguish a real finding from
         # "not measured" (None) and a clean pass (True), never conflating None and False.
-        def is_finding(diag):
-            return diag.get("passed") is False
+        def is_available(measurement):
+            return measurement.get("availability") == "available"
 
-        self.assertTrue(is_finding({"passed": False}))
-        self.assertFalse(is_finding({"passed": True}))
-        self.assertFalse(is_finding({"passed": None}))
+        self.assertTrue(is_available({"availability": "available"}))
+        self.assertFalse(is_available({"availability": "unavailable"}))
 
     def test_no_sidecar_marker(self):
         # A render whose save_journal_fig never wrote a sidecar (env var stripped) must
@@ -4200,9 +4531,64 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             diag = _read_geometry_sidecar(Path(tmpdir))
-            self.assertIsNone(diag["passed"])
-            self.assertEqual(diag["data"]["reason"], "no_sidecar")
+            self.assertEqual(diag["measurements"][0]["availability"], "unavailable")
+            self.assertIn("no sidecar emitted", diag["measurements"][0]["reason"])
             self.assertTrue(any("geometry_diagnostics_unavailable" in warning for warning in diag["warnings"]))
+
+    def test_sidecar_rejects_recursive_policy_fields_in_raw_v2(self):
+        from hub_core.mcp.render_orchestration import _read_geometry_sidecar
+
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
+            job_root = Path(tmpdir)
+            (job_root / "geometry_diagnostics.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "geometry_diagnostics/2",
+                        "measurements": [
+                            {
+                                "metric_id": "geometry.fact",
+                                "availability": "available",
+                                "value": {"nested": {"aggregate": "mean"}},
+                                "unit": "structured",
+                                "scope": "figure",
+                            }
+                        ],
+                        "warnings": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            diag = _read_geometry_sidecar(job_root)
+            self.assertEqual(diag["measurements"][0]["availability"], "unavailable")
+            self.assertIn("invalid sidecar", diag["measurements"][0]["reason"])
+
+    def test_sidecar_legacy_v1_is_explicitly_adapted_to_public_v2(self):
+        from hub_core.mcp.render_orchestration import _read_geometry_sidecar
+
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
+            job_root = Path(tmpdir)
+            (job_root / "geometry_diagnostics.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "geometry_diagnostics/1",
+                        "passed": True,
+                        "checks": [
+                            {
+                                "name": "blank_area_ratio",
+                                "passed": True,
+                                "detail": "measured",
+                                "data": {"axis_index": 0, "ratio": 0.25},
+                            }
+                        ],
+                        "warnings": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            diag = _read_geometry_sidecar(job_root)
+            self.assertEqual(diag["schema_version"], "geometry_diagnostics/2")
+            self.assertEqual(diag["measurements"][0]["value"]["ratio"], 0.25)
+            self.assertNotIn("passed", diag)
 
     def test_env_var_no_leak(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir_a:
@@ -4228,10 +4614,11 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             if tool_name == "figops.render_project_figure":
                 self.assertIn("figure_metadata", properties)
             geom_schema = properties["geometry_diagnostics"]
-            self.assertEqual(set(geom_schema["required"]), {"schema_version", "passed", "checks", "warnings"})
-            metric_enum = geom_schema["properties"]["checks"]["items"]["properties"]["name"]["enum"]
-            self.assertIn("tick_label_overlaps", metric_enum)
-            self.assertIn("text_axis_edge_proximity", metric_enum)
+            self.assertEqual(set(geom_schema["required"]), {"schema_version", "measurements", "warnings"})
+            self.assertEqual(geom_schema["properties"]["schema_version"]["const"], "geometry_diagnostics/2")
+            measurement_properties = geom_schema["properties"]["measurements"]["items"]["properties"]
+            self.assertIn("metric_id", measurement_properties)
+            self.assertNotIn("passed", measurement_properties)
             report_schema = properties["layout_report"]
             self.assertIn("overlaps", report_schema["required"])
             self.assertIn("render_errors", report_schema["required"])
@@ -4248,6 +4635,19 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
         # key would be caught by additionalProperties:False, not just by manual tracing.
         csv_schema = definitions["figops.render_csv_graph"]["outputSchema"]
         project_schema = definitions["figops.render_project_figure"]["outputSchema"]
+        project_properties = project_schema["properties"]
+        self.assertEqual(project_properties["claim_inventory"]["type"], "object")
+        self.assertEqual(
+            project_properties["publication_status"],
+            {"type": "string", "enum": ["verified", "unverified"]},
+        )
+        self.assertEqual(project_properties["promotion_eligible"]["type"], "boolean")
+        for optional_success_field in (
+            "claim_inventory",
+            "publication_status",
+            "promotion_eligible",
+        ):
+            self.assertNotIn(optional_success_field, project_schema.get("required", []))
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             _, csv_success = self._render_csv(tmpdir)
             self._assert_validates(csv_success, csv_schema)
@@ -4306,7 +4706,11 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
                 {"project_path": str(project), "figure_id": "Fig1", "job_id": "geom-schema-stub"},
             )
             self._assert_validates(project_no_sidecar, project_schema)
-            self.assertIsNone(project_no_sidecar["geometry_diagnostics"]["passed"])
+            self.assertEqual(project_no_sidecar["geometry_diagnostics"]["schema_version"], "geometry_diagnostics/2")
+            self.assertEqual(
+                project_no_sidecar["geometry_diagnostics"]["measurements"][0]["availability"],
+                "unavailable",
+            )
             self.assertIsNone(project_no_sidecar["layout_report"]["passed"])
 
     def _assert_validates(self, instance: dict, schema: dict) -> None:

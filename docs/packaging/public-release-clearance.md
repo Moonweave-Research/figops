@@ -1,7 +1,7 @@
 # Public release clearance checklist
 
 The local release docs record `figops` as the public PyPI package name,
-`0.18.0` as the pinned PyPI install example, and `0.18.0` as the pinned
+`0.19.0` as the pinned PyPI install example, and `0.19.0` as the pinned
 GitHub Release wheel/sdist example. Public package
 distribution uses Apache-2.0, and future PyPI/TestPyPI uploads go through the
 guarded technical checklist plus the manual Trusted Publishing workflow.
@@ -24,15 +24,27 @@ Why Apache-2.0 is the best default for this project:
   may evolve alongside publishable methods.
 - It is widely recognized by PyPI, GitHub, companies, and universities.
 
-LICENSE/NOTICE are now Apache-2.0 for package distribution. Keep the full repository private until repo-only private markers, docs, and internal style packs are intentionally separated or cleared.
+LICENSE/NOTICE are Apache-2.0 for package distribution. The repository owner
+has authorized the v0.20.0 public release, including merge, tag, GitHub
+Release, TestPyPI, and PyPI publication. The authoritative evidence is the
+[PR #224 owner authorization](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221).
 
-Use [public-release-decision-record.md](./public-release-decision-record.md) to
-record the required version, visibility, marker, workflow-doc, style-pack, IP,
-license, and publishing-owner decisions before changing repository visibility.
+Even when the generated status reports a green repository technical gate and
+zero technical blockers, that machine result is evidence rather than
+authorization to publish, merge, tag, or release. The authoritative
+`public-core-inventory.json` now records owner authorization plus a validated
+HTTPS evidence reference; the generated status reads only that inventory, not
+this checklist or the decision-record Markdown. Re-run technical gates for the
+exact release commit before each irreversible publication step.
 
-## Required human approvals
+Use [public-release-decision-record.md](./public-release-decision-record.md) as
+the human-readable mirror of the recorded authorization and its release scope.
 
-Before any future TestPyPI or PyPI upload, confirm these items:
+## Recorded human/legal/release approval
+
+The repository owner recorded that the required human, legal, and release
+approvals are granted for v0.20.0. Before each future release that is not
+covered by that authorization, confirm these items again:
 
 1. Who owns the code: you personally, the lab, the university, a grant-funded
    project, or a mixed set of contributors?
@@ -68,7 +80,7 @@ Expected for a private-repo / public-PyPI path: `guarded_pypi_upload.py` can pas
 Use PyPI for normal installs:
 
 ```bash
-APPROVED_VERSION=0.18.0  # replace with the approved release version
+APPROVED_VERSION=0.19.0  # replace with the approved release version
 python -m pip install "figops==$APPROVED_VERSION"
 figops-mcp --smoke
 ```
@@ -77,14 +89,14 @@ Use the locally documented GitHub Release asset when you need the exact attached
 artifact:
 
 ```bash
-APPROVED_VERSION=0.18.0  # replace with the approved GitHub Release version
+APPROVED_VERSION=0.19.0  # replace with the approved GitHub Release version
 gh release download "v$APPROVED_VERSION" --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
 python -m pip install "dist-release/figops-$APPROVED_VERSION-py3-none-any.whl"
 figops-mcp --smoke
 ```
 
 The pinned examples are local documentation anchors: PyPI remains pinned to
-`0.18.0`, and the GitHub Release asset is also pinned to `0.18.0`. Update either
+`0.19.0`, and the GitHub Release asset is also pinned to `0.19.0`. Update either
 only after explicit release-maintainer approval and public index/release-asset
 verification.
 

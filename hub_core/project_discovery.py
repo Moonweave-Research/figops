@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
 from .adapters import select_adapters
+from .execution_project_boundary import ExecutionProjectPathError, resolve_execution_project_path
 
 DEFAULT_EXCLUDED_DIRS = {"__pycache__"}
+EPHEMERAL_ALIAS_SEGMENTS = {".worktrees", "bridge_jobs", "runtime", "jobs"}
 
 
 @dataclass(frozen=True)
@@ -60,21 +63,27 @@ class ProjectDiscoveryService:
     def discover(self, max_depth: int = 4) -> list[DiscoveredProject]:
         max_depth = max(1, int(max_depth or 1))
         discovered: dict[str, DiscoveredProject] = {}
+        alias_candidates: set[Path] = set()
 
-        for current_root, dirs, _files in os.walk(self.root_dir, followlinks=True):
+        for current_root, dirs, _files in os.walk(self.root_dir, followlinks=False):
             current_path = Path(current_root)
             rel_path = self._relative_path(current_path)
             depth = 0 if not rel_path else len(Path(rel_path).parts)
 
+            direct_children = list(dirs)
             dirs[:] = self._filter_dirs(current_path, dirs)
             if depth >= max_depth:
                 dirs[:] = []
 
             if current_path == self.root_dir:
+                if depth < max_depth:
+                    alias_candidates.update(self._direct_project_aliases(current_path, direct_children))
                 continue
 
             config_path = self._find_config_path(current_path)
             if not config_path:
+                if depth < max_depth:
+                    alias_candidates.update(self._direct_project_aliases(current_path, direct_children))
                 continue
 
             project = self._build_project(current_path, config_path)
@@ -88,8 +97,28 @@ class ProjectDiscoveryService:
                     master_depth=depth,
                 ):
                     discovered.setdefault(folder_entry.path, folder_entry)
-            if project.role != "master":
+            if project.role == "master" and depth < max_depth:
+                alias_candidates.update(self._direct_project_aliases(current_path, direct_children))
+            else:
                 dirs[:] = []
+
+        seen_targets = {
+            target
+            for project in discovered.values()
+            if (target := self._resolved_directory(self.root_dir / project.path)) is not None
+        }
+        for alias in sorted(alias_candidates, key=lambda path: self._relative_path(path).lower()):
+            target = self._resolved_alias_target(alias)
+            if target is None or target in seen_targets:
+                continue
+            config_path = self._find_config_path(alias)
+            if config_path is None:
+                continue
+            project = self._build_project(alias, config_path)
+            if not project.valid:
+                continue
+            seen_targets.add(target)
+            discovered[project.path] = project
 
         return sorted(
             discovered.values(),
@@ -113,6 +142,12 @@ class ProjectDiscoveryService:
             if dirname == ".venv":
                 continue
             child = current_path / dirname
+            try:
+                attributes = getattr(child.lstat(), "st_file_attributes", 0)
+            except OSError:
+                continue
+            if child.is_symlink() or bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)):
+                continue
             rel_child = self._relative_path(child)
             if self.conventions.is_worktree_path(rel_child) and not self.include_worktrees:
                 continue
@@ -121,15 +156,64 @@ class ProjectDiscoveryService:
             result.append(dirname)
         return result
 
-    def _build_project(self, project_path: Path, config_path: Path) -> DiscoveredProject:
-        from .config_parser import _load_project_metadata
+    def _direct_project_aliases(self, current_path: Path, dirs: list[str]) -> list[Path]:
+        """Return non-recursive aliases that may themselves be project roots.
 
+        Discovery may report a direct project alias, but it never traverses an
+        alias as a directory tree.  This keeps read-only listing compatibility
+        separate from the stricter execution and write-path boundaries.
+        """
+
+        aliases = []
+        for dirname in dirs:
+            child = current_path / dirname
+            rel_child = self._relative_path(child)
+            if self._is_excluded_alias_path(rel_child):
+                continue
+            try:
+                child.lstat()
+            except OSError:
+                continue
+            # Windows directory symlinks are reparse points too, but junctions
+            # and other reparse tags remain excluded from discovery because
+            # downstream config-resource boundaries intentionally reject them.
+            if not child.is_symlink():
+                continue
+            if self._resolved_alias_target(child) is None:
+                continue
+            aliases.append(child)
+        return aliases
+
+    def _resolved_alias_target(self, alias: Path) -> Path | None:
+        target = self._resolved_directory(alias)
+        if target is None:
+            return None
+        # An alias to the discovery root or one of its ancestors is a broad
+        # workspace alias, not a direct project alias.  Rejecting it also
+        # prevents cycles from re-entering the scan root.
+        if target == self.root_dir or self.root_dir.is_relative_to(target):
+            return None
+        return target
+
+    @staticmethod
+    def _resolved_directory(path: Path) -> Path | None:
+        try:
+            resolved = path.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return None
+        return resolved if resolved.is_dir() else None
+
+    def _is_excluded_alias_path(self, rel_path: str) -> bool:
+        if self.conventions.is_ephemeral_project_path(rel_path):
+            return True
+        return any(part.lower() in EPHEMERAL_ALIAS_SEGMENTS for part in Path(rel_path).parts)
+
+    def _build_project(self, project_path: Path, config_path: Path) -> DiscoveredProject:
         rel_project = self._relative_path(project_path)
         rel_config = Path(os.path.relpath(config_path, project_path)).as_posix()
-        metadata = _load_project_metadata(str(config_path), project_path.name)
+        metadata, target_format = self._read_verified_metadata(project_path, config_path)
         valid = bool(metadata["valid"])
         classification = self._classify(rel_project, rel_config, valid)
-        target_format = self._read_target_format(config_path)
 
         return DiscoveredProject(
             project_id=self._stable_project_id(project_path),
@@ -152,9 +236,23 @@ class ProjectDiscoveryService:
         max_depth: int,
         master_depth: int,
     ) -> list[DiscoveredProject]:
-        from .config_parser import folder_role_map, load_config, project_modules
+        from .config_parser import (
+            folder_role_map,
+            load_yaml_with_unique_keys,
+            migrate_config,
+            normalize_project_defaults,
+            project_modules,
+        )
+        from .project_config_reader import find_verified_project_config, read_verified_project_config
 
-        config, _config_path, _config_hash = load_config(str(master_path))
+        try:
+            declaration = find_verified_project_config(master_path)
+            if declaration is None:
+                return []
+            raw_text = read_verified_project_config(master_path, declaration)
+            config = normalize_project_defaults(migrate_config(load_yaml_with_unique_keys(raw_text)))
+        except Exception:
+            return []
         if not isinstance(config, dict):
             return []
         declared_roles = folder_role_map(config)
@@ -178,6 +276,12 @@ class ProjectDiscoveryService:
 
         for child in sorted(master_path.iterdir(), key=lambda path: path.name.lower()):
             if not child.is_dir():
+                continue
+            try:
+                attributes = getattr(child.lstat(), "st_file_attributes", 0)
+            except OSError:
+                continue
+            if child.is_symlink() or bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)):
                 continue
             if child.name in DEFAULT_EXCLUDED_DIRS or child.name in {".git", ".venv"}:
                 continue
@@ -282,20 +386,48 @@ class ProjectDiscoveryService:
         return None
 
     @staticmethod
-    def _read_target_format(config_path: Path) -> str:
-        from .config_parser import load_yaml_with_unique_keys
+    def _read_verified_metadata(project_path: Path, config_path: Path) -> tuple[dict, str]:
+        from .config_parser import (
+            migrate_config,
+            normalize_project_defaults,
+            project_role,
+            project_status,
+            validate_config,
+        )
+        from .config_schema import load_yaml_with_unique_keys
+        from .project_config_reader import read_verified_project_config
 
+        metadata = {
+            "name": project_path.name,
+            "role": "module",
+            "status": "active",
+            "valid": False,
+            "errors": [],
+        }
         try:
-            with config_path.open("r", encoding="utf-8") as f:
-                data = load_yaml_with_unique_keys(f.read()) or {}
-        except Exception:
-            return ""
-        if not isinstance(data, dict):
-            return ""
-        visual_style = data.get("visual_style") or {}
-        if not isinstance(visual_style, dict):
-            return ""
-        return str(visual_style.get("target_format") or "nature").strip().lower()
+            declaration = Path(os.path.relpath(config_path, project_path)).as_posix()
+            raw_text = read_verified_project_config(project_path, declaration)
+            data = normalize_project_defaults(migrate_config(load_yaml_with_unique_keys(raw_text)))
+        except Exception as exc:
+            metadata["errors"] = [str(exc)]
+            return metadata, ""
+        errors = validate_config(data)
+        project = data.get("project") if isinstance(data, dict) else None
+        project = project if isinstance(project, dict) else {}
+        metadata.update(
+            name=project.get("name") or project_path.name,
+            role=project_role(data),
+            status=project_status(data),
+            valid=not errors,
+            errors=errors,
+        )
+        visual_style = data.get("visual_style") if isinstance(data, dict) else None
+        target_format = (
+            str(visual_style.get("target_format") or "nature").strip().lower()
+            if isinstance(visual_style, dict)
+            else ""
+        )
+        return metadata, target_format
 
 
 def discover_projects_with_status(
@@ -335,6 +467,10 @@ def get_discoverable_projects(
         include_quarantine=include_quarantine,
         conventions=conventions,
     ):
+        try:
+            resolve_execution_project_path(root_dir, project["path"])
+        except ExecutionProjectPathError:
+            continue
         if not project["valid"]:
             continue
         if project.get("role") != "module" or not project.get("config_path"):

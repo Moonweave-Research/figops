@@ -49,6 +49,7 @@ class OrchestratorSubprocessTimeoutTest(unittest.TestCase):
                 # sandbox the process env so the dead temp-dir path does not leak to later tests.
                 patch.dict(os.environ, {}, clear=False),
                 patch.object(sys, "argv", argv),
+                patch("orchestrator.get_research_root", return_value=tmpdir),
                 patch("orchestrator.run_preflight_check"),
                 patch(
                     "orchestrator.load_config",
@@ -123,6 +124,7 @@ class OrchestratorFailureStageTest(unittest.TestCase):
 
             with (
                 patch.object(sys, "argv", argv),
+                patch("orchestrator.get_research_root", return_value=tmpdir),
                 patch("orchestrator.run_preflight_check"),
                 patch(
                     "orchestrator.load_config",

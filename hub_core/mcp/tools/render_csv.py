@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 from contextlib import redirect_stdout
+from pathlib import Path
 from typing import Any
 
 import yaml
 
 from hub_core.adapters import select_adapters
+from hub_core.artifact_policy_measurement import resolve_render_validation_policies
 from hub_core.config_parser import validate_config
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp.tools.render_csv_args import (
@@ -32,6 +35,7 @@ from hub_core.mcp.tools.render_csv_args import (
 from hub_core.mcp.tools.render_csv_multipanel_handler import render_csv_multipanel as _render_csv_multipanel_handler
 from hub_core.mcp.tools.render_support import McpRenderToolSupportMixin
 from hub_core.mcp.tools.render_validation import _optional_positive_int_arg
+from hub_core.render_evidence import build_render_evidence
 from hub_core.rendering import PLOT_TYPES
 from themes.style_profiles import DEFAULT_PROFILE
 
@@ -39,50 +43,18 @@ from themes.style_profiles import DEFAULT_PROFILE
 class McpRenderCsvMixin(McpRenderToolSupportMixin):
     """CSV-graph rendering MCP tool handlers."""
 
-    def _csv_render_error(
-        self,
-        arguments: dict[str, Any],
-        *,
-        summary: str,
-        errors: list[str],
-        failure_stage: str,
-        resolution_hint: str,
-        is_dry_run: bool | None = None,
-        tool_name: str = "figops.render_csv_graph",
-        **extra: Any,
-    ) -> dict[str, Any]:
-        geometry_diagnostics = extra.pop(
-            "geometry_diagnostics",
-            render_helpers._geometry_stub("no figure"),
-        )
-        layout_report = extra.pop(
-            "layout_report",
-            render_helpers._layout_report_from_geometry(geometry_diagnostics),
-        )
-        return self._envelope(
-            tool_name,
-            arguments,
-            status="error",
-            summary=summary,
-            errors=errors,
-            manual_review_needed=True,
-            is_dry_run=False if is_dry_run is None else is_dry_run,
-            artifact_status="failed",
-            baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
-            geometry_diagnostics=geometry_diagnostics,
-            layout_report=layout_report,
-            failure_stage=failure_stage,
-            resolution_hint=resolution_hint,
-            **extra,
-        )
-
     def render_csv_graph(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        guarded = self._authorize_write_tool("figops.render_csv_graph", arguments)
+        if guarded is not None:
+            return guarded
         dry_run = bool(arguments.get("dry_run", False))
         overwrite = bool(arguments.get("overwrite", False))
         job_id = self._render_job_id(arguments.get("job_id"))
         self._activate_runtime_root_for_runtime_access()
         job_root = self._mcp_jobs_root() / job_id
         try:
+            from plotting.utils import normalize_label_map
+
             data_path = self._input_file_path(arguments.get("data_path"))
             x_column = self._required_string(arguments, "x_column")
             y_column = self._required_string(arguments, "y_column")
@@ -90,6 +62,20 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             facet_column = str(arguments.get("facet_column") or "").strip()
             series_column = str(arguments.get("series_column") or "").strip()
             label_column = str(arguments.get("label_column") or "").strip()
+            label_map = normalize_label_map(arguments.get("label_map"))
+            label_transform = str(arguments.get("label_transform") or "raw").strip().lower().replace("-", "_")
+            if label_transform not in {"raw", "legacy_compress"}:
+                raise ValueError("label_transform must be 'raw' or 'legacy_compress'.")
+            compliance_mode = str(arguments.get("compliance_mode") or "validate").strip().lower()
+            declutter_mode = str(arguments.get("declutter_mode") or "none").strip().lower()
+            if compliance_mode not in {"validate", "clamp"}:
+                raise ValueError("compliance_mode must be 'validate' or 'clamp'.")
+            if declutter_mode not in {"none", "declutter"}:
+                raise ValueError("declutter_mode must be 'none' or 'declutter'.")
+            calculation_evidence = self._verified_calculation_evidence(
+                arguments.get("calculation_evidence_path"),
+                arguments.get("calculation_evidence_paths"),
+            )
         except ValueError as exc:
             return self._csv_render_error(
                 arguments,
@@ -101,12 +87,39 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             )
         plot_type = str(arguments.get("plot_type") or "scatter").strip().lower()
         target_format = str(arguments.get("target_format") or "nature").strip().lower()
+        try:
+            validation_target, render_policy = resolve_render_validation_policies(
+                arguments, target_format=target_format
+            )
+        except ValueError as exc:
+            return self._csv_render_error(
+                arguments, summary="Invalid validation target.", errors=[str(exc)],
+                is_dry_run=dry_run, failure_stage="CONTRACT",
+                resolution_hint="Select validation independently from render style.",
+            )
         profile = str(arguments.get("profile") or DEFAULT_PROFILE).strip() or DEFAULT_PROFILE
         output_format = str(arguments.get("output_format") or "png").strip().lower().lstrip(".")
         facet_scales = str(arguments.get("facet_scales") or "fixed").strip().lower()
         fit_line = arguments.get("fit_line", False)
         ci_band = arguments.get("ci_band", False)
-        significance_markers = arguments.get("significance_markers", ())
+        descriptive_overlays = (
+            [{"kind": "linear_fit", "algorithm": "ordinary_least_squares", "descriptive_only": True}]
+            if fit_line
+            else []
+        )
+        try:
+            significance_markers = self._normalized_significance_markers_arg(
+                arguments.get("significance_markers")
+            )
+        except ValueError as exc:
+            return self._csv_render_error(
+                arguments,
+                summary="Render request has invalid statistical overlay settings.",
+                errors=[str(exc)],
+                is_dry_run=dry_run,
+                failure_stage="CONFIG",
+                resolution_hint="Provide closed, evidence-linked significance marker objects.",
+            )
         aggregate = str(arguments.get("aggregate") or "").strip().lower()
         raw_annotate_values = arguments.get("annotate_values", False)
         raw_bar_error_column = arguments.get("bar_error_column", "")
@@ -380,6 +393,30 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
         )
         contract_errors = contract_result["errors"]
         calculation_checks = contract_result["calculation_checks"]
+        claim_linkage_errors = self._statistical_claim_linkage_errors(significance_markers, calculation_evidence)
+        annotation_claims = self._annotation_claim_evidence(
+            annotations,
+            calculation_evidence,
+            claimed_ids={marker["calculation_evidence_id"] for marker in significance_markers},
+        )
+        band_claims = self._fill_band_claim_evidence(fill_between)
+        claim_linkage_errors.extend(annotation_claims["errors"])
+        claim_linkage_errors.extend(band_claims["errors"])
+        if claim_linkage_errors:
+            return self._csv_render_error(
+                arguments,
+                summary="Statistical claim evidence linkage failed.",
+                errors=claim_linkage_errors,
+                is_dry_run=dry_run,
+                failure_stage="CONTRACT",
+                resolution_hint=(
+                    "Cite an independently produced calculation evidence artifact "
+                    "and its verified SHA-256."
+                ),
+                calculation_checks=calculation_checks,
+            )
+        statistical_claims = [*significance_markers, *annotation_claims["claims"]]
+        claim_candidates = [*annotation_claims["claim_candidates"], *band_claims["claim_candidates"]]
         if contract_errors:
             return self._csv_render_error(
                 arguments,
@@ -392,7 +429,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             )
         if dry_run:
             calculation_warnings = self._calculation_warnings(calculation_checks)
-            manual_review_needed = bool(calculation_checks.get("manual_review_needed"))
+            manual_review_needed = bool(calculation_checks.get("manual_review_needed")) or bool(claim_candidates)
             return self._envelope(
                 "figops.render_csv_graph",
                 arguments,
@@ -410,13 +447,21 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 output_path=str(job_root / "results" / "figures" / f"graph.{output_format}"),
                 config_path=str(job_root / "project_config.yaml"),
                 manifest_path=str(job_root / "manifest.json"),
-                style_summary={"target_format": target_format, "profile": profile, "output_format": output_format},
+                style_summary={
+                    "target_format": target_format,
+                    "profile": profile,
+                    "output_format": output_format,
+                    "render_policy": render_policy["id"],
+                    "validation_target": validation_target or None,
+                },
                 visual_preflight_status={"passed": None, "checks": [], "warnings": ["dry_run"]},
                 failure_stage="",
                 resolution_hint="",
                 artifact_status="validated",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 calculation_checks=calculation_checks,
+                statistical_claims=statistical_claims,
+                claim_candidates=claim_candidates,
                 geometry_diagnostics=render_helpers._geometry_stub("dry_run"),
                 layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("dry_run")),
             )
@@ -477,8 +522,7 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
             created_paths.append(str(config_path))
             with self._geometry_diagnostics_env(job_root):
-                self._run_render_bridge_figure(
-                    {
+                render_spec_payload = {
                         "csv_path": str(job_data_path),
                         "output_path": str(output_path),
                         "plot_type": plot_type,
@@ -488,6 +532,10 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "facet_column": facet_column,
                         "series_column": series_column,
                         "label_column": label_column,
+                        "label_map": label_map,
+                        "label_transform": label_transform,
+                        "compliance_mode": compliance_mode,
+                        "declutter_mode": declutter_mode,
                         "point_label_options": point_label_options,
                         "series_styles": series_styles,
                         "secondary_y": secondary_y,
@@ -520,13 +568,42 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                         "target_format": target_format,
                         "profile_name": profile,
                     }
-                )
+                if calculation_evidence:
+                    self._run_render_bridge_figure(
+                        render_spec_payload,
+                        verified_calculation_evidence=tuple(calculation_evidence),
+                    )
+                else:
+                    self._run_render_bridge_figure(render_spec_payload)
             geometry_diagnostics = render_helpers._read_geometry_sidecar(job_root)
+            authored_output_path = job_root / "authored_output.json"
+            authored_output = (
+                json.loads(authored_output_path.read_text(encoding="utf-8"))
+                if authored_output_path.is_file()
+                else {"mode": "raw", "mappings": [], "collisions": [], "mutation_ledger": []}
+            )
             geometry_warnings = render_helpers._geometry_warnings(geometry_diagnostics)
             layout_report = render_helpers._layout_report_from_geometry(geometry_diagnostics)
             figures = self._rendered_figure_artifacts(output_path)
+            preview_artifacts = render_helpers._build_preview_artifacts(
+                job_root=job_root,
+                output_path=output_path,
+                figures=figures,
+            )
+            preview_references = render_helpers._preview_resource_references(job_id, preview_artifacts)
             created_paths.extend(str(figure["path"]) for figure in figures)
-            preflight = self._visual_preflight_with_geometry_overlaps(output_path, target_format, geometry_diagnostics)
+            preflight = (
+                self._visual_preflight_with_geometry_overlaps(
+                    output_path, validation_target, geometry_diagnostics
+                )
+                if validation_target
+                else {
+                    "passed": True,
+                    "checks": [],
+                    "warnings": ["publication validation target not selected"],
+                    "target": None,
+                }
+            )
             preflight_warnings = self._preflight_warnings(preflight)
             baseline_comparison = self._baseline_comparison(output_path, arguments.get("baseline_path"))
             baseline_warnings = self._baseline_warnings(baseline_comparison)
@@ -541,12 +618,22 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 profile=profile,
                 output_format=output_format,
             )
+            if calculation_evidence:
+                provenance["calculation_evidence_refs"] = [
+                    {
+                        "artifact_ref": item["artifact_ref"],
+                        "sha256": item["analysis_artifact_sha256"],
+                        "evidence_id": item["evidence_id"],
+                    }
+                    for item in calculation_evidence
+                ]
             manual_review_needed = (
                 not bool(preflight.get("passed"))
                 or bool(preflight_warnings)
                 or (baseline_comparison["checked"] and not baseline_comparison["matched"])
                 or bool(calculation_checks.get("manual_review_needed"))
                 or geometry_diagnostics.get("passed") is False
+                or bool(claim_candidates)
             )
             status = "warning" if manual_review_needed else "ok"
             artifact_status = self._artifact_status(preflight, baseline_comparison)
@@ -563,6 +650,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                     "target_format": target_format,
                     "profile": profile,
                     "output_format": output_format,
+                    "render_policy": render_policy["id"],
+                    "validation_target": validation_target or None,
                 },
                 visual_preflight_status=preflight,
                 geometry_diagnostics=geometry_diagnostics,
@@ -571,9 +660,32 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
                 baseline_comparison=baseline_comparison,
                 manual_review_needed=manual_review_needed,
                 provenance=provenance,
+                data_contract={"schema_version": "data_contract_summary/1", "passed": True},
                 source_data_path=str(data_path),
                 copied_data_path=str(job_data_path),
                 calculation_checks=calculation_checks,
+                statistical_claims=statistical_claims,
+                calculation_evidence=calculation_evidence,
+                descriptive_overlays=descriptive_overlays,
+                claim_candidates=claim_candidates,
+                label_transformations=authored_output,
+                mutation_ledger=authored_output.get("mutation_ledger", []),
+                preview_artifacts=preview_artifacts,
+            )
+            manifest["evidence"] = build_render_evidence(
+                manifest,
+                job_root=job_root,
+                producer_kind="mcp-csv-render",
+                producer_version=self._read_version(),
+                baseline_reference_sha256=(
+                    self._file_sha256(Path(baseline_comparison["baseline_path"]))
+                    if baseline_comparison.get("checked")
+                    and isinstance(baseline_comparison.get("baseline_path"), str)
+                    and Path(baseline_comparison["baseline_path"]).is_file()
+                    else None
+                ),
+                render_policy=render_policy,
+                validation_target=validation_target or None,
             )
             status_payload = self._render_status_payload(
                 job_id=job_id,
@@ -589,6 +701,11 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             status_payload["calculation_checks"] = calculation_checks
             status_payload["provenance"] = provenance
             status_payload["layout_report"] = layout_report
+            status_payload["statistical_claims"] = statistical_claims
+            status_payload["calculation_evidence"] = calculation_evidence
+            status_payload["descriptive_overlays"] = descriptive_overlays
+            status_payload["claim_candidates"] = claim_candidates
+            status_payload["label_transformations"] = authored_output
             render_helpers._write_manifest_and_status(manifest, manifest_path, status_payload, status_path, latest_dir)
         except Exception as exc:
             failure_stage = "TIMEOUT" if "timed out" in str(exc).lower() else "PLOT"
@@ -642,7 +759,8 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             status=status,
             summary="Rendered CSV graph." if status == "ok" else "Rendered CSV graph with preflight warnings.",
             created_paths=created_paths,
-            artifact_resources=[f"file://{figure['path']}" for figure in manifest["figures"]],
+            artifact_resources=preview_references["artifact_resources"],
+            preview_resources=preview_references["preview_resources"],
             warnings=preflight_warnings + baseline_warnings + calculation_warnings + geometry_warnings,
             manual_review_needed=manual_review_needed,
             is_dry_run=False,
@@ -663,7 +781,17 @@ class McpRenderCsvMixin(McpRenderToolSupportMixin):
             artifact_status=artifact_status,
             baseline_comparison=baseline_comparison,
             calculation_checks=calculation_checks,
+            statistical_claims=statistical_claims,
+            calculation_evidence=calculation_evidence,
+            descriptive_overlays=descriptive_overlays,
+            claim_candidates=claim_candidates,
+            label_transformations=authored_output,
+            mutation_ledger=authored_output.get("mutation_ledger", []),
+            evidence=manifest["evidence"],
         )
 
     def render_csv_multipanel(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        guarded = self._authorize_write_tool("figops.render_csv_multipanel", arguments)
+        if guarded is not None:
+            return guarded
         return _render_csv_multipanel_handler(self, arguments)

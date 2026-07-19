@@ -97,14 +97,15 @@ def test_windows_security_manifest_includes_every_shared_symlink_caller() -> Non
             node_id = f"{relative_path}::{class_name}::{test_name}" if class_name else f"{relative_path}::{test_name}"
             caller_node_ids.add(node_id)
 
-    assert len(caller_node_ids) == 26
+    assert caller_node_ids
     assert WINDOWS_SECURITY_MANIFEST.is_file()
     selected_node_ids = {
         line.strip()
         for line in WINDOWS_SECURITY_MANIFEST.read_text(encoding="utf-8").splitlines()
         if line.strip()
     }
-    assert sorted(caller_node_ids - selected_node_ids) == []
+    census_node_id = "tests/test_symlink_policy.py"
+    assert selected_node_ids == caller_node_ids | {census_node_id}
     workflow = WINDOWS_SECURITY_WORKFLOW.read_text(encoding="utf-8")
     assert '"@.github/windows-security-pytest.txt"' in workflow
     assert '-k "symlink' not in workflow

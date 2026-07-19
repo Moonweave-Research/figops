@@ -1,8 +1,8 @@
 # FigOps - Architecture
 
-> Companion to `docs/ROADMAP.md`. Describes the current v0.19.0 development
-> architecture after the v0.18.0 release and the addition of the read-only
-> Publication Readiness MVP.
+> Companion to `docs/ROADMAP.md`. Describes the current v0.20.0 release-candidate
+> architecture after the v0.19.0 release, including the AI-native v2 agent
+> surface and the PR #224 declared-project/runtime-result integrity path.
 
 ## Layers and dependency direction
 
@@ -16,7 +16,7 @@ figops_mcp_server.py                # entrypoint (stdio); --smoke; thin
 hub_core/mcp/transport.py             # JSON-RPC 2.0: framing, batch, lifecycle, dispatch
         |
         v
-hub_core/mcp/server.py                # GraphHubMCPServer facade: registry + service wiring
+hub_core/mcp/server.py                # FigOps facade + historical GraphHub Python alias
         |
         +-- hub_core/mcp/tools/*      # handler groups backed by live schemas
         +-- hub_core/mcp/resources.py # MCP resources
@@ -25,10 +25,38 @@ hub_core/mcp/server.py                # GraphHubMCPServer facade: registry + ser
         +-- hub_core/mcp/config.py    # trusted root/runtime/server config
         +-- hub_core/mcp/errors.py    # JSON-RPC / tool error envelopes
         +-- hub_core/mcp/schemas.py   # shared tool schema helpers
-        +-- hub_core/mcp/render_*     # render orchestration, geometry, error mapping
+        +-- hub_core/mcp/surface_profiles.py # v2/compatibility discovery projection
+        +-- hub_core/mcp/preview_*    # bounded, manifest-bound preview production
+        +-- hub_core/mcp/render_*     # render orchestration, evidence response, manifests
+        +-- hub_core/mcp/manifest_io.py # verified runtime-manifest reads
                 |
                 v
-hub_core/publication_*               # readiness evidence, decision, report, and CLI services
+hub_core/project_paths.py             # contained project input/output resolution
+hub_core/execution_project_boundary.py # alias-free producer/write project selection
+hub_core/project_config_reader.py     # verified, bounded config discovery/read
+hub_core/project_structure_contract.py # v1.1 role/DAG/alias contract
+hub_core/legacy_structure_resolver.py  # schema-less 1.0 -> in-memory 1.1 view
+hub_core/project_layout.py             # one scaffold/normalization layout inventory
+hub_core/structure_inventory.py         # read-only semantic inventory
+hub_core/structure_audit.py             # findings, graph, unresolved classification
+hub_core/structure_plan.py              # deterministic reviewed copy plan
+hub_core/structure_role_binding.py       # destination -> declared role-root binding
+hub_core/structure_stage_cleanup.py      # ownership-safe private-stage/lease cleanup
+hub_core/structure_apply.py              # token/CAS-guarded copy-only transaction
+hub_core/runtime_boundary.py           # project/result/runtime disjointness
+hub_core/atomic_no_clobber.py          # native consuming no-replace namespace move
+hub_core/durable_promotion.py          # destination-filesystem staged promotion
+hub_core/durable_receipt.py            # closed runtime-independent receipt DTO
+hub_core/result_promotion.py            # eligible project-render result admission
+hub_core/evidence_*.py                # evidence envelope and semantic validation
+hub_core/artifact_*.py                # artifact integrity and explicit-policy audit
+hub_core/calculation_evidence.py       # durable calculation artifact lineage
+hub_core/claim_inventory.py            # publication claim verification
+hub_core/claim_script_inspection.py    # conservative dynamic-claim discovery
+hub_core/external_raw.py               # trusted external-input descriptor verification
+hub_core/external_raw_execution.py     # authorized materialization before producer use
+hub_core/publication_*                # readiness evidence, policy projection, report, CLI
+hub_core/data_inspection*.py          # bounded data profiling worker/service
 hub_core/data_contract.py             # data-contract loading, validation, checks
 hub_core/config_parser.py             # project config validation and migration
 hub_core/process_runner.py            # pipeline execution helpers
@@ -57,10 +85,10 @@ The 800-line architecture budget is a split signal, not a hard failure threshold
 Inventory freshness is checked by `tests/test_architecture_inventory.py`, which
 compares the committed block below against live source. Import layering remains
 policy-only; there is no import-linter contract in `.github/workflows/ci.yml` as
-of v0.19.0. Remaining over-budget files should be handled as scoped maintenance
+of v0.20.0. Remaining over-budget files should be handled as scoped maintenance
 tracks rather than broad rewrites.
 
-Current files over the approximate 800-line budget, measured on 2026-07-11 with
+Current files over the approximate 800-line budget, measured on 2026-07-16 with
 the architecture inventory helper:
 
 ```bash
@@ -72,7 +100,15 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 |---|---:|
 <!-- architecture-inventory:end -->
 
-No tracked Python module currently exceeds the 800-line split signal.
+No Python module in the tracked architecture roots (`hub_core`, `plotting`, and
+`themes`) currently exceeds the 800-line split signal. Overlay
+normalization now lives in `plotting/renderers/annotation_normalization.py`,
+while the public overlay façade and compatibility imports remain stable.
+Structure-plan destination binding now lives in
+`hub_core/structure_role_binding.py`, while private-stage and directory-lease
+cleanup lives in `hub_core/structure_stage_cleanup.py`;
+`hub_core/structure_apply.py` retains its private compatibility aliases while
+focusing on transactional execution and config compare-and-swap.
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
 1000 lines while preserving compatibility shims:
@@ -101,10 +137,14 @@ The config-parser façade now delegates multi-panel assembly validation to
 wrapper so callers that patch `config_parser.normalize_lang` retain their
 existing behavior.
 
-The process-runner façade now delegates non-expanded visual artifacts and
-per-input `expand: each` visual execution to focused helper modules. It passes
-its cache, command, path, and output-verification collaborators at invocation
-time so existing `hub_core.process_runner` monkeypatch paths remain effective.
+The process-runner façade now delegates non-expanded visual artifacts,
+per-input `expand: each` visual execution, and contained/external input
+resolution to focused helper modules. `process_runner_inputs.py` owns the
+prefetch/revalidation and launcher-authorized external-raw materialization
+sequence, while the façade preserves its historical private helper aliases. It
+passes visual cache, command, path, and output-verification collaborators at
+invocation time so existing `hub_core.process_runner` monkeypatch paths remain
+effective.
 
 The CSV render mixin now delegates the complete multipanel tool envelope to
 `hub_core/mcp/tools/render_csv_multipanel_handler.py`, passing its renderer
@@ -117,6 +157,77 @@ figure-script supervision, output redaction, and failure-artifact persistence
 from `hub_core/mcp/render_project_runtime.py`. The façade continues to expose
 the project-render error types and supplies the live timeout value, preserving
 existing imports and timeout monkeypatch contracts.
+
+The AI-native hardening keeps security and evidence mechanics below the tool
+surface. `hub_core/project_paths.py` owns contained project inputs and verified
+descriptor reads. `hub_core/project_config_reader.py` applies that boundary to
+discovery, inspect, validate, batch, and config resources without reopening a
+validated pathname. `hub_core/mcp/manifest_io.py` does the same for collected,
+readiness, audit, and resource manifests, including duplicate-key, hardlink,
+job-ID, post-read identity, and duplicate root/kind ambiguity checks.
+`hub_core/evidence_contract.py`,
+`hub_core/evidence_artifact_section.py`, and `hub_core/evidence_semantics.py`
+own the closed `figops_evidence/2` envelope;
+the canonical selected-policy snapshot is the singular `resolved_policy`.
+Artifact verification and explicit-policy audit are separated into
+`hub_core/artifact_integrity.py` and `hub_core/artifact_audit.py`, while bounded
+data profiling is isolated in `hub_core/data_inspection.py` and its worker.
+
+Preview lookup, manifest membership, MIME/header checks, lazy base64, and worker
+launch orchestration live in `hub_core/mcp/preview_artifacts.py`; Windows Job
+Object containment lives in `preview_process_limits.py`, while conversion work
+lives in `preview_worker.py`. Raster and PDF-first-page previews are bounded to 5 seconds,
+8 megapixels, a 2,048-pixel longest edge, and 2 MiB raw output, with a hard
+256 MiB worker-memory limit where the host provides a reliable primitive.
+macOS reports `memory_limit_enforced=false` because Darwin lacks a
+reliable `RLIMIT_AS`; bounded source/output sizes, pixel/edge caps, the worker
+deadline, CPU/file limits, and process-session containment remain active and
+are exposed by `figops.health`. SVG returns typed unavailable until a renderer passes the required
+Windows safety smoke; source vector bytes are never substituted for a preview.
+
+The AI-native façade split remains intact after the structure work. Shared tool
+schema primitives live in `hub_core/mcp/tool_schema_common.py`, and the v1.1
+project-structure tool schema lives in `hub_core/mcp/structure_schemas.py`,
+while the registry façade continues to feed validation, discovery, and
+generated references. Overlay normalization remains in
+`plotting/renderers/annotation_normalization.py`, with compatibility exports in
+the public overlay façade.
+
+The PR #224 corrective structure is organized around explicit lower-level
+contracts. `project_structure_contract.py` validates v1.1 role roots, nesting,
+aliases, and external-raw references; `legacy_structure_resolver.py` provides a
+read-only in-memory view for schema-less projects. `project_layout.py` is the
+single layout inventory consumed by scaffolding and normalization. Read-only
+classification and planning are separated into `structure_inventory.py`,
+`structure_audit.py`, and `structure_plan.py`; `structure_role_binding.py` binds
+every approved destination back to its declared semantic root, while
+`structure_stage_cleanup.py` owns transaction-private stage and lease cleanup.
+Reviewed mutation is isolated in `structure_apply.py` and remains copy-only.
+
+Runtime and durable-result mechanics are separate from structure discovery.
+`runtime_boundary.py` enforces project/result/runtime disjointness,
+`atomic_no_clobber.py` provides the only publication primitive: Windows
+`os.rename`, Linux `renameat2(RENAME_NOREPLACE)`, or macOS
+`renamex_np(RENAME_EXCL)`. It consumes the private stage name, never replaces a
+race winner, and fails closed where the native guarantee is unavailable.
+Rollback deletion is identity-bound: Windows verifies file ID and SHA-256
+through one non-write-shared handle before applying delete disposition to that
+same object. POSIX does not attempt check-then-unlink; ambiguous or still-owned
+paths remain in place and produce `FIGOPS_DURABLE_MANUAL_CLEANUP_REQUIRED` for
+review instead of risking deletion of a competing inode.
+`durable_promotion.py` stages verified bytes on the destination filesystem, and
+`result_promotion.py` is the production admission boundary that checks the
+persisted runtime manifest, eligibility, policy, and claim gates before invoking
+that primitive. `durable_receipt.py` emits the closed receipt DTO that survives
+runtime deletion. `external_raw.py` validates trusted source identity;
+`external_raw_execution.py` binds launcher authority, materializes below runtime,
+and rechecks bytes before CLI or MCP producers receive them. Calculation
+artifacts and publication claims are bound through `calculation_evidence.py` and
+`claim_inventory.py`; `claim_script_inspection.py` conservatively identifies
+dynamic statistical annotation candidates without rejecting unrelated dynamic
+author labels. `artifact_policy_measurement.py` and `render_evidence.py` persist
+measured render-policy and validation-target outcomes without restyling the
+artifact.
 
 The journal-theme façade now delegates its opt-in text/marker overlap nudge,
 leader-line targeting, axes-edge correction, and convergence reporting to
@@ -176,7 +287,25 @@ The MCP tool surface is registry-backed. Tool definitions, schemas, and handler
 wiring live under `hub_core/mcp/`, with grouped handlers in
 `hub_core/mcp/tools/`. This shared surface feeds `tools/list`,
 `figops.describe`, RPC validation, write-tool gating, and generated
-`docs/tools.md`.
+references. `docs/tools-v2.md` is the compact default-surface reference,
+`docs/tools-compatibility.md` documents the frozen migration surface without
+duplicating alias schemas, and `docs/tools.md` remains the full registry
+maintenance reference. All three are generated and freshness-tested.
+
+The stdio launcher now defaults to the AI-native `v2` discovery profile. It
+exposes at most seven concise tools and uses summary → kind → optional name
+progressive disclosure in `figops.describe`. A `compatibility` profile exposes
+the frozen pre-v2 contract of 14 canonical tools plus 13 `graphhub.*` aliases.
+The handler registry remains a superset so migration does not remove callability;
+profile selection only controls discovery. When writes are disabled, mutating
+and executing tools are omitted from `tools/list`, and the independent dispatch
+guard still rejects remembered canonical or alias names before side effects.
+
+`GraphHubMCPServer` remains a historical embedded-Python class name and selects
+the same truthful `compatibility` profile. New launcher and embedded clients
+should use `FigOpsMCPServer(surface_profile="v2" | "compatibility")` or the
+`GRAPH_HUB_MCP_SURFACE_PROFILE` launcher environment setting. Profile-aware
+references can be rendered from the live registry without duplicating alias schemas.
 
 ## Why this shape
 

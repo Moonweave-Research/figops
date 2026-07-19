@@ -155,7 +155,7 @@ class TestRunCommandRuntimeEnv(unittest.TestCase):
         self.assertFalse(result)
         self.assertLess(elapsed, 3.0)
 
-    def test_run_command_logs_streamed_stdout_before_timeout(self):
+    def test_run_command_logs_streamed_output_metadata_before_timeout(self):
         script = "import time; print('stream-before-timeout', flush=True); time.sleep(5)"
         with tempfile.TemporaryDirectory() as project_dir:
             started = time.monotonic()
@@ -170,7 +170,8 @@ class TestRunCommandRuntimeEnv(unittest.TestCase):
         self.assertFalse(result)
         output = "\n".join(captured.output)
         self.assertIn("Execution timed out", output)
-        self.assertIn("stream-before-timeout", output)
+        self.assertIn("child-output seq=1 class=UNKNOWN length_bucket=1-32", output)
+        self.assertNotIn("stream-before-timeout", output)
         self.assertLess(elapsed, 3.0)
 
     def test_run_command_retains_bounded_memory_for_high_output_failure(self):
@@ -234,6 +235,173 @@ class TestRunCommandRuntimeEnv(unittest.TestCase):
 
         self.assertFalse(result)
         self.assertLess(peak, 5_000_000)
+
+    def test_run_command_failure_logs_only_structural_child_metadata(self):
+        raw_samples = [
+            "Alice,alice@example.invalid,010-1234-5678,7.5",
+            "Cookie: session=private-cookie-value",
+            "eyJhbGciOiJIUzI1NiJ9.private-jwt.signature",
+            "-----BEGIN PRIVATE KEY----- private-pem-material",
+            "https://storage.invalid/private.csv?X-Amz-Signature=signed-url-secret",
+            "/home/runner/My Private Data/measurement.csv",
+            r"C:\Users\private\My Data\measurement.csv",
+            r"\\server\private share\measurement.csv",
+            "Error in library(dplyr): there is no package called ‘dplyr’",
+            "package or namespace load failed",
+            "Error: unexpected symbol in parser",
+            "cannot open file connection",
+            "No analysis input CSV found",
+            "Missing required column(s)",
+            "object 'private_object' not found",
+            "Execution halted",
+            "Error in mutate(): runtime failure",
+            "Traceback (most recent call last):",
+            "임의 측정 원시값 12345",
+        ]
+
+        class Completed:
+            returncode = 1
+            stdout = iter(f"{sample}\n" for sample in raw_samples)
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+        with (
+            patch("hub_core.process_runner.subprocess.Popen", return_value=Completed()),
+            self.assertLogs("hub_core.process_runner", level="ERROR") as captured,
+        ):
+            result = pr.run_command(
+                [sys.executable, "-c", "raise SystemExit(1)"],
+                tempfile.gettempdir(),
+            )
+
+        self.assertFalse(result)
+        output = "\n".join(captured.output)
+        self.assertIn("Child output metadata: lines=19", output)
+        for classification in (
+            "R_PACKAGE_MISSING",
+            "R_PACKAGE_LOAD_ERROR",
+            "R_PARSE_ERROR",
+            "R_IO_ERROR",
+            "R_INPUT_MISSING",
+            "R_INPUT_SCHEMA_ERROR",
+            "R_OBJECT_NOT_FOUND",
+            "R_EXECUTION_HALTED",
+            "R_RUNTIME_ERROR",
+            "PYTHON_TRACEBACK",
+            "UNKNOWN",
+        ):
+            self.assertIn(classification, output)
+        self.assertEqual(output.count("❌ child-meta"), 19)
+        for sample in raw_samples:
+            self.assertNotIn(sample, output)
+        for fragment in (
+            "Alice",
+            "private-cookie-value",
+            "private-jwt",
+            "PRIVATE KEY",
+            "signed-url-secret",
+            "private_object",
+            "임의 측정 원시값",
+        ):
+            self.assertNotIn(fragment, output)
+
+    def test_run_command_success_logs_only_structural_child_metadata(self):
+        raw_samples = [
+            "Wrote output to /home/runner/private result/summary.csv",
+            "OPENAI_API_KEY=success-secret",
+            "Alice,7.5,private raw row",
+        ]
+
+        class Completed:
+            returncode = 0
+            stdout = iter(f"{sample}\n" for sample in raw_samples)
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+        with (
+            patch("hub_core.process_runner.subprocess.Popen", return_value=Completed()),
+            self.assertLogs("hub_core.process_runner", level="INFO") as captured,
+        ):
+            result = pr.run_command(
+                [sys.executable, "-c", "raise SystemExit(0)"],
+                tempfile.gettempdir(),
+            )
+
+        self.assertTrue(result)
+        output = "\n".join(captured.output)
+        self.assertEqual(output.count("child-output seq="), 3)
+        self.assertIn("class=UNKNOWN", output)
+        self.assertNotIn("sha256", output)
+        self.assertNotIn("chars=", output)
+        for sample in raw_samples:
+            self.assertNotIn(sample, output)
+        self.assertNotIn("success-secret", output)
+        self.assertNotIn("Alice", output)
+
+    def test_run_command_failure_tail_is_twenty_bounded_content_free_entries(self):
+        raw_lines = [f"private-pii-{index:02d} – 측정 실패" for index in range(25)]
+        raw_lines.append("z" * 1_000)
+
+        class Completed:
+            returncode = 1
+            stdout = iter(f"{line}\n" for line in raw_lines)
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+        with (
+            patch("hub_core.process_runner.subprocess.Popen", return_value=Completed()),
+            self.assertLogs("hub_core.process_runner", level="ERROR") as captured,
+        ):
+            result = pr.run_command(
+                [sys.executable, "-c", "raise SystemExit(1)"],
+                tempfile.gettempdir(),
+            )
+
+        self.assertFalse(result)
+        child_entries = [line for line in captured.output if "❌ child-meta" in line]
+        self.assertEqual(len(child_entries), 20)
+        self.assertIn("seq=7", child_entries[0])
+        self.assertIn("seq=26", child_entries[-1])
+        self.assertIn("length_bucket=>500 truncated=true", child_entries[-1])
+        self.assertNotIn("sha256", child_entries[-1])
+        self.assertNotIn("chars=", child_entries[-1])
+        output = "\n".join(captured.output)
+        for raw_line in raw_lines:
+            self.assertNotIn(raw_line, output)
+        self.assertNotIn("private-pii", output)
+        self.assertNotIn("측정 실패", output)
+
+    def test_run_command_metadata_cannot_confirm_low_entropy_child_values(self):
+        def capture_for(raw_value: str) -> str:
+            class Completed:
+                returncode = 0
+                stdout = iter([f"{raw_value}\n"])
+
+                def wait(self, timeout=None):
+                    return self.returncode
+
+            with (
+                patch("hub_core.process_runner.subprocess.Popen", return_value=Completed()),
+                self.assertLogs("hub_core.process_runner", level="INFO") as captured,
+            ):
+                self.assertTrue(
+                    pr.run_command(
+                        [sys.executable, "-c", "raise SystemExit(0)"],
+                        tempfile.gettempdir(),
+                    )
+                )
+            return "\n".join(captured.output)
+
+        positive_log = capture_for("ALLOW")
+        negative_log = capture_for("DENY")
+        self.assertEqual(positive_log, negative_log)
+        self.assertNotIn("ALLOW", positive_log)
+        self.assertNotIn("DENY", negative_log)
+        self.assertNotIn("sha256", positive_log)
+        self.assertNotIn("chars=", positive_log)
 
     def test_run_command_terminates_and_reaps_child_when_windows_job_assignment_fails(self):
         class FailedJob:
@@ -495,7 +663,7 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             self.skipTest("Rscript is not installed")
 
     def _write_scaffold_analysis_project(self, project_dir: Path) -> dict:
-        script_path = project_dir / "hub_scripts" / "analyze.R"
+        script_path = project_dir / "hub_scripts" / "analysis" / "analyze.R"
         script_path.parent.mkdir(parents=True, exist_ok=True)
         script_path.write_text(DEFAULT_ANALYZE_R, encoding="utf-8")
         return {
@@ -504,10 +672,10 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             "pipeline": {
                 "analysis": [
                     {
-                        "script": "hub_scripts/analyze.R",
+                        "script": "hub_scripts/analysis/analyze.R",
                         "lang": "r",
                         "inputs": ["raw/"],
-                        "outputs": ["results/data/summary.csv"],
+                        "outputs": ["results/data/source/summary.csv"],
                     }
                 ]
             },
@@ -537,7 +705,9 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             )
 
             self.assertTrue(result)
-            with (project_dir / "results" / "data" / "summary.csv").open(newline="", encoding="utf-8") as handle:
+            with (project_dir / "results" / "data" / "source" / "summary.csv").open(
+                newline="", encoding="utf-8"
+            ) as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual([row["value"] for row in rows], ["7.5", "8.5"])
 
@@ -559,7 +729,7 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             )
 
             self.assertFalse(result)
-            self.assertFalse((project_dir / "results" / "data" / "summary.csv").exists())
+            self.assertFalse((project_dir / "results" / "data" / "source" / "summary.csv").exists())
 
     def test_scaffold_project_creates_normalized_raw_dir(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_scaffold_") as tmpdir:
@@ -568,7 +738,8 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             scaffold_project(project_dir, HUB_ROOT, project_name="raw_dir_contract")
 
             self.assertTrue((project_dir / "raw").is_dir())
-            self.assertTrue((project_dir / "raw" / "example_input.csv").is_file())
+            self.assertTrue((project_dir / "raw" / "example.csv").is_file())
+            self.assertTrue((project_dir / "raw" / ".raw_manifest.json").is_file())
             self.assertFalse((project_dir / "data" / "raw").exists())
 
     def test_scaffold_project_uses_packaged_template_when_root_template_is_absent(self):
@@ -588,7 +759,7 @@ class TestScaffoldRAnalysisInputContract(unittest.TestCase):
             config_text = (project_dir / "project_config.yaml").read_text(encoding="utf-8")
             self.assertIn('name: "Packaged Template Smoke"', config_text)
             self.assertNotIn(INTERNAL_STYLE_TARGET_FORMAT, config_text)
-            self.assertTrue((project_dir / "hub_scripts" / "plot.py").is_file())
+            self.assertTrue((project_dir / "hub_scripts" / "figures" / "plot.py").is_file())
 
     def test_scaffold_project_fails_fast_for_unrelated_hub_without_templates(self):
         with tempfile.TemporaryDirectory(prefix="figops_missing_scaffold_") as tmpdir:

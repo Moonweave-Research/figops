@@ -43,6 +43,27 @@ INTERNAL_ERROR = McpErrorTaxonomyEntry(
     description="An unexpected FigOps or runtime failure occurred.",
 )
 
+PROJECT_DECLARATION_PATH_INVALID = "PROJECT_DECLARATION_PATH_INVALID"
+_UNSAFE_DECLARATION_PATH_MARKERS = (
+    "must be a project-relative path",
+    "must not contain path traversal",
+    "absolute paths are not allowed",
+    "got absolute:",
+    "unc paths are not allowed",
+    "windows drive or stream designator",
+)
+
+
+def has_unsafe_declared_path(errors: list[str]) -> bool:
+    """Classify portable path-contract failures without relying on field names."""
+
+    return any(
+        marker in str(error).lower()
+        for error in errors
+        for marker in _UNSAFE_DECLARATION_PATH_MARKERS
+    )
+
+
 ERROR_TAXONOMY = {
     entry.category: entry
     for entry in (

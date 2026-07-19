@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
-from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, ALLOWED_PROJECT_STATUSES, ALLOWED_TARGET_FORMATS
-from hub_core.data_contract import SEMANTIC_CHECK_DEFINITIONS
+from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, PUBLIC_TARGET_FORMATS
 from hub_core.domain_analysis import list_domain_helper_descriptions
+from hub_core.mcp import tool_schema_common as _schema_common
 from hub_core.mcp.discovery_schemas import list_prompt_definitions as _list_prompt_definitions
 from hub_core.mcp.discovery_schemas import list_resource_definitions as _list_resource_definitions
 from hub_core.mcp.discovery_schemas import list_resource_templates as _list_resource_templates
@@ -25,181 +24,67 @@ from hub_core.mcp.render_input_schemas import SECONDARY_Y_SCHEMA as _SECONDARY_Y
 from hub_core.mcp.render_input_schemas import SERIES_STYLES_SCHEMA as _SERIES_STYLES_SCHEMA
 from hub_core.mcp.render_input_schemas import SHARED_LEGEND_OPTIONS_SCHEMA as _SHARED_LEGEND_OPTIONS_SCHEMA
 from hub_core.mcp.render_input_schemas import TICK_STYLE_SCHEMA as _TICK_STYLE_SCHEMA
-from hub_core.rendering import PLOT_TYPES
-from themes.style_profiles import DEFAULT_PROFILE, PROFILE_ALIASES, list_profiles
-
-TOOL_NAMES = (
-    "figops.health",
-    "figops.describe",
-    "figops.list_styles",
-    "figops.list_projects",
-    "figops.inspect_project",
-    "figops.validate_project",
-    "figops.render_csv_graph",
-    "figops.render_csv_multipanel",
-    "figops.render_project_figure",
-    "figops.collect_artifacts",
-    "figops.scaffold_project",
-    "figops.normalize_project_structure",
-    "figops.batch_check",
-    "figops.evaluate_publication_readiness",
+from hub_core.mcp.structure_schemas import (
+    build_normalize_project_structure_definition,
+    build_project_structure_schemas,
 )
-LEGACY_TOOL_NAMES = tuple(name.replace("figops.", "graphhub.", 1) for name in TOOL_NAMES[:13])
-MCP_BATCH_MAX_PROJECTS = 50
+from hub_core.mcp.surface_profiles import select_tool_definitions
+from hub_core.mcp.surface_schemas import list_plot_type_descriptions, list_semantic_check_descriptions
+from hub_core.mcp.surface_schemas import supported_render_plot_types as _supported_render_plot_types
+from hub_core.mcp.v2_tool_schemas import build_v2_tool_definitions
+from themes.style_profiles import DEFAULT_PROFILE, PUBLIC_PROFILE_ALIASES, list_public_profiles
 
-TOOL_HANDLER_NAMES = {
-    "figops.health": "health",
-    "figops.describe": "describe",
-    "figops.list_styles": "list_styles",
-    "figops.list_projects": "list_projects",
-    "figops.inspect_project": "inspect_project",
-    "figops.validate_project": "validate_project",
-    "figops.render_csv_graph": "render_csv_graph",
-    "figops.render_csv_multipanel": "render_csv_multipanel",
-    "figops.render_project_figure": "render_project_figure",
-    "figops.collect_artifacts": "collect_artifacts",
-    "figops.scaffold_project": "scaffold_project",
-    "figops.normalize_project_structure": "normalize_project_structure",
-    "figops.batch_check": "batch_check",
-    "figops.evaluate_publication_readiness": "evaluate_publication_readiness",
+LEGACY_TOOL_NAMES = _schema_common.LEGACY_TOOL_NAMES
+TOOL_HANDLER_NAMES = _schema_common.TOOL_HANDLER_NAMES
+TOOL_NAMES = _schema_common.TOOL_NAMES
+ToolDefinition = _schema_common.ToolDefinition
+get_tool_handlers = _schema_common.get_tool_handlers
+_RENDER_ARTIFACT_RESOURCE_SCHEMA = _schema_common.RENDER_ARTIFACT_RESOURCE_SCHEMA
+_RENDER_PREVIEW_RESOURCE_SCHEMA = _schema_common.RENDER_PREVIEW_RESOURCE_SCHEMA
+_object_schema = _schema_common.object_schema
+_open_object_schema = _schema_common.open_object_schema
+_standard_output_schema = _schema_common.standard_output_schema
+_tool_annotations = _schema_common.tool_annotations
+__all__ = [
+    "LEGACY_TOOL_NAMES", "MCP_BATCH_MAX_PROJECTS", "TOOL_HANDLER_NAMES", "TOOL_NAMES",
+    "describe_figops_surface", "describe_graphhub_surface", "get_tool_handlers", "list_tool_definitions",
+    "list_plot_type_descriptions", "list_semantic_check_descriptions", "list_prompt_definitions",
+    "list_resource_definitions", "list_resource_templates", "_open_object_schema", "_tool_annotations"]
+
+_SIGNIFICANCE_MARKER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "x1": {"type": "number"},
+        "x2": {"type": "number"},
+        "y": {"type": "number"},
+        "h": {"type": "number"},
+        "label": {"type": "string"},
+        "color": {"type": "string"},
+        "calculation_evidence_id": {"type": "string", "minLength": 1},
+        "analysis_artifact_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "test_metadata": {
+            "type": "object",
+            "properties": {
+                "test_name": {"type": "string", "minLength": 1},
+                "model": {"type": "string", "minLength": 1},
+            },
+            "required": ["test_name", "model"],
+            "additionalProperties": False,
+        },
+    },
+    "required": [
+        "x1",
+        "x2",
+        "y",
+        "label",
+        "calculation_evidence_id",
+        "analysis_artifact_sha256",
+        "test_metadata",
+    ],
+    "additionalProperties": False,
 }
-TOOL_HANDLER_NAMES.update(
-    {
-        legacy_name: TOOL_HANDLER_NAMES[primary_name]
-        for primary_name, legacy_name in zip(TOOL_NAMES[:13], LEGACY_TOOL_NAMES, strict=True)
-    }
-)
 
-
-def get_tool_handlers(server: Any) -> dict[str, Callable[[dict[str, Any]], dict[str, Any]]]:
-    return {name: getattr(server, handler_name) for name, handler_name in TOOL_HANDLER_NAMES.items()}
-
-
-@dataclass(frozen=True)
-class ToolDefinition:
-    name: str
-    description: str
-    input_schema: dict[str, Any]
-    output_schema: dict[str, Any]
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "inputSchema": self.input_schema,
-            "outputSchema": self.output_schema,
-        }
-
-
-def _object_schema(properties: dict[str, Any] | None = None, required: list[str] | None = None) -> dict[str, Any]:
-    schema: dict[str, Any] = {
-        "type": "object",
-        "properties": properties or {},
-        "additionalProperties": False,
-    }
-    if required:
-        schema["required"] = required
-    return schema
-
-def _open_object_schema(properties: dict[str, Any] | None = None, required: list[str] | None = None) -> dict[str, Any]:
-    schema: dict[str, Any] = {
-        "type": "object",
-        "properties": properties or {},
-    }
-    if required:
-        schema["required"] = required
-    return schema
-
-
-def _standard_output_schema(extra_properties: dict[str, Any] | None = None) -> dict[str, Any]:
-    properties: dict[str, Any] = {
-        "status": {"type": "string", "enum": ["ok", "warning", "error"]},
-        "operation_id": {"type": "string"},
-        "is_dry_run": {"type": "boolean"},
-        "summary": {"type": "string"},
-        "created_paths": {"type": "array", "items": {"type": "string"}},
-        "modified_paths": {"type": "array", "items": {"type": "string"}},
-        "skipped_paths": {"type": "array", "items": {"type": "string"}},
-        "artifact_resources": {"type": "array", "items": {"type": "string"}},
-        "warnings": {"type": "array", "items": {"type": "string"}},
-        "errors": {"type": "array", "items": {"type": "string"}},
-        "script_output": {"type": "array", "items": {"type": "string"}},
-        "manual_review_needed": {"type": "boolean"},
-        "error_category": {"type": "string", "enum": ["validation", "not_found", "internal", "disabled"]},
-        "error_code": {"type": "string"},
-        "jsonrpc_code": {"type": "integer"},
-        "failure_stage": {"type": "string"},
-        "resolution_hint": {"type": "string"},
-        "manifest_path": {"type": "string"},
-        "status_path": {"type": "string"},
-        "latest_alias": {"type": "string"},
-        "latest_dir": {"type": "string"},
-    }
-    properties.update(extra_properties or {})
-    return _object_schema(properties)
-
-
-def _supported_render_plot_types() -> list[str]:
-    return sorted(PLOT_TYPES)
-
-
-def _plot_type_example(name: str, arg_schema: dict[str, Any]) -> dict[str, Any]:
-    arguments: dict[str, Any] = {
-        "data_path": "/path/to/data.csv",
-        "x_column": "x",
-        "y_column": "y",
-        "plot_type": name,
-        "target_format": "nature",
-        "profile": DEFAULT_PROFILE,
-        "output_format": "png",
-        "job_id": f"example-{name}",
-    }
-    if "z_column" in arg_schema.get("required", []):
-        arguments["z_column"] = "z"
-    if "facet_column" in arg_schema.get("required", []):
-        arguments["facet_column"] = "facet"
-    if "category_order" in arg_schema.get("properties", {}):
-        arguments["category_order"] = ["day 0", "day 7", "day 14", "day 28"]
-    if "facet_order" in arg_schema.get("properties", {}):
-        arguments["facet_order"] = ["control", "treated"]
-    if "facet_ncols" in arg_schema.get("properties", {}):
-        arguments["facet_ncols"] = 2
-    if "aggregate" in arg_schema.get("properties", {}):
-        arguments["aggregate"] = "mean"
-    if "bar_error_column" in arg_schema.get("properties", {}):
-        arguments["bar_error_column"] = "sem"
-    if "annotate_values" in arg_schema.get("properties", {}):
-        arguments["annotate_values"] = True
-    if "fit_line" in arg_schema.get("properties", {}):
-        arguments["fit_line"] = True
-        arguments["ci_band"] = True
-        arguments["fit_options"] = {"model": "linear", "label": "Linear fit"}
-        arguments["significance_markers"] = [{"x1": 0, "x2": 1, "y": 2, "label": "p<0.05"}]
-    return {"tool": "figops.render_csv_graph", "arguments": arguments}
-
-
-def list_plot_type_descriptions() -> list[dict[str, Any]]:
-    return [
-        {
-            "name": name,
-            "arg_schema": dict(plot_type.arg_schema),
-            "capabilities": dict(plot_type.capabilities),
-            "worked_example": _plot_type_example(name, plot_type.arg_schema),
-        }
-        for name, plot_type in sorted(PLOT_TYPES.items())
-    ]
-
-
-def list_semantic_check_descriptions() -> list[dict[str, Any]]:
-    return [
-        {
-            "name": name,
-            "purpose": definition["purpose"],
-            "schema": definition["schema"],
-            "example": definition["example"],
-        }
-        for name, definition in sorted(SEMANTIC_CHECK_DEFINITIONS.items())
-    ]
+MCP_BATCH_MAX_PROJECTS = 50
 
 
 def describe_figops_surface() -> dict[str, Any]:
@@ -222,7 +107,9 @@ def describe_figops_surface() -> dict[str, Any]:
 describe_graphhub_surface = describe_figops_surface
 
 
-def list_tool_definitions() -> list[dict[str, Any]]:
+def list_tool_definitions(
+    *, profile: str | None = None, write_tools_enabled: bool | None = None
+) -> list[dict[str, Any]]:
     supported_render_plot_types = _supported_render_plot_types()
     root_arg = {"type": "string", "description": "Project scan root. Defaults to FigOps research root."}
     project_id_arg = {
@@ -243,53 +130,9 @@ def list_tool_definitions() -> list[dict[str, Any]]:
         "description": "Optional baseline figure path to compare the rendered output against.",
     }
     job_id_arg = {"type": "string", "description": "Stable render job ID; auto-generated when omitted."}
-    project_role_schema = {"type": "string", "enum": ["master", "module"]}
-    project_status_schema = {"type": "string", "enum": sorted(ALLOWED_PROJECT_STATUSES)}
-    discovery_classification_schema = {
-        "type": "string",
-        "enum": ["ephemeral", "folder_role", "invalid", "legacy", "official", "quarantine", "unclassified"],
-    }
-    discovery_role_schema = {
-        "type": "string",
-        "enum": [
-            "archive",
-            "docs",
-            "exploratory",
-            "master",
-            "module",
-            "raw_reservoir",
-            "reference",
-            "support",
-            "theory",
-            "unclassified",
-        ],
-    }
-    listed_project_schema = {
-        "type": "object",
-        "properties": {
-            "project_id": {"type": "string"},
-            "project_root": {"type": "string"},
-            "config_path": {"type": "string"},
-            "role": discovery_role_schema,
-            "status": {"type": "string"},
-            "project_status": project_status_schema,
-            "classification": discovery_classification_schema,
-            "errors": {"type": "array", "items": {"type": "string"}},
-            "declared_figures": {"type": "integer"},
-            "declared_diagrams": {"type": "integer"},
-            "target_format": {"type": "string"},
-        },
-    }
-    project_metadata_schema = {
-        "type": "object",
-        "properties": {
-            "name": {"type": "string"},
-            "role": project_role_schema,
-            "status": project_status_schema,
-            "project_root": {"type": "string"},
-            "config_path": {"type": "string"},
-        },
-    }
+    listed_project_schema, project_metadata_schema, project_status_schema, structure_audit_schema = (
+        build_project_structure_schemas()
+    )
     selector_one_of = [{"required": ["project_id"]}, {"required": ["project_path"]}]
     project_selector = {
         "project_id": project_id_arg,
@@ -316,6 +159,26 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "style_format_count": {"type": "integer"},
                     "discovery_status": {"type": "object"},
                     "write_tools_enabled": {"type": "boolean"},
+                    "surface_profile": {"type": "string"},
+                    "exposed_tool_count": {"type": "integer"},
+                    "preview_worker_limits": {
+                        "type": "object",
+                        "properties": {
+                            "memory_limit_bytes": {"type": "integer"},
+                            "memory_limit_enforced": {"type": "boolean"},
+                            "memory_limit_limitation": {"type": ["string", "null"]},
+                            "timeout_seconds": {"type": "number"},
+                            "source_byte_limit": {"type": "integer"},
+                            "raw_output_byte_limit": {"type": "integer"},
+                            "base64_output_byte_limit": {"type": "integer"},
+                            "pixel_limit": {"type": "integer"},
+                            "edge_limit": {"type": "integer"},
+                            "cpu_limit_enforced": {"type": "boolean"},
+                            "file_size_limit_enforced": {"type": "boolean"},
+                            "process_tree_containment": {"type": "boolean"},
+                        },
+                        "additionalProperties": False,
+                    },
                 }
             ),
         ),
@@ -391,6 +254,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "naming_lint": {"type": "object"},
                     "canonical_docs_registry": {"type": "object"},
                     "placeholder_report": {"type": "object"},
+                    "structure_audit": structure_audit_schema,
                     "normalization_needed": {"type": "boolean"},
                 }
             ),
@@ -436,6 +300,22 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "facet_column": {"type": "string"},
                     "series_column": {"type": "string"},
                     "label_column": {"type": "string"},
+                    "label_map": {"type": "object", "additionalProperties": {"type": "string"}},
+                    "label_transform": {
+                        "type": "string",
+                        "enum": ["raw", "legacy_compress"],
+                        "default": "raw",
+                    },
+                    "compliance_mode": {
+                        "type": "string",
+                        "enum": ["validate", "clamp"],
+                        "default": "validate",
+                    },
+                    "declutter_mode": {
+                        "type": "string",
+                        "enum": ["none", "declutter"],
+                        "default": "none",
+                    },
                     "point_label_options": _POINT_LABEL_OPTIONS_SCHEMA,
                     "series_styles": _SERIES_STYLES_SCHEMA,
                     "secondary_y": _SECONDARY_Y_SCHEMA,
@@ -462,12 +342,18 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "fit_line": {"type": "boolean"},
                     "ci_band": {"type": "boolean"},
                     "fit_options": _FIT_OPTIONS_SCHEMA,
-                    "significance_markers": {"type": "array", "items": {"type": "object"}},
+                    "significance_markers": {"type": "array", "items": _SIGNIFICANCE_MARKER_SCHEMA},
+                    "calculation_evidence_path": data_path_arg,
+                    "calculation_evidence_paths": {
+                        "type": "array",
+                        "items": data_path_arg,
+                        "maxItems": 32,
+                    },
                     "plot_type": {"type": "string", "enum": supported_render_plot_types, "default": "scatter"},
-                    "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
+                    "target_format": {"type": "string", "enum": sorted(PUBLIC_TARGET_FORMATS), "default": "nature"},
                     "profile": {
                         "type": "string",
-                        "enum": sorted(set(list_profiles()) | set(PROFILE_ALIASES)),
+                        "enum": sorted(set(list_public_profiles()) | set(PUBLIC_PROFILE_ALIASES)),
                         "default": DEFAULT_PROFILE,
                     },
                     "output_format": {"type": "string", "enum": sorted(ALLOWED_OUTPUT_FORMATS), "default": "png"},
@@ -484,6 +370,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
             ),
             _standard_output_schema(
                 {
+                    "artifact_resources": _RENDER_ARTIFACT_RESOURCE_SCHEMA,
+                    "preview_resources": _RENDER_PREVIEW_RESOURCE_SCHEMA,
                     "job_id": {"type": "string"},
                     "job_root": {"type": "string"},
                     "output_path": {"type": "string"},
@@ -493,8 +381,15 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
                     "layout_report": _LAYOUT_REPORT_SCHEMA,
                     "calculation_checks": {"type": "object"},
+                    "calculation_evidence": {"type": "array", "items": {"type": "object"}},
+                    "statistical_claims": {"type": "array", "items": {"type": "object"}},
+                    "descriptive_overlays": {"type": "array", "items": {"type": "object"}},
+                    "claim_candidates": {"type": "array", "items": {"type": "object"}},
+                    "label_transformations": {"type": "object"},
+                    "mutation_ledger": {"type": "array", "items": {"type": "object"}},
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
+                    "evidence": {"type": "object"},
                 }
             ),
         ),
@@ -515,6 +410,22 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                                 "facet_column": {"type": "string"},
                                 "series_column": {"type": "string"},
                                 "label_column": {"type": "string"},
+                                "label_map": {"type": "object", "additionalProperties": {"type": "string"}},
+                                "label_transform": {
+                                    "type": "string",
+                                    "enum": ["raw", "legacy_compress"],
+                                    "default": "raw",
+                                },
+                                "compliance_mode": {
+                                    "type": "string",
+                                    "enum": ["validate", "clamp"],
+                                    "default": "validate",
+                                },
+                                "declutter_mode": {
+                                    "type": "string",
+                                    "enum": ["none", "declutter"],
+                                    "default": "none",
+                                },
                                 "point_label_options": _POINT_LABEL_OPTIONS_SCHEMA,
                                 "series_styles": _SERIES_STYLES_SCHEMA,
                                 "secondary_y": _SECONDARY_Y_SCHEMA,
@@ -533,7 +444,13 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                                 "fit_line": {"type": "boolean"},
                                 "ci_band": {"type": "boolean"},
                                 "fit_options": _FIT_OPTIONS_SCHEMA,
-                                "significance_markers": {"type": "array", "items": {"type": "object"}},
+                                "significance_markers": {"type": "array", "items": _SIGNIFICANCE_MARKER_SCHEMA},
+                                "calculation_evidence_path": data_path_arg,
+                                "calculation_evidence_paths": {
+                                    "type": "array",
+                                    "items": data_path_arg,
+                                    "maxItems": 32,
+                                },
                                 "plot_type": {
                                     "type": "string",
                                     "enum": supported_render_plot_types,
@@ -558,10 +475,10 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "layout_options": _MULTIPANEL_LAYOUT_OPTIONS_SCHEMA,
                     "shared_legend": {"type": "boolean", "default": False},
                     "shared_legend_options": _SHARED_LEGEND_OPTIONS_SCHEMA,
-                    "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
+                    "target_format": {"type": "string", "enum": sorted(PUBLIC_TARGET_FORMATS), "default": "nature"},
                     "profile": {
                         "type": "string",
-                        "enum": sorted(set(list_profiles()) | set(PROFILE_ALIASES)),
+                        "enum": sorted(set(list_public_profiles()) | set(PUBLIC_PROFILE_ALIASES)),
                         "default": DEFAULT_PROFILE,
                     },
                     "output_format": {"type": "string", "enum": sorted(ALLOWED_OUTPUT_FORMATS), "default": "png"},
@@ -574,6 +491,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
             ),
             _standard_output_schema(
                 {
+                    "artifact_resources": _RENDER_ARTIFACT_RESOURCE_SCHEMA,
+                    "preview_resources": _RENDER_PREVIEW_RESOURCE_SCHEMA,
                     "job_id": {"type": "string"},
                     "job_root": {"type": "string"},
                     "output_path": {"type": "string"},
@@ -583,9 +502,16 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
                     "layout_report": _LAYOUT_REPORT_SCHEMA,
                     "calculation_checks": {"type": "object"},
+                    "calculation_evidence": {"type": "array", "items": {"type": "object"}},
+                    "statistical_claims": {"type": "array", "items": {"type": "object"}},
+                    "descriptive_overlays": {"type": "array", "items": {"type": "object"}},
+                    "claim_candidates": {"type": "array", "items": {"type": "object"}},
+                    "label_transformations": {"type": "object"},
+                    "mutation_ledger": {"type": "array", "items": {"type": "object"}},
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
                     "provenance": {"type": "object"},
+                    "evidence": {"type": "object"},
                 }
             ),
         ),
@@ -600,8 +526,11 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                         "root": root_arg,
                         "figure_id": {"type": "string"},
                         "figure_output": {"type": "string"},
-                        "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS)},
-                        "profile": {"type": "string", "enum": sorted(set(list_profiles()) | set(PROFILE_ALIASES))},
+                        "target_format": {"type": "string", "enum": sorted(PUBLIC_TARGET_FORMATS)},
+                        "profile": {
+                            "type": "string",
+                            "enum": sorted(set(list_public_profiles()) | set(PUBLIC_PROFILE_ALIASES)),
+                        },
                         "output_format": {"type": "string", "enum": sorted(ALLOWED_OUTPUT_FORMATS)},
                         "dry_run": {"type": "boolean", "default": False},
                         "overwrite": {"type": "boolean", "default": False},
@@ -614,6 +543,8 @@ def list_tool_definitions() -> list[dict[str, Any]]:
             },
             _standard_output_schema(
                 {
+                    "artifact_resources": _RENDER_ARTIFACT_RESOURCE_SCHEMA,
+                    "preview_resources": _RENDER_PREVIEW_RESOURCE_SCHEMA,
                     "job_id": {"type": "string"},
                     "project_id": {"type": "string"},
                     "source_project_path": {"type": "string"},
@@ -627,9 +558,13 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                     "geometry_diagnostics": _GEOMETRY_DIAGNOSTICS_SCHEMA,
                     "layout_report": _LAYOUT_REPORT_SCHEMA,
                     "figure_metadata": {"type": "object"},
+                    "claim_inventory": {"type": "object"},
+                    "publication_status": {"type": "string", "enum": ["verified", "unverified"]},
+                    "promotion_eligible": {"type": "boolean"},
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
                     "provenance": {"type": "object"},
+                    "evidence": {"type": "object"},
                 }
             ),
         ),
@@ -680,7 +615,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                 {
                     "project_name": {"type": "string"},
                     "project_root": {"type": "string"},
-                    "target_format": {"type": "string", "enum": sorted(ALLOWED_TARGET_FORMATS), "default": "nature"},
+                    "target_format": {"type": "string", "enum": sorted(PUBLIC_TARGET_FORMATS), "default": "nature"},
                     "template": {"type": "string", "enum": ["standard", "researchos"], "default": "standard"},
                     "dry_run": {
                         "type": "boolean",
@@ -706,37 +641,7 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                 }
             ),
         ),
-        ToolDefinition(
-            "figops.normalize_project_structure",
-            "Plan or apply migration of an existing graph folder into standard FigOps structure.",
-            _object_schema(
-                {
-                    "project_path": {"type": "string"},
-                    "dry_run": {
-                        "type": "boolean",
-                        "default": True,
-                        "description": (
-                            "Preview without writing files. Defaults True like scaffold_project and "
-                            "batch_check; the two render tools default dry_run False."
-                        ),
-                    },
-                    "move_policy": {"type": "string", "enum": ["copy", "move", "symlink"], "default": "copy"},
-                    "include_raw": {"type": "boolean", "default": False},
-                    "overwrite": {"type": "boolean", "default": False},
-                },
-                required=["project_path"],
-            ),
-            _standard_output_schema(
-                {
-                    "project_root": {"type": "string"},
-                    "planned_paths": {"type": "array", "items": {"type": "string"}},
-                    "manifest": {"type": "object"},
-                    "config_path": {"type": "string"},
-                    "style_summary": {"type": "object"},
-                    "validation": {"type": "object"},
-                }
-            ),
-        ),
+        build_normalize_project_structure_definition(),
         ToolDefinition(
             "figops.batch_check",
             "Run a bounded project discovery and validation batch check with optional runtime manifest logging.",
@@ -766,8 +671,16 @@ def list_tool_definitions() -> list[dict[str, Any]]:
                 }
             ),
         ),
+        *build_v2_tool_definitions(
+            project_id_arg=project_id_arg,
+            project_path_arg=project_path_arg,
+            selector_one_of=selector_one_of,
+        ),
     ]
-    return [definition.to_dict() for definition in definitions]
+    serialized = [definition.to_dict() for definition in definitions]
+    if profile is None:
+        return serialized
+    return select_tool_definitions(serialized, profile=profile, write_tools_enabled=bool(write_tools_enabled))
 
 
 def list_resource_definitions() -> list[dict[str, str]]:

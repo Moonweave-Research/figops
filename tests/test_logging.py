@@ -104,35 +104,55 @@ class TestGraphHubLogging(unittest.TestCase):
 
     def test_cache_manager_warnings_log_to_stderr_not_stdout(self):
         with tempfile.TemporaryDirectory(prefix="graphhub_logging_cache_") as tmpdir:
-            project_dir = Path(tmpdir)
-            (project_dir / ".build_state.json").write_text("{not json", encoding="utf-8")
+            root = Path(tmpdir)
+            project_dir = root / "project"
+            runtime_root = root / "runtime"
+            project_dir.mkdir()
+            legacy_state = project_dir / ".build_state.json"
+            legacy_state.write_text("{not json", encoding="utf-8")
             stdout = io.StringIO()
             stderr = io.StringIO()
 
-            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            with (
+                patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime_root)}, clear=False),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
                 configure_logging("INFO")
                 state, state_path = load_build_state(str(project_dir))
+            legacy_state_text = legacy_state.read_text(encoding="utf-8")
 
         self.assertEqual("", stdout.getvalue())
         self.assertIn("invalid build state", stderr.getvalue())
-        self.assertEqual(state_path, str(project_dir / ".build_state.json"))
+        self.assertTrue(Path(state_path).is_relative_to(runtime_root))
+        self.assertEqual(legacy_state_text, "{not json")
         self.assertEqual(state["version"], 4)
 
     def test_execution_log_status_logs_to_stderr_not_stdout(self):
-        record = {"status": "success", "schema_version": 1}
         stdout = io.StringIO()
         stderr = io.StringIO()
 
         with tempfile.TemporaryDirectory(prefix="graphhub_logging_exec_") as tmpdir:
-            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            root = Path(tmpdir)
+            project_dir = root / "project"
+            runtime_root = root / "runtime"
+            project_dir.mkdir()
+            record = {"status": "success", "schema_version": 1, "project_dir": str(project_dir)}
+            with (
+                patch.dict(os.environ, {"RESEARCH_HUB_RUNTIME_ROOT": str(runtime_root)}, clear=False),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
                 configure_logging("INFO")
                 log_path = append_execution_log(
                     hub_path=tmpdir,
                     record=record,
-                    log_dirname=tmpdir,
+                    log_dirname="test-logs",
                     filename="execution.jsonl",
                 )
             self.assertTrue(Path(log_path).exists())
+            self.assertTrue(Path(log_path).is_relative_to(runtime_root))
+            self.assertFalse((project_dir / "test-logs" / "execution.jsonl").exists())
 
         self.assertEqual("", stdout.getvalue())
         self.assertIn("Execution log appended", stderr.getvalue())
@@ -523,9 +543,14 @@ class TestGraphHubLogging(unittest.TestCase):
         stderr = io.StringIO()
 
         with tempfile.TemporaryDirectory(prefix="graphhub_logging_missing_project_") as tmpdir:
+            missing_project = Path(tmpdir) / "missing"
             with (
-                patch.object(sys, "argv", ["orchestrator.py", "--project", "missing"]),
+                patch.object(sys, "argv", ["orchestrator.py", "--project", str(missing_project)]),
                 patch("orchestrator.get_research_root", return_value=tmpdir),
+                patch(
+                    "orchestrator.resolve_execution_project_path",
+                    return_value=missing_project,
+                ),
                 patch("orchestrator.run_preflight_check"),
                 contextlib.redirect_stdout(stdout),
                 contextlib.redirect_stderr(stderr),
@@ -551,6 +576,7 @@ class TestGraphHubLogging(unittest.TestCase):
                     "argv",
                     ["orchestrator.py", "--project", str(project_dir), "--step", "analysis", "--verbose"],
                 ),
+                patch("orchestrator.get_research_root", return_value=tmpdir),
                 patch("orchestrator.run_preflight_check"),
                 patch(
                     "orchestrator.load_config",
@@ -582,7 +608,7 @@ class TestGraphHubLogging(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graphhub_logging_scaffold_") as tmpdir:
             project_dir = Path(tmpdir) / "project"
             scaffold_project(project_dir, HUB_ROOT, project_name="Logging Scaffold")
-            (project_dir / "results" / "data" / "summary.csv").write_text(
+            (project_dir / "results" / "data" / "source" / "summary.csv").write_text(
                 "time,value,molarity\n0,1,0.1\n1,2,0.2\n",
                 encoding="utf-8",
             )
@@ -594,9 +620,11 @@ class TestGraphHubLogging(unittest.TestCase):
                     contextlib.redirect_stdout(stdout),
                     contextlib.redirect_stderr(stderr),
                 ):
-                    runpy.run_path(str(project_dir / "hub_scripts" / "plot.py"), run_name="__main__")
                     runpy.run_path(
-                        str(project_dir / "hub_scripts" / "diagrams" / "device_cross_section.py"),
+                        str(project_dir / "hub_scripts" / "figures" / "plot.py"), run_name="__main__"
+                    )
+                    runpy.run_path(
+                        str(project_dir / "hub_scripts" / "figures" / "device_cross_section.py"),
                         run_name="__main__",
                     )
             finally:

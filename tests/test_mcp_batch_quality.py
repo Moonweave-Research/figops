@@ -56,10 +56,19 @@ data_contract:
   csv_checks:
     - path: "results/data/summary.csv"
       required_columns: ["x", "y"]
+sample_registry:
+  - sample_id: sample-a
+experimental_conditions:
+  conditions:
+    - id: condition-a
+      parameters: {{}}
 figures:
   - id: Fig1
     script: hub_scripts/plot.py
     output: results/figures/Fig1.png
+    claim: "Fixture output preserves the declared x/y relationship."
+    samples: [sample-a]
+    conditions: [condition-a]
 """
 
 INVALID_CONFIG = """
@@ -121,18 +130,49 @@ class BatchQualityMCPTest(unittest.TestCase):
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
 
         self.assertIn("figops.batch_check", definitions)
-        schema = definitions["figops.batch_check"]["inputSchema"]
+        definition = definitions["figops.batch_check"]
+        schema = definition["inputSchema"]
         self.assertIn("root", schema["properties"])
         self.assertIn("max_projects", schema["properties"])
         self.assertIn("dry_run", schema["properties"])
         self.assertIn("batch_id", schema["properties"])
         self.assertIn("resume_manifest_path", schema["properties"])
         self.assertIn("include_quarantine", schema["properties"])
+        self.assertFalse(definition["annotations"]["readOnlyHint"])
+        self.assertTrue(definition["annotations"]["destructiveHint"])
+
+    def test_batch_check_write_guard_blocks_direct_routed_and_alias_without_side_effects(self):
+        with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_guard_") as tmpdir:
+            root = Path(tmpdir) / "ResearchOS"
+            self._write_project(root, "01_Valid")
+            before = _snapshot_files(root)
+            runtime_root = Path(tmpdir) / "runtime"
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=runtime_root,
+                write_tools_enabled=False,
+            )
+            arguments = {"root": str(root), "dry_run": True, "batch_id": "must-not-exist"}
+
+            direct = server.batch_check(arguments)
+            routed = self._call(server, "figops.batch_check", arguments)
+            alias = self._call(server, "graphhub.batch_check", arguments)
+
+            for result in (direct, routed, alias):
+                self.assertEqual(result["status"], "error")
+                self.assertEqual(result["error_category"], "disabled")
+                self.assertTrue(result["manual_review_needed"])
+            self.assertEqual(_snapshot_files(root), before)
+            self.assertFalse(runtime_root.exists())
 
     def test_render_csv_graph_reports_preflight_passed_artifact_status(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=Path(tmpdir) / "runtime",
+                write_tools_enabled=True,
+            )
 
             with patch(
                 "hub_core.mcp.tools.render_support.validate_figure_preflight",
@@ -152,7 +192,11 @@ class BatchQualityMCPTest(unittest.TestCase):
     def test_collect_artifacts_reports_manual_review_for_preflight_warning(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=Path(tmpdir) / "runtime",
+                write_tools_enabled=True,
+            )
 
             with patch(
                 "hub_core.mcp.tools.render_support.validate_figure_preflight",
@@ -174,7 +218,11 @@ class BatchQualityMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
             data_path = _write_csv(Path(tmpdir) / "input" / "data.csv")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
             rendered = self._call(
                 server,
                 "figops.render_csv_graph",
@@ -212,7 +260,11 @@ class BatchQualityMCPTest(unittest.TestCase):
             before = _snapshot_files(root)
             runtime_root = Path(tmpdir) / "runtime"
             with patch.dict(os.environ, {"GRAPH_HUB_CONVENTIONS_ADAPTER": "surfur"}, clear=False):
-                server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+                server = GraphHubMCPServer(
+                    research_root=Path(tmpdir),
+                    runtime_root=runtime_root,
+                    write_tools_enabled=True,
+                )
                 result = self._call(
                     server,
                     "figops.batch_check",
@@ -236,7 +288,11 @@ class BatchQualityMCPTest(unittest.TestCase):
             root = Path(tmpdir) / "ResearchOS"
             self._write_project(root, "_archive/06_Archived")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
 
             result = self._call(
                 server,
@@ -256,7 +312,11 @@ class BatchQualityMCPTest(unittest.TestCase):
             self._write_project(root, "01_Valid")
             before = _snapshot_files(root)
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
 
             result = self._call(
                 server,
@@ -281,7 +341,11 @@ class BatchQualityMCPTest(unittest.TestCase):
             root = Path(tmpdir) / "ResearchOS"
             self._write_project(root, "01_Valid")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
             first = self._call(
                 server,
                 "figops.batch_check",
@@ -313,7 +377,11 @@ class BatchQualityMCPTest(unittest.TestCase):
             outside_manifest = Path(tmpdir) / "escape" / "batch_manifest.json"
             outside_manifest.parent.mkdir(parents=True)
             outside_manifest.write_text(json.dumps({"root": str(root), "checked_projects": []}), encoding="utf-8")
-            server = GraphHubMCPServer(research_root=research_root, runtime_root=runtime_root)
+            server = GraphHubMCPServer(
+                research_root=research_root,
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
 
             resumed = self._call(
                 server,
@@ -340,7 +408,11 @@ class BatchQualityMCPTest(unittest.TestCase):
             self._write_project(root_a, "01_Valid")
             self._write_project(root_b, "01_Valid")
             runtime_root = Path(tmpdir) / "runtime"
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=runtime_root)
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=runtime_root,
+                write_tools_enabled=True,
+            )
             first = self._call(
                 server,
                 "figops.batch_check",
@@ -368,7 +440,11 @@ class BatchQualityMCPTest(unittest.TestCase):
             root = Path(tmpdir) / "ResearchOS"
             for index in range(4):
                 self._write_project(root, f"{index:02d}_Valid")
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=Path(tmpdir) / "runtime",
+                write_tools_enabled=True,
+            )
 
             with patch("hub_core.mcp.render_orchestration.MCP_BATCH_TIMEOUT_SECONDS", 0):
                 result = self._call(
@@ -386,7 +462,11 @@ class BatchQualityMCPTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_batch_quality_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"
             self._write_project(root, "01_Valid")
-            server = GraphHubMCPServer(research_root=Path(tmpdir), runtime_root=Path(tmpdir) / "runtime")
+            server = GraphHubMCPServer(
+                research_root=Path(tmpdir),
+                runtime_root=Path(tmpdir) / "runtime",
+                write_tools_enabled=True,
+            )
 
             started_at = time.monotonic()
             with (

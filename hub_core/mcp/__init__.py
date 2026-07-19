@@ -5,7 +5,7 @@ from typing import Any
 
 _LAZY_EXPORTS = {
     "FigOpsMCPServer": ("hub_core.mcp.server", "FigOpsMCPServer"),
-    "GraphHubMCPServer": ("hub_core.mcp.server", "FigOpsMCPServer"),
+    "GraphHubMCPServer": ("hub_core.mcp.server", "GraphHubMCPServer"),
     "McpServerConfig": ("hub_core.mcp.config", "McpServerConfig"),
     "list_tool_definitions": ("hub_core.mcp.schemas", "list_tool_definitions"),
     "run_stdio_server": ("hub_core.mcp.transport", "run_stdio_server"),

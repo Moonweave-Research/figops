@@ -1,12 +1,18 @@
 import hashlib
+import math
 import os
+from pathlib import Path
 
 import yaml
 
 from . import config_schema as _config_schema
+from . import config_visual_style as _config_visual_style
+from .config_adapter_validation import validate_named_adapter as _validate_named_adapter
 from .config_assemblies import validate_assemblies as _validate_assemblies_impl
+from .config_language_policy import ALLOWED_LANGUAGE_POLICY_MODES as ALLOWED_LANGUAGE_POLICY_MODES
 from .config_language_policy import get_language_policy as _get_language_policy_impl
 from .config_language_policy import normalize_lang as normalize_lang
+from .config_path_discovery import resolve_discovered_config_path as _resolve_discovered_config_path
 from .config_project_registry import load_registry_operational_states as _load_registry_operational_states
 from .config_project_registry import normalize_registry_path as _normalize_registry_path  # noqa: F401
 from .config_project_registry import resolve_operational_state as _resolve_operational_state
@@ -25,6 +31,7 @@ from .config_style import INTERNAL_STYLE_TARGET_FORMAT as INTERNAL_STYLE_TARGET_
 from .config_style import KNOWN_STYLE_PROFILE_KEYS as _KNOWN_STYLE_PROFILE_KEYS
 from .config_style import KNOWN_STYLE_PROFILES as _KNOWN_STYLE_PROFILES
 from .config_style import PROFILE_ALIASES as PROFILE_ALIASES
+from .config_style import PUBLIC_TARGET_FORMATS as PUBLIC_TARGET_FORMATS
 from .config_style import list_profiles as list_profiles
 from .config_style import resolve_presets as resolve_presets
 from .config_style import resolve_profile_name as resolve_profile_name
@@ -42,6 +49,7 @@ from .config_visual_outputs import validate_visual_outputs as _validate_visual_o
 from .domain_analysis import DOMAIN_HELPER_NAMES
 from .execution_security import is_positive_finite_timeout
 from .logging import get_logger
+from .project_paths import ProjectPathError, resolve_project_input
 from .project_roles import ALLOWED_FOLDER_ROLES as ALLOWED_FOLDER_ROLES
 from .project_roles import ALLOWED_PROJECT_ROLES as ALLOWED_PROJECT_ROLES
 from .project_roles import ALLOWED_PROJECT_STATUSES as ALLOWED_PROJECT_STATUSES
@@ -53,6 +61,7 @@ from .project_roles import normalize_project_defaults as normalize_project_defau
 from .project_roles import project_modules as project_modules
 from .project_roles import project_role as project_role
 from .project_roles import project_status as project_status
+from .project_structure_contract import validate_project_structure_config as _validate_project_structure_config
 
 CURRENT_CONFIG_SCHEMA_VERSION = _config_schema.CURRENT_CONFIG_SCHEMA_VERSION
 SUPPORTED_CONFIG_SCHEMA_VERSIONS = _config_schema.SUPPORTED_CONFIG_SCHEMA_VERSIONS
@@ -65,6 +74,7 @@ load_yaml_with_unique_keys = _config_schema.load_yaml_with_unique_keys
 _schema_version_key = _config_schema.schema_version_key
 _schema_version = _config_schema.schema_version
 _migrate_0_9_to_1_0 = _config_schema.migrate_0_9_to_1_0
+_migrate_1_0_to_1_1 = _config_schema.migrate_1_0_to_1_1
 _CONFIG_MIGRATIONS = _config_schema.CONFIG_MIGRATIONS
 migrate_config = _config_schema.migrate_config
 
@@ -88,34 +98,22 @@ def _validate_raw_integrity_config(errors: list[str], raw_integrity: object) -> 
     return validate_raw_integrity_config(errors, raw_integrity, allowed_modes=ALLOWED_RAW_INTEGRITY_MODES)
 
 
-def _validate_named_adapter(
-    errors: list[str],
-    adapters: dict,
-    key: str,
-    allowed_values: set[str],
-) -> None:
-    if key not in adapters:
-        return
-    raw_value = adapters.get(key)
-    if not isinstance(raw_value, str) or not raw_value.strip():
-        errors.append(f"environment.adapters.{key} must be a non-empty string.")
-        return
-    value = raw_value.strip().lower()
-    if value not in allowed_values:
-        allowed = ", ".join(sorted(allowed_values))
-        errors.append(f"environment.adapters.{key} '{raw_value}' is invalid. Allowed: {allowed}.")
-
-
 def get_language_policy(config):
     """Compatibility wrapper that preserves the local language-normalizer seam."""
     return _get_language_policy_impl(config, normalize_lang_func=normalize_lang)
 
 
 def find_config_path(project_dir):
+    project_root = Path(project_dir).expanduser().absolute()
     for rel_path in CONFIG_FILE_CANDIDATES:
-        candidate = os.path.join(project_dir, rel_path)
-        if os.path.exists(candidate):
-            return candidate
+        candidate = resolve_project_input(
+            project_dir,
+            rel_path,
+            must_exist=False,
+            purpose="project config",
+        )
+        if candidate.exists():
+            return str(project_root / rel_path)
     return None
 
 
@@ -186,13 +184,14 @@ def _validate_assemblies(errors: list[str], assemblies) -> None:
     )
 
 
-def validate_config(config):
+def validate_config(config, *, project_root=None):
     errors = []
 
     if not isinstance(config, dict):
         return ["Config root must be a YAML mapping/object."]
 
     _validate_top_level_key_near_misses(errors, config)
+    errors.extend(_validate_project_structure_config(config, project_root=project_root))
 
     schema_version = config.get("schema_version")
     if schema_version is not None:
@@ -245,10 +244,7 @@ def validate_config(config):
             if not isinstance(module_path, str) or not module_path.strip():
                 errors.append(f"modules[{i}] must be a non-empty relative path.")
                 continue
-            if os.path.isabs(module_path):
-                errors.append(f"modules[{i}] must be a relative path, got absolute path '{module_path}'.")
-            elif ".." in module_path.replace("\\", "/").split("/"):
-                errors.append(f"modules[{i}] must not contain path traversal '..': '{module_path}'.")
+            _validate_relative_path_value(errors, f"modules[{i}]", module_path)
 
     folder_roles = config.get("folder_roles", {})
     if folder_roles is None:
@@ -265,10 +261,7 @@ def validate_config(config):
             if not folder_path:
                 errors.append("folder_roles keys must be non-empty relative paths.")
                 continue
-            if os.path.isabs(raw_path):
-                errors.append(f"folder_roles.{raw_path} must be a relative path.")
-            elif ".." in folder_path.split("/"):
-                errors.append(f"folder_roles.{raw_path} must not contain path traversal '..'.")
+            _validate_relative_path_value(errors, f"folder_roles.{raw_path}", raw_path)
             if not isinstance(raw_folder_role, str) or raw_folder_role.strip().lower() not in ALLOWED_FOLDER_ROLES:
                 allowed = ", ".join(sorted(ALLOWED_FOLDER_ROLES))
                 errors.append(
@@ -307,29 +300,13 @@ def validate_config(config):
                 f"{', '.join(unknown_sample_ids)}."
             )
 
-    visual_style = config.get("visual_style", {})
-    if visual_style is None:
-        visual_style = {}
-    if not isinstance(visual_style, dict):
-        errors.append("Invalid 'visual_style' section (must be a mapping).")
-    else:
-        target_format = visual_style.get("target_format", "nature")
-        if not isinstance(target_format, str) or target_format.lower() not in ALLOWED_TARGET_FORMATS:
-            allowed = ", ".join(sorted(ALLOWED_TARGET_FORMATS))
-            errors.append(f"Invalid visual_style.target_format: '{target_format}'. Allowed values: {allowed}.")
-
-        font_scale = visual_style.get("font_scale", 1.0)
-        if isinstance(font_scale, bool) or not isinstance(font_scale, (int, float)) or font_scale <= 0:
-            errors.append("visual_style.font_scale must be a positive number.")
-
-        profile_name = visual_style.get("profile", "baseline")
-        if not isinstance(profile_name, str) or not profile_name.strip():
-            errors.append("visual_style.profile must be a non-empty string.")
-        else:
-            profile_key = profile_name.strip().lower()
-            if _KNOWN_STYLE_PROFILE_KEYS and profile_key not in _KNOWN_STYLE_PROFILE_KEYS:
-                allowed_profiles = ", ".join(sorted(_KNOWN_STYLE_PROFILES))
-                errors.append(f"Invalid visual_style.profile: '{profile_name}'. Allowed values: {allowed_profiles}.")
+    _config_visual_style.validate_visual_style(
+        errors,
+        config,
+        allowed_target_formats=ALLOWED_TARGET_FORMATS,
+        known_style_profile_keys=_KNOWN_STYLE_PROFILE_KEYS,
+        known_style_profiles=_KNOWN_STYLE_PROFILES,
+    )
 
     language_policy = config.get("language_policy", {})
     if language_policy is None:
@@ -344,6 +321,11 @@ def validate_config(config):
             errors.append("language_policy.plot_lang must be a string.")
         if "allow_nonstandard" in language_policy and not isinstance(language_policy.get("allow_nonstandard"), bool):
             errors.append("language_policy.allow_nonstandard must be a boolean.")
+        if "mode" in language_policy:
+            raw_mode = language_policy.get("mode")
+            if not isinstance(raw_mode, str) or raw_mode.strip().lower() not in ALLOWED_LANGUAGE_POLICY_MODES:
+                allowed = ", ".join(sorted(ALLOWED_LANGUAGE_POLICY_MODES))
+                errors.append(f"language_policy.mode must be one of: {allowed}.")
 
     norm_policy = get_language_policy(config)
     if not norm_policy["allow_nonstandard"]:
@@ -359,48 +341,13 @@ def validate_config(config):
                 f"language_policy.plot_lang must be one of: {allowed} (or set language_policy.allow_nonstandard=true)."
             )
 
-    presets_raw = config.get("presets", {})
-    if presets_raw is None:
-        presets_raw = {}
-    if not isinstance(presets_raw, dict):
-        errors.append("Invalid 'presets' section (must be a mapping).")
-    else:
-        defined_preset_names = {k for k in presets_raw if k != "_default"}
-        default_preset = presets_raw.get("_default")
-        if default_preset is not None and default_preset not in defined_preset_names:
-            errors.append(f"presets._default '{default_preset}' references an undefined preset.")
-        for preset_name, preset_vals in presets_raw.items():
-            if preset_name == "_default":
-                continue
-            if not isinstance(preset_vals, dict):
-                errors.append(f"presets.{preset_name} must be a mapping.")
-                continue
-            bad_keys = set(preset_vals.keys()) - ALLOWED_PRESET_KEYS
-            if bad_keys:
-                allowed = ", ".join(sorted(ALLOWED_PRESET_KEYS))
-                errors.append(
-                    f"presets.{preset_name} contains unknown keys: {', '.join(sorted(bad_keys))}. Allowed: {allowed}."
-                )
-            if "target_format" in preset_vals:
-                tf = preset_vals["target_format"]
-                if not isinstance(tf, str) or tf.lower() not in ALLOWED_TARGET_FORMATS:
-                    allowed = ", ".join(sorted(ALLOWED_TARGET_FORMATS))
-                    errors.append(f"presets.{preset_name}.target_format '{tf}' is invalid. Allowed: {allowed}.")
-            if "font_scale" in preset_vals:
-                fs = preset_vals["font_scale"]
-                if isinstance(fs, bool) or not isinstance(fs, (int, float)) or not (0.5 <= fs <= 3.0):
-                    errors.append(f"presets.{preset_name}.font_scale must be a number in [0.5, 3.0].")
-            if "profile" in preset_vals:
-                prof = preset_vals["profile"]
-                if not isinstance(prof, str) or not prof.strip():
-                    errors.append(f"presets.{preset_name}.profile must be a non-empty string.")
-            if "output_format" in preset_vals:
-                of = preset_vals["output_format"]
-                if not isinstance(of, str) or of.strip().lower() not in ALLOWED_OUTPUT_FORMATS:
-                    allowed = ", ".join(sorted(ALLOWED_OUTPUT_FORMATS))
-                    errors.append(f"presets.{preset_name}.output_format '{of}' is invalid. Allowed: {allowed}.")
-
-    preset_names: set = {k for k in presets_raw if k != "_default"} if isinstance(presets_raw, dict) else set()
+    preset_names = _config_visual_style.validate_presets(
+        errors,
+        config,
+        allowed_target_formats=ALLOWED_TARGET_FORMATS,
+        allowed_output_formats=ALLOWED_OUTPUT_FORMATS,
+        allowed_preset_keys=ALLOWED_PRESET_KEYS,
+    )
 
     pipeline = config.get("pipeline", {})
     if pipeline is None:
@@ -424,6 +371,8 @@ def validate_config(config):
                 has_domain_helper = isinstance(domain_helper, str) and bool(domain_helper.strip())
                 if has_script == has_domain_helper:
                     errors.append(f"pipeline.analysis[{i}] must define exactly one of script or domain_helper.")
+                if has_script:
+                    _validate_relative_path_value(errors, f"pipeline.analysis[{i}].script", script)
                 if domain_helper is not None:
                     if not isinstance(domain_helper, str) or not domain_helper.strip():
                         errors.append(f"pipeline.analysis[{i}].domain_helper must be a non-empty string.")
@@ -438,21 +387,37 @@ def validate_config(config):
                 if inputs is not None and not isinstance(inputs, list):
                     errors.append(f"pipeline.analysis[{i}].inputs must be a list.")
                 elif isinstance(inputs, list):
-                    for inp in inputs:
-                        if isinstance(inp, str):
-                            if os.path.isabs(inp):
-                                errors.append(
-                                    f"pipeline.analysis[{i}].inputs: absolute path glob '{inp}' is not allowed."
-                                )
-                            elif ".." in inp.replace("\\", "/").split("/"):
-                                errors.append(
-                                    f"pipeline.analysis[{i}].inputs: path traversal '..' in '{inp}' is not allowed."
-                                )
+                    for input_index, inp in enumerate(inputs, 1):
+                        if not isinstance(inp, str) or not inp.strip():
+                            errors.append(
+                                f"pipeline.analysis[{i}].inputs[{input_index}] must be a non-empty "
+                                "project-relative path."
+                            )
+                            continue
+                        if not inp.startswith("external_raw:"):
+                            _validate_relative_path_value(
+                                errors,
+                                f"pipeline.analysis[{i}].inputs[{input_index}]",
+                                inp,
+                            )
                 outputs = step.get("outputs", None)
                 if outputs is not None and not isinstance(outputs, list):
                     errors.append(f"pipeline.analysis[{i}].outputs must be a list.")
                 elif has_domain_helper and not outputs:
                     errors.append(f"pipeline.analysis[{i}].outputs is required for domain_helper steps.")
+                elif isinstance(outputs, list):
+                    for output_index, output in enumerate(outputs, 1):
+                        if not isinstance(output, str) or not output.strip():
+                            errors.append(
+                                f"pipeline.analysis[{i}].outputs[{output_index}] must be a non-empty "
+                                "project-relative path."
+                            )
+                            continue
+                        _validate_relative_path_value(
+                            errors,
+                            f"pipeline.analysis[{i}].outputs[{output_index}]",
+                            output,
+                        )
                 if "cache" in step and not isinstance(step.get("cache"), bool):
                     errors.append(f"pipeline.analysis[{i}].cache must be a boolean.")
                 expand = step.get("expand")
@@ -515,8 +480,12 @@ def validate_config(config):
     else:
         if "python_lock" in environment and not isinstance(environment.get("python_lock"), str):
             errors.append("environment.python_lock must be a string.")
+        elif isinstance(environment.get("python_lock"), str):
+            _validate_relative_path_value(errors, "environment.python_lock", environment["python_lock"])
         if "r_lock" in environment and not isinstance(environment.get("r_lock"), str):
             errors.append("environment.r_lock must be a string.")
+        elif isinstance(environment.get("r_lock"), str):
+            _validate_relative_path_value(errors, "environment.r_lock", environment["r_lock"])
         if "strict" in environment and not isinstance(environment.get("strict"), bool):
             errors.append("environment.strict must be a boolean.")
         adapters = environment.get("adapters", {})
@@ -547,6 +516,27 @@ def validate_config(config):
             data_contract.get("forbid_todo_placeholders"), bool
         ):
             errors.append("data_contract.forbid_todo_placeholders must be a boolean.")
+        cv_columns = data_contract.get("cv_columns")
+        if cv_columns is not None and (
+            not isinstance(cv_columns, list)
+            or not cv_columns
+            or any(not isinstance(column, str) or not column.strip() for column in cv_columns)
+        ):
+            errors.append("data_contract.cv_columns must be a non-empty list of column names.")
+        if isinstance(cv_columns, list) and len(cv_columns) != len(set(cv_columns)):
+            errors.append("data_contract.cv_columns must not contain duplicate column names.")
+        cv_threshold = data_contract.get("cv_threshold")
+        if "cv_threshold" in data_contract and (
+            isinstance(cv_threshold, bool)
+            or not isinstance(cv_threshold, (int, float))
+            or not math.isfinite(cv_threshold)
+            or cv_threshold <= 0
+        ):
+            errors.append("data_contract.cv_threshold must be a positive finite number.")
+        if "cv_threshold" in data_contract and cv_columns is None:
+            errors.append("data_contract.cv_threshold requires explicit data_contract.cv_columns.")
+        if cv_columns is not None and "cv_threshold" not in data_contract:
+            errors.append("data_contract.cv_columns requires data_contract.cv_threshold.")
         _validate_raw_integrity_config(errors, data_contract.get("raw_integrity"))
         csv_checks = data_contract.get("csv_checks", [])
         if csv_checks is None:
@@ -561,6 +551,8 @@ def validate_config(config):
                 path = check.get("path")
                 if not isinstance(path, str) or not path.strip():
                     errors.append(f"data_contract.csv_checks[{i}].path is required.")
+                else:
+                    _validate_relative_path_value(errors, f"data_contract.csv_checks[{i}].path", path)
                 required_cols = check.get("required_columns", [])
                 if required_cols is not None and not isinstance(required_cols, list):
                     errors.append(f"data_contract.csv_checks[{i}].required_columns must be a list.")
@@ -590,6 +582,8 @@ def validate_config(config):
             path = item.get("path")
             if not isinstance(path, str) or not path.strip():
                 errors.append(f"golden_metrics[{i}].path is required.")
+            else:
+                _validate_relative_path_value(errors, f"golden_metrics[{i}].path", path)
             if "atol" in item:
                 atol = item.get("atol")
                 if isinstance(atol, bool) or not isinstance(atol, (int, float)) or atol < 0:
@@ -641,8 +635,11 @@ def _validate_visual_outputs(
 
 
 def load_config(project_dir):
-    """프로젝트 루트의 project_config.yaml을 로드."""
-    config_path = find_config_path(project_dir)
+    try:
+        config_path = find_config_path(project_dir)
+    except (FileNotFoundError, ProjectPathError) as exc:
+        logger.error("❌ Error: project config path is unsafe: %s", exc)
+        return None, None, None
 
     if not config_path:
         logger.error("❌ Error: project_config.yaml not found in %s", project_dir)
@@ -651,9 +648,17 @@ def load_config(project_dir):
         return None, None, None
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        config_read_path = _resolve_discovered_config_path(
+            project_dir,
+            config_path,
+            candidates=CONFIG_FILE_CANDIDATES,
+        )
+        with open(config_read_path, "r", encoding="utf-8") as f:
             raw_text = f.read()
             config = _load_yaml_with_unique_keys(raw_text)
+    except ProjectPathError as e:
+        logger.error("❌ Error: project config path changed before read: %s", e)
+        return None, None, None
     except yaml.YAMLError as e:
         logger.error("❌ Error: Invalid YAML in %s\n   └─ %s", config_path, e)
         logger.error("   └─ Fix the YAML syntax in project_config.yaml and rerun.")
@@ -672,7 +677,7 @@ def load_config(project_dir):
         return None, None, None
     config = normalize_project_defaults(config)
 
-    errors = validate_config(config)
+    errors = validate_config(config, project_root=project_dir)
     if errors:
         logger.error("❌ Error: Invalid config schema in %s", config_path)
         for err in errors:

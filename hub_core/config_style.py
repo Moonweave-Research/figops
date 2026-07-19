@@ -4,9 +4,9 @@ from __future__ import annotations
 
 INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
 
-ALLOWED_TARGET_FORMATS = {
+PUBLIC_TARGET_FORMATS = {
+    "neutral",
     "nature",
-    INTERNAL_STYLE_TARGET_FORMAT,
     "science",
     "ppt",
     "default",
@@ -16,6 +16,9 @@ ALLOWED_TARGET_FORMATS = {
     "wiley",
     "cell",
 }
+# Compatibility-only values remain accepted by project configuration and the
+# theme engine. Public CLI and agent discovery must use PUBLIC_TARGET_FORMATS.
+ALLOWED_TARGET_FORMATS = PUBLIC_TARGET_FORMATS | {INTERNAL_STYLE_TARGET_FORMAT}
 ALLOWED_FONT_STRATEGIES = {"compensate", "as_is"}
 ALLOWED_PRESET_KEYS = {
     "target_format",

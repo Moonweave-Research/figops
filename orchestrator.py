@@ -64,12 +64,14 @@ from hub_core.adapters import select_adapters
 from hub_core.attempt_provenance import render_attempt_provenance, update_attempt_provenance
 from hub_core.cache_manager import collect_signatures
 from hub_core.config_parser import find_config_path
+from hub_core.execution_project_boundary import ExecutionProjectPathError, resolve_execution_project_path
+from hub_core.external_raw import ExternalRawError
+from hub_core.external_raw_execution import parse_cli_external_raw_roots
 from hub_core.logging import configure_logging, get_logger
 from hub_core.redaction import redact_text
 from hub_core.research_ops_enforcement import validate_research_ops_contract
 
 logger = get_logger(__name__)
-INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
 
 
 def _refresh_visual_output_signatures(project_dir: str, config: dict, build_state: dict) -> None:
@@ -93,7 +95,7 @@ def _refresh_visual_output_signatures(project_dir: str, config: dict, build_stat
 
 
 def _apply_cli_preset(config: dict, preset_name: str) -> None:
-    from hub_core.config_parser import ALLOWED_TARGET_FORMATS
+    from hub_core.config_parser import PUBLIC_TARGET_FORMATS
 
     presets = config.get("presets") or {}
     preset_key = preset_name.lower()
@@ -105,7 +107,7 @@ def _apply_cli_preset(config: dict, preset_name: str) -> None:
             if key in allowed_keys:
                 visual[key] = val
         logger.info("   --preset '%s' applied: %s", preset_name, presets[matching_name])
-    elif preset_key in ALLOWED_TARGET_FORMATS:
+    elif preset_key in PUBLIC_TARGET_FORMATS:
         config.setdefault("visual_style", {})["target_format"] = preset_key
         logger.info("   --preset → target_format='%s'", preset_key)
     else:
@@ -208,6 +210,16 @@ def main():
     )
     parser.add_argument("--force", action="store_true", help="Force rerun all steps and bypass smart build cache")
     parser.add_argument("--strict-lock", action="store_true", help="Fail-fast when environment lockfiles are missing")
+    parser.add_argument(
+        "--external-raw-root",
+        action="append",
+        default=[],
+        metavar="ID=ABSOLUTE_PATH",
+        help=(
+            "Grant one launcher-owned external_raw allowed-root mapping for this run. "
+            "Repeat for multiple roots; project_config.yaml cannot grant this authority."
+        ),
+    )
     parser.add_argument("--list-projects", "-l", action="store_true", help="List configured projects")
     parser.add_argument(
         "--list-root-only", action="store_true", help="With --list-projects, show only immediate root folders"
@@ -280,7 +292,7 @@ def main():
         help=(
             "Override visual_style for this run without editing project_config.yaml.\n"
             "Accepts a named preset from the config's presets: section, or a target_format\n"
-            f"(nature, {INTERNAL_STYLE_TARGET_FORMAT}, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
+            "(neutral, nature, science, ppt, acs, rsc, elsevier, wiley, cell, default)."
         ),
     )
     parser.add_argument(
@@ -298,6 +310,10 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging on stderr")
 
     args = parser.parse_args()
+    try:
+        external_raw_allowed_roots = parse_cli_external_raw_roots(args.external_raw_root)
+    except ExternalRawError as exc:
+        parser.error(str(exc))
     configure_logging(verbose=args.verbose)
 
     if args.readiness_manifest:
@@ -399,7 +415,11 @@ def main():
         project_path = args.project
         if not os.path.isabs(project_path):
             project_path = os.path.join(root_dir, project_path)
-        project_path = os.path.abspath(project_path)
+        try:
+            project_path = str(resolve_execution_project_path(root_dir, project_path))
+        except ExecutionProjectPathError as exc:
+            ui_print(f"❌ Error: Unsafe project execution path: {exc}")
+            return 1
         raw_request = shlex.join(["python", "orchestrator.py", *sys.argv[1:]])
         engine_target = "hub_pipeline"
         job_id = os.path.basename(project_path.rstrip(os.sep)) or "hub_project"
@@ -548,6 +568,12 @@ def main():
     if not os.path.exists(project_path):
         project_path = os.path.join(root_dir, args.project)
     project_path = os.path.abspath(project_path)
+
+    try:
+        project_path = str(resolve_execution_project_path(root_dir, project_path))
+    except ExecutionProjectPathError as exc:
+        logger.error("❌ Error: Unsafe project execution path: %s", exc)
+        return 1
 
     if not os.path.isdir(project_path):
         logger.error("❌ Error: Project directory not found: %s", project_path)
@@ -859,7 +885,8 @@ def main():
                 success = validate_data_contract_preflight(
                     project_path,
                     config,
-                    require_existing=args.step == "plot",
+                    # Full contract validation below performs the single guarded prefetch/read.
+                    require_existing=False,
                     prefetcher=adapters.prefetcher,
                 )
                 if not success:
@@ -876,6 +903,7 @@ def main():
                     force=args.force,
                     prefetcher=adapters.prefetcher,
                     athena=adapters.athena,
+                    external_raw_allowed_roots=external_raw_allowed_roots,
                 )
                 if not success:
                     failure_stage = "EXECUTE"
@@ -914,6 +942,7 @@ def main():
                     force=args.force,
                     prefetcher=adapters.prefetcher,
                     athena=adapters.athena,
+                    external_raw_allowed_roots=external_raw_allowed_roots,
                 )
                 if not success:
                     failure_stage = "EXECUTE"
@@ -932,6 +961,7 @@ def main():
                     force=args.force,
                     prefetcher=adapters.prefetcher,
                     athena=adapters.athena,
+                    external_raw_allowed_roots=external_raw_allowed_roots,
                 )
                 if not success:
                     failure_stage = "EXECUTE"

@@ -1,5 +1,16 @@
 import os
+import sys
 import tempfile
+from pathlib import Path
+
+from hub_core.path_identity import canonical_path, is_macos_system_alias
+from hub_core.runtime_boundary import (
+    RuntimeBoundaryError,
+    activate_runtime_root,
+    runtime_project_id,
+    safe_runtime_segment,
+    validate_runtime_location,
+)
 
 
 def _repo_root():
@@ -15,18 +26,26 @@ def _default_user_cache_dir():
 
 
 def _abspath(value):
-    return os.path.abspath(os.path.expanduser(str(value)))
+    raw = str(value)
+    expanded = os.path.expanduser(raw)
+    if expanded == raw and raw.startswith("~"):
+        suffix = raw[1:].lstrip("/\\")
+        expanded = os.path.join(tempfile.gettempdir(), suffix)
+    return os.path.abspath(expanded)
 
 
-def _usable_runtime_dir(path):
-    candidate = _abspath(path)
+def _usable_runtime_dir(path, *, project_root=None, config=None, durable_roots=()):
+    lexical = _abspath(path)
     try:
-        os.makedirs(candidate, exist_ok=True)
-    except OSError:
+        identity = activate_runtime_root(
+            lexical,
+            project_root=project_root,
+            config=config,
+            durable_roots=durable_roots,
+        )
+        return _runtime_contract_path(lexical, identity)
+    except RuntimeBoundaryError:
         return None
-    if os.access(candidate, os.W_OK | os.X_OK):
-        return candidate
-    return None
 
 
 def _preview_temp_dir():
@@ -60,6 +79,41 @@ def _preview_usable_runtime_dir(path):
     return None
 
 
+def _runtime_contract_path(path, identity):
+    """Expose a stable lexical path only for Apple's fixed root aliases.
+
+    Runtime boundary validation and MCP containment keep using ``identity``.
+    Preserving macOS's system-provided ``/var``/``/tmp`` spelling prevents
+    outward paths from unexpectedly changing to ``/private/...`` while still
+    canonicalizing user-controlled symlinks.
+    """
+
+    lexical = Path(_abspath(path))
+    canonical = Path(identity)
+    if lexical == canonical:
+        return str(lexical)
+    if _is_verified_macos_alias_path(lexical, canonical):
+        return str(lexical)
+    return str(canonical)
+
+
+def _is_verified_macos_alias_path(lexical: Path, canonical: Path) -> bool:
+    if sys.platform != "darwin":
+        return False
+    for alias_root in (Path("/var"), Path("/tmp"), Path("/etc")):
+        try:
+            relative = lexical.relative_to(alias_root)
+        except ValueError:
+            continue
+        if not is_macos_system_alias(alias_root):
+            continue
+        alias_identity = canonical_path(alias_root, strict=True)
+        expected_identity = alias_identity.joinpath(relative)
+        if expected_identity == canonical and canonical_path(lexical) == canonical:
+            return True
+    return False
+
+
 def _repo_runtime_root_from_symlink():
     hub_logs_path = os.path.join(_repo_root(), "hub_logs")
     if os.path.islink(hub_logs_path):
@@ -78,7 +132,7 @@ def runtime_root_env_override():
     )
 
 
-def preview_runtime_root():
+def preview_runtime_root(*, project_root=None, config=None, durable_roots=()):
     """Return the preferred runtime root path without creating or probing directories."""
     override = runtime_root_env_override()
     candidates = []
@@ -93,9 +147,22 @@ def preview_runtime_root():
     for candidate in candidates:
         usable = _preview_usable_runtime_dir(candidate)
         if usable:
-            return usable
+            identity = validate_runtime_location(
+                usable,
+                project_root=project_root,
+                config=config,
+                durable_roots=durable_roots,
+            )
+            return _runtime_contract_path(usable, identity)
 
-    return _abspath(os.path.join(_preview_temp_dir(), "figops_runtime"))
+    fallback = _abspath(os.path.join(_preview_temp_dir(), "figops_runtime"))
+    identity = validate_runtime_location(
+        fallback,
+        project_root=project_root,
+        config=config,
+        durable_roots=durable_roots,
+    )
+    return _runtime_contract_path(fallback, identity)
 
 
 def runtime_root_lookup_candidates():
@@ -117,18 +184,29 @@ def runtime_root_lookup_candidates():
     deduped = []
     seen = set()
     for candidate in candidates:
-        normalized = _abspath(candidate)
-        if normalized not in seen:
-            deduped.append(normalized)
-            seen.add(normalized)
+        lexical = _abspath(candidate)
+        normalized = canonical_path(lexical)
+        identity = os.path.normcase(os.path.normpath(str(normalized)))
+        if identity not in seen:
+            deduped.append(_runtime_contract_path(lexical, normalized))
+            seen.add(identity)
     return deduped
 
 
-def resolve_runtime_root():
+def resolve_runtime_root(*, project_root=None, config=None, durable_roots=()):
     override = runtime_root_env_override()
-    candidates = []
+    effective_project_root = project_root or os.environ.get("PROJECT_ROOT")
     if override:
-        candidates.append(override)
+        # Launcher values are trusted policy inputs, not exemptions from boundary validation.
+        lexical = _abspath(override)
+        identity = activate_runtime_root(
+            lexical,
+            project_root=effective_project_root,
+            config=config,
+            durable_roots=durable_roots,
+        )
+        return _runtime_contract_path(lexical, identity)
+    candidates = []
     repo_runtime_root = _repo_runtime_root_from_symlink()
     if repo_runtime_root:
         candidates.append(repo_runtime_root)
@@ -136,28 +214,65 @@ def resolve_runtime_root():
     candidates.append(os.path.join(tempfile.gettempdir(), "figops_runtime"))
 
     for candidate in candidates:
-        usable = _usable_runtime_dir(candidate)
+        usable = _usable_runtime_dir(
+            candidate,
+            project_root=effective_project_root,
+            config=config,
+            durable_roots=durable_roots,
+        )
         if usable:
             return usable
 
-    return os.path.abspath(os.path.join(tempfile.gettempdir(), "figops_runtime"))
+    raise RuntimeBoundaryError("No valid writable external FigOps runtime root is available.")
 
 
-def resolve_hub_logs_dir():
-    return os.path.join(resolve_runtime_root(), "hub_logs")
+def resolve_hub_logs_dir(*, project_root=None, config=None):
+    return os.path.join(resolve_runtime_root(project_root=project_root, config=config), "logs")
 
 
-def resolve_latest_publish_dir(engine_target: str = "hub_pipeline", job_id: str = ""):
-    normalized_target = str(engine_target or "hub_pipeline").strip() or "hub_pipeline"
-    latest_dir = os.path.join(resolve_runtime_root(), "_latest", normalized_target)
+def resolve_latest_publish_dir(engine_target: str = "hub_pipeline", job_id: str = "", *, project_root=None):
+    normalized_target = safe_runtime_segment(engine_target, fallback="hub_pipeline")
+    latest_dir = os.path.join(resolve_runtime_root(project_root=project_root), "_latest", normalized_target)
     if job_id:
-        latest_dir = os.path.join(latest_dir, str(job_id))
+        latest_dir = os.path.join(latest_dir, safe_runtime_segment(job_id, fallback="job"))
     return latest_dir
 
 
 def resolve_execution_artifacts_dir(project_dir: str, engine_target: str = "hub_pipeline"):
-    normalized_target = str(engine_target or "hub_pipeline").strip() or "hub_pipeline"
-    return os.path.join(_abspath(project_dir), "results", "_execution", normalized_target)
+    normalized_target = safe_runtime_segment(engine_target, fallback="hub_pipeline")
+    root = resolve_runtime_root(project_root=project_dir)
+    return os.path.join(root, "execution", runtime_project_id(project_dir), normalized_target)
+
+
+def resolve_build_state_path(project_dir: str):
+    root = resolve_runtime_root(project_root=project_dir)
+    return os.path.join(root, "cache", "build_state", runtime_project_id(project_dir), ".build_state.json")
+
+
+def resolve_diagnostics_dir(project_dir: str):
+    root = resolve_runtime_root(project_root=project_dir)
+    return os.path.join(root, "diagnostics", runtime_project_id(project_dir))
+
+
+def resolve_failure_dir(project_dir: str):
+    root = resolve_runtime_root(project_root=project_dir)
+    return os.path.join(root, "failures", runtime_project_id(project_dir))
+
+
+def resolve_preview_temp_dir():
+    path = os.path.join(resolve_runtime_root(), "previews", "temp")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def resolve_temp_dir(kind: str = "general", *, project_root=None, config=None):
+    path = os.path.join(
+        resolve_runtime_root(project_root=project_root, config=config),
+        "temp",
+        safe_runtime_segment(kind, fallback="general"),
+    )
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def ensure_runtime_dirs(*paths):

@@ -10,6 +10,7 @@ KNOWN_TOP_LEVEL_CONFIG_KEYS = {
     "diagrams",
     "environment",
     "execution",
+    "external_raw",
     "experimental_conditions",
     "figures",
     "folder_roles",
@@ -23,6 +24,7 @@ KNOWN_TOP_LEVEL_CONFIG_KEYS = {
     "regression",
     "sample_registry",
     "schema_version",
+    "structure",
     "sweep",
     "visual_style",
 }

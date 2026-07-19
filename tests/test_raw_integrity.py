@@ -1,3 +1,5 @@
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,8 +20,15 @@ def _config(mode: str | None = "warn") -> dict:
     return {
         "project": {"name": "Raw Integrity Demo"},
         "visual_style": {"target_format": "nature"},
-        "data_contract": {"raw_integrity": raw_integrity},
-        "figures": [{"id": "fig1", "script": "plot.py", "output": "results/fig1.png"}],
+        "data_contract": {"raw_integrity": raw_integrity, "require_figure_traceability": False},
+        "figures": [
+            {
+                "id": "fig1",
+                "script": "plot.py",
+                "inputs": ["raw/"],
+                "output": "results/fig1.png",
+            }
+        ],
     }
 
 
@@ -138,7 +147,7 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
         self.assertTrue(validated["valid"])
         self.assertTrue(any("raw_integrity drift" in warning for warning in validated["warnings"]))
 
-    def test_unsealed_raw_integrity_has_no_default_enforcement_effect(self):
+    def test_unsealed_raw_integrity_fails_module_default_strict_mode(self):
         with tempfile.TemporaryDirectory(prefix="graphhub_raw_integrity_") as tmpdir:
             project_dir = Path(tmpdir)
             config = _config(mode=None)
@@ -151,8 +160,8 @@ class RawIntegritySealVerifyTest(unittest.TestCase):
                 {"project_path": project_dir.name},
             )["structuredContent"]
 
-        self.assertTrue(validated["valid"])
-        self.assertEqual(validated["config_errors"], [])
+        self.assertFalse(validated["valid"])
+        self.assertTrue(any("requires a valid seal" in error for error in validated["config_errors"]))
         self.assertFalse(validated["raw_integrity_status"]["sealed"])
 
     def test_master_raw_drift_is_not_enforced_by_module_default(self):
@@ -272,3 +281,131 @@ class RawIntegrityMCPInspectTest(unittest.TestCase):
         self.assertTrue(status["sealed"])
         self.assertTrue(status["ok"])
         self.assertEqual(status["modified"], [])
+
+
+def _write_manifest(project_dir: Path, files: dict[str, str]) -> None:
+    manifest = project_dir / "raw" / ".raw_manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "_metadata": {"sealed_at": "2026-07-15T00:00:00+00:00", "algorithm": "sha256"},
+                **files,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_strict_graph_rejects_vacuous_seal_unless_no_raw_inputs(tmp_path: Path) -> None:
+    from hub_core.raw_integrity import verify_raw_integrity
+
+    raw_config = _config(mode="strict")
+    _write_raw(tmp_path, "raw/data.csv", "x,y\n1,2\n")
+    _write_manifest(tmp_path, {})
+
+    rejected = verify_raw_integrity(tmp_path, raw_config)
+
+    assert rejected["ok"] is False
+    assert any("at least one valid local raw manifest entry" in error for error in rejected["errors"])
+
+    synthetic_config = _config(mode="strict")
+    synthetic_config["data_contract"]["raw_integrity"]["paths"] = []
+    synthetic_config["data_contract"]["raw_integrity"]["no_raw_inputs"] = {
+        "type": "no_raw_inputs",
+        "reason": "The producer generates a deterministic calibration grid.",
+    }
+    synthetic_config["figures"][0]["inputs"] = []
+    (tmp_path / "raw" / ".raw_manifest.json").unlink()
+
+    accepted = verify_raw_integrity(tmp_path, synthetic_config)
+
+    assert accepted["ok"] is True
+    assert accepted["sealed"] is False
+    assert accepted["no_raw_inputs"] is True
+
+    for malformed in ([], {"type": "no_raw_inputs", "reason": ""}):
+        invalid_config = _config(mode="strict")
+        invalid_config["data_contract"]["raw_integrity"]["paths"] = []
+        invalid_config["data_contract"]["raw_integrity"]["no_raw_inputs"] = malformed
+        invalid_config["figures"][0]["inputs"] = []
+        invalid = verify_raw_integrity(tmp_path, invalid_config)
+        assert invalid["ok"] is False
+        assert any("no_raw_inputs" in error for error in invalid["errors"])
+
+
+def test_strict_raw_integrity_rejects_missing_configured_path(tmp_path: Path) -> None:
+    from hub_core.raw_integrity import verify_raw_integrity
+
+    result = verify_raw_integrity(tmp_path, _config(mode="strict"))
+
+    assert result["ok"] is False
+    assert any("configured path does not exist" in error for error in result["errors"])
+
+
+def test_strict_raw_integrity_rejects_bad_digest_and_noncanonical_member(tmp_path: Path) -> None:
+    from hub_core.raw_integrity import verify_raw_integrity
+
+    _write_raw(tmp_path, "raw/data.csv", "x,y\n1,2\n")
+    _write_manifest(tmp_path, {"raw\\data.csv": "A" * 64, "raw/data.csv": "A" * 64})
+
+    result = verify_raw_integrity(tmp_path, _config(mode="strict"))
+
+    assert result["ok"] is False
+    assert any("canonical" in error for error in result["errors"])
+    assert any("64 lowercase hex" in error for error in result["errors"])
+
+
+def test_strict_raw_integrity_rejects_duplicate_manifest_members(tmp_path: Path) -> None:
+    from hub_core.raw_integrity import verify_raw_integrity
+
+    raw = _write_raw(tmp_path, "raw/data.csv", "x,y\n1,2\n")
+    digest = hashlib.sha256(raw.read_bytes()).hexdigest()
+    manifest = tmp_path / "raw" / ".raw_manifest.json"
+    manifest.write_text(
+        '{"_metadata":{"sealed_at":"2026-07-15T00:00:00+00:00","algorithm":"sha256"},'
+        f'"raw/data.csv":"{digest}","raw/data.csv":"{digest}"}}',
+        encoding="utf-8",
+    )
+
+    result = verify_raw_integrity(tmp_path, _config(mode="strict"))
+
+    assert result["ok"] is False
+    assert any("duplicate JSON object key" in error for error in result["errors"])
+
+
+def test_strict_manifest_membership_is_derived_from_declared_graph(tmp_path: Path) -> None:
+    from hub_core.raw_integrity import seal_raw_integrity, verify_raw_integrity
+
+    used = _write_raw(tmp_path, "raw/used.csv", "x,y\n1,2\n")
+    _write_raw(tmp_path, "raw/not-a-dependency.csv", "x,y\n3,4\n")
+    config = _config(mode="strict")
+    config["figures"][0]["inputs"] = ["raw/used.csv"]
+
+    sealed = seal_raw_integrity(tmp_path, config)
+    verified = verify_raw_integrity(tmp_path, config)
+
+    assert sealed["files"] == {"raw/used.csv": hashlib.sha256(used.read_bytes()).hexdigest()}
+    assert verified["ok"] is True
+    assert verified["dependency_graph"]["raw_members"] == ["raw/used.csv"]
+
+
+def test_external_raw_requires_allowed_root_version_and_sha() -> None:
+    from hub_core.external_raw import ExternalRawError, validate_external_raw_descriptors
+
+    valid = {
+        "id": "instrument-export-2026-07-15",
+        "uri": "gdrive://lab/exports/run-042.csv",
+        "allowed_root": "lab-exports",
+        "version": "etag-042",
+        "sha256": "a" * 64,
+    }
+    descriptor = validate_external_raw_descriptors([valid])[0]
+    assert descriptor.id == valid["id"]
+    assert descriptor.sha256 == valid["sha256"]
+
+    for missing in ("allowed_root", "version", "sha256"):
+        malformed = dict(valid)
+        malformed.pop(missing)
+        with unittest.TestCase().assertRaises(ExternalRawError):
+            validate_external_raw_descriptors([malformed])

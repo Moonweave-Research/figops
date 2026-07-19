@@ -1,0 +1,126 @@
+{
+  "schema_version": "figops_live_preview_revision_witness/1",
+  "captured_at": "2026-07-15",
+  "source_commit": "55ce4fcd0512ae70852937fd6af260312c0776f7+working-tree",
+  "server": {
+    "surface_profile": "v2",
+    "write_tools_enabled": true,
+    "strict_roots": true,
+    "strict_data_roots": true,
+    "runtime_location": "temporary child of the resolved FigOps runtime root"
+  },
+  "fixture": {
+    "kind": "explicitly synthetic observations",
+    "format": "text/csv",
+    "rows": 6,
+    "columns": ["Release_step", "Duration_seconds", "Scenario"],
+    "input_sha256": "8c687a478b10817112333652575d80c8c480f5356fae092a52bd1db6950b703d"
+  },
+  "call_counts": {
+    "render": 2,
+    "preview_read": 2,
+    "collect": 0
+  },
+  "initial_render": {
+    "tool": "figops.render_basic_csv",
+    "job_id": "live-preview-initial",
+    "request": {
+      "x": "Release_step",
+      "y": "Duration_seconds",
+      "plot_type": "line",
+      "style_policy": "nature",
+      "output_format": "png"
+    },
+    "status": "ok",
+    "artifact": {
+      "sha256": "2c9b9eba2f2518d654ee8e4b2143edd37f5d696dab529fdbfa07126080b376d5",
+      "byte_size": 157731,
+      "width": 2017,
+      "height": 1629,
+      "resource_uri": "figops://jobs/live-preview-initial/artifacts/primary/0"
+    },
+    "manifest_uri": "figops://jobs/live-preview-initial/manifest",
+    "preview": {
+      "uri": "figops://jobs/live-preview-initial/previews/primary/0",
+      "media_type": "image/png",
+      "blob_sha256": "e3b73e54fccfdf072c077ffa16dd471414147e0d0a974abf0de95cd3f1496a69",
+      "blob_byte_size": 156688,
+      "width": 2017,
+      "height": 1629,
+      "read_lazily": true,
+      "visually_inspected": true
+    },
+    "visual_observations": [
+      "One orange polyline followed CSV row order and connected the stable series at x=3 back to the candidate series at x=1, producing a visually misleading zigzag between scenarios.",
+      "No legend or title identified the two scenarios or the subject of the chart.",
+      "Raw labels Release_step and Duration_seconds were preserved exactly, but underscores reduced reader-facing clarity.",
+      "Axes and tick labels were otherwise legible, with no visible overlap."
+    ]
+  },
+  "revision_decision": {
+    "basis": "visual inspection of the first bounded preview",
+    "changes": {
+      "series": "Scenario",
+      "labels": {
+        "title": "Synthetic run duration by release step",
+        "x_axis": "Release step",
+        "y_axis": "Duration (seconds)"
+      }
+    },
+    "unchanged": ["data", "x", "y", "plot_type", "style_policy", "output_format"],
+    "invented_statistics": false
+  },
+  "revised_render": {
+    "tool": "figops.render_basic_csv",
+    "job_id": "live-preview-revised",
+    "status": "ok",
+    "artifact": {
+      "sha256": "700cbb0027332e3eb1d8001304d3b598a392c02888a0e380de7e1186898d2126",
+      "byte_size": 171650,
+      "width": 2114,
+      "height": 1830,
+      "resource_uri": "figops://jobs/live-preview-revised/artifacts/primary/0"
+    },
+    "manifest_uri": "figops://jobs/live-preview-revised/manifest",
+    "preview": {
+      "uri": "figops://jobs/live-preview-revised/previews/primary/0",
+      "media_type": "image/png",
+      "blob_sha256": "96450fb15b56cc18a203e3ec71283682960f95f28c75cfc9f6fccaa80024366d",
+      "blob_byte_size": 313259,
+      "width": 2048,
+      "height": 1773,
+      "read_lazily": true,
+      "visually_inspected": true
+    },
+    "visual_observations": [
+      "Stable and candidate are now separate monotonic lines rather than one row-order zigzag.",
+      "The legend identifies stable as a solid orange line and candidate as a dashed blue line.",
+      "The authored title and reader-facing axis labels are visible and legible without overlap.",
+      "No statistical annotation, interval, aggregate, or significance claim was added."
+    ],
+    "targeted_change_confirmed": true
+  },
+  "consistency_checks": {
+    "initial_response_artifact_evidence_manifest_and_resource_hash_match": true,
+    "revised_response_artifact_evidence_manifest_and_resource_hash_match": true,
+    "job_scoped_manifest_artifact_and_preview_uris_match": true,
+    "input_hash_unchanged": true,
+    "script_hash_unchanged": true,
+    "environment_hash_unchanged": true,
+    "config_hash_changed_for_authored_revision": true,
+    "initial_primary_sha256_before_revision": "2c9b9eba2f2518d654ee8e4b2143edd37f5d696dab529fdbfa07126080b376d5",
+    "initial_primary_sha256_after_revision": "2c9b9eba2f2518d654ee8e4b2143edd37f5d696dab529fdbfa07126080b376d5",
+    "initial_primary_immutable": true,
+    "preview_max_edge_respected": true
+  },
+  "result": {
+    "live_model_preview_revision": "passed",
+    "human_approval_requested": false,
+    "human_approval_claimed": false,
+    "publication_approval_claimed": false
+  },
+  "cleanup": {
+    "temporary_fixture_removed": true,
+    "temporary_runtime_jobs_removed": true
+  }
+}

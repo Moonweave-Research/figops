@@ -4,42 +4,27 @@ import json
 from pathlib import Path
 from typing import Any
 
-GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION = "geometry_diagnostics/1"
+from hub_core.geometry_raw_contract import RawGeometryContractError, normalize_geometry_payload
+
+GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION = "geometry_diagnostics/2"
 LAYOUT_REPORT_SCHEMA_VERSION = "layout_report/1"
-_GEOMETRY_WARNING_ELIGIBLE = frozenset(
-    {
-        "tick_label_overlaps",
-        "tick_label_crowding",
-        "artists_outside_axes",
-        "artists_outside_figure",
-        "axis_label_title_overlap",
-        "colorbar_overlap",
-        "point_annotation_overlaps",
-        "artist_overlaps",
-        "legend_internal_overlaps",
-        "marker_marker_overlaps",
-        "text_axis_edge_proximity",
-        "legend_marker_consistency",
-        "label_offset_consistency",
-        "point_label_skips",
-        "annotation_overlay_contrast",
-        "font_size_token_drift",
-        "journal_compliance",
-    }
-)
 SCRIPT_OUTPUT_TAIL_LINES = 40
 
 
-def _geometry_stub(reason: str, *, data: dict[str, Any] | None = None) -> dict[str, Any]:
-    stub: dict[str, Any] = {
+def _geometry_stub(reason: str) -> dict[str, Any]:
+    return {
         "schema_version": GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
-        "passed": None,
-        "checks": [],
+        "measurements": [
+            {
+                "metric_id": "geometry_diagnostics",
+                "unit": "structured",
+                "scope": "figure",
+                "availability": "unavailable",
+                "reason": reason,
+            }
+        ],
         "warnings": [reason],
     }
-    if data is not None:
-        stub["data"] = data
-    return stub
 
 def _read_geometry_sidecar(job_root: Path) -> dict[str, Any]:
     sidecar = job_root / "geometry_diagnostics.json"
@@ -48,38 +33,27 @@ def _read_geometry_sidecar(job_root: Path) -> dict[str, Any]:
     except OSError:
         return _geometry_stub(
             "geometry_diagnostics_unavailable: no sidecar emitted",
-            data={"reason": "no_sidecar"},
         )
     try:
         loaded = json.loads(text)
     except (ValueError, TypeError):
         return _geometry_stub(
             "geometry_diagnostics_unavailable: unreadable sidecar",
-            data={"reason": "no_sidecar"},
         )
     if not isinstance(loaded, dict):
         return _geometry_stub(
             "geometry_diagnostics_unavailable: malformed sidecar",
-            data={"reason": "no_sidecar"},
         )
-    return loaded
+    try:
+        return normalize_geometry_payload(loaded)
+    except RawGeometryContractError as exc:
+        return _geometry_stub(f"geometry_diagnostics_unavailable: invalid sidecar ({exc})")
 
 def _geometry_warnings(diagnostics: dict[str, Any]) -> list[str]:
     warnings: list[str] = []
     raw_warnings = diagnostics.get("warnings")
     if isinstance(raw_warnings, list):
         warnings.extend(str(warning) for warning in raw_warnings)
-    raw_checks = diagnostics.get("checks")
-    if isinstance(raw_checks, list):
-        for check in raw_checks:
-            if (
-                isinstance(check, dict)
-                and check.get("name") in _GEOMETRY_WARNING_ELIGIBLE
-                and check.get("passed") is False
-            ):
-                detail = check.get("detail")
-                if detail:
-                    warnings.append(str(detail))
     return warnings
 
 def _layout_report_from_geometry(
@@ -90,7 +64,7 @@ def _layout_report_from_geometry(
 ) -> dict[str, Any]:
     report: dict[str, Any] = {
         "schema_version": LAYOUT_REPORT_SCHEMA_VERSION,
-        "passed": diagnostics.get("passed") if isinstance(diagnostics, dict) else None,
+        "passed": None,
         "overlaps": [],
         "clipped": [],
         "font_roles": {},
@@ -108,15 +82,18 @@ def _layout_report_from_geometry(
     if isinstance(raw_warnings, list):
         report["warnings"].extend(str(warning) for warning in raw_warnings)
 
-    checks = diagnostics.get("checks") if isinstance(diagnostics, dict) else None
-    if not isinstance(checks, list):
+    measurements = diagnostics.get("measurements") if isinstance(diagnostics, dict) else None
+    if not isinstance(measurements, list):
         return report
 
-    for check in checks:
-        if not isinstance(check, dict):
+    legacy_checks: list[dict[str, Any]] = []
+    for measurement in measurements:
+        if not isinstance(measurement, dict) or measurement.get("availability") != "available":
             continue
-        name = str(check.get("name") or "")
-        data = check.get("data") if isinstance(check.get("data"), dict) else {}
+        name = str(measurement.get("metric_id") or "").split("[", 1)[0]
+        data = measurement.get("value") if isinstance(measurement.get("value"), dict) else {}
+        check = {"name": name, "data": data, "detail": data.get("summary", "")}
+        legacy_checks.append(check)
         if name in {"artist_overlaps", "legend_internal_overlaps", "marker_marker_overlaps"}:
             report["overlaps"].extend(_layout_overlap_items(name, data))
         elif name == "text_axis_edge_proximity":
@@ -125,23 +102,8 @@ def _layout_report_from_geometry(
             report["placement_consistency"].extend(_layout_placement_items(data))
         elif name == "font_size_token_drift":
             report["font_roles"] = _layout_font_roles(data, check)
-        elif name == "legend_marker_consistency" and check.get("passed") is False:
-            detail = check.get("detail")
-            if detail:
-                report["warnings"].append(str(detail))
-        elif name == "journal_compliance" and check.get("passed") is False:
-            detail = check.get("detail")
-            if detail:
-                report["warnings"].append(str(detail))
-        elif (
-            name in {"point_annotation_overlaps", "artists_outside_axes", "artists_outside_figure"}
-            and check.get("passed") is False
-        ):
-            detail = check.get("detail")
-            if detail:
-                report["warnings"].append(str(detail))
 
-    density = _layout_density(checks)
+    density = _layout_density(legacy_checks)
     if density:
         report["density"] = density
     return report
@@ -241,11 +203,10 @@ def _layout_placement_items(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _layout_font_roles(data: dict[str, Any], check: dict[str, Any]) -> dict[str, Any]:
     return {
-        "passed": bool(check.get("passed")),
         "token_sizes": data.get("token_sizes", []),
         "offenders": data.get("offenders", []),
         "role_size_counts": data.get("role_size_counts", {}),
-        "warn": str(check.get("detail", "")) if check.get("passed") is False else "",
+        "note": str(check.get("detail", "")),
     }
 
 def _layout_density(checks: list[Any]) -> dict[str, Any]:

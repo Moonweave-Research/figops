@@ -13,8 +13,9 @@ import tempfile
 from datetime import datetime
 
 from .config_parser import discover_projects_with_status, load_config
+from .execution_project_boundary import ExecutionProjectPathError, resolve_execution_project_path
 from .logging import get_logger
-from .runtime_paths import resolve_hub_logs_dir, resolve_runtime_root
+from .runtime_paths import resolve_hub_logs_dir, resolve_runtime_root, resolve_temp_dir
 from .utils import resolve_path
 from .visual_regression_baselines import (
     build_baseline_key as _build_baseline_key_impl,
@@ -95,7 +96,20 @@ def run_check_all(
 
     for project in projects:
         project_rel = project["path"]
-        project_dir = os.path.abspath(os.path.join(root_dir, project_rel))
+        try:
+            project_dir = str(resolve_execution_project_path(root_dir, project_rel))
+        except ExecutionProjectPathError as exc:
+            results.append(
+                {
+                    "project_name": project.get("name") or project_rel,
+                    "project_dir": project_rel,
+                    "success": False,
+                    "failure_stage": "CONTRACT",
+                    "message": str(exc),
+                }
+            )
+            overall_success = False
+            continue
         result = _run_single_project(
             hub_path,
             project_dir,
@@ -623,7 +637,9 @@ def _build_pdf_diff_metrics(baseline_path, current_path):
         return metrics
 
     try:
-        with tempfile.TemporaryDirectory(prefix="ghub-pdfdiff-") as tmpdir:
+        with tempfile.TemporaryDirectory(
+            prefix="ghub-pdfdiff-", dir=resolve_temp_dir("visual_regression")
+        ) as tmpdir:
             baseline_preview = _render_pdf_preview(renderer, baseline_path, tmpdir)
             current_preview = _render_pdf_preview(renderer, current_path, tmpdir)
             metrics["baseline_preview_available"] = baseline_preview is not None
@@ -653,7 +669,9 @@ def _artifact_dimensions(path):
         if renderer is None:
             return None
         try:
-            with tempfile.TemporaryDirectory(prefix="ghub-pdfsize-") as tmpdir:
+            with tempfile.TemporaryDirectory(
+                prefix="ghub-pdfsize-", dir=resolve_temp_dir("visual_regression")
+            ) as tmpdir:
                 preview_path = _render_pdf_preview(renderer, path, tmpdir)
                 return _image_dimensions(preview_path) if preview_path else None
         except Exception:

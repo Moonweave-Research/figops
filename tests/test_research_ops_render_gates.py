@@ -17,13 +17,25 @@ def _module_config() -> dict:
         "project": {"name": "Research Ops Module"},
         "visual_style": {"target_format": "nature"},
         "language_policy": {"allow_nonstandard": True, "analysis_lang": "python", "plot_lang": "python"},
-        "figures": [{"id": "fig1", "script": "plot.py", "output": "results/fig1.png"}],
+        "sample_registry": [{"sample_id": "S1"}],
+        "experimental_conditions": {"conditions": [{"id": "condition_a"}]},
+        "figures": [
+            {
+                "id": "fig1",
+                "script": "plot.py",
+                "output": "results/fig1.png",
+                "claim": "Measured response is reported.",
+                "samples": ["S1"],
+                "conditions": ["condition_a"],
+            }
+        ],
     }
 
 
 def _write_project(project_dir: Path, config: dict) -> None:
     project_dir.mkdir(parents=True, exist_ok=True)
     (project_dir / "project_config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    (project_dir / "plot.py").write_text("# declared test fixture script\n", encoding="utf-8")
 
 
 def _write_raw(project_dir: Path, contents: str) -> None:
@@ -113,6 +125,8 @@ class ResearchOpsRenderGateTest(unittest.TestCase):
             config["sample_registry"] = [{"sample_id": "S1"}]
             config["experimental_conditions"] = {"conditions": [{"id": "condition_a"}]}
             config["figures"][0]["claim"] = "Measured response increases."
+            config["figures"][0].pop("samples")
+            config["figures"][0].pop("conditions")
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root, runtime_root=root / "runtime", write_tools_enabled=True)
 
@@ -160,7 +174,10 @@ class ResearchOpsRenderGateTest(unittest.TestCase):
             config["project"]["status"] = "legacy"
             config["canonical_docs"] = ["docs/missing.md"]
             config["experimental_conditions"] = {
-                "conditions": [{"id": "old_run", "parameters": {"voltage_V": "TODO"}}]
+                "conditions": [
+                    {"id": "condition_a"},
+                    {"id": "old_run", "parameters": {"voltage_V": "TODO"}},
+                ]
             }
             _write_project(project, config)
             server = GraphHubMCPServer(research_root=root, runtime_root=root / "runtime", write_tools_enabled=True)
@@ -187,7 +204,10 @@ class ResearchOpsRenderGateTest(unittest.TestCase):
             config["project"]["status"] = "legacy"
             config["canonical_docs"] = ["docs/missing.md"]
             config["experimental_conditions"] = {
-                "conditions": [{"id": "old_run", "parameters": {"voltage_V": "TODO"}}]
+                "conditions": [
+                    {"id": "condition_a"},
+                    {"id": "old_run", "parameters": {"voltage_V": "TODO"}},
+                ]
             }
             _write_project(project, config)
             argv = ["orchestrator.py", "--project", str(project), "--step", "plot"]

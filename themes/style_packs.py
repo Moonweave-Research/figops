@@ -33,7 +33,7 @@ STYLE_PACKS: tuple[StylePack, ...] = (
     StylePack(
         name="journal_core",
         visibility=PUBLIC_CORE,
-        target_formats=("acs", "cell", "default", "elsevier", "nature", "rsc", "science", "wiley"),
+        target_formats=("acs", "cell", "default", "elsevier", "nature", "neutral", "rsc", "science", "wiley"),
         profiles=("baseline",),
         release_note="Generic journal and default formats suitable for a future public core.",
     ),
