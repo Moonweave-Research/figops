@@ -11,6 +11,7 @@ Dependencies point **downward only**. A layer may import from layers below it,
 never above.
 
 ```
+orchestrator.py                    # CLI pipeline coordinator and read-only audit mode
 figops_mcp_server.py                # entrypoint (stdio); --smoke; thin
         |
         v
@@ -40,6 +41,7 @@ hub_core/legacy_structure_resolver.py  # schema-less 1.0 -> in-memory 1.1 view
 hub_core/project_layout.py             # one scaffold/normalization layout inventory
 hub_core/structure_inventory.py         # read-only semantic inventory
 hub_core/structure_audit.py             # findings, graph, unresolved classification
+hub_core/structure_audit_report.py      # all-project diagnostic report assembly/rendering
 hub_core/structure_plan.py              # deterministic reviewed copy plan
 hub_core/structure_role_binding.py       # destination -> declared role-root binding
 hub_core/structure_stage_cleanup.py      # ownership-safe private-stage/lease cleanup
@@ -313,6 +315,44 @@ the same truthful `compatibility` profile. New launcher and embedded clients
 should use `FigOpsMCPServer(surface_profile="v2" | "compatibility")` or the
 `GRAPH_HUB_MCP_SURFACE_PROFILE` launcher environment setting. Profile-aware
 references can be rendered from the live registry without duplicating alias schemas.
+
+## All-project structure audit (CLI)
+
+The CLI exposes an independent, read-only structure diagnostic for the whole
+discovery root:
+
+```bash
+python orchestrator.py --audit-structure
+python orchestrator.py --audit-structure --audit-structure-format json --scan-depth 2
+```
+
+`orchestrator.py` resolves the research root, records the attempt as
+`selector_kind: audit_structure`, and delegates to
+`hub_core.structure_audit_report.build_structure_audit_report(root_dir,
+max_depth=...)`. It selects the module's deterministic Markdown or JSON
+renderer for the requested format and writes the result to stdout (Markdown by
+default). Attempt provenance remains on stderr.
+`--audit-structure-format` is valid only with `--audit-structure`.
+
+This mode is deliberately independent from project selection and execution:
+pipeline selectors and mutating/execution options (including `--project`,
+`--check-all`, and `--list-projects`) are rejected rather than silently
+combined. The audit walks the discovered projects up to `--scan-depth` and
+uses the read-only inventory/audit modules; it does not run analysis, plotting,
+diagram, or promotion steps and does not modify project files.
+
+The aggregate retains invalid-configuration and execution-boundary-blocked
+projects as diagnostic rows instead of silently dropping them. Its report
+schema is `figops.project-structure-audit-report.v1`; aggregate and per-project
+`proposed_changes` are always empty on this surface.
+
+The emitted structure report is diagnostic output, not a runtime manifest,
+durable result, or evidence receipt. It describes current structure findings
+for review; it must not be treated as a promoted artifact or copied into a
+project's `results/` tree as if it were research output. Runtime job state,
+logs, caches, snapshots, and detailed manifests remain under the external
+runtime root, while durable results and receipts remain under their declared
+project role roots.
 
 ## Why this shape
 

@@ -64,6 +64,31 @@ python orchestrator.py --docker --docker-build --project "12. ionoelastomer" --s
 - Docker 경로에서도 lock gate, provenance, plot 출력이 동일하게 통과해야 함.
 - uv/R 런타임 상태와 자격증명은 repo 안이 아니라 외부 runtime/cache 경로에 있어야 함.
 
+### 1.1 전체 프로젝트 구조 진단 (Read-only)
+
+프로젝트 파일을 변경하거나 파이프라인을 실행하지 않고, 연구 루트에서
+발견되는 프로젝트의 선언 구조를 진단한다.
+
+```bash
+python orchestrator.py --audit-structure
+python orchestrator.py --audit-structure --audit-structure-format json --scan-depth 2
+```
+
+- 기본 출력은 Markdown이며, `--audit-structure-format json`은 JSON을
+  stdout으로 출력한다. 시도 provenance는 stderr로 남는다.
+- `--scan-depth`는 discovery 깊이를 제한한다.
+- 이 모드는 독립 모드다. `--project`, `--check-all`, `--list-projects`와
+  파이프라인/변경 옵션을 함께 주면 fail-fast 오류가 난다.
+- 합격 조건: exit code = 0, 진단 보고서가 stdout에 존재하고, analysis/
+  plot/diagram 실행이나 project 파일 변경이 없다. `--audit-structure-format`
+  단독 사용은 오류여야 한다.
+
+이 출력은 구조 검토용 진단 보고서이며 runtime manifest, durable result,
+또는 evidence receipt가 아니다. 따라서 `results/` 아래에 연구 산출물로
+복사하거나 promotion 대상으로 취급하지 않는다. 실행 로그·cache·snapshot·
+상세 manifest는 외부 runtime root에, 의미 있는 결과와 receipt는 선언된
+project role root에 각각 보관한다.
+
 ---
 
 ## 2) Regression & Integrity 기준안
@@ -292,5 +317,9 @@ explicit path, with `if-no-files-found: error`, so missing evidence fails closed
 
 - **허브 모듈 수정 시**: `hub_core/` 내부 로직 변경 시 반드시 2개 이상의 서로 다른 프로젝트(`ionoelastomer`, `Sulfur_polymer`)에 대해 테스트를 수행.
 - **Runtime 상태 분리**: 데이터 결과값, 회귀 baseline, 실행 로그, 자격증명은 repo 밖 runtime/cache 경로에 둔다. DVC/data registry는 현재 운영 표면에서 retired 상태다.
+- **구조 진단 출력 분리**: `--audit-structure`의 stdout 보고서는 일회성
+  diagnostic surface다. runtime 산출물이나 durable 연구 결과로 승격하지
+  않으며, 보존이 필요하면 별도 운영 기록으로 보관하고 프로젝트 `results/`
+  역할 트리와 혼합하지 않는다.
 
-**Last Update**: 2026-07-04 (journal visual evidence gate guidance)
+**Last Update**: 2026-07-23 (all-project structure audit CLI and journal visual evidence guidance)

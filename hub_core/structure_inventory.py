@@ -18,6 +18,28 @@ _DATA_SUFFIXES = frozenset(
     {".csv", ".tsv", ".txt", ".parquet", ".json", ".xlsx", ".xls", ".h5", ".hdf5", ".feather"}
 )
 _FIGURE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".svg", ".pdf", ".eps", ".tif", ".tiff"})
+_PATH_REFERENCE_KEYS = frozenset(
+    {
+        "asset",
+        "assets",
+        "file",
+        "files",
+        "input",
+        "inputs",
+        "lock",
+        "locks",
+        "manifest",
+        "manifests",
+        "output",
+        "outputs",
+        "path",
+        "paths",
+        "script",
+        "scripts",
+        "source",
+        "sources",
+    }
+)
 
 
 def _relative_path(value: object) -> str | None:
@@ -29,6 +51,21 @@ def _relative_path(value: object) -> str | None:
     return path.as_posix()
 
 
+def _is_configured_path(trail: tuple[str, ...]) -> bool:
+    """Return whether the scalar sits under a path-bearing config key.
+
+    Config metadata contains many dotted strings (schema versions, helper
+    module names, and prose descriptions) that look like paths to a generic
+    suffix check.  Explicit path-bearing keys remain the authoritative signal,
+    including lock-file keys such as ``environment.python_lock``.
+    """
+
+    return any(
+        (key := part.lower()) in _PATH_REFERENCE_KEYS or key.endswith("_lock")
+        for part in trail
+    )
+
+
 def _walk_references(value: object, trail: tuple[str, ...] = ()) -> Iterable[tuple[tuple[str, ...], str]]:
     if isinstance(value, Mapping):
         for key in sorted(value, key=str):
@@ -38,7 +75,7 @@ def _walk_references(value: object, trail: tuple[str, ...] = ()) -> Iterable[tup
             yield from _walk_references(item, (*trail, str(index)))
     else:
         path = _relative_path(value)
-        if path is not None and ("/" in path or PurePosixPath(path).suffix):
+        if path is not None and _is_configured_path(trail):
             yield trail, path
 
 

@@ -118,6 +118,16 @@ Current release-candidate checkpoint:
   reference: [PR #224 owner authorization](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221).
   Execute merge, tag, package publication, GitHub Release, and release
   promotion only after rechecking technical gates for the exact release commit.
+- The CLI now has an independent all-project structure diagnostic:
+  `python orchestrator.py --audit-structure` (or
+  `python orchestrator.py --audit-structure --audit-structure-format json`).
+  It consumes the read-only structure
+  inventory/audit path for projects discovered under the research root, honors
+  `--scan-depth`, and emits the rendered report on stdout without running a
+  pipeline or changing project files. The diagnostic report is review output
+  only; it retains invalid/boundary-blocked project rows for review, keeps
+  `proposed_changes` empty, and is not a runtime manifest, durable result, or
+  evidence receipt.
 
 ---
 
@@ -154,8 +164,9 @@ hub_core/
   project_structure_contract.py # v1.1 role/DAG/alias resolution
   legacy_structure_resolver.py  # legacy 1.0 in-memory compatibility view
   project_layout.py             # shared scaffold/normalization inventory
-  structure_inventory.py / structure_audit.py / structure_plan.py
-                               # read-only semantic discovery and reviewed plan
+  structure_inventory.py / structure_audit.py / structure_audit_report.py
+                               # read-only semantic discovery and all-project report
+  structure_plan.py             # deterministic reviewed copy plan
   structure_role_binding.py    # approved destinations bound to declared roots
   structure_apply.py           # write-gated copy-only apply transaction
   runtime_boundary.py          # project/result/runtime disjointness
