@@ -11,18 +11,26 @@ POST_TAG_METADATA_ROW = "| post_tag_metadata | 1 | requires_release_decision | y
 
 
 def _assert_release_status_matches_post_tag_state(status: str, post_tag_blocker: str | None) -> None:
-    if post_tag_blocker is None:
+    status_is_blocked = "- Technical release gate: blocked" in status
+    status_is_green = "- Technical release gate: ok" in status
+
+    assert status_is_blocked != status_is_green
+    if status_is_green:
+        assert post_tag_blocker is None
         assert "- Technical release gate: ok" in status
         assert "- Repository technically eligible for public release: yes" in status
         assert "- Repository release allowed: yes" in status
         assert "post_tag_metadata" not in status
         return
 
-    assert "Release metadata is stale" in post_tag_blocker
     assert "- Technical release gate: blocked" in status
     assert "- Repository technically eligible for public release: no" in status
     assert "- Repository release allowed: no" in status
+    assert "- Technical blockers:" in status
+    assert "- Technical blockers: 0" not in status
     assert POST_TAG_METADATA_ROW in status
+    if post_tag_blocker is not None:
+        assert "Release metadata is stale" in post_tag_blocker
 
 
 def test_package_version_is_semver_and_matches_latest_changelog_entry():
@@ -74,6 +82,7 @@ def test_release_status_assertion_fails_closed_for_stale_post_tag_metadata():
 - Repository technically eligible for public release: no
 - Repository release allowed: no
 - Technical release gate: blocked
+- Technical blockers: 1
 {POST_TAG_METADATA_ROW}
 """
 
