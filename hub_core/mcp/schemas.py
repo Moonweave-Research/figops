@@ -8,6 +8,8 @@ from hub_core.mcp import tool_schema_common as _schema_common
 from hub_core.mcp.discovery_schemas import list_prompt_definitions as _list_prompt_definitions
 from hub_core.mcp.discovery_schemas import list_resource_definitions as _list_resource_definitions
 from hub_core.mcp.discovery_schemas import list_resource_templates as _list_resource_templates
+from hub_core.mcp.phase2_render_schemas import RENDER_POLICY_CONTEXT_SCHEMA as _RENDER_POLICY_CONTEXT_SCHEMA
+from hub_core.mcp.phase2_render_schemas import WORKFLOW_INTENT_SCHEMA as _WORKFLOW_INTENT_SCHEMA
 from hub_core.mcp.render_geometry_schemas import GEOMETRY_DIAGNOSTICS_SCHEMA as _GEOMETRY_DIAGNOSTICS_SCHEMA
 from hub_core.mcp.render_geometry_schemas import GEOMETRY_METRIC_NAMES as _GEOMETRY_METRIC_NAMES  # noqa: F401
 from hub_core.mcp.render_geometry_schemas import LAYOUT_REPORT_SCHEMA as _LAYOUT_REPORT_SCHEMA
@@ -565,6 +567,8 @@ def list_tool_definitions(
                     "baseline_comparison": {"type": "object"},
                     "provenance": {"type": "object"},
                     "evidence": {"type": "object"},
+                    "policy_context": _RENDER_POLICY_CONTEXT_SCHEMA,
+                    "workflow_intent": _WORKFLOW_INTENT_SCHEMA,
                 }
             ),
         ),

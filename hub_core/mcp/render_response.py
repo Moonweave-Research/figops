@@ -44,6 +44,7 @@ def one_render_response(tool_name: str, result: Mapping[str, Any]) -> dict[str, 
                 "status": _text(runtime_availability.get("status")),
                 "reason": _text(runtime_availability.get("reason")),
             }
+        _add_project_render_context(response, result)
         return _bounded(response)
 
     evidence = normalize_evidence_envelope(evidence_raw)
@@ -64,6 +65,7 @@ def one_render_response(tool_name: str, result: Mapping[str, Any]) -> dict[str, 
         "failure_stage": None,
         "resolution_hint": None,
     }
+    _add_project_render_context(response, result)
     return _bounded(response)
 
 
@@ -159,6 +161,13 @@ def _texts(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [_text(item) for item in value[:MAX_RESPONSE_WARNINGS]]
+
+
+def _add_project_render_context(response: dict[str, Any], result: Mapping[str, Any]) -> None:
+    for key in ("policy_context", "workflow_intent"):
+        value = result.get(key)
+        if isinstance(value, Mapping):
+            response[key] = dict(value)
 
 
 def _bounded(response: dict[str, Any]) -> dict[str, Any]:

@@ -1,8 +1,9 @@
 # FigOps - Architecture
 
-> Companion to `docs/ROADMAP.md`. Describes the current v0.20.0 release-candidate
-> architecture after the v0.19.0 release, including the AI-native v2 agent
-> surface and the PR #224 declared-project/runtime-result integrity path.
+> Companion to `docs/ROADMAP.md`. Describes the v0.20.0 published architecture
+> baseline plus current Phase 2 follow-up/Draft PR context, including the
+> AI-native v2 agent surface and the PR #224 declared-project/runtime-result
+> integrity path.
 
 ## Layers and dependency direction
 
@@ -88,7 +89,7 @@ policy-only; there is no import-linter contract in `.github/workflows/ci.yml` as
 of v0.20.0. Remaining over-budget files should be handled as scoped maintenance
 tracks rather than broad rewrites.
 
-Current files over the approximate 800-line budget, measured on 2026-07-16 with
+Current files over the approximate 800-line budget, measured on 2026-07-23 with
 the architecture inventory helper:
 
 ```bash
@@ -101,14 +102,19 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 <!-- architecture-inventory:end -->
 
 No Python module in the tracked architecture roots (`hub_core`, `plotting`, and
-`themes`) currently exceeds the 800-line split signal. Overlay
-normalization now lives in `plotting/renderers/annotation_normalization.py`,
+`themes`) currently exceeds the 800-line split signal. Render-project
+workflow/policy integrity decisions now live in
+`hub_core/mcp/render_project_integrity_context.py`, while the project-render MCP
+tool preserves its compatibility imports. Overlay normalization now lives in `plotting/renderers/annotation_normalization.py`,
 while the public overlay façade and compatibility imports remain stable.
 Structure-plan destination binding now lives in
 `hub_core/structure_role_binding.py`, while private-stage and directory-lease
 cleanup lives in `hub_core/structure_stage_cleanup.py`;
 `hub_core/structure_apply.py` retains its private compatibility aliases while
 focusing on transactional execution and config compare-and-swap.
+Workflow-intent config defaults, validation, and inspectable report assembly now
+live in `hub_core/config_workflow_intent.py`, while `hub_core/config_parser.py`
+keeps the public compatibility imports.
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
 1000 lines while preserving compatibility shims:
@@ -188,8 +194,9 @@ Windows safety smoke; source vector bytes are never substituted for a preview.
 The AI-native façade split remains intact after the structure work. Shared tool
 schema primitives live in `hub_core/mcp/tool_schema_common.py`, and the v1.1
 project-structure tool schema lives in `hub_core/mcp/structure_schemas.py`,
-while the registry façade continues to feed validation, discovery, and
-generated references. Overlay normalization remains in
+while Phase 2 project-render policy and workflow response schemas live in
+`hub_core/mcp/phase2_render_schemas.py`. The registry façade continues to feed
+validation, discovery, and generated references. Overlay normalization remains in
 `plotting/renderers/annotation_normalization.py`, with compatibility exports in
 the public overlay façade.
 

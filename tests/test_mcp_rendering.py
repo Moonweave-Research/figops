@@ -365,6 +365,12 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
         self.assertIn("selected_figure", project_output)
         self.assertIn("snapshot_project_path", project_output)
         self.assertIn("provenance", project_output)
+        self.assertIn("policy_context", project_output)
+        self.assertIn("workflow_intent", project_output)
+        for csv_tool in ("figops.render_csv_graph", "figops.render_csv_multipanel"):
+            csv_output = definitions[csv_tool]["outputSchema"]["properties"]
+            self.assertNotIn("policy_context", csv_output)
+            self.assertNotIn("workflow_intent", csv_output)
 
     def test_render_csv_graph_schema_exposes_legend_axis_polish_controls(self):
         definitions = {tool["name"]: tool for tool in list_tool_definitions()}
@@ -4642,10 +4648,24 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             {"type": "string", "enum": ["verified", "unverified"]},
         )
         self.assertEqual(project_properties["promotion_eligible"]["type"], "boolean")
+        self.assertFalse(project_properties["policy_context"].get("additionalProperties", True))
+        self.assertFalse(
+            project_properties["policy_context"]["properties"]["policy_set"].get("additionalProperties", True)
+        )
+        self.assertFalse(project_properties["workflow_intent"].get("additionalProperties", True))
+        self.assertFalse(
+            project_properties["workflow_intent"]["properties"]["provenance"].get("additionalProperties", True)
+        )
+        for csv_tool in ("figops.render_csv_graph", "figops.render_csv_multipanel"):
+            csv_properties = definitions[csv_tool]["outputSchema"]["properties"]
+            self.assertNotIn("policy_context", csv_properties)
+            self.assertNotIn("workflow_intent", csv_properties)
         for optional_success_field in (
             "claim_inventory",
             "publication_status",
             "promotion_eligible",
+            "policy_context",
+            "workflow_intent",
         ):
             self.assertNotIn(optional_success_field, project_schema.get("required", []))
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
@@ -4695,6 +4715,8 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
             self._assert_validates(project_success, project_schema)
             self.assertIn("geometry_diagnostics", project_success)
             self.assertIn("layout_report", project_success)
+            self.assertIn("policy_context", project_success)
+            self.assertIn("workflow_intent", project_success)
 
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_geom_") as tmpdir:
             root = Path(tmpdir) / "ResearchOS"

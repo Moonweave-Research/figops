@@ -66,6 +66,8 @@ def test_basic_render_is_one_call_with_validated_evidence_and_lazy_uris(tmp_path
     validate_evidence_envelope(result["evidence"])
     assert result["evidence"]["provenance"]["output_sha256"] == result["artifact"]["sha256"]
     assert not ({"created_paths", "job_root", "output_path", "config_path"} & set(result))
+    assert "policy_context" not in result
+    assert "workflow_intent" not in result
     assert "blob" not in json.dumps(result).lower()
     manifest = json.loads(
         (tmp_path / "runtime" / "mcp_jobs" / "v2-basic" / "manifest.json").read_text(encoding="utf-8")
@@ -89,6 +91,10 @@ def test_project_script_render_executes_only_declared_python_and_returns_same_co
     assert result["preview_uri"] == "figops://jobs/v2-project/previews/primary/0"
     validate_evidence_envelope(result["evidence"])
     assert result["evidence"]["producer"]["kind"] == "mcp-project-script-render"
+    assert result["policy_context"]["schema_version"] == "figops-render-policy-context/1"
+    assert result["policy_context"]["render_policy"]["id"] == "render-neutral"
+    assert result["workflow_intent"]["schema_version"] == "figops-workflow-intent/1"
+    assert result["workflow_intent"]["intent"] == "execution"
 
 
 def test_project_rscript_missing_is_typed_and_creates_no_job(
@@ -369,12 +375,25 @@ def test_all_tool_annotations_are_truthful_and_v2_schemas_fit_budgets() -> None:
         size = len(json.dumps(definitions[name]["inputSchema"], separators=(",", ":")).encode())
         assert size <= 6 * 1024
     assert len(definitions["figops.render_basic_csv"]["inputSchema"]["properties"]) <= 14
+    project_properties = definitions["figops.render_project_script"]["outputSchema"]["properties"]
+    assert not project_properties["policy_context"].get("additionalProperties", True)
+    assert not project_properties["policy_context"]["properties"]["policy_set"].get(
+        "additionalProperties", True
+    )
+    assert not project_properties["workflow_intent"].get("additionalProperties", True)
+    assert not project_properties["workflow_intent"]["properties"]["provenance"].get(
+        "additionalProperties", True
+    )
+    basic_properties = definitions["figops.render_basic_csv"]["outputSchema"]["properties"]
+    assert "policy_context" not in basic_properties
+    assert "workflow_intent" not in basic_properties
 
 
 def test_wp5_touched_modules_stay_below_modularity_gate() -> None:
     root = Path(__file__).parents[1]
     for relative in (
         "hub_core/mcp/schemas.py",
+        "hub_core/mcp/phase2_render_schemas.py",
         "hub_core/mcp/tool_schema_common.py",
         "hub_core/mcp/v2_tool_schemas.py",
         "hub_core/mcp/render_orchestration.py",

@@ -5,15 +5,22 @@ from pathlib import Path
 from typing import Any
 
 from hub_core.adapters import select_adapters
-from hub_core.artifact_policy_measurement import resolve_render_validation_policies
+from hub_core.artifact_policy_measurement import resolve_render_policy_context
 from hub_core.attempt_provenance import build_attempt_provenance, update_attempt_provenance
-from hub_core.config_parser import master_execution_error, project_role, project_status, validate_config
+from hub_core.config_parser import (
+    master_execution_error,
+    project_role,
+    project_status,
+    validate_config,
+    workflow_intent_report,
+)
 from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
 from hub_core.external_raw_execution import (
     is_external_raw_declaration,
     materialize_external_raw_inputs,
 )
 from hub_core.mcp import render_orchestration as render_helpers
+from hub_core.mcp import render_project_integrity_context as integrity_context
 from hub_core.mcp.errors import PROJECT_DECLARATION_PATH_INVALID, has_unsafe_declared_path
 from hub_core.project_paths import ProjectPathError, resolve_project_input, resolve_project_output
 from hub_core.provenance_inputs import expand_project_input_files, resolved_research_ops_evidence
@@ -123,6 +130,10 @@ class McpRenderProjectMixin:
                     ),
                     persist_failure=True,
                 )
+            workflow_intent = integrity_context.resolve_project_render_workflow_intent(
+                config,
+                workflow_intent_report_fn=workflow_intent_report,
+            )
             research_ops = validate_research_ops_contract(project_path, config)
             research_ops_policy = resolved_research_ops_evidence(config)
             if research_ops["errors"]:
@@ -274,12 +285,15 @@ class McpRenderProjectMixin:
             )
             safe_output_path = True
             style_summary = self._selected_figure_style_summary(config, selected, arguments)
-            validation_target, render_policy = resolve_render_validation_policies(
+            policy_context = integrity_context.resolve_project_render_policy_context(
                 arguments,
                 target_format=style_summary["target_format"],
+                resolve_render_policy_context_fn=resolve_render_policy_context,
             )
-            style_summary["render_policy"] = render_policy["id"]
-            style_summary["validation_target"] = validation_target or None
+            validation_target, render_policy = integrity_context.apply_project_render_policy_context(
+                style_summary,
+                policy_context,
+            )
             style_errors = self._render_style_errors(
                 style_summary["target_format"],
                 style_summary["output_format"],
@@ -354,6 +368,8 @@ class McpRenderProjectMixin:
                 artifact_status="validated",
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 provenance={"attempt": attempt},
+                policy_context=policy_context,
+                workflow_intent=workflow_intent,
                 failure_stage="",
                 resolution_hint="",
             )
@@ -575,6 +591,8 @@ class McpRenderProjectMixin:
                 research_ops_policy=research_ops_policy,
                 data_contract={"schema_version": "data_contract_summary/1", "passed": True},
                 preview_artifacts=preview_artifacts,
+                policy_context=policy_context,
+                workflow_intent=workflow_intent,
             )
             manifest["claim_inventory"] = claim_inventory
             manifest["publication_status"] = (
@@ -593,22 +611,21 @@ class McpRenderProjectMixin:
                     else None
                 ),
                 render_policy=render_policy,
+                policy_context=policy_context,
                 validation_target=validation_target or None,
             )
             policy_projections = manifest["evidence"]["policy_projections"]
-            projection_ready = (
-                len(policy_projections) == 1
-                and policy_projections[0].get("status") == "informational"
+            promotion_decision = integrity_context.decide_project_render_promotion_eligibility(
+                claim_inventory=claim_inventory,
+                policy_projections=policy_projections,
+                validation_target=validation_target,
+                workflow_intent=workflow_intent,
+                manual_review_needed=manual_review_needed,
             )
-            policy_review_needed = bool(validation_target) and not projection_ready
-            manual_review_needed = manual_review_needed or policy_review_needed
+            manual_review_needed = bool(promotion_decision["manual_review_needed"])
             status = "warning" if manual_review_needed else "ok"
             manifest["manual_review_needed"] = manual_review_needed
-            manifest["promotion_eligible"] = bool(
-                claim_inventory["promotion_eligible"]
-                and validation_target
-                and projection_ready
-            )
+            manifest["promotion_eligible"] = bool(promotion_decision["promotion_eligible"])
             status_payload = self._render_status_payload(
                 job_id=job_id,
                 status=status,
@@ -628,24 +645,28 @@ class McpRenderProjectMixin:
             status_payload["claim_inventory"] = claim_inventory
             status_payload["publication_status"] = manifest["publication_status"]
             status_payload["promotion_eligible"] = manifest["promotion_eligible"]
+            status_payload["policy_context"] = policy_context
+            status_payload["workflow_intent"] = workflow_intent
             render_helpers._write_manifest_and_status(manifest, manifest_path, status_payload, status_path, latest_dir)
-            try:
-                promoted = promote_eligible_project_result(
-                    project_root=project_path,
-                    config=config,
-                    runtime_root=self.runtime_root,
-                    runtime_artifact=output_path,
-                    output_relpath=output_relpath,
-                    manifest=manifest,
-                    manifest_path=manifest_path,
-                    figure_id=str(selected.get("id") or "figure"),
-                    selected_figure=selected,
-                )
-            except Exception as exc:
-                raise render_helpers.ProjectRenderExportError(
-                    f"Eligible result promotion failed: {exc}",
-                    script_output=self._read_project_script_output(job_root),
-                ) from exc
+            promoted = None
+            if manifest["promotion_eligible"]:
+                try:
+                    promoted = promote_eligible_project_result(
+                        project_root=project_path,
+                        config=config,
+                        runtime_root=self.runtime_root,
+                        runtime_artifact=output_path,
+                        output_relpath=output_relpath,
+                        manifest=manifest,
+                        manifest_path=manifest_path,
+                        figure_id=str(selected.get("id") or "figure"),
+                        selected_figure=selected,
+                    )
+                except Exception as exc:
+                    raise render_helpers.ProjectRenderExportError(
+                        f"Eligible result promotion failed: {exc}",
+                        script_output=self._read_project_script_output(job_root),
+                    ) from exc
             if promoted is not None:
                 created_paths.extend(str(item.path) for item in promoted)
         except Exception as exc:
@@ -768,6 +789,8 @@ class McpRenderProjectMixin:
             baseline_comparison=baseline_comparison,
             provenance=provenance,
             evidence=manifest["evidence"],
+            policy_context=policy_context,
+            workflow_intent=workflow_intent,
             claim_inventory=claim_inventory,
             publication_status=manifest["publication_status"],
             promotion_eligible=manifest["promotion_eligible"],
