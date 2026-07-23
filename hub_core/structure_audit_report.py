@@ -206,6 +206,106 @@ def _md(value: Any) -> str:
     return str(value if value is not None else "").replace("|", "\\|").replace("\n", " ")
 
 
+def _project_sort_key(item: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    """Return a stable key for report rows supplied by a caller.
+
+    ``build_structure_audit_report`` already emits rows in this order, but the
+    renderer also accepts a report mapping from another producer.  Sorting at
+    the rendering boundary keeps Markdown deterministic without mutating that
+    producer's data.
+    """
+
+    path = str(item.get("path") or "")
+    project_id = str(item.get("project_id") or "")
+    name = str(item.get("name") or "")
+    return (path.casefold(), path, project_id.casefold(), name.casefold())
+
+
+def _mapping_detail(value: Any, *, fallback: str) -> tuple[str, str]:
+    """Extract a path/reason pair from a diagnostic value without mutation."""
+
+    if isinstance(value, Mapping):
+        path = str(value.get("path") or value.get("name") or "")
+        reason = str(value.get("reason") or value.get("message") or "")
+        if not reason:
+            reason = fallback
+        return path, reason
+    text = str(value if value is not None else "").strip()
+    return "", text or fallback
+
+
+def _unknown_rows(projects: list[Any]) -> list[tuple[str, str, str, str, str]]:
+    """Flatten unknown diagnostics into deterministic render-only rows.
+
+    The final tuple contains project path, unknown path, candidate role,
+    reason, and project id.  Keeping this as a separate flattened view makes
+    it straightforward to enumerate every unknown while leaving the JSON
+    report untouched.
+    """
+
+    rows: list[tuple[str, str, str, str, str]] = []
+    for item in projects:
+        if not isinstance(item, Mapping):
+            continue
+        project_path = str(item.get("path") or item.get("name") or "")
+        project_id = str(item.get("project_id") or "")
+        audit = item.get("audit") if isinstance(item.get("audit"), Mapping) else {}
+        unknowns = audit.get("unknowns") if isinstance(audit.get("unknowns"), list) else []
+        for unknown in unknowns:
+            unknown_path, reason = _mapping_detail(unknown, fallback="no reason provided")
+            candidate_role = ""
+            if isinstance(unknown, Mapping):
+                candidate = unknown.get("candidate")
+                if isinstance(candidate, Mapping):
+                    candidate_role = str(candidate.get("candidate_role") or "")
+                    candidate_reason = str(candidate.get("reason") or "")
+                    if candidate_reason:
+                        reason = candidate_reason
+                elif candidate is not None:
+                    candidate_role = str(candidate)
+            rows.append((project_path, unknown_path, candidate_role, reason, project_id))
+    return sorted(
+        rows,
+        key=lambda row: (
+            row[0].casefold(),
+            row[1].casefold(),
+            row[2].casefold(),
+            row[3].casefold(),
+            row[4].casefold(),
+        ),
+    )
+
+
+def _audit_error_rows(projects: list[Any]) -> list[tuple[str, str, str, str]]:
+    """Flatten project-level audit errors into deterministic render-only rows."""
+
+    rows: list[tuple[str, str, str, str]] = []
+    for item in projects:
+        if not isinstance(item, Mapping):
+            continue
+        project_path = str(item.get("path") or item.get("name") or "")
+        project_id = str(item.get("project_id") or "")
+        errors = item.get("errors")
+        if isinstance(errors, (str, bytes)):
+            errors = [errors]
+        if not isinstance(errors, list):
+            continue
+        for error in errors:
+            error_path, reason = _mapping_detail(error, fallback="unspecified audit error")
+            rows.append((error_path or project_path, reason, project_path, project_id))
+    return sorted(
+        rows,
+        key=lambda row: (
+            row[2].casefold(),
+            row[2],
+            row[0].casefold(),
+            row[0],
+            row[1].casefold(),
+            row[3].casefold(),
+        ),
+    )
+
+
 def render_structure_audit_markdown(report: Mapping[str, Any]) -> str:
     """Render a compact deterministic Markdown report."""
 
@@ -235,6 +335,10 @@ def render_structure_audit_markdown(report: Mapping[str, Any]) -> str:
         "unknown_count",
     ):
         lines.append(f"| {_md(key.replace('_', ' '))} | {_md(summary.get(key, 0))} |")
+    ordered_projects = sorted(
+        (item for item in projects if isinstance(item, Mapping)),
+        key=_project_sort_key,
+    )
     lines.extend(
         [
             "",
@@ -244,9 +348,7 @@ def render_structure_audit_markdown(report: Mapping[str, Any]) -> str:
             "| --- | --- | --- | --- | ---: | ---: | ---: | --- |",
         ]
     )
-    for item in projects:
-        if not isinstance(item, Mapping):
-            continue
+    for item in ordered_projects:
         audit = item.get("audit") if isinstance(item.get("audit"), Mapping) else {}
         findings = audit.get("findings") if isinstance(audit.get("findings"), list) else []
         unknowns = audit.get("unknowns") if isinstance(audit.get("unknowns"), list) else []
@@ -268,9 +370,7 @@ def render_structure_audit_markdown(report: Mapping[str, Any]) -> str:
         )
     lines.extend(["", "## Findings", ""])
     any_findings = False
-    for item in projects:
-        if not isinstance(item, Mapping):
-            continue
+    for item in ordered_projects:
         audit = item.get("audit") if isinstance(item.get("audit"), Mapping) else {}
         findings = audit.get("findings") if isinstance(audit.get("findings"), list) else []
         if findings:
@@ -288,6 +388,38 @@ def render_structure_audit_markdown(report: Mapping[str, Any]) -> str:
             lines.append("")
     if not any_findings:
         lines.append("No structure findings.")
+
+    lines.extend(["", "## Unknowns", ""])
+    unknown_rows = _unknown_rows(ordered_projects)
+    if unknown_rows:
+        current_project = None
+        for project_path, unknown_path, candidate_role, reason, _project_id in unknown_rows:
+            if project_path != current_project:
+                if current_project is not None:
+                    lines.append("")
+                lines.append(f"### `{_md(project_path)}`")
+                current_project = project_path
+            detail = []
+            if candidate_role:
+                detail.append(f"candidate role `{_md(candidate_role)}`")
+            detail.append(f"reason: {_md(reason)}")
+            lines.append(f"- `{_md(unknown_path or '(unspecified path)')}`: " + "; ".join(detail))
+    else:
+        lines.append("No unknown paths.")
+
+    lines.extend(["", "## Audit Errors", ""])
+    error_rows = _audit_error_rows(ordered_projects)
+    if error_rows:
+        current_project = None
+        for error_path, reason, project_path, _project_id in error_rows:
+            if project_path != current_project:
+                if current_project is not None:
+                    lines.append("")
+                lines.append(f"### `{_md(project_path)}`")
+                current_project = project_path
+            lines.append(f"- `{_md(error_path or '(project path unavailable)')}`: {_md(reason)}")
+    else:
+        lines.append("No audit errors.")
     return "\n".join(lines).rstrip() + "\n"
 
 

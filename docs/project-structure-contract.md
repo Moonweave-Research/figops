@@ -78,6 +78,77 @@ fails closed when the native guarantee is unavailable. Failure rollback removes
 only newly created files whose hashes still match the reviewed plan; FigOps
 never deletes or moves raw inputs.
 
+### Finding-to-plan selection matrix
+
+The audit report is a selection aid, not an approval list. The following matrix
+is normative for the transition from a read-only finding to a reviewed copy
+plan:
+
+| Report item | Surface/status | Selection class | Plan/apply effect |
+| --- | --- | --- | --- |
+| Invalid project/configuration | `audit_status: invalid` | Report-only | Retain the row and errors; do not inspect, propose, or apply mappings until the project is repaired and audited again. |
+| Execution-path rejection | `audit_status: boundary_blocked` | Report-only | Retain the row and boundary error; no project files may be selected from this row. |
+| Config-less discovery entry | `audit_status: skipped` | Report-only | Retain the discovery evidence; provide a valid project configuration before any plan can be built. |
+| Loader or audit exception | `audit_status: audit_error` | Report-only | Preserve the error and rerun after it is resolved; an exception never becomes a mapping candidate. |
+| Audited structural finding | `audit.findings[]` (for example `collision`, `stale_reference`, or `provenance_incomplete`) | Report-only diagnostic | Findings inform review and may block a safe plan, but are never copied into `approved_mappings`. |
+| Semantic role proposal | `audit.unknowns[]` with one candidate, or `proposed_mappings[]` | Candidate-only | A candidate role, confidence, or destination is a suggestion only; a reviewer must choose the explicit source, destination, and role. |
+| Ambiguous/heuristic unknown | An `unknowns[]` candidate with conflicting or heuristic evidence | Report-only candidate | Keep the item unresolved. It may be discussed during review, but it cannot enter a plan until the reviewer supplies an explicit mapping. |
+| Unresolved proposal/dependency | `unresolved_proposals[]` or `hardcoded_unresolved_references[]` | Report-only blocker | Keep it unresolved; apply is refused while it can affect a copied artifact. FigOps never guesses or rewrites arbitrary source text. |
+| Reviewed mapping | `approved_mappings[]` (with any typed `config_diff`) | Explicit plan input | Only this reviewer-supplied list is eligible to enter a copy-only plan. Every source, destination, and semantic role is validated and bound to declared roots. |
+| Reviewed dry-run plan | `plan_digest` and `confirmation_token` | Review checkpoint | The canonical plan digest is deterministic and the returned token binds the exact plan; dry-run writes nothing. |
+| Exact reviewed apply | `dry_run: false`, `move_policy: copy` | Apply confirmation | Re-submit the identical reviewed inputs and token. Stale hashes/config, changed inputs, collisions, unresolved dependencies, or token mismatch fail closed. |
+
+In particular, an ambiguous/heuristic `unknown` remains report-only even when a
+candidate role is displayed, while a high-confidence `proposed_mapping` remains
+candidate-only. Neither is an implicit approval.
+`approved_mappings` must be authored from the reviewed evidence (or an
+intentional, documented mapping) and must not be synthesized by replaying the
+audit output.
+
+### Approval-token workflow
+
+1. Run `figops.describe` with `kind: project_structure` or the CLI
+   `--audit-structure` mode. Treat `invalid`, `boundary_blocked`, `skipped`,
+   and `audit_error` rows as report-only. Treat `findings`, ambiguous/heuristic
+   `unknowns`, `proposed_mappings`, and unresolved proposals as evidence for
+   review, not as approvals.
+2. Request `figops.normalize_project_structure` with `dry_run: true` and
+   `move_policy: adopt` to inspect candidate mappings. Select only the entries
+   the reviewer accepts, then submit those as explicit `approved_mappings` (and
+   any typed compare-and-swap `config_diff`) with `move_policy: copy` and
+   `dry_run: true`.
+3. Record the returned `plan_digest` and `confirmation_token`. The digest is a
+   SHA-256 of the canonical plan payload (sorted semantic entries and verified
+   source/config identities, excluding the self-referential digest); the token
+   is `FIGOPS-APPLY-<plan_digest>`. This proves integrity and exact replay of
+   the reviewed plan, not the independent identity, role, authorization, or
+   attestation of the person or process that supplied it. It is a review
+   checkpoint, not a write.
+4. Apply only by resubmitting the identical project path, mappings, config edits,
+   unresolved-reference list, and `plan_digest`-bound token with
+   `move_policy: copy` and `dry_run: false`. The apply path revalidates source
+   identity, configuration, containment, collisions, and the token before any
+   copy, then emits the copy receipt and validation result.
+5. Verify the receipt and validation. Original inputs remain byte-identical;
+   cleanup is separate and user-authorized. A plan, digest, or token is control
+   evidence, not a research result, runtime manifest, or evidence receipt.
+
+### Phase 4 boundary and Phase 5 gap
+
+Phase 4 keeps the mapping policy explicit: only reviewer-supplied
+`approved_mappings` and typed config edits may enter the copy-only plan. The
+current `FIGOPS-APPLY-<plan_digest>` token binds the exact canonical payload and
+the verified source/config identities, but it does not establish independent
+human identity, reviewer authority, or an attestation. The current workflow
+therefore does not close self-approval; reviewer provenance remains an
+out-of-band policy/process requirement rather than a machine-enforced claim.
+
+The next Phase 5 gap is a host-issued `approval_receipt` (or equivalent
+immutable reviewed-plan authority) bound to the plan digest and reviewed
+inputs, with verifiable reviewer identity/role, authorization, and attestation
+semantics. Until that authority exists and is consumed by apply, no plan token
+or copy receipt may be described as independent approval evidence.
+
 ## Runtime and durable results
 
 Launcher-owned runtime state is external to the project and disposable. Jobs,

@@ -128,6 +128,19 @@ Current release-candidate checkpoint:
   only; it retains invalid/boundary-blocked project rows for review, keeps
   `proposed_changes` empty, and is not a runtime manifest, durable result, or
   evidence receipt.
+- Structure migration follows the finding-to-plan selection matrix in
+  `docs/project-structure-contract.md`: `invalid`, `boundary_blocked`,
+  `skipped`, `audit_error`, and ambiguous/heuristic unknowns remain report-only
+  (unknowns and proposed mappings are candidate-only). Only explicit reviewed
+  `approved_mappings` and typed config edits form a copy-only plan. A dry-run
+  returns the deterministic `plan_digest` and bound
+  `FIGOPS-APPLY-<plan_digest>` token; apply requires the identical reviewed
+  inputs and token. The token proves plan integrity and exact replay, not
+  independent human identity or attestation; the current workflow does not
+  close self-approval. A host-issued `approval_receipt` or immutable
+  reviewed-plan authority is deferred to Phase 5. Audit/plan control evidence
+  never becomes a runtime manifest or durable result, and runtime remains
+  external to the project.
 
 ---
 

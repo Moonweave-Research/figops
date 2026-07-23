@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
@@ -110,3 +111,88 @@ def test_audit_proposals_are_stripped_from_read_only_report(tmp_path: Path, monk
     assert report["projects"][0]["proposed_changes"] == []
     assert report["projects"][0]["audit"]["proposed_changes"] == []
     assert report["proposed_changes"] == []
+
+
+def test_markdown_enumerates_unknown_paths_reasons_and_audit_errors():
+    report = {
+        "root": "/tmp/root",
+        "max_depth": 4,
+        "summary": {"project_count": 2},
+        "projects": [
+            {
+                "project_id": "b",
+                "path": "b",
+                "audit": {
+                    "findings": [],
+                    "unknowns": [
+                        {
+                            "path": "legacy/plot.R",
+                            "candidate": {
+                                "candidate_role": "unknown",
+                                "reason": "ambiguous candidates: analysis_scripts, figure_scripts",
+                            },
+                        }
+                    ],
+                },
+                "errors": ["configuration unreadable"],
+            },
+            {
+                "project_id": "a",
+                "path": "a",
+                "audit": {
+                    "findings": [],
+                    "unknowns": [{"path": "misc.bin", "reason": "no semantic declaration"}],
+                },
+                "errors": [{"path": "a/project_config.yaml", "reason": "invalid YAML"}],
+            },
+        ],
+    }
+
+    markdown = report_module.render_structure_audit_markdown(report)
+
+    assert "## Unknowns" in markdown
+    assert "`legacy/plot.R`" in markdown
+    assert "ambiguous candidates: analysis_scripts, figure_scripts" in markdown
+    assert "`misc.bin`" in markdown
+    assert "no semantic declaration" in markdown
+    assert "## Audit Errors" in markdown
+    assert "`a/project_config.yaml`: invalid YAML" in markdown
+    assert "`b`: configuration unreadable" in markdown
+
+
+def test_markdown_diagnostic_sections_are_deterministic_and_do_not_mutate_report():
+    report = {
+        "root": "/tmp/root",
+        "max_depth": 4,
+        "summary": {"project_count": 2},
+        "projects": [
+            {
+                "project_id": "b",
+                "path": "b",
+                "audit": {
+                    "findings": [],
+                    "unknowns": [
+                        {"path": "z.txt", "reason": "z reason"},
+                        {"path": "a.txt", "reason": "a reason"},
+                    ],
+                },
+                "errors": ["z error", "a error"],
+            },
+            {
+                "project_id": "a",
+                "path": "a",
+                "audit": {"findings": [], "unknowns": [{"path": "m.txt", "reason": "m reason"}]},
+                "errors": ["m error"],
+            },
+        ],
+    }
+    before = copy.deepcopy(report)
+
+    first = report_module.render_structure_audit_markdown(report)
+    second = report_module.render_structure_audit_markdown(report)
+
+    assert first == second
+    assert report == before
+    assert first.index("### `a`") < first.index("### `b`")
+    assert first.index("`a.txt`") < first.index("`z.txt`")
+    assert first.index("`b`: a error") < first.index("`b`: z error")

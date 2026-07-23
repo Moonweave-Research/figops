@@ -319,6 +319,24 @@ Organization is a reviewable transaction, not an eager formatter.
 8. **Report:** retain rollback manifest. Original cleanup is always a separate,
    user-authorized operation outside the organizer.
 
+The normative finding-to-plan selection matrix and approval-token syntax live in
+[`docs/project-structure-contract.md`](../project-structure-contract.md). In
+summary, invalid, boundary-blocked, skipped, and audit-error projects are
+report-only; ambiguous/heuristic unknowns and proposed mappings are
+candidate-only; and only explicit reviewer-supplied `approved_mappings` plus
+typed config edits enter a copy-only plan. A reviewed dry-run fixes a
+deterministic `plan_digest` and `FIGOPS-APPLY-<plan_digest>` token. Apply must
+repeat the identical reviewed inputs with that token and remains blocked by
+stale identities, collisions, unresolved dependencies, or token mismatch.
+The token proves integrity and exact replay of the canonical plan, not
+independent reviewer identity, authority, or attestation; the current workflow
+does not close self-approval. A host-issued `approval_receipt` or equivalent
+immutable reviewed-plan authority, bound to reviewer identity/role and the plan
+digest, remains a Phase 5 gap.
+Audit reports, plans, digests, and tokens are control evidence, not runtime
+manifests, durable results, or evidence receipts; runtime remains externally
+rooted and disposable.
+
 Low-confidence, multi-role, content-sensitive, unreferenced, and collision cases
 stay unresolved. Extension-only classification may not cross a role boundary.
 Any hard-coded script/import/config dependency that cannot be represented as a

@@ -346,6 +346,21 @@ projects as diagnostic rows instead of silently dropping them. Its report
 schema is `figops.project-structure-audit-report.v1`; aggregate and per-project
 `proposed_changes` are always empty on this surface.
 
+Selection follows the canonical matrix in
+[`docs/project-structure-contract.md`](project-structure-contract.md):
+`invalid`, `boundary_blocked`, `skipped`, and `audit_error` rows are report-only;
+ambiguous/heuristic `unknowns` and `proposed_mappings` are candidate-only; and
+only explicit, reviewer-supplied `approved_mappings` (plus typed config edits)
+can form a copy-only plan. A reviewed dry-run returns a deterministic
+`plan_digest` and its `FIGOPS-APPLY-<plan_digest>` confirmation token. Apply
+requires the identical reviewed inputs and token, and fails closed on stale
+identity/configuration, collisions, unresolved dependencies, or token mismatch.
+The token proves integrity and exact replay of that plan; it does not prove an
+independent human identity, reviewer authority, or attestation, and the current
+workflow does not close self-approval. A host-issued `approval_receipt` (or
+equivalent immutable reviewed-plan authority) bound to reviewer identity and
+the plan digest is a Phase 5 gap, not a current capability.
+
 The emitted structure report is diagnostic output, not a runtime manifest,
 durable result, or evidence receipt. It describes current structure findings
 for review; it must not be treated as a promoted artifact or copied into a
@@ -353,6 +368,9 @@ project's `results/` tree as if it were research output. Runtime job state,
 logs, caches, snapshots, and detailed manifests remain under the external
 runtime root, while durable results and receipts remain under their declared
 project role roots.
+Plans, digests, and confirmation tokens are likewise control-plane evidence;
+they do not move runtime state into `results/` or turn a diagnostic finding into
+a durable research result.
 
 ## Why this shape
 
