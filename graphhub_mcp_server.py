@@ -3,10 +3,47 @@ from __future__ import annotations
 
 import argparse
 import json
+from typing import TYPE_CHECKING, Any
 
+from hub_core.approval_authority import ApprovalAuthorityRoot
 from hub_core.doctor import format_doctor_report, run_doctor
 from hub_core.logging import configure_logging
 from hub_core.mcp.config import McpServerConfig
+
+if TYPE_CHECKING:
+    from hub_core.mcp import FigOpsMCPServer
+
+
+def _build_production_server(
+    config: McpServerConfig,
+    *,
+    host_authority_root: ApprovalAuthorityRoot | None = None,
+    **server_kwargs: Any,
+) -> "FigOpsMCPServer":
+    from hub_core.mcp import FigOpsMCPServer
+
+    if host_authority_root is not None and not isinstance(host_authority_root, ApprovalAuthorityRoot):
+        raise TypeError("host_authority_root must be an ApprovalAuthorityRoot.")
+    trusted_root = host_authority_root if host_authority_root is not None else ApprovalAuthorityRoot()
+    return FigOpsMCPServer(
+        config=config,
+        require_host_approval=True,
+        host_authority_root=trusted_root,
+        **server_kwargs,
+    )
+
+
+def build_trusted_figops_mcp_server(
+    *,
+    config: McpServerConfig,
+    host_authority_root: ApprovalAuthorityRoot | None = None,
+    **server_kwargs: Any,
+) -> "FigOpsMCPServer":
+    return _build_production_server(
+        config,
+        host_authority_root=host_authority_root,
+        **server_kwargs,
+    )
 
 
 def _run_smoke(config: McpServerConfig) -> int:
@@ -25,9 +62,7 @@ def _run_smoke(config: McpServerConfig) -> int:
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         return 1
 
-    from hub_core.mcp import FigOpsMCPServer
-
-    server = FigOpsMCPServer(config=config)
+    server = _build_production_server(config)
     health = server.call_tool("figops.health", {})["structuredContent"]
     styles = server.call_tool("figops.list_styles", {})["structuredContent"]
     payload = {
@@ -77,9 +112,9 @@ def main() -> int:
         else:
             print(format_doctor_report(report))
         return 0 if report["ready"] else 1
-    from hub_core.mcp import FigOpsMCPServer, run_stdio_server
+    from hub_core.mcp import run_stdio_server
 
-    return run_stdio_server(FigOpsMCPServer(config=config, require_initialize=True))
+    return run_stdio_server(_build_production_server(config, require_initialize=True))
 
 
 if __name__ == "__main__":

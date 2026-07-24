@@ -336,6 +336,18 @@ should use `FigOpsMCPServer(surface_profile="v2" | "compatibility")` or the
 `GRAPH_HUB_MCP_SURFACE_PROFILE` launcher environment setting. Profile-aware
 references can be rendered from the live registry without duplicating alias schemas.
 
+The production `graphhub_mcp_server.py` launcher (and its
+`figops_mcp_server.py` entrypoint) is the trusted approval injection boundary:
+it supplies a host-owned process-local `ApprovalAuthorityRoot` and enables
+`require_host_approval=True`. Tool arguments, project files, environment
+variables, plans, and receipts cannot supply or replace that root. An embedded
+host may opt into secure mode by passing its own root through the constructor-only
+`host_authority_root` argument together with `require_host_approval=True`. If the
+secure flag/root are omitted, the embedded constructor preserves
+compatibility/token-only behavior. `GraphHubMCPServer` and other compatibility
+constructors are token-only compatibility surfaces and are not Phase 6 or release
+evidence.
+
 ## All-project structure audit (CLI)
 
 The CLI exposes an independent, read-only structure diagnostic for the whole
@@ -376,8 +388,8 @@ can form a copy-only plan. A reviewed dry-run returns a deterministic
 requires the identical reviewed inputs and token, and fails closed on stale
 identity/configuration, collisions, unresolved dependencies, or token mismatch.
 The token proves integrity and exact replay of that plan; it does not prove an
-independent human identity, reviewer authority, or attestation, and the current
-workflow does not close self-approval. The Phase 6 host-rooted approval
+independent human identity, reviewer authority, or attestation, and the
+compatibility workflow does not close self-approval. The Phase 6 host-rooted approval
 authority contract is defined in the canonical
 [`runtime-integrity SSOT`](specs/2026-07-15-project-structure-runtime-integrity-plan.md#phase-6-host-rooted-approval-authority-contract):
 it requires a host capability or signature, canonical bindings, currentness and
@@ -386,8 +398,11 @@ the contract with the host-owned process-local `ApprovalAuthorityRoot`, an
 opaque `approval_receipt_id`, and a mutation-boundary recheck. The default
 compatibility mode remains token-only for backward compatibility; its token,
 LLM JSON, and copy/runtime/durable/evidence receipts are not approval. The
-Phase 6/release gate remains open until the production launcher enables secure
-mode.
+production `graphhub_mcp_server.py`/`figops_mcp_server.py` launcher now enables
+secure mode through the trusted host-root injection boundary, so the Phase 6
+host-approval gate is satisfied for that launcher. Compatibility constructors
+and the historical `GraphHubMCPServer` class remain token-only and are not
+release evidence; full release still requires the remaining exact-commit gates.
 
 During planning, `analyze_dependency_script` output is evidence only. Static
 imports/path literals are not role approvals; dynamic paths and parse/read or

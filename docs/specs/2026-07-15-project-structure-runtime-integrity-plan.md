@@ -329,16 +329,27 @@ deterministic `plan_digest` and `FIGOPS-APPLY-<plan_digest>` token. Apply must
 repeat the identical reviewed inputs with that token and remains blocked by
 stale identities, collisions, unresolved dependencies, or token mismatch.
 The token proves integrity and exact replay of the canonical plan, not
-independent reviewer identity, authority, or attestation; the current workflow
-does not close self-approval. A host-issued `approval_receipt` or equivalent
-immutable reviewed-plan authority, bound to reviewer identity/role and the plan
-digest and rooted in a host trust root, is specified by the Phase 6 contract
-below. A process-local implementation now exists: the exact host-owned
-`ApprovalAuthorityRoot` mints immutable approval records, and secure MCP
-normalization (`require_host_approval: true`) verifies the host receipt and
-rechecks it at the mutation boundary. The production launcher does not yet
-enable that secure mode, so approval authority and the release gate remain
-Phase 6/open until production launch is host-approval-enabled.
+independent reviewer identity, authority, or attestation; the compatibility
+workflow does not close self-approval. A host-issued `approval_receipt` or
+equivalent immutable reviewed-plan authority, bound to reviewer identity/role
+and the plan digest and rooted in a host trust root, is specified by the Phase 6
+contract below. A process-local implementation now exists: the exact
+host-owned `ApprovalAuthorityRoot` mints immutable approval records, and secure
+MCP normalization (`require_host_approval: true`) verifies the host receipt and
+rechecks it at the mutation boundary.
+
+The production `graphhub_mcp_server.py` launcher (also used by
+`figops_mcp_server.py`) is the trusted injection boundary: it creates or receives
+the host-owned process-local root, sets `require_host_approval: true`, and passes
+the root through the constructor-only `host_authority_root` channel. Tool
+arguments, project configuration, plan JSON, environment variables, runtime
+manifests, and durable/evidence receipts cannot create, select, or replace that
+root. An embedded host may opt into the same secure mode by supplying its own
+host-owned root through that constructor-only channel together with
+`require_host_approval: true`; if the secure flag/root are omitted, the embedded
+constructor remains compatibility/token-only. The Phase 6 host-approval
+gate is therefore satisfied for the production launcher; full release still
+requires the remaining exact-commit gates below.
 Audit reports, plans, digests, and tokens are control evidence, not runtime
 manifests, durable results, or evidence receipts; runtime remains externally
 rooted and disposable.
@@ -352,8 +363,12 @@ contract: missing/untrusted roots, missing or invalid receipts, stale/revoked
 records, binding mismatches, and mutation-boundary revocation fail closed. The
 default compatibility mode remains token-only for backward compatibility; its
 valid plan and `FIGOPS-APPLY-<plan_digest>` token prove replay integrity only
-and MUST NOT be described as independent approval. Phase 6 and the release gate
-remain open until the production launcher enables secure mode.
+and MUST NOT be described as independent approval or release evidence. The
+production `graphhub_mcp_server.py`/`figops_mcp_server.py` launcher enables
+secure mode with a host-owned process-local `ApprovalAuthorityRoot`, so the
+Phase 6 host-approval gate is satisfied for that launcher. The compatibility
+constructor/class remains token-only and cannot satisfy the Phase 6 or release
+gate; full release still depends on the remaining exact-commit gates.
 
 The following prove integrity, provenance, replay, or execution lineage, but do
 **not** prove approval or reviewer authority: the `FIGOPS-APPLY-<plan_digest>`

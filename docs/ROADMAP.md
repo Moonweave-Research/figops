@@ -146,9 +146,9 @@ Current release-candidate checkpoint:
   returns the deterministic `plan_digest` and bound
   `FIGOPS-APPLY-<plan_digest>` token; apply requires the identical reviewed
   inputs and token. The token proves plan integrity and exact replay, not
-  independent human identity or attestation; the current workflow does not
-  close self-approval. The Phase 6 host-rooted approval authority contract is
-  defined in the canonical
+  independent human identity or attestation; the compatibility workflow does
+  not close self-approval. The Phase 6 host-rooted approval authority contract
+  is defined in the canonical
   [`runtime-integrity SSOT`](specs/2026-07-15-project-structure-runtime-integrity-plan.md#phase-6-host-rooted-approval-authority-contract)
   and requires a canonical payload, host capability/signature trust proof,
   currentness/revocation checks, and fail-closed apply ordering. Approval
@@ -157,9 +157,19 @@ Current release-candidate checkpoint:
   receipt is rechecked at the mutation boundary. Default compatibility mode
   remains token-only for backward compatibility, so audit/plan control
   evidence, LLM JSON, and copy/runtime/durable/evidence receipts are not
-  approval. The Phase 6/release gate remains open until the production launcher
-  enables secure mode. Audit/plan control evidence never becomes a runtime
-  manifest or durable result, and runtime remains external to the project.
+  approval. The production `graphhub_mcp_server.py`/`figops_mcp_server.py`
+  launcher is the trusted injection boundary: it creates or receives the
+  host-owned process-local root and enables secure mode. An embedded host may
+  inject an optional host-owned root through the constructor-only
+  `host_authority_root` channel together with `require_host_approval: true`; if
+  the secure flag/root are omitted, the embedded constructor preserves
+  compatibility/token-only behavior. Compatibility constructors and the
+  historical `GraphHubMCPServer` class remain token-only and are not Phase 6 or
+  release evidence. The Phase 6
+  host-approval gate is satisfied for the production launcher; full release
+  still requires the remaining exact-commit gates. Audit/plan control evidence
+  never becomes a runtime manifest or durable result, and runtime remains
+  external to the project.
 
 - Structure normalization applies a fail-closed guard: a plan containing any
   `hardcoded_unresolved_references` or `unresolved_proposals` is rejected before
