@@ -332,11 +332,163 @@ The token proves integrity and exact replay of the canonical plan, not
 independent reviewer identity, authority, or attestation; the current workflow
 does not close self-approval. A host-issued `approval_receipt` or equivalent
 immutable reviewed-plan authority, bound to reviewer identity/role and the plan
-digest and rooted in a host trust root, remains a Phase 5 gap. Approval
-authority is Phase 5/open until that authority exists and is consumed by apply.
+digest and rooted in a host trust root, is specified by the Phase 6 contract
+below. A process-local implementation now exists: the exact host-owned
+`ApprovalAuthorityRoot` mints immutable approval records, and secure MCP
+normalization (`require_host_approval: true`) verifies the host receipt and
+rechecks it at the mutation boundary. The production launcher does not yet
+enable that secure mode, so approval authority and the release gate remain
+Phase 6/open until production launch is host-approval-enabled.
 Audit reports, plans, digests, and tokens are control evidence, not runtime
 manifests, durable results, or evidence receipts; runtime remains externally
 rooted and disposable.
+
+### Phase 6 host-rooted approval authority contract
+
+Phase 6 is the normative authority boundary for structure migration. It closes
+the self-approval gap without making the planner, an LLM, or a project file an
+authority. Secure mode (`require_host_approval: true`) now enforces this
+contract: missing/untrusted roots, missing or invalid receipts, stale/revoked
+records, binding mismatches, and mutation-boundary revocation fail closed. The
+default compatibility mode remains token-only for backward compatibility; its
+valid plan and `FIGOPS-APPLY-<plan_digest>` token prove replay integrity only
+and MUST NOT be described as independent approval. Phase 6 and the release gate
+remain open until the production launcher enables secure mode.
+
+The following prove integrity, provenance, replay, or execution lineage, but do
+**not** prove approval or reviewer authority: the `FIGOPS-APPLY-<plan_digest>`
+token; any source/config/environment provenance; a copy, runtime, durable, or
+evidence receipt; an audit report or plan; and any LLM-authored JSON field such
+as `approved`, `reviewer`, or `authorization`. These values may be inputs to
+review, but none can authorize mutation when presented by the planner, model,
+project, or runtime filesystem.
+
+#### Minimum canonical approval payload
+
+The host approval is a canonical `figops_approval/1` payload. Its signed or
+capability-bound bytes include every field below (empty lists are still hashed,
+not omitted):
+
+```json
+{
+  "schema": "figops_approval/1",
+  "receipt_id": "<host-issued opaque id>",
+  "plan_digest": "<sha256 of canonical reviewed plan>",
+  "project_root_identity": "<launcher-resolved root identity digest>",
+  "config_identity": {
+    "relative_path": "project_config.yaml",
+    "sha256": "<config bytes>"
+  },
+  "approved_mappings_digest": "<sha256 of canonical approved_mappings>",
+  "config_diff_digest": "<sha256 of canonical typed config_diff>",
+  "unresolved_digest": "<sha256 of canonical unresolved-reference list>",
+  "reviewer": {
+    "subject": "<host identity>",
+    "role": "<host-authorized reviewer role>"
+  },
+  "issued_at": "<UTC timestamp>",
+  "expires_at": "<UTC timestamp>",
+  "currentness": {
+    "state": "current",
+    "checked_at": "<UTC timestamp>",
+    "revocation_epoch": "<host value>"
+  },
+  "revocation": {
+    "state": "not_revoked",
+    "checked_at": "<UTC timestamp>"
+  }
+}
+```
+
+The canonicalization rules are deterministic (UTF-8 JSON, sorted object keys,
+no insignificant whitespace, fixed digest encoding). `project_root_identity`
+is derived from the launcher-resolved, normalized root and its stable filesystem
+identity; it is not accepted from project configuration. `config_identity` is
+the reviewed config path relative to that root plus its exact bytes; for a
+config-less legacy project, an explicit `null` identity is bound into the plan
+and cannot be supplied later by the model. The three
+component digests bind the exact mappings, typed compare-and-swap config edits,
+and unresolved-reference set used to compute `plan_digest`; changing order,
+content, or even an empty-versus-omitted value changes the digest. Reviewer
+subject and role are assertions only when the host trust policy authorizes them.
+The process-local implementation stores the unresolved component as separate
+digests for `hardcoded_unresolved_references` and `unresolved_proposals` (plus
+the reviewed-entry digest); these are the concrete encoding of the minimum
+`unresolved_digest` binding and are all rechecked.
+
+The payload MUST be accompanied by one of these out-of-band authority proofs:
+
+1. a host capability handle resolved and consumed through a launcher/host
+   authority channel, with the host returning the canonical payload and its
+   current, non-revoked status; or
+2. a host signature over the canonical payload, verified against a
+   launcher/operator-pinned trust root and key identifier (for example,
+   `trust_root_id`, `key_id`, `algorithm`, and detached `signature`).
+
+The current secure MCP implementation uses the first form through a
+process-local `ApprovalAuthorityRoot`: the root object is supplied by the host
+at server construction, cannot be copied, and is required by object identity
+when `verify_approval_authority` checks an `approval_receipt_id`. The secure
+`figops.normalize_project_structure` schema accepts only that opaque receipt
+ID; self-described approval JSON is rejected. The default compatibility
+constructor leaves `require_host_approval` false and therefore intentionally
+retains token-only behavior; compatibility apply is not an independent approval
+path and must not be presented as one.
+
+Trust roots, capability validation, reviewer-role policy, revocation state, and
+currentness are host/operator state. They MUST NOT be supplied by the LLM,
+project config, plan JSON, runtime manifest, or a durable/evidence receipt. A
+missing, unknown, malformed, expired, revoked, stale, or unverifiable proof
+fails closed. An LLM response that contains the same JSON without a host proof
+is untrusted data, even if it says `approved: true` or reproduces a valid token.
+
+#### Apply ordering and revalidation
+
+Apply performs these steps in order, with no file or config mutation before step
+4 succeeds:
+
+1. Parse the reviewed plan and host payload; reject non-canonical or
+   self-described authority fields.
+2. Recompute `plan_digest`, `approved_mappings_digest`, `config_diff_digest`,
+   and `unresolved_digest`; verify the `FIGOPS-APPLY-<plan_digest>` token,
+   project-root identity, config identity, containment, and all stale/collision
+   and unresolved-dependency guards.
+3. Verify the host capability or signature against the pinned trust root,
+   enforce the reviewer role, and require `issued_at <= now < expires_at` plus
+   host-confirmed current, non-revoked `receipt_id`/`revocation_epoch`.
+4. Acquire the apply transaction lease and repeat the identity, digest, and
+   host-currentness checks at the mutation boundary. A capability is consumed
+   according to host policy; a revoked, expired, or otherwise changed approval
+   aborts before staging.
+5. Execute the existing copy-only transaction: destination-filesystem sibling
+   staging, containment/hash verification, fsync where supported, native
+   same-filesystem no-replace publication, and typed config CAS. Revalidate
+   approval currentness before any subsequent mutation, then emit a copy
+   receipt that records the approval `receipt_id` as lineage, never as a
+   replacement for the approval proof.
+
+#### Adversarial acceptance criteria
+
+In secure MCP mode, a Phase 6 implementation must fail closed on the following
+cases before any copy or config write. Compatibility mode may retain its
+historical token-only behavior for backward compatibility, but it must expose no
+host-approval status and must never describe that behavior as independent
+approval or as satisfying the Phase 6/release gate.
+
+| Adversarial input | Required result |
+| --- | --- |
+| Valid plan/token/provenance or durable/runtime/evidence receipt but no host proof | Secure mode rejects as unauthorised with no mutation; compatibility mode may follow its legacy token-only path but cannot claim approval. |
+| LLM JSON containing `approved: true`, reviewer fields, or a forged receipt | Reject; model/project data is not an authority. |
+| Signature over a payload whose plan, root, config, mappings, diff, unresolved set, reviewer, or validity window changed | Reject signature/digest mismatch. |
+| Approval for another project root, config hash, plan digest, or mapping/diff/unresolved digest | Reject binding mismatch. |
+| Unknown trust root/key, malformed capability, missing host policy, or unavailable authority channel | Reject and fail closed. |
+| Expired, revoked, stale, non-current, or replayed one-time capability | Reject before staging; preserve all existing files. |
+| Source/config identity, collision, unresolved dependency, or root containment changes after approval | Recompute and reject before mutation. |
+| Revocation or expiry races after preflight | Mutation-boundary/currentness recheck aborts before the affected mutation. |
+
+The focused adversarial suite MUST exercise each row with both CLI and MCP apply
+surfaces where available, and must verify byte-identical originals, no partial
+config rewrite, and no destination clobber on every rejection.
 
 Low-confidence, multi-role, content-sensitive, unreferenced, and collision cases
 stay unresolved. Extension-only classification may not cross a role boundary.

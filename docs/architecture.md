@@ -377,11 +377,17 @@ requires the identical reviewed inputs and token, and fails closed on stale
 identity/configuration, collisions, unresolved dependencies, or token mismatch.
 The token proves integrity and exact replay of that plan; it does not prove an
 independent human identity, reviewer authority, or attestation, and the current
-workflow does not close self-approval. A host-issued `approval_receipt` (or
-equivalent immutable reviewed-plan authority) bound to reviewer identity and
-the plan digest and rooted in a host trust root is a Phase 5 gap, not a current
-capability. Approval authority remains Phase 5/open until that authority exists
-and is consumed by apply.
+workflow does not close self-approval. The Phase 6 host-rooted approval
+authority contract is defined in the canonical
+[`runtime-integrity SSOT`](specs/2026-07-15-project-structure-runtime-integrity-plan.md#phase-6-host-rooted-approval-authority-contract):
+it requires a host capability or signature, canonical bindings, currentness and
+revocation checks, and fail-closed apply ordering. Secure MCP mode now enforces
+the contract with the host-owned process-local `ApprovalAuthorityRoot`, an
+opaque `approval_receipt_id`, and a mutation-boundary recheck. The default
+compatibility mode remains token-only for backward compatibility; its token,
+LLM JSON, and copy/runtime/durable/evidence receipts are not approval. The
+Phase 6/release gate remains open until the production launcher enables secure
+mode.
 
 During planning, `analyze_dependency_script` output is evidence only. Static
 imports/path literals are not role approvals; dynamic paths and parse/read or

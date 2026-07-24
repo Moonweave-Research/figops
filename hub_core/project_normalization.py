@@ -42,6 +42,8 @@ NORMALIZATION_OVERWRITE_DISABLED = "FIGOPS_NORMALIZATION_OVERWRITE_DISABLED"
 NORMALIZATION_REVIEW_REQUIRED = "FIGOPS_NORMALIZATION_REVIEW_REQUIRED"
 NORMALIZATION_CONFIRMATION_REQUIRED = "FIGOPS_NORMALIZATION_CONFIRMATION_REQUIRED"
 NORMALIZATION_PLAN_REJECTED = "FIGOPS_NORMALIZATION_PLAN_REJECTED"
+NORMALIZATION_HOST_APPROVAL_REQUIRED = "FIGOPS_NORMALIZATION_HOST_APPROVAL_REQUIRED"
+NORMALIZATION_HOST_APPROVAL_REJECTED = "FIGOPS_NORMALIZATION_HOST_APPROVAL_REJECTED"
 
 
 def plan_scaffold_project(
@@ -242,6 +244,7 @@ def apply_normalize_project(
     hub_path: Path | None = None,
     overwrite: bool = False,
     confirmation_token: str | None = None,
+    pre_apply_verifier: Callable[[Path, Mapping[str, Any]], None] | None = None,
     post_apply_verifier: Callable[[Path, Mapping[str, Any]], Mapping[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
     """Apply only an immutable copy plan with explicit confirmation."""
@@ -254,6 +257,7 @@ def apply_normalize_project(
     return apply_structure_plan(
         manifest,
         confirmation_token=confirmation_token,
+        pre_apply_verifier=pre_apply_verifier,
         post_apply_verifier=post_apply_verifier,
     )
 

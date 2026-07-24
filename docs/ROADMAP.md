@@ -147,10 +147,18 @@ Current release-candidate checkpoint:
   `FIGOPS-APPLY-<plan_digest>` token; apply requires the identical reviewed
   inputs and token. The token proves plan integrity and exact replay, not
   independent human identity or attestation; the current workflow does not
-  close self-approval. A host-issued `approval_receipt` or immutable
-  reviewed-plan authority rooted in a host trust root is deferred to Phase 5.
-  Approval authority remains Phase 5/open until that authority exists and is
-  consumed by apply. Audit/plan control evidence never becomes a runtime
+  close self-approval. The Phase 6 host-rooted approval authority contract is
+  defined in the canonical
+  [`runtime-integrity SSOT`](specs/2026-07-15-project-structure-runtime-integrity-plan.md#phase-6-host-rooted-approval-authority-contract)
+  and requires a canonical payload, host capability/signature trust proof,
+  currentness/revocation checks, and fail-closed apply ordering. Approval
+  is enforced when secure MCP mode sets `require_host_approval: true` and is
+  backed by the host-owned process-local `ApprovalAuthorityRoot`; the host
+  receipt is rechecked at the mutation boundary. Default compatibility mode
+  remains token-only for backward compatibility, so audit/plan control
+  evidence, LLM JSON, and copy/runtime/durable/evidence receipts are not
+  approval. The Phase 6/release gate remains open until the production launcher
+  enables secure mode. Audit/plan control evidence never becomes a runtime
   manifest or durable result, and runtime remains external to the project.
 
 - Structure normalization applies a fail-closed guard: a plan containing any

@@ -167,12 +167,16 @@ audit output.
    unresolved-reference list, and `plan_digest`-bound token with
    `move_policy: copy` and `dry_run: false`. The apply path revalidates source
    identity, configuration, containment, collisions, and the token before any
-   copy, then emits the copy receipt and validation result.
+   copy, then emits the copy receipt and validation result. Secure MCP mode
+   (`require_host_approval: true`) additionally requires the host-rooted proof
+   defined in the canonical SSOT; absent that proof, no copy or config write is
+   authorized. Compatibility mode remains token-only and is not independent
+   approval.
 5. Verify the receipt and validation. Original inputs remain byte-identical;
    cleanup is separate and user-authorized. A plan, digest, or token is control
    evidence, not a research result, runtime manifest, or evidence receipt.
 
-### Phase 4 boundary and Phase 5 gap
+### Phase 4 boundary and Phase 6 authority contract
 
 Phase 4 keeps the mapping policy explicit: only reviewer-supplied
 `approved_mappings` and typed config edits may enter the copy-only plan. The
@@ -182,13 +186,19 @@ human identity, reviewer authority, or an attestation. The current workflow
 therefore does not close self-approval; reviewer provenance remains an
 out-of-band policy/process requirement rather than a machine-enforced claim.
 
-The next Phase 5 gap is a host-issued `approval_receipt` (or equivalent
-immutable reviewed-plan authority) bound to the plan digest and reviewed
-inputs, with verifiable reviewer identity/role, authorization, and attestation
-semantics and rooted in a host trust root. Until that authority exists and is
-consumed by apply, no scanner output, plan token, unresolved-proposal result, or
-copy receipt may be described as independent approval evidence. Approval
-authority remains Phase 5/open.
+The Phase 6 host-rooted authority contract is normative in the canonical
+[runtime-integrity SSOT](specs/2026-07-15-project-structure-runtime-integrity-plan.md#phase-6-host-rooted-approval-authority-contract).
+It defines the minimum canonical approval payload, host capability/signature
+trust proof, currentness and revocation checks, mutation ordering, and
+adversarial acceptance criteria. Secure MCP mode (`require_host_approval: true`)
+now supplies the process-local host-owned `ApprovalAuthorityRoot`, requires an
+opaque `approval_receipt_id`, and rechecks the receipt at the mutation boundary;
+missing or changed authority fails closed. Default compatibility mode remains
+token-only for backward compatibility, so its plan token, scanner output,
+unresolved-proposal result, or copy/runtime/durable/evidence receipt is not
+independent approval evidence. LLM-authored JSON is review input, not host
+authority. The Phase 6/release gate remains open until the production launcher
+enables secure mode.
 
 ## Runtime and durable results
 

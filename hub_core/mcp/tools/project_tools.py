@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
+from hub_core.approval_authority import verify_approval_authority
 from hub_core.project_normalization import (
     NORMALIZATION_CONFIRMATION_REQUIRED,
+    NORMALIZATION_HOST_APPROVAL_REJECTED,
+    NORMALIZATION_HOST_APPROVAL_REQUIRED,
     NORMALIZATION_OVERWRITE_DISABLED,
     NORMALIZATION_PLAN_REJECTED,
     NORMALIZATION_POLICY_DEPRECATED,
@@ -15,6 +19,62 @@ from hub_core.project_normalization import (
     plan_scaffold_project,
 )
 from hub_core.structure_plan import confirmation_token as structure_confirmation_token
+
+
+class _HostApprovalRejected(PermissionError):
+    """Raised when mutation-boundary host approval revalidation fails."""
+
+
+_HOST_AUTHORITY_ARGUMENT_KEYS = frozenset(
+    {
+        "approval",
+        "approval_json",
+        "approval_payload",
+        "approval_record",
+        "approval_receipt",
+        "approval_status",
+        "algorithm",
+        "attestation",
+        "approved",
+        "authority",
+        "authority_index",
+        "authority_root",
+        "authorization",
+        "capability",
+        "capability_handle",
+        "currentness",
+        "host_approval",
+        "host_approval_receipt",
+        "host_authority",
+        "host_authorization",
+        "key_id",
+        "receipt",
+        "receipt_id",
+        "reviewer",
+        "review_record",
+        "reviewer_identity",
+        "reviewer_role",
+        "revocation",
+        "revocation_epoch",
+        "signature",
+        "trust_root",
+        "trust_root_id",
+    }
+)
+
+
+def _self_described_authority_keys(arguments: dict[str, Any]) -> list[str]:
+    def canonical_key(key: object) -> str:
+        return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", str(key).strip()).replace("-", "_").casefold()
+
+    return sorted(
+        {
+            str(key)
+            for key in arguments
+            if canonical_key(key) in _HOST_AUTHORITY_ARGUMENT_KEYS
+        },
+        key=str.casefold,
+    )
 
 
 class McpProjectToolsMixin:
@@ -190,6 +250,37 @@ class McpProjectToolsMixin:
             "plan_digest": manifest["digest"],
             "confirmation_token": token,
         }
+        if self.require_host_approval:
+            common.update(
+                {
+                    "host_approval_required": True,
+                    "approval_receipt_id": (
+                        arguments.get("approval_receipt_id")
+                        if isinstance(arguments.get("approval_receipt_id"), str)
+                        else None
+                    ),
+                    "approval_status": "required",
+                }
+            )
+            forbidden_authority_keys = _self_described_authority_keys(arguments)
+            if forbidden_authority_keys:
+                common["approval_status"] = "rejected"
+                return self._envelope(
+                    "figops.normalize_project_structure",
+                    arguments,
+                    status="error",
+                    summary="Self-described approval fields are not a host authority.",
+                    errors=[
+                        "Tool arguments may contain only approval_receipt_id; rejected authority fields: "
+                        + ", ".join(forbidden_authority_keys)
+                        + "."
+                    ],
+                    manual_review_needed=True,
+                    is_dry_run=dry_run,
+                    error_category="validation",
+                    error_code=NORMALIZATION_HOST_APPROVAL_REJECTED,
+                    **common,
+                )
         if dry_run and move_policy == "adopt":
             return self._envelope(
                 "figops.normalize_project_structure",
@@ -234,6 +325,54 @@ class McpProjectToolsMixin:
                 error_code=NORMALIZATION_CONFIRMATION_REQUIRED,
                 **common,
             )
+        if self.require_host_approval:
+            approval_receipt_id = arguments.get("approval_receipt_id")
+            verification = verify_approval_authority(
+                manifest,
+                approval_receipt_id,
+                self.host_authority_root,
+            )
+            if not verification.valid:
+                reason = verification.reason.replace("_", " ")
+                common["approval_status"] = "rejected"
+                return self._envelope(
+                    "figops.normalize_project_structure",
+                    arguments,
+                    status="error",
+                    summary="Host approval is required before normalization apply.",
+                    errors=[f"Host approval receipt was rejected: {reason}."],
+                    manual_review_needed=True,
+                    is_dry_run=False,
+                    error_category="validation",
+                    error_code=(
+                        NORMALIZATION_HOST_APPROVAL_REQUIRED
+                        if verification.reason
+                        in {
+                            "missing_or_untrusted_root",
+                            "missing_trusted_root",
+                            "untrusted_root",
+                            "missing_or_invalid_receipt_id",
+                        }
+                        else NORMALIZATION_HOST_APPROVAL_REJECTED
+                    ),
+                    **common,
+                )
+            common["approval_status"] = "verified"
+        pre_apply_verifier = None
+        if self.require_host_approval:
+            def _revalidate_host_approval(_root: Path, current_plan: dict[str, Any]) -> None:
+                boundary_verification = verify_approval_authority(
+                    current_plan,
+                    approval_receipt_id,
+                    self.host_authority_root,
+                )
+                if not boundary_verification.valid:
+                    raise _HostApprovalRejected(
+                        "Host approval changed before mutation boundary: "
+                        f"{boundary_verification.reason.replace('_', ' ')}."
+                    )
+
+            pre_apply_verifier = _revalidate_host_approval
         try:
             self._resolve_execution_project_path(arguments.get("project_path"))
         except ValueError as exc:
@@ -254,6 +393,21 @@ class McpProjectToolsMixin:
                 manifest,
                 hub_path=self.hub_path,
                 confirmation_token=supplied_token,
+                pre_apply_verifier=pre_apply_verifier,
+            )
+        except _HostApprovalRejected as exc:
+            common["approval_status"] = "rejected"
+            return self._envelope(
+                "figops.normalize_project_structure",
+                arguments,
+                status="error",
+                summary="Host approval was rejected at the mutation boundary.",
+                errors=[str(exc)],
+                manual_review_needed=True,
+                is_dry_run=False,
+                error_category="validation",
+                error_code=NORMALIZATION_HOST_APPROVAL_REJECTED,
+                **common,
             )
         except (FileExistsError, OSError, PermissionError, RuntimeError, ValueError) as exc:
             return self._envelope(
@@ -270,6 +424,15 @@ class McpProjectToolsMixin:
             )
         validation = self._validation_summary(config_path)
         validation_failed = validation.get("checked") is True and validation.get("valid") is False
+        approval_response_fields = (
+            {
+                "approval_receipt_id": common["approval_receipt_id"],
+                "host_approval_required": common["host_approval_required"],
+                "approval_status": common["approval_status"],
+            }
+            if self.require_host_approval
+            else {}
+        )
         return self._envelope(
             "figops.normalize_project_structure",
             arguments,
@@ -296,6 +459,7 @@ class McpProjectToolsMixin:
             unresolved_proposals=common["unresolved_proposals"],
             plan_digest=applied["plan_digest"],
             confirmation_token=token,
+            **approval_response_fields,
             originals_preserved=applied["originals_preserved"],
             rollback_journal=applied["rollback_journal"],
             provenance_receipt=applied["provenance_receipt"],
