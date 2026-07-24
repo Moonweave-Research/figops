@@ -191,14 +191,20 @@ The Phase 6 host-rooted authority contract is normative in the canonical
 It defines the minimum canonical approval payload, host capability/signature
 trust proof, currentness and revocation checks, mutation ordering, and
 adversarial acceptance criteria. Secure MCP mode (`require_host_approval: true`)
-now supplies the process-local host-owned `ApprovalAuthorityRoot`, requires an
+verifies the process-local host-owned `ApprovalAuthorityRoot`, requires an
 opaque `approval_receipt_id`, and rechecks the receipt at the mutation boundary;
-missing or changed authority fails closed. Default compatibility mode remains
-token-only for backward compatibility, so its plan token, scanner output,
-unresolved-proposal result, or copy/runtime/durable/evidence receipt is not
-independent approval evidence. LLM-authored JSON is review input, not host
-authority. The Phase 6/release gate remains open until the production launcher
-enables secure mode.
+missing or changed authority fails closed. The production
+`graphhub_mcp_server.py`/`figops_mcp_server.py` launcher is the trusted injection
+boundary: it creates or receives the host-owned root and enables secure mode.
+An embedded host may optionally inject its own root through the constructor-only
+`host_authority_root` channel together with `require_host_approval: true`.
+Default compatibility mode remains token-only for backward compatibility, so
+its plan token, scanner output, unresolved-proposal result, or
+copy/runtime/durable/evidence receipt is not independent approval evidence;
+compatibility constructors/classes are not Phase 6 or release evidence.
+LLM-authored JSON is review input, not host authority. The Phase 6 host-approval
+gate is satisfied for the production launcher; full release still depends on
+the remaining exact-commit gates.
 
 ## Runtime and durable results
 
