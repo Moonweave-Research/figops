@@ -4905,6 +4905,94 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
     "output_path": {
       "type": "string"
     },
+    "policy_context": {
+      "additionalProperties": false,
+      "properties": {
+        "policy_set": {
+          "additionalProperties": false,
+          "properties": {
+            "parameters": {
+              "maxProperties": 64,
+              "type": "object"
+            },
+            "schema_version": {
+              "const": "figops-resolved-policy-set/1",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema_version",
+            "parameters"
+          ],
+          "type": "object"
+        },
+        "policy_set_sha256": {
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "type": "string"
+        },
+        "render_policy": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "parameters": {
+              "maxProperties": 32,
+              "type": "object"
+            },
+            "source": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "source",
+            "parameters"
+          ],
+          "type": "object"
+        },
+        "schema_version": {
+          "const": "figops-render-policy-context/1",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "explicit-render-policy",
+            "compatibility-default",
+            "v2-default"
+          ],
+          "type": "string"
+        },
+        "validation_source": {
+          "enum": [
+            "explicit-validation-target",
+            "compatibility-target-inference",
+            "none"
+          ],
+          "type": "string"
+        },
+        "validation_target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "source",
+        "validation_source",
+        "policy_set_sha256",
+        "policy_set",
+        "render_policy",
+        "validation_target"
+      ],
+      "type": "object"
+    },
     "preview_resources": {
       "items": {
         "maxLength": 256,
@@ -4979,6 +5067,145 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
         "type": "string"
       },
       "type": "array"
+    },
+    "workflow_intent": {
+      "additionalProperties": false,
+      "properties": {
+        "execution_allowed": {
+          "type": "boolean"
+        },
+        "fail_closed": {
+          "type": "boolean"
+        },
+        "intent": {
+          "enum": [
+            "exploration",
+            "execution",
+            "review",
+            "promotion",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issues": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "legacy": {
+          "type": "boolean"
+        },
+        "promotable": {
+          "type": "boolean"
+        },
+        "promotion_allowed": {
+          "type": "boolean"
+        },
+        "provenance": {
+          "additionalProperties": false,
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "config_source": {
+              "type": "string"
+            },
+            "project_status": {
+              "type": "string"
+            },
+            "requested_intent": {
+              "enum": [
+                "exploration",
+                "execution",
+                "review",
+                "promotion",
+                null
+              ],
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "requested_source": {
+              "enum": [
+                "explicit",
+                "orchestrator",
+                "mcp",
+                "direct_csv",
+                "read_only",
+                "readiness",
+                "legacy",
+                null
+              ],
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "step": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tool_name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "active",
+            "step",
+            "tool_name",
+            "requested_intent",
+            "requested_source",
+            "project_status",
+            "config_source"
+          ],
+          "type": "object"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": "figops-workflow-intent/1",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "explicit",
+            "orchestrator",
+            "mcp",
+            "direct_csv",
+            "read_only",
+            "readiness",
+            "legacy",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "intent",
+        "source",
+        "provenance",
+        "fail_closed",
+        "legacy",
+        "execution_allowed",
+        "promotion_allowed",
+        "read_only",
+        "promotable",
+        "issues"
+      ],
+      "type": "object"
     }
   },
   "type": "object"
@@ -6440,6 +6667,94 @@ Render one configured project-local .py or .R figure; code and command strings a
     "manual_review_needed": {
       "type": "boolean"
     },
+    "policy_context": {
+      "additionalProperties": false,
+      "properties": {
+        "policy_set": {
+          "additionalProperties": false,
+          "properties": {
+            "parameters": {
+              "maxProperties": 64,
+              "type": "object"
+            },
+            "schema_version": {
+              "const": "figops-resolved-policy-set/1",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema_version",
+            "parameters"
+          ],
+          "type": "object"
+        },
+        "policy_set_sha256": {
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "type": "string"
+        },
+        "render_policy": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "parameters": {
+              "maxProperties": 32,
+              "type": "object"
+            },
+            "source": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "source",
+            "parameters"
+          ],
+          "type": "object"
+        },
+        "schema_version": {
+          "const": "figops-render-policy-context/1",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "explicit-render-policy",
+            "compatibility-default",
+            "v2-default"
+          ],
+          "type": "string"
+        },
+        "validation_source": {
+          "enum": [
+            "explicit-validation-target",
+            "compatibility-target-inference",
+            "none"
+          ],
+          "type": "string"
+        },
+        "validation_target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "source",
+        "validation_source",
+        "policy_set_sha256",
+        "policy_set",
+        "render_policy",
+        "validation_target"
+      ],
+      "type": "object"
+    },
     "preview_uri": {
       "type": [
         "string",
@@ -6471,6 +6786,145 @@ Render one configured project-local .py or .R figure; code and command strings a
         "type": "string"
       },
       "type": "array"
+    },
+    "workflow_intent": {
+      "additionalProperties": false,
+      "properties": {
+        "execution_allowed": {
+          "type": "boolean"
+        },
+        "fail_closed": {
+          "type": "boolean"
+        },
+        "intent": {
+          "enum": [
+            "exploration",
+            "execution",
+            "review",
+            "promotion",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issues": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "legacy": {
+          "type": "boolean"
+        },
+        "promotable": {
+          "type": "boolean"
+        },
+        "promotion_allowed": {
+          "type": "boolean"
+        },
+        "provenance": {
+          "additionalProperties": false,
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "config_source": {
+              "type": "string"
+            },
+            "project_status": {
+              "type": "string"
+            },
+            "requested_intent": {
+              "enum": [
+                "exploration",
+                "execution",
+                "review",
+                "promotion",
+                null
+              ],
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "requested_source": {
+              "enum": [
+                "explicit",
+                "orchestrator",
+                "mcp",
+                "direct_csv",
+                "read_only",
+                "readiness",
+                "legacy",
+                null
+              ],
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "step": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tool_name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "active",
+            "step",
+            "tool_name",
+            "requested_intent",
+            "requested_source",
+            "project_status",
+            "config_source"
+          ],
+          "type": "object"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": "figops-workflow-intent/1",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "explicit",
+            "orchestrator",
+            "mcp",
+            "direct_csv",
+            "read_only",
+            "readiness",
+            "legacy",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "intent",
+        "source",
+        "provenance",
+        "fail_closed",
+        "legacy",
+        "execution_allowed",
+        "promotion_allowed",
+        "read_only",
+        "promotable",
+        "issues"
+      ],
+      "type": "object"
     }
   },
   "type": "object"

@@ -8,6 +8,8 @@ from hub_core.mcp import tool_schema_common as _schema_common
 from hub_core.mcp.discovery_schemas import list_prompt_definitions as _list_prompt_definitions
 from hub_core.mcp.discovery_schemas import list_resource_definitions as _list_resource_definitions
 from hub_core.mcp.discovery_schemas import list_resource_templates as _list_resource_templates
+from hub_core.mcp.phase2_render_schemas import RENDER_POLICY_CONTEXT_SCHEMA as _RENDER_POLICY_CONTEXT_SCHEMA
+from hub_core.mcp.phase2_render_schemas import WORKFLOW_INTENT_SCHEMA as _WORKFLOW_INTENT_SCHEMA
 from hub_core.mcp.render_geometry_schemas import GEOMETRY_DIAGNOSTICS_SCHEMA as _GEOMETRY_DIAGNOSTICS_SCHEMA
 from hub_core.mcp.render_geometry_schemas import GEOMETRY_METRIC_NAMES as _GEOMETRY_METRIC_NAMES  # noqa: F401
 from hub_core.mcp.render_geometry_schemas import LAYOUT_REPORT_SCHEMA as _LAYOUT_REPORT_SCHEMA
@@ -108,7 +110,10 @@ describe_graphhub_surface = describe_figops_surface
 
 
 def list_tool_definitions(
-    *, profile: str | None = None, write_tools_enabled: bool | None = None
+    *,
+    profile: str | None = None,
+    write_tools_enabled: bool | None = None,
+    require_host_approval: bool = False,
 ) -> list[dict[str, Any]]:
     supported_render_plot_types = _supported_render_plot_types()
     root_arg = {"type": "string", "description": "Project scan root. Defaults to FigOps research root."}
@@ -565,6 +570,8 @@ def list_tool_definitions(
                     "baseline_comparison": {"type": "object"},
                     "provenance": {"type": "object"},
                     "evidence": {"type": "object"},
+                    "policy_context": _RENDER_POLICY_CONTEXT_SCHEMA,
+                    "workflow_intent": _WORKFLOW_INTENT_SCHEMA,
                 }
             ),
         ),
@@ -641,7 +648,7 @@ def list_tool_definitions(
                 }
             ),
         ),
-        build_normalize_project_structure_definition(),
+        build_normalize_project_structure_definition(include_host_approval=require_host_approval),
         ToolDefinition(
             "figops.batch_check",
             "Run a bounded project discovery and validation batch check with optional runtime manifest logging.",
@@ -678,6 +685,15 @@ def list_tool_definitions(
         ),
     ]
     serialized = [definition.to_dict() for definition in definitions]
+    normalize_definition = next(
+        (definition for definition in serialized if definition["name"] == "figops.normalize_project_structure"),
+        None,
+    )
+    if normalize_definition is not None and require_host_approval:
+        normalize_definition["description"] = (
+            "Propose migration mappings or apply an explicitly reviewed copy-only structure plan. "
+            "Non-dry-run copy apply requires host-issued approval in this secure mode."
+        )
     if profile is None:
         return serialized
     return select_tool_definitions(serialized, profile=profile, write_tools_enabled=bool(write_tools_enabled))

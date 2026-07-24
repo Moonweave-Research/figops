@@ -10,6 +10,7 @@ import yaml
 
 from .adapters import select_adapters
 from .config_parser import ALLOWED_TARGET_FORMATS, load_yaml_with_unique_keys
+from .dependency_script_inspection import analyze_dependency_script
 from .project_layout import SCAFFOLD_MANIFEST_FILENAME, build_scaffold_manifest
 from .project_structure_contract import resolve_project_structure
 from .structure_apply import apply_structure_plan
@@ -41,6 +42,8 @@ NORMALIZATION_OVERWRITE_DISABLED = "FIGOPS_NORMALIZATION_OVERWRITE_DISABLED"
 NORMALIZATION_REVIEW_REQUIRED = "FIGOPS_NORMALIZATION_REVIEW_REQUIRED"
 NORMALIZATION_CONFIRMATION_REQUIRED = "FIGOPS_NORMALIZATION_CONFIRMATION_REQUIRED"
 NORMALIZATION_PLAN_REJECTED = "FIGOPS_NORMALIZATION_PLAN_REJECTED"
+NORMALIZATION_HOST_APPROVAL_REQUIRED = "FIGOPS_NORMALIZATION_HOST_APPROVAL_REQUIRED"
+NORMALIZATION_HOST_APPROVAL_REJECTED = "FIGOPS_NORMALIZATION_HOST_APPROVAL_REJECTED"
 
 
 def plan_scaffold_project(
@@ -186,17 +189,41 @@ def plan_normalize_project(
     project_path = _project_root_path(project_path, must_exist_dir=True)
     if move_policy == "copy" and approved_mappings is None:
         raise ValueError("copy normalization requires explicit approved_mappings from a reviewed dry-run.")
+    if approved_mappings is not None and not isinstance(approved_mappings, list):
+        approved_mappings = list(approved_mappings)
     config, style_config_path = _load_project_config(project_path)
     proposed_mappings, unresolved_proposals = _propose_normalization_mappings(
         project_path,
         config=config,
         include_raw=include_raw,
     )
+    approved_sources = {
+        source
+        for mapping in approved_mappings or []
+        if isinstance(mapping, Mapping)
+        for source in [mapping.get("source")]
+        if isinstance(source, str)
+    }
+    unresolved_proposals = [
+        proposal
+        for proposal in unresolved_proposals
+        if proposal.get("source") not in approved_sources
+    ]
+    dependency_blockers = _scan_normalization_script_dependencies(
+        project_path,
+        config=config,
+        proposed_mappings=proposed_mappings,
+        approved_mappings=approved_mappings,
+    )
     plan = build_structure_plan(
         project_path,
         approved_mappings or [],
         config_diff=config_diff or [],
-        hardcoded_unresolved_references=hardcoded_unresolved_references or [],
+        hardcoded_unresolved_references=[
+            *(hardcoded_unresolved_references or []),
+            *dependency_blockers,
+        ],
+        unresolved_proposals=unresolved_proposals,
     )
     plan.update(
         {
@@ -204,7 +231,6 @@ def plan_normalize_project(
             "adopt_existing": move_policy == "adopt",
             "include_raw": include_raw,
             "proposed_mappings": proposed_mappings,
-            "unresolved_proposals": unresolved_proposals,
             "style_summary": _style_summary(style_config_path),
         }
     )
@@ -218,6 +244,7 @@ def apply_normalize_project(
     hub_path: Path | None = None,
     overwrite: bool = False,
     confirmation_token: str | None = None,
+    pre_apply_verifier: Callable[[Path, Mapping[str, Any]], None] | None = None,
     post_apply_verifier: Callable[[Path, Mapping[str, Any]], Mapping[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
     """Apply only an immutable copy plan with explicit confirmation."""
@@ -230,6 +257,7 @@ def apply_normalize_project(
     return apply_structure_plan(
         manifest,
         confirmation_token=confirmation_token,
+        pre_apply_verifier=pre_apply_verifier,
         post_apply_verifier=post_apply_verifier,
     )
 
@@ -244,6 +272,77 @@ def _iter_normalization_files(project_path: Path) -> list[Path]:
             continue
         files.append(path)
     return sorted(files, key=lambda item: item.relative_to(project_path).as_posix())
+
+
+def _scan_normalization_script_dependencies(
+    project_path: Path,
+    *,
+    config: Mapping[str, Any],
+    proposed_mappings: list[dict[str, Any]],
+    approved_mappings: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Collect dependency blockers for the exact script sources under review.
+
+    Static dependency evidence never becomes a role or mapping.  In copy mode,
+    only explicitly reviewed script sources are inspected so an unrelated
+    legacy script cannot block an otherwise reviewed subset of a project.
+    Adopt-mode previews inspect the script candidates that discovery proposed.
+    """
+
+    if approved_mappings is not None:
+        script_sources = {
+            str(mapping["source"])
+            for mapping in approved_mappings
+            if isinstance(mapping, Mapping)
+            and isinstance(mapping.get("source"), str)
+            and isinstance(mapping.get("role"), str)
+            and mapping["role"].startswith("script.")
+        }
+    else:
+        script_sources = {
+            str(mapping["source"])
+            for mapping in proposed_mappings
+            if isinstance(mapping.get("source"), str)
+            and isinstance(mapping.get("role"), str)
+            and mapping["role"].startswith("script.")
+        }
+    if not script_sources:
+        return []
+
+    contract = resolve_project_structure(config, project_root=project_path)
+    role_roots = dict(contract.roots)
+    blockers: list[dict[str, Any]] = []
+    for source in sorted(script_sources):
+        try:
+            script_path = _safe_destination(project_path, source)
+            result = analyze_dependency_script(
+                script_path,
+                script_path=source,
+                role_roots=role_roots,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            blockers.append(
+                {
+                    "kind": "dependency_scan_incomplete",
+                    "script": source,
+                    "reason": f"dependency scan failed safely: {type(exc).__name__}",
+                }
+            )
+            continue
+
+        for reference in result.get("hardcoded_unresolved_references") or []:
+            blocker = dict(reference) if isinstance(reference, Mapping) else {"reference": str(reference)}
+            blocker["script"] = source
+            blockers.append(blocker)
+        if result.get("dependency_scan_incomplete"):
+            blockers.append(
+                {
+                    "kind": "dependency_scan_incomplete",
+                    "script": source,
+                    "reason": "dependency scan could not inspect the complete script safely.",
+                }
+            )
+    return blockers
 
 
 def _propose_normalization_mappings(

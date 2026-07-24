@@ -28,6 +28,7 @@ _MEDIA_BY_SUFFIX: Final = {
 _MAX_ARTIFACTS: Final = 256
 _MAX_ARTIFACT_BYTES: Final = 256 * 1024 * 1024
 _MAX_RASTER_PIXELS: Final = 100_000_000
+_RENDER_POLICY_CONTEXT_SCHEMA: Final = "figops-render-policy-context/1"
 
 
 class RenderEvidenceError(ValueError):
@@ -42,6 +43,7 @@ def build_render_evidence(
     producer_version: str,
     resolved_policy: Mapping[str, Any] | None = None,
     render_policy: Mapping[str, Any] | None = None,
+    policy_context: Mapping[str, Any] | None = None,
     validation_target: str | None = None,
     baseline_reference_sha256: str | None = None,
 ) -> dict[str, Any]:
@@ -74,8 +76,19 @@ def build_render_evidence(
         "visual_comparison": None,
     }
     policy = _resolved_policy(resolved_policy)
+    context = _policy_context(policy_context)
     selected_render_policy = _resolved_policy(render_policy)
     target = str(validation_target or "").strip().lower()
+    if context is not None:
+        evidence["policy_context"] = context
+        context_render_policy = _resolved_policy(context["render_policy"])
+        if selected_render_policy is not None and selected_render_policy != context_render_policy:
+            raise RenderEvidenceError("render_policy conflicts with policy_context")
+        selected_render_policy = selected_render_policy or context_render_policy
+        context_target = str(context.get("validation_target") or "").strip().lower()
+        if target and context_target and target != context_target:
+            raise RenderEvidenceError("validation_target conflicts with policy_context")
+        target = target or context_target
     if target:
         if policy is not None:
             raise RenderEvidenceError(
@@ -320,6 +333,32 @@ def _resolved_policy(raw: Mapping[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(policy["parameters"], Mapping):
         raise RenderEvidenceError("resolved render policy parameters must be an object")
     return policy
+
+
+def _policy_context(raw: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(raw, Mapping):
+        return None
+    context = {
+        "schema_version": raw.get("schema_version"),
+        "source": raw.get("source"),
+        "policy_set_sha256": raw.get("policy_set_sha256"),
+        "render_policy": raw.get("render_policy"),
+        "validation_target": raw.get("validation_target"),
+    }
+    if context["schema_version"] != _RENDER_POLICY_CONTEXT_SCHEMA:
+        raise RenderEvidenceError("policy_context schema is malformed")
+    if not isinstance(context["source"], str) or not context["source"].strip():
+        raise RenderEvidenceError("policy_context source is malformed")
+    if not isinstance(context["policy_set_sha256"], str) or _SHA256.fullmatch(context["policy_set_sha256"]) is None:
+        raise RenderEvidenceError("policy_context digest is malformed")
+    if not isinstance(context["render_policy"], Mapping):
+        raise RenderEvidenceError("policy_context render_policy is malformed")
+    if "validation_target" not in raw:
+        raise RenderEvidenceError("policy_context validation_target is malformed")
+    target = context["validation_target"]
+    if target is not None and (not isinstance(target, str) or not target.strip()):
+        raise RenderEvidenceError("policy_context validation_target is malformed")
+    return context
 
 
 def _detected_media_type(head: bytes) -> str:

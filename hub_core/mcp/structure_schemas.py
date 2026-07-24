@@ -89,84 +89,99 @@ def build_project_structure_schemas() -> tuple[
     )
 
 
-def build_normalize_project_structure_definition() -> ToolDefinition:
+def build_normalize_project_structure_definition(*, include_host_approval: bool = False) -> ToolDefinition:
     """Build the stable normalization tool contract."""
 
+    input_properties: dict[str, Any] = {
+        "project_path": {"type": "string"},
+        "dry_run": {
+            "type": "boolean",
+            "default": True,
+            "description": (
+                "Preview without writing files. Defaults True like scaffold_project and "
+                "batch_check; the two render tools default dry_run False."
+            ),
+        },
+        "move_policy": {
+            "type": "string",
+            "enum": ["adopt", "copy", "move", "symlink"],
+            "default": "adopt",
+            "description": (
+                "adopt returns read-only proposals; copy requires approved_mappings. "
+                "move and symlink remain accepted only to return a stable deprecation error."
+            ),
+        },
+        "include_raw": {"type": "boolean", "default": False},
+        "overwrite": {
+            "type": "boolean",
+            "default": False,
+            "description": "Deprecated compatibility argument; true always fails closed.",
+        },
+        "approved_mappings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string"},
+                    "destination": {"type": "string"},
+                    "role": {"type": "string"},
+                },
+                "required": ["source", "destination", "role"],
+                "additionalProperties": False,
+            },
+            "description": "Explicit mappings accepted by the user after reviewing an adopt proposal.",
+        },
+        "config_diff": {
+            "type": "array",
+            "items": {"type": "object"},
+            "description": "Reviewed typed project_config.yaml compare-and-swap edits.",
+        },
+        "hardcoded_unresolved_references": {
+            "type": "array",
+            "items": {},
+            "description": "Unresolved dependencies that intentionally block apply.",
+        },
+        "confirmation_token": {
+            "type": "string",
+            "description": "Exact token returned by the reviewed copy-only dry-run.",
+        },
+    }
+    output_properties: dict[str, Any] = {
+        "project_root": {"type": "string"},
+        "planned_paths": {"type": "array", "items": {"type": "string"}},
+        "manifest": {"type": "object"},
+        "config_path": {"type": "string"},
+        "style_summary": {"type": "object"},
+        "validation": {"type": "object"},
+        "proposed_mappings": {"type": "array", "items": {"type": "object"}},
+        "unresolved_proposals": {"type": "array", "items": {"type": "object"}},
+        "plan_digest": {"type": "string"},
+        "confirmation_token": {"type": "string"},
+        "originals_preserved": {"type": "boolean"},
+        "rollback_journal": {"type": "object"},
+        "provenance_receipt": {"type": "object"},
+    }
+    if include_host_approval:
+        input_properties["approval_receipt_id"] = {
+            "type": "string",
+            "description": (
+                "Host-issued approval receipt id resolved out-of-band from the trusted authority root. "
+                "Never provide approval JSON or reviewer fields in tool arguments."
+            ),
+        }
+        output_properties.update(
+            {
+                "approval_receipt_id": {"type": ["string", "null"]},
+                "host_approval_required": {"type": "boolean"},
+                "approval_status": {
+                    "type": "string",
+                    "enum": ["not_required", "required", "verified", "rejected"],
+                },
+            }
+        )
     return ToolDefinition(
         "figops.normalize_project_structure",
         "Propose migration mappings or apply an explicitly reviewed copy-only structure plan.",
-        object_schema(
-            {
-                "project_path": {"type": "string"},
-                "dry_run": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": (
-                        "Preview without writing files. Defaults True like scaffold_project and "
-                        "batch_check; the two render tools default dry_run False."
-                    ),
-                },
-                "move_policy": {
-                    "type": "string",
-                    "enum": ["adopt", "copy", "move", "symlink"],
-                    "default": "adopt",
-                    "description": (
-                        "adopt returns read-only proposals; copy requires approved_mappings. "
-                        "move and symlink remain accepted only to return a stable deprecation error."
-                    ),
-                },
-                "include_raw": {"type": "boolean", "default": False},
-                "overwrite": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Deprecated compatibility argument; true always fails closed.",
-                },
-                "approved_mappings": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "source": {"type": "string"},
-                            "destination": {"type": "string"},
-                            "role": {"type": "string"},
-                        },
-                        "required": ["source", "destination", "role"],
-                        "additionalProperties": False,
-                    },
-                    "description": "Explicit mappings accepted by the user after reviewing an adopt proposal.",
-                },
-                "config_diff": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": "Reviewed typed project_config.yaml compare-and-swap edits.",
-                },
-                "hardcoded_unresolved_references": {
-                    "type": "array",
-                    "items": {},
-                    "description": "Unresolved dependencies that intentionally block apply.",
-                },
-                "confirmation_token": {
-                    "type": "string",
-                    "description": "Exact token returned by the reviewed copy-only dry-run.",
-                },
-            },
-            required=["project_path"],
-        ),
-        standard_output_schema(
-            {
-                "project_root": {"type": "string"},
-                "planned_paths": {"type": "array", "items": {"type": "string"}},
-                "manifest": {"type": "object"},
-                "config_path": {"type": "string"},
-                "style_summary": {"type": "object"},
-                "validation": {"type": "object"},
-                "proposed_mappings": {"type": "array", "items": {"type": "object"}},
-                "unresolved_proposals": {"type": "array", "items": {"type": "object"}},
-                "plan_digest": {"type": "string"},
-                "confirmation_token": {"type": "string"},
-                "originals_preserved": {"type": "boolean"},
-                "rollback_journal": {"type": "object"},
-                "provenance_receipt": {"type": "object"},
-            }
-        ),
+        object_schema(input_properties, required=["project_path"]),
+        standard_output_schema(output_properties),
     )

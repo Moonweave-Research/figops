@@ -63,6 +63,7 @@ def build_structure_plan(
     *,
     config_diff: Iterable[Mapping[str, Any]] = (),
     hardcoded_unresolved_references: Iterable[object] = (),
+    unresolved_proposals: Iterable[object] = (),
 ) -> dict[str, Any]:
     """Create a deterministic plan solely from explicitly approved mappings."""
 
@@ -124,6 +125,13 @@ def build_structure_plan(
         ],
         key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True),
     )
+    normalized_unresolved_proposals = sorted(
+        [
+            dict(item) if isinstance(item, Mapping) else {"proposal": str(item)}
+            for item in unresolved_proposals
+        ],
+        key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True),
+    )
     config_path = root / "project_config.yaml"
     config_sha256: str | None = None
     config_identity: dict[str, int] | None = None
@@ -162,6 +170,7 @@ def build_structure_plan(
         "config_identity": config_identity,
         "config_update": config_update,
         "hardcoded_unresolved_references": unresolved,
+        "unresolved_proposals": normalized_unresolved_proposals,
         "total_bytes": sum(item["size"] for item in entries),
         "rollback_journal": rollback,
     }

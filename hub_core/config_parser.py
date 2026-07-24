@@ -9,6 +9,7 @@ from . import config_schema as _config_schema
 from . import config_visual_style as _config_visual_style
 from .config_adapter_validation import validate_named_adapter as _validate_named_adapter
 from .config_assemblies import validate_assemblies as _validate_assemblies_impl
+from .config_contract_defaults import data_contract_bool, module_default_contract_bool  # noqa: F401
 from .config_language_policy import ALLOWED_LANGUAGE_POLICY_MODES as ALLOWED_LANGUAGE_POLICY_MODES
 from .config_language_policy import get_language_policy as _get_language_policy_impl
 from .config_language_policy import normalize_lang as normalize_lang
@@ -46,6 +47,10 @@ from .config_top_level_keys import top_level_key_fingerprint as _top_level_key_f
 from .config_top_level_keys import top_level_key_suggestion as _top_level_key_suggestion  # noqa: F401
 from .config_top_level_keys import validate_top_level_key_near_misses as _validate_top_level_key_near_misses
 from .config_visual_outputs import validate_visual_outputs as _validate_visual_outputs_impl
+from .config_workflow_intent import normalize_workflow_defaults as normalize_workflow_defaults
+from .config_workflow_intent import validate_workflow_intent_config as _validate_workflow_intent_config
+from .config_workflow_intent import workflow_intent as workflow_intent
+from .config_workflow_intent import workflow_intent_report as workflow_intent_report
 from .domain_analysis import DOMAIN_HELPER_NAMES
 from .execution_security import is_positive_finite_timeout
 from .logging import get_logger
@@ -117,21 +122,6 @@ def find_config_path(project_dir):
     return None
 
 
-def data_contract_bool(config: dict, key: str) -> bool | None:
-    data_contract = config.get("data_contract", {}) if isinstance(config, dict) else {}
-    if not isinstance(data_contract, dict):
-        return None
-    value = data_contract.get(key)
-    return value if isinstance(value, bool) else None
-
-
-def module_default_contract_bool(config: dict, key: str) -> bool:
-    explicit = data_contract_bool(config, key)
-    if explicit is not None:
-        return explicit
-    return project_role(config) == DEFAULT_PROJECT_ROLE
-
-
 def _load_project_metadata(config_path, fallback_name):
     metadata = {
         "name": fallback_name,
@@ -158,6 +148,7 @@ def _load_project_metadata(config_path, fallback_name):
         metadata["errors"] = [str(exc)]
         return metadata
     conf_data = normalize_project_defaults(conf_data)
+    conf_data = normalize_workflow_defaults(conf_data)
 
     project_section = conf_data.get("project")
     if not isinstance(project_section, dict):
@@ -217,6 +208,7 @@ def validate_config(config, *, project_root=None):
 
     project = config.get("project")
     role = DEFAULT_PROJECT_ROLE
+    status = DEFAULT_PROJECT_STATUS
     if not isinstance(project, dict):
         errors.append("Missing or invalid 'project' section (must be a mapping).")
     else:
@@ -233,6 +225,10 @@ def validate_config(config, *, project_root=None):
         if not isinstance(raw_status, str) or raw_status.strip().lower() not in ALLOWED_PROJECT_STATUSES:
             allowed = ", ".join(sorted(ALLOWED_PROJECT_STATUSES))
             errors.append(f"Invalid project.status: '{raw_status}'. Allowed values: {allowed}.")
+        else:
+            status = raw_status.strip().lower() or DEFAULT_PROJECT_STATUS
+
+    _validate_workflow_intent_config(errors, config.get("workflow", {}), project_status=status)
 
     modules = config.get("modules", [])
     if modules is None:
@@ -676,6 +672,7 @@ def load_config(project_dir):
         logger.error("   └─ Compare with the scaffold template or fix the listed fields and rerun.")
         return None, None, None
     config = normalize_project_defaults(config)
+    config = normalize_workflow_defaults(config)
 
     errors = validate_config(config, project_root=project_dir)
     if errors:
