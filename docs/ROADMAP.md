@@ -97,7 +97,17 @@ Current release-candidate checkpoint:
   inventory/audit/plan/role-binding/apply, launcher-authorized external-raw
   execution, native no-replace result promotion, durable receipts, measured
   policy evidence, and verified project-script claims including conservative
-  dynamic-annotation discovery. CI run
+  dynamic-annotation discovery. The conservative dependency-scanner facade
+  `dependency_script_inspection.analyze_dependency_script` now delegates
+  bounded language-specific extraction to `dependency_python_inspection.py` and
+  `dependency_r_inspection.py`, with shared path predicates and deterministic
+  result ordering in `dependency_scan_common.py`. It reports deterministic
+  Python/R static candidates, unresolved hard-coded/dynamic references, and
+  incomplete scans without guessing roles; scanner output is evidence only,
+  while unresolved or incomplete findings are plan blockers, not approvals.
+  `role_roots` resolves a literal only through its most-specific declared
+  terminal semantic root; grouping roots `scripts` and `results` never clear
+  blockers, and equal-depth terminal ties remain unresolved. CI run
   [`29689087108`](https://github.com/Moonweave-Research/figops/actions/runs/29689087108)
   passed for source head `9e4d340b718529bd0f65ba46b2124dda718918a2`: macOS full
   pytest was 2,322 passed, 22 skipped, and 104 subtests, including the native
@@ -138,9 +148,17 @@ Current release-candidate checkpoint:
   inputs and token. The token proves plan integrity and exact replay, not
   independent human identity or attestation; the current workflow does not
   close self-approval. A host-issued `approval_receipt` or immutable
-  reviewed-plan authority is deferred to Phase 5. Audit/plan control evidence
-  never becomes a runtime manifest or durable result, and runtime remains
-  external to the project.
+  reviewed-plan authority rooted in a host trust root is deferred to Phase 5.
+  Approval authority remains Phase 5/open until that authority exists and is
+  consumed by apply. Audit/plan control evidence never becomes a runtime
+  manifest or durable result, and runtime remains external to the project.
+
+- Structure normalization applies a fail-closed guard: a plan containing any
+  `hardcoded_unresolved_references` or `unresolved_proposals` is rejected before
+  copy, even with a valid digest and confirmation token. Parse/read/unsupported
+  language failures and dynamic dependency expressions set the scanner's
+  incomplete signal; no filename, extension, or directory heuristic can assign
+  a semantic role.
 
 ---
 
@@ -182,6 +200,10 @@ hub_core/
   structure_plan.py             # deterministic reviewed copy plan
   structure_role_binding.py    # approved destinations bound to declared roots
   structure_apply.py           # write-gated copy-only apply transaction
+  dependency_script_inspection.py # dependency scanner facade and evidence API
+  dependency_python_inspection.py # bounded Python dependency extraction helper
+  dependency_r_inspection.py      # bounded R dependency extraction helper
+  dependency_scan_common.py       # shared path predicates and result ordering
   runtime_boundary.py          # project/result/runtime disjointness
   atomic_no_clobber.py         # native consuming same-FS no-replace publication
   durable_promotion.py         # staged same-filesystem result promotion
@@ -434,6 +456,12 @@ and scale/profile resolution into `themes.font_token_resolver`. The public
 `FontTokens` type remains façade-owned, and the live profile collaborators are
 passed through explicitly. With `themes.journal_theme` now below 800 lines, no
 tracked Python module exceeds the current architecture split signal.
+
+The dependency scanner split keeps `hub_core.dependency_script_inspection` as
+the compatibility facade while moving bounded Python and R extraction into
+`hub_core.dependency_python_inspection` and
+`hub_core.dependency_r_inspection`; shared path predicates and deterministic
+evidence ordering live in `hub_core.dependency_scan_common`.
 
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.

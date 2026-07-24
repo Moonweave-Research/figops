@@ -332,7 +332,8 @@ The token proves integrity and exact replay of the canonical plan, not
 independent reviewer identity, authority, or attestation; the current workflow
 does not close self-approval. A host-issued `approval_receipt` or equivalent
 immutable reviewed-plan authority, bound to reviewer identity/role and the plan
-digest, remains a Phase 5 gap.
+digest and rooted in a host trust root, remains a Phase 5 gap. Approval
+authority is Phase 5/open until that authority exists and is consumed by apply.
 Audit reports, plans, digests, and tokens are control evidence, not runtime
 manifests, durable results, or evidence receipts; runtime remains externally
 rooted and disposable.
@@ -343,6 +344,37 @@ Any hard-coded script/import/config dependency that cannot be represented as a
 reviewed compare-and-swap edit remains an `unresolved_dependency`. Migration
 apply is blocked while even one such dependency can affect a copied artifact;
 warnings are insufficient and the tool may not guess or rewrite arbitrary source.
+
+### Conservative dependency-script inspection
+
+The migration planner uses the read-only
+`hub_core.dependency_script_inspection.analyze_dependency_script` API for
+bounded dependency evidence. It accepts Python or R source text (or a `Path`)
+and optional `suffix`/`language`, `script_path`, and explicit `role_roots`
+arguments. The deterministic JSON-friendly result contains `inspectable`,
+`dependency_scan_incomplete`, `static_candidates`, and
+`hardcoded_unresolved_references`. Static candidates include imports and
+obvious literal file/path references, but they are evidence only: the scanner
+never executes a script, rewrites source, or guesses `raw`, `results`, script,
+or any other semantic role from a name, extension, or directory.
+
+A literal path is cleared only through the most-specific declared terminal
+semantic root selected by the caller-provided `role_roots` mapping. Grouping
+roots `scripts` and `results` never clear blockers, and equal-depth terminal
+matches remain unresolved. Otherwise it remains an unresolved `hardcoded_path`
+entry. Dynamic path expressions remain unresolved and set
+`dependency_scan_incomplete`; read errors, unsupported languages, and parse
+failures set `inspectable: false`, preserve a diagnostic, and set the same
+incomplete signal. Thus a partial or failed scan is incomplete evidence and a
+plan blocker, not a clean pass. The planner carries these entries into
+`hardcoded_unresolved_references`; scanner output never becomes an approved
+mapping.
+
+`structure_apply.apply_structure_plan` enforces the corresponding fail-closed
+guard: a non-empty `hardcoded_unresolved_references` **or**
+`unresolved_proposals` rejects the plan before project-root identity checks or
+copy, even when the plan digest and confirmation token are valid. An unresolved
+proposal is therefore a plan blocker, not a warning or an approval surrogate.
 
 ## 8. Seven P1 corrections
 
@@ -451,7 +483,7 @@ approval, or fulfillment of the complete Definition of Done.
 | WP3 | implementation complete | Neutral v1.1/v2 defaults, independent validation targets, and artifact-derived policy measurements are integrated. |
 | WP4 | implementation complete | v1.1 role/DAG/alias validation and legacy 1.0 in-memory resolution are integrated with config parsing and templates. |
 | WP5 | implementation complete | Scaffolding and normalization consume the shared `project_layout.py` inventory. |
-| WP6 | implementation complete | `structure_inventory`, `structure_audit`, `structure_plan`, and `structure_role_binding` use semantic/reference precedence and bind approved destinations to declared roots. |
+| WP6 | implementation complete | `structure_inventory`, `structure_audit`, `structure_plan`, and `structure_role_binding` use semantic/reference precedence and bind approved destinations to declared roots. The conservative `dependency_script_inspection.analyze_dependency_script` API supplies deterministic Python/R dependency evidence; parse/dynamic/incomplete findings remain blockers, and apply rejects non-empty `unresolved_proposals` fail-closed. |
 | WP7 | implementation complete | Reviewed application is copy-only, token/CAS guarded, rollback-aware, and publishes a verified sibling stage only through the native consuming no-replace primitive; race winners are preserved. |
 | WP8 | implementation complete; independent adversarial gate green | Runtime containment, pre-execution external-raw verification, eligible-result promotion, staged durable publication, and runtime-independent receipt verification are integrated across CLI and MCP producers. Handle-bound rollback deletion closes the hash-to-unlink swap window; the independent rollback suite passed 34 tests with two platform skips. |
 | WP9 | implementation complete | v2 exposes structure detail through `figops.describe`; compatibility apply remains write-gated without expanding the seven-tool default surface. |

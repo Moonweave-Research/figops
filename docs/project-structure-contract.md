@@ -78,6 +78,45 @@ fails closed when the native guarantee is unavailable. Failure rollback removes
 only newly created files whose hashes still match the reviewed plan; FigOps
 never deletes or moves raw inputs.
 
+### Conservative dependency-script evidence
+
+Before a migration plan is reviewed, project script references may be inspected
+with the read-only API
+`hub_core.dependency_script_inspection.analyze_dependency_script(script,
+suffix=None, *, language=None, script_path=None, role_roots=None)`. The
+canonical function (also exposed through descriptive `inspect_*`/`scan_*`
+aliases) accepts Python or R source text, or a `Path`, and returns deterministic,
+JSON-friendly evidence with these fields:
+
+- `inspectable`: whether the source was parsed by the bounded Python/R scanner;
+- `dependency_scan_incomplete`: whether any part of the dependency surface could
+  not be resolved safely;
+- `static_candidates`: imports and obvious literal file/path references found by
+  the scanner; and
+- `hardcoded_unresolved_references`: dynamic paths, unmapped literals, and
+  read/parse/language diagnostics that must remain blockers for review.
+
+The scanner never executes a script, rewrites source, or assigns a role from a
+filename, extension, or directory name. A literal path is resolved only when
+the caller supplies `role_roots` and the scanner selects its most-specific
+declared terminal semantic root. Grouping roots `scripts` and `results` never
+clear blockers, and equal-depth terminal matches remain unresolved; otherwise
+the path remains a `hardcoded_path` reference. Dynamic
+path expressions are reported as unresolved and set
+`dependency_scan_incomplete`. Read, unsupported language, or parse failures set
+`inspectable: false`, preserve a diagnostic, and set
+`dependency_scan_incomplete`; a partially scanned script is therefore
+incomplete evidence, not a clean result. The planner folds these references
+into `hardcoded_unresolved_references`; scanner output is evidence and a plan
+only; unresolved or incomplete scanner findings are plan blockers, never
+approved mappings.
+
+The apply guard is fail-closed even when a plan digest and confirmation token
+are valid: `structure_apply.apply_structure_plan` rejects a non-empty
+`hardcoded_unresolved_references` **or** `unresolved_proposals` before any
+project-root identity check or copy. An unresolved proposal is consequently a
+plan blocker, not a warning that can be bypassed by replaying a reviewed token.
+
 ### Finding-to-plan selection matrix
 
 The audit report is a selection aid, not an approval list. The following matrix
@@ -146,8 +185,10 @@ out-of-band policy/process requirement rather than a machine-enforced claim.
 The next Phase 5 gap is a host-issued `approval_receipt` (or equivalent
 immutable reviewed-plan authority) bound to the plan digest and reviewed
 inputs, with verifiable reviewer identity/role, authorization, and attestation
-semantics. Until that authority exists and is consumed by apply, no plan token
-or copy receipt may be described as independent approval evidence.
+semantics and rooted in a host trust root. Until that authority exists and is
+consumed by apply, no scanner output, plan token, unresolved-proposal result, or
+copy receipt may be described as independent approval evidence. Approval
+authority remains Phase 5/open.
 
 ## Runtime and durable results
 

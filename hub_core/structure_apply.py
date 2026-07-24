@@ -509,12 +509,19 @@ def apply_structure_plan(
     validate_confirmation_token(plan, confirmation_token)
     if plan.get("version") != PLAN_VERSION:
         raise ValueError(f"Unsupported structure plan version: {plan.get('version')!r}.")
+    for field in ("hardcoded_unresolved_references", "unresolved_proposals"):
+        if field not in plan:
+            raise ValueError(f"Structure plan is missing the required {field} field for its version.")
+        if not isinstance(plan[field], list):
+            raise ValueError(f"Structure plan {field} must be a list.")
     if plan.get("operation") != "copy_only":
         raise ValueError("Only copy_only structure plans can be applied.")
     if plan.get("collisions"):
         raise FileExistsError("Structure plan contains destination collisions.")
     if plan.get("hardcoded_unresolved_references"):
         raise RuntimeError("Structure plan has unresolved hard-coded dependencies.")
+    if plan.get("unresolved_proposals"):
+        raise RuntimeError("Structure plan has unresolved normalization proposals.")
     root = Path(str(plan.get("project_root"))).absolute()
     try:
         root_identity = capture_project_root(root)

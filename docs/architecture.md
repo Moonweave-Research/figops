@@ -46,6 +46,10 @@ hub_core/structure_plan.py              # deterministic reviewed copy plan
 hub_core/structure_role_binding.py       # destination -> declared role-root binding
 hub_core/structure_stage_cleanup.py      # ownership-safe private-stage/lease cleanup
 hub_core/structure_apply.py              # token/CAS-guarded copy-only transaction
+hub_core/dependency_script_inspection.py # dependency scanner facade and evidence API
+hub_core/dependency_python_inspection.py # bounded Python dependency extraction helper
+hub_core/dependency_r_inspection.py      # bounded R dependency extraction helper
+hub_core/dependency_scan_common.py       # shared path predicates and result ordering
 hub_core/runtime_boundary.py           # project/result/runtime disjointness
 hub_core/atomic_no_clobber.py          # native consuming no-replace namespace move
 hub_core/durable_promotion.py          # destination-filesystem staged promotion
@@ -213,6 +217,22 @@ every approved destination back to its declared semantic root, while
 `structure_stage_cleanup.py` owns transaction-private stage and lease cleanup.
 Reviewed mutation is isolated in `structure_apply.py` and remains copy-only.
 
+`dependency_script_inspection.py` is the public read-only facade for bounded
+Python/R dependency evidence. It delegates language-specific extraction to
+`dependency_python_inspection.py` and `dependency_r_inspection.py`, while
+`dependency_scan_common.py` owns shared path predicates and deterministic
+deduplication/order. Its `analyze_dependency_script(...)` API returns
+deterministic static candidates plus `hardcoded_unresolved_references` and a
+`dependency_scan_incomplete` signal. It never executes scripts or guesses a
+semantic role: a caller-provided `role_roots` mapping resolves a literal only
+through its most-specific declared terminal semantic root. Grouping roots
+`scripts` and `results` never clear blockers, and equal-depth terminal matches
+remain unresolved. Parse/read/unsupported-language failures and dynamic path
+expressions remain incomplete evidence and block a migration plan.
+`structure_apply.py` also rejects non-empty `unresolved_proposals` before any
+copy, so a valid digest/token cannot turn scanner evidence or an unresolved
+proposal into an apply approval.
+
 Runtime and durable-result mechanics are separate from structure discovery.
 `runtime_boundary.py` enforces project/result/runtime disjointness,
 `atomic_no_clobber.py` provides the only publication primitive: Windows
@@ -359,7 +379,17 @@ The token proves integrity and exact replay of that plan; it does not prove an
 independent human identity, reviewer authority, or attestation, and the current
 workflow does not close self-approval. A host-issued `approval_receipt` (or
 equivalent immutable reviewed-plan authority) bound to reviewer identity and
-the plan digest is a Phase 5 gap, not a current capability.
+the plan digest and rooted in a host trust root is a Phase 5 gap, not a current
+capability. Approval authority remains Phase 5/open until that authority exists
+and is consumed by apply.
+
+During planning, `analyze_dependency_script` output is evidence only. Static
+imports/path literals are not role approvals; dynamic paths and parse/read or
+unsupported-language failures set the incomplete signal and remain plan
+blockers, and no role is guessed from names or extensions. The apply guard
+rejects any non-empty `hardcoded_unresolved_references` or
+`unresolved_proposals` before copying, even when the reviewed digest/token is
+otherwise valid.
 
 The emitted structure report is diagnostic output, not a runtime manifest,
 durable result, or evidence receipt. It describes current structure findings
