@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ _HOST_AUTHORITY_ARGUMENT_KEYS = frozenset(
         "approval_payload",
         "approval_record",
         "approval_receipt",
+        "approval_receipt_id",
         "approval_status",
         "algorithm",
         "attestation",
@@ -56,6 +58,8 @@ _HOST_AUTHORITY_ARGUMENT_KEYS = frozenset(
         "reviewer_role",
         "revocation",
         "revocation_epoch",
+        "trust",
+        "trusted",
         "signature",
         "trust_root",
         "trust_root_id",
@@ -64,17 +68,82 @@ _HOST_AUTHORITY_ARGUMENT_KEYS = frozenset(
 
 
 def _self_described_authority_keys(arguments: dict[str, Any]) -> list[str]:
+    """Find authority-looking fields at every depth of a tool request.
+
+    Host approval is deliberately an out-of-band trust channel.  The one
+    exception is the opaque, top-level ``approval_receipt_id`` consumed by the
+    host authority root.  Every other authority-looking field is rejected,
+    including fields hidden in a mapping/list payload such as
+    ``approved_mappings[0].reviewer`` or ``manifest.trust_root``.
+    """
+
     def canonical_key(key: object) -> str:
         return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", str(key).strip()).replace("-", "_").casefold()
 
-    return sorted(
+    # Catch compound names such as ``approval_token`` and ``trusted_by`` in
+    # addition to the explicit compatibility list above, while keeping normal
+    # request fields such as ``approved_mappings`` valid.
+    authority_components = frozenset(
         {
-            str(key)
-            for key in arguments
-            if canonical_key(key) in _HOST_AUTHORITY_ARGUMENT_KEYS
-        },
-        key=str.casefold,
+            "approval",
+            "approved",
+            "authority",
+            "authorization",
+            "authorize",
+            "receipt",
+            "review",
+            "reviewer",
+            "signature",
+            "signed",
+            "trust",
+            "trusted",
+        }
     )
+
+    def is_authority_key(key: object) -> bool:
+        canonical = canonical_key(key)
+        if canonical in _HOST_AUTHORITY_ARGUMENT_KEYS:
+            return True
+        return bool(authority_components.intersection(canonical.split("_")))
+
+    def format_path(path: tuple[object, ...]) -> str:
+        rendered = ""
+        for part in path:
+            if isinstance(part, int):
+                rendered += f"[{part}]"
+            else:
+                rendered = f"{rendered}.{part}" if rendered else str(part)
+        return rendered
+
+    findings: set[str] = set()
+
+    def visit(value: object, path: tuple[object, ...] = ()) -> None:
+        if isinstance(value, Mapping):
+            for raw_key, nested in value.items():
+                key = str(raw_key)
+                key_path = path + (key,)
+                canonical = canonical_key(raw_key)
+                # Only this exact semantic field at the request root is
+                # allowed.  Its value must remain opaque; if a caller embeds a
+                # mapping/list below it, recurse so forged nested fields still
+                # fail closed.
+                if not path and canonical == "approval_receipt_id":
+                    if not isinstance(nested, str):
+                        findings.add(format_path(key_path))
+                    visit(nested, key_path)
+                    continue
+                # ``approved_mappings`` is the one ordinary request field
+                # whose name contains an authority word; only its top-level
+                # collection is part of the public normalization contract.
+                if not (not path and canonical == "approved_mappings") and is_authority_key(raw_key):
+                    findings.add(format_path(key_path))
+                visit(nested, key_path)
+        elif isinstance(value, list):
+            for index, nested in enumerate(value):
+                visit(nested, path + (index,))
+
+    visit(arguments)
+    return sorted(findings, key=str.casefold)
 
 
 class McpProjectToolsMixin:
@@ -161,6 +230,31 @@ class McpProjectToolsMixin:
         guarded = self._authorize_write_tool("figops.normalize_project_structure", arguments)
         if guarded is not None:
             return guarded
+        if self.require_host_approval:
+            forbidden_authority_keys = _self_described_authority_keys(arguments)
+            if forbidden_authority_keys:
+                approval_receipt_id = arguments.get("approval_receipt_id")
+                return self._envelope(
+                    "figops.normalize_project_structure",
+                    arguments,
+                    status="error",
+                    summary="Self-described approval fields are not a host authority.",
+                    errors=[
+                        "Tool arguments may contain only top-level opaque approval_receipt_id; "
+                        "rejected authority fields: "
+                        + ", ".join(forbidden_authority_keys)
+                        + "."
+                    ],
+                    manual_review_needed=True,
+                    is_dry_run=bool(arguments.get("dry_run", True)),
+                    error_category="validation",
+                    error_code=NORMALIZATION_HOST_APPROVAL_REJECTED,
+                    approval_receipt_id=(
+                        approval_receipt_id if isinstance(approval_receipt_id, str) else None
+                    ),
+                    host_approval_required=True,
+                    approval_status="rejected",
+                )
         project_path = self._resolve_under_root(arguments.get("project_path"), field_name="project_path")
         dry_run = bool(arguments.get("dry_run", True))
         move_policy = str(arguments.get("move_policy") or "adopt").strip().lower()
@@ -262,25 +356,6 @@ class McpProjectToolsMixin:
                     "approval_status": "required",
                 }
             )
-            forbidden_authority_keys = _self_described_authority_keys(arguments)
-            if forbidden_authority_keys:
-                common["approval_status"] = "rejected"
-                return self._envelope(
-                    "figops.normalize_project_structure",
-                    arguments,
-                    status="error",
-                    summary="Self-described approval fields are not a host authority.",
-                    errors=[
-                        "Tool arguments may contain only approval_receipt_id; rejected authority fields: "
-                        + ", ".join(forbidden_authority_keys)
-                        + "."
-                    ],
-                    manual_review_needed=True,
-                    is_dry_run=dry_run,
-                    error_category="validation",
-                    error_code=NORMALIZATION_HOST_APPROVAL_REJECTED,
-                    **common,
-                )
         if dry_run and move_policy == "adopt":
             return self._envelope(
                 "figops.normalize_project_structure",
