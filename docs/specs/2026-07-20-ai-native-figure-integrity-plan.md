@@ -1,6 +1,8 @@
 # FigOps AI-Native Figure Integrity Plan
 
-**Status:** canonical successor plan; implementation has not started.
+**Status:** canonical successor plan; Phase 1 human review foundation, Phase 2
+policy/workflow contracts, and Phase 3 pure domain evaluator/receipt foundation
+are implemented; CLI/MCP and Phase 4 admission integration remain pending.
 
 **Date:** 2026-07-20
 
@@ -487,14 +489,17 @@ compatibility test.
 
 **Goal:** decide eligibility deterministically without performing promotion.
 
-- Add planned `hub_core/promotion_gate.py` and
-  `hub_core/promotion_gate_receipt.py`.
+**Current status:** pure domain evaluator/receipt foundation implemented; CLI/MCP
+and Phase 4 admission integration remain pending.
+
+- Implemented `hub_core/promotion_gate.py` and
+  `hub_core/promotion_gate_receipt.py` as the pure evaluator/receipt foundation.
 - Consume, but do not reimplement, existing `hub_core/result_promotion.py`
   eligibility facts, `hub_core/publication_evidence.py` normalization,
   `hub_core/publication_readiness.py` state/finding evidence,
   `hub_core/claim_inventory.py`, `hub_core/calculation_evidence.py`, and
   `hub_core/durable_receipt.py`.
-- Specify gate code ownership and stable precedence. The evaluator returns a
+- Gate code ownership and stable precedence are specified. The evaluator returns a
   deterministic report/receipt candidate and has no filesystem mutation API.
 - Add a read-only evaluation route alongside existing publication readiness,
   likely in `hub_core/publication_cli.py`, `orchestrator.py`, and
