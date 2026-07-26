@@ -519,9 +519,14 @@ never becomes `eligible` without a valid required receipt.
 **Goal:** expose an explicitly write-gated review-recording path and interpose
 the gate before the existing durable promotion primitive.
 
-- Add planned `hub_core/review_recording.py` to create append-only review
-  records below the declared evidence role using the same contained/no-clobber
-  standards as durable results.
+**Current status:** storage-only `hub_core/review_recording.py` foundation is
+implemented, and focused adversarial tests pass. `result_promotion` admission
+integration, the MCP write surface, and the frozen promotion-gate receipt
+remain pending.
+
+- Implemented storage-only `hub_core/review_recording.py` foundation creates
+  append-only review records below the declared evidence role using the same
+  contained/no-clobber standards as durable results.
 - Integrate `hub_core/result_promotion.py` with `promotion_gate.py` only at its
   admission boundary. Keep `hub_core/durable_promotion.py` and
   `hub_core/atomic_no_clobber.py` as the only byte-publication primitives.
