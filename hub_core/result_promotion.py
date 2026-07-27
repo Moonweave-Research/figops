@@ -28,6 +28,11 @@ from .human_review_receipt import calculate_subject_digest, opaque_figure_artifa
 from .project_paths import project_path_has_symlink_component, resolve_project_output
 from .project_structure_contract import resolve_project_structure
 from .promotion_gate_receipt import validate_promotion_gate_receipt
+from .promotion_gate_recording import (
+    PromotionGateRecordingError,
+    discard_promotion_gate_receipt,
+    record_promotion_gate_receipt,
+)
 
 
 class ResultPromotionError(RuntimeError):
@@ -46,7 +51,7 @@ def _verify_promotion_gate_admission(
     expected_project_id: str,
     expected_artifact_id: str,
     decision_scope: str,
-) -> None:
+) -> dict[str, Any]:
     """Require a canonical eligible gate bound to this result's lineage.
 
     The evaluator's report is accepted as a convenience envelope when it
@@ -96,6 +101,7 @@ def _verify_promotion_gate_admission(
     expected_lineage_sha = durable_receipt.canonical_sha256()
     if subject.get("lineage_receipt_sha256") != expected_lineage_sha:
         raise ResultPromotionError("promotion gate subject does not bind the durable lineage receipt")
+    return validated
 
 
 def _sha256_text(value: object) -> str:
@@ -380,6 +386,7 @@ def promote_eligible_project_result(
         manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
         publication_policy=publication_policy,
     )
+    validated_gate_receipt: dict[str, Any] | None = None
     if promotion_gate_receipt is not None:
         project_config = config.get("project") if isinstance(config, Mapping) else None
         project_name = project_config.get("name") if isinstance(project_config, Mapping) else None
@@ -390,7 +397,7 @@ def promote_eligible_project_result(
             expected_artifact_id = opaque_figure_artifact_id(str(figure_id))
         except (TypeError, ValueError) as exc:
             raise ResultPromotionError("promotion gate subject identities are malformed") from exc
-        _verify_promotion_gate_admission(
+        validated_gate_receipt = _verify_promotion_gate_admission(
             promotion_gate_receipt,
             primary_sha256=str(primary["sha256"]).lower(),
             durable_receipt=receipt,
@@ -412,13 +419,42 @@ def promote_eligible_project_result(
         receipt_relpath.as_posix(),
         purpose="durable result receipt",
     )
-    return promote_result_with_receipt(
-        runtime_artifact,
-        destination,
-        receipt,
-        receipt_destination,
-        runtime_root=runtime_root,
-    )
+    gate_relpath = evidence_root / f"figure-{figure_key}.promotion-gate.json"
+    if validated_gate_receipt is not None:
+        try:
+            frozen_gate = record_promotion_gate_receipt(
+                validated_gate_receipt,
+                evidence_root=Path(project_root) / evidence_root,
+                relative_path=gate_relpath.relative_to(evidence_root).as_posix(),
+            )
+        except Exception as exc:
+            raise ResultPromotionError(
+                f"promotion gate receipt could not be frozen: {exc}"
+            ) from exc
+    else:
+        frozen_gate = None
+    try:
+        promoted = promote_result_with_receipt(
+            runtime_artifact,
+            destination,
+            receipt,
+            receipt_destination,
+            runtime_root=runtime_root,
+        )
+    except Exception as exc:
+        if frozen_gate is not None:
+            try:
+                discard_promotion_gate_receipt(
+                    frozen_gate,
+                    evidence_root=Path(project_root) / evidence_root,
+                )
+            except PromotionGateRecordingError as cleanup_exc:
+                raise ResultPromotionError(
+                    "promotion failed and promotion-gate receipt rollback was withheld: "
+                    f"{cleanup_exc}"
+                ) from exc
+        raise
+    return promoted
 
 
 __all__ = [

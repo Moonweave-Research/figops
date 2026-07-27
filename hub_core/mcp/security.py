@@ -28,8 +28,16 @@ WRITE_TOOL_NAMES = (
     "figops.scaffold_project",
     "figops.normalize_project_structure",
     "figops.batch_check",
+    "figops.record_human_review",
 )
-LEGACY_WRITE_TOOL_NAMES = tuple(name.replace("figops.", "graphhub.", 1) for name in WRITE_TOOL_NAMES)
+# The new review writer is deliberately additive and has no historical
+# graphhub.* alias; compatibility aliases remain frozen to the pre-existing
+# surface.
+LEGACY_WRITE_TOOL_NAMES = tuple(
+    name.replace("figops.", "graphhub.", 1)
+    for name in WRITE_TOOL_NAMES
+    if name != "figops.record_human_review"
+)
 PROJECT_ID_REPARSE_ERROR = PROJECT_EXECUTION_REPARSE_ERROR.replace("execution project", "project_id")
 
 

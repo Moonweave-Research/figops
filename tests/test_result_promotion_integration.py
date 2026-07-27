@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -17,7 +19,11 @@ from hub_core.human_review_receipt import (
     opaque_project_id,
 )
 from hub_core.mcp import FigOpsMCPServer
-from hub_core.promotion_gate_receipt import GATE_CODE_ORDER, build_promotion_gate_receipt
+from hub_core.promotion_gate_receipt import (
+    GATE_CODE_ORDER,
+    build_promotion_gate_receipt,
+    canonical_promotion_gate_receipt_bytes,
+)
 from hub_core.result_promotion import ResultPromotionError, promote_eligible_project_result
 
 DEFAULT_SCOPE = "figure_scientific_and_communication"
@@ -434,6 +440,55 @@ def test_eligible_promotion_gate_admits_after_lineage_binding(tmp_path: Path, de
     promoted = promote_eligible_project_result(**kwargs)
 
     assert promoted is not None
+
+
+def test_promotion_failure_rolls_back_frozen_gate_receipt(tmp_path: Path) -> None:
+    kwargs = _eligible_promotion_fixture(tmp_path, job_id="job-gate-promotion-failure")
+    output_sha256 = kwargs.pop("output_sha256")
+    assert isinstance(output_sha256, str)
+
+    initial = promote_eligible_project_result(**kwargs)
+    assert initial is not None
+    artifact, receipt_artifact = initial
+    lineage = verify_promoted_result(
+        artifact.path,
+        receipt_artifact.path,
+        durable_root=kwargs["project_root"] / "results",
+        forbidden_roots=(kwargs["runtime_root"],),
+    )
+    artifact.path.unlink()
+    receipt_artifact.path.unlink()
+    kwargs["promotion_gate_receipt"] = _gate_receipt(
+        gate_status="eligible",
+        artifact_sha256=output_sha256,
+        lineage_sha256=lineage.canonical_sha256(),
+    )
+
+    with patch(
+        "hub_core.result_promotion.promote_result_with_receipt",
+        side_effect=RuntimeError("simulated promotion failure"),
+    ):
+        if os.name == "nt":
+            with pytest.raises(RuntimeError, match="simulated promotion failure"):
+                promote_eligible_project_result(**kwargs)
+        else:
+            with pytest.raises(ResultPromotionError, match="rollback was withheld"):
+                promote_eligible_project_result(**kwargs)
+
+    project = kwargs["project_root"]
+    assert isinstance(project, Path)
+    gate_destinations = list((project / "results" / "evidence").glob("*.promotion-gate.json"))
+    if os.name == "nt":
+        assert gate_destinations == []
+    else:
+        # POSIX cannot delete by verified file identity, so the gate receipt
+        # remains for manual review rather than risking a pathname race.
+        assert len(gate_destinations) == 1
+        gate_destination = gate_destinations[0]
+        assert gate_destination.read_bytes() == canonical_promotion_gate_receipt_bytes(
+            kwargs["promotion_gate_receipt"]
+        )
+    assert not (project / "results" / "figures" / "Fig1.png").exists()
 
 
 def test_unverified_or_review_required_runtime_result_is_never_promoted(tmp_path: Path) -> None:

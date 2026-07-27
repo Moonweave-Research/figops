@@ -17,6 +17,7 @@ from .errors import infer_tool_error_entry, taxonomy_data, taxonomy_entry_for_ex
 from .prompts import McpPromptsMixin
 from .render_orchestration import McpRenderOrchestrationMixin
 from .resources import McpResourcesMixin
+from .review_schemas import review_tool_definitions
 from .schemas import (
     get_tool_handlers,
 )
@@ -45,6 +46,7 @@ from .tools.render_project import McpRenderProjectMixin
 from .tools.render_tools import McpRenderToolsMixin
 from .tools.render_v2 import McpRenderV2Mixin
 from .tools.render_validation import McpRenderValidationMixin
+from .tools.review_tools import McpReviewToolsMixin
 
 
 class FigOpsMCPServer(
@@ -53,6 +55,7 @@ class FigOpsMCPServer(
     McpRenderV2Mixin,
     McpReadToolsMixin,
     McpReadinessToolsMixin,
+    McpReviewToolsMixin,
     McpRenderToolsMixin,
     McpRenderProjectMixin,
     McpRenderCsvMixin,
@@ -153,6 +156,12 @@ class FigOpsMCPServer(
         )
 
     @staticmethod
+    def optional_write_tool_definitions() -> list[dict[str, Any]]:
+        """Return additive write schemas kept outside frozen discovery profiles."""
+
+        return review_tool_definitions()
+
+    @staticmethod
     def list_resource_definitions() -> list[dict[str, str]]:
         return schema_list_resource_definitions()
 
@@ -170,6 +179,12 @@ class FigOpsMCPServer(
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = dict(arguments or {})
         handler = self._handlers.get(name)
+        # The review writer is intentionally additive and is not inserted into
+        # the frozen v2/compatibility discovery profiles.  It remains callable
+        # by its one canonical name so operators can opt into the write gate
+        # without changing historical tool counts or aliases.
+        if handler is None and name == "figops.record_human_review":
+            handler = self.record_human_review
         if handler is None:
             raise ValueError(f"Unknown FigOps MCP tool: {name}")
         structured = self._authorize_write_tool(name, arguments)

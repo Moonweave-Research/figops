@@ -2,7 +2,9 @@
 
 **Status:** canonical successor plan; Phase 1 human review foundation, Phase 2
 policy/workflow contracts, and Phase 3 pure domain evaluator/receipt foundation
-are implemented; CLI/MCP and Phase 4 admission integration remain pending.
+are implemented; Phase 4 optional write-gated MCP review recording and guarded
+native promotion integration are implemented. Phase 5 migration/release
+governance remains pending.
 
 **Date:** 2026-07-20
 
@@ -489,8 +491,9 @@ compatibility test.
 
 **Goal:** decide eligibility deterministically without performing promotion.
 
-**Current status:** pure domain evaluator/receipt foundation implemented; CLI/MCP
-and Phase 4 admission integration remain pending.
+**Current status:** pure domain evaluator/receipt foundation implemented; the
+Phase 4 admission integration is implemented. A CLI/MCP pure evaluator route
+remains pending.
 
 - Implemented `hub_core/promotion_gate.py` and
   `hub_core/promotion_gate_receipt.py` as the pure evaluator/receipt foundation.
@@ -520,16 +523,23 @@ never becomes `eligible` without a valid required receipt.
 the gate before the existing durable promotion primitive.
 
 **Current status:** storage-only `hub_core/review_recording.py` and the
-optional `hub_core/result_promotion.py` promotion-gate admission guard are
-implemented, with focused/adversarial tests passing. The admission guard binds
-the gate subject `project_id`/`artifact_id` to trusted `project.name`/`figure_id`
-opaque IDs and recomputes `subject_digest` with the canonical default scope
-before publication. The MCP write surface and frozen promotion-gate receipt
-bundle remain pending.
+optional `figops.record_human_review` write-gated MCP path are implemented.
+The MCP writer resolves `figure_id` through trusted project config, binds the
+review subject `project_id`/`artifact_id` to trusted `project.name`/`figure_id`
+opaque IDs, and leaves the default read-only 14+13 compatibility discovery
+unchanged. The optional `hub_core/result_promotion.py` admission guard binds
+promotion-gate subject identity to the same trusted opaque IDs, recomputes
+`subject_digest` with the canonical default scope before publication, freezes
+the validated promotion-gate receipt before native promotion, and handles native
+promotion failure by removing the exact owned receipt where identity-bound
+deletion is supported while fail-closed unsupported POSIX deletion retains the
+canonical receipt for manual review. Phase 5 migration/release governance
+remains pending.
 
-- Implemented storage-only `hub_core/review_recording.py` foundation creates
-  append-only review records below the declared evidence role using the same
-  contained/no-clobber standards as durable results.
+- Implemented storage-only `hub_core/review_recording.py` foundation and
+  optional `figops.record_human_review` MCP path create append-only review
+  records below the declared evidence role using the same contained/no-clobber
+  standards as durable results.
 - Implemented the optional `hub_core/result_promotion.py` promotion-gate
   admission guard at the admission boundary; it binds the gate subject
   `project_id`/`artifact_id` to trusted `project.name`/`figure_id` opaque IDs
@@ -537,12 +547,17 @@ bundle remain pending.
   publication write. Keep
   `hub_core/durable_promotion.py` and `hub_core/atomic_no_clobber.py` as the
   only byte-publication primitives.
-- Extend existing `hub_core/mcp/security.py`, `hub_core/mcp/schemas.py`, and
-  focused handler modules under `hub_core/mcp/tools/` for deliberate write
-  authorization. Read-only inspection stays available with writes disabled.
-- Persist a promotion-gate receipt with the result and include it in the frozen
-  publication bundle. Failures leave no competing destination overwritten and
-  never backfill a review decision.
+- Implemented strict trusted config figure binding for the MCP writer: caller
+  `figure_id` must resolve to exactly one trusted configured figure, and review
+  subject identities must match the trusted project/figure opaque IDs.
+- Implemented the MCP writer as an additive optional write path outside frozen
+  discovery profiles. Write-disabled/read-only behavior stays default, and the
+  frozen 14 canonical + 13 legacy compatibility profile remains unchanged.
+- Implemented promotion-gate receipt pre-freeze before native promotion. If
+  native promotion fails, the exact owned receipt is removed where
+  identity-bound deletion is supported; unsupported POSIX deletion fails closed
+  and retains the canonical receipt for manual review; no competing destination
+  is overwritten and no review decision is backfilled.
 
 **Likely tests:** existing `tests/test_durable_promotion.py`,
 `tests/test_result_promotion_integration.py`, `tests/test_mcp_write_gating.py`
@@ -560,6 +575,8 @@ the new gate.
 
 **Goal:** make the new lifecycle trustworthy in supported workflows without
 making normal development CI perform expensive visual work.
+
+**Current status:** pending; migration/release governance is not yet complete.
 
 - Publish migration examples for active v1.1 projects and a read-only legacy
   explanation. Add deprecation warnings only after compatibility evidence.
