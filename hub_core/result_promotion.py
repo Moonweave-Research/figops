@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping
+from typing import Any, Mapping, TypeAlias
 
 from .artifact_policy_measurement import (
     ArtifactPolicyMeasurementError,
@@ -26,10 +26,57 @@ from .durable_receipt import (
 )
 from .project_paths import project_path_has_symlink_component, resolve_project_output
 from .project_structure_contract import resolve_project_structure
+from .promotion_gate_receipt import validate_promotion_gate_receipt
 
 
 class ResultPromotionError(RuntimeError):
     """An eligible render could not be reduced to a safe durable result."""
+
+
+PromotionGateReceiptInput: TypeAlias = Mapping[str, Any]
+
+
+def _verify_promotion_gate_admission(
+    promotion_gate_receipt: PromotionGateReceiptInput,
+    *,
+    primary_sha256: str,
+    durable_receipt: DurableReceipt,
+) -> None:
+    """Require a canonical eligible gate bound to this result's lineage.
+
+    The evaluator's report is accepted as a convenience envelope when it
+    contains ``receipt_candidate``; the receipt validator remains the sole
+    authority for the closed gate schema and derived status.
+    """
+
+    if not isinstance(promotion_gate_receipt, Mapping):
+        raise ResultPromotionError("promotion gate receipt/report must be a mapping")
+    candidate: Mapping[str, Any] = promotion_gate_receipt
+    report_status: object | None = None
+    if "receipt_candidate" in promotion_gate_receipt:
+        report_status = promotion_gate_receipt.get("gate_status")
+        candidate_value = promotion_gate_receipt.get("receipt_candidate")
+        if not isinstance(candidate_value, Mapping):
+            raise ResultPromotionError("promotion gate report receipt_candidate is malformed")
+        candidate = candidate_value
+    try:
+        validated = validate_promotion_gate_receipt(candidate)
+    except (TypeError, ValueError) as exc:
+        raise ResultPromotionError(f"promotion gate receipt is invalid: {exc}") from exc
+    if report_status is not None and report_status != validated.get("gate_status"):
+        raise ResultPromotionError("promotion gate report status does not match its receipt candidate")
+    if "receipt_candidate" in promotion_gate_receipt and report_status != "eligible":
+        raise ResultPromotionError("promotion gate report is not eligible")
+    if validated.get("gate_status") != "eligible":
+        raise ResultPromotionError("promotion gate receipt is not eligible")
+    subject = validated.get("subject")
+    if not isinstance(subject, Mapping):
+        raise ResultPromotionError("eligible promotion gate receipt is missing its subject")
+    if subject.get("artifact_sha256") != primary_sha256:
+        raise ResultPromotionError("promotion gate subject does not bind the verified primary artifact")
+    expected_lineage_sha = durable_receipt.canonical_sha256()
+    if subject.get("lineage_receipt_sha256") != expected_lineage_sha:
+        raise ResultPromotionError("promotion gate subject does not bind the durable lineage receipt")
 
 
 def _sha256_text(value: object) -> str:
@@ -231,8 +278,14 @@ def promote_eligible_project_result(
     manifest_path: str | Path,
     figure_id: str,
     selected_figure: Mapping[str, Any],
+    promotion_gate_receipt: PromotionGateReceiptInput | None = None,
 ) -> tuple[PromotedArtifact, PromotedArtifact] | None:
-    """Promote one fully verified project render, or return ``None`` when gated."""
+    """Promote one fully verified project render, or return ``None`` when gated.
+
+    ``promotion_gate_receipt`` is an optional canonical receipt (or evaluator
+    report containing ``receipt_candidate``); when supplied, admission is
+    bound to the primary artifact and the durable receipt constructed here.
+    """
 
     if not _is_promotion_eligible(manifest):
         return None
@@ -305,6 +358,12 @@ def promote_eligible_project_result(
         manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
         publication_policy=publication_policy,
     )
+    if promotion_gate_receipt is not None:
+        _verify_promotion_gate_admission(
+            promotion_gate_receipt,
+            primary_sha256=str(primary["sha256"]).lower(),
+            durable_receipt=receipt,
+        )
 
     evidence_root = PurePosixPath(contract.roots["evidence"])
     receipt_relpath = evidence_root / f"figure-{figure_key}.receipt.json"
@@ -328,4 +387,8 @@ def promote_eligible_project_result(
     )
 
 
-__all__ = ["ResultPromotionError", "promote_eligible_project_result"]
+__all__ = [
+    "PromotionGateReceiptInput",
+    "ResultPromotionError",
+    "promote_eligible_project_result",
+]
