@@ -12,6 +12,7 @@ from hub_core.human_review_receipt import (
     opaque_project_id,
 )
 from hub_core.mcp import FigOpsMCPServer
+from hub_core.promotion_gate_receipt import canonical_promotion_gate_receipt_bytes
 from hub_core.promotion_gate_recording import (
     PromotionGateRecordingError,
     discard_promotion_gate_receipt,
@@ -143,9 +144,13 @@ def test_gate_receipt_rollback_removes_owned_file(tmp_path: Path) -> None:
     destination = tmp_path / "evidence" / result.relative_path
     assert destination.exists()
 
-    discard_promotion_gate_receipt(result, evidence_root=tmp_path / "evidence")
-
-    assert not destination.exists()
+    if os.name == "nt":
+        discard_promotion_gate_receipt(result, evidence_root=tmp_path / "evidence")
+        assert not destination.exists()
+    else:
+        with pytest.raises(PromotionGateRecordingError, match="ambiguous"):
+            discard_promotion_gate_receipt(result, evidence_root=tmp_path / "evidence")
+        assert destination.read_bytes() == canonical_promotion_gate_receipt_bytes(gate)
 
 
 def test_gate_receipt_rollback_preserves_replaced_inode(tmp_path: Path) -> None:
