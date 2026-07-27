@@ -100,6 +100,36 @@ def test_symlinked_destination_parent_is_rejected(tmp_path: Path) -> None:
     assert not (outside / "review.json").exists()
 
 
+def test_witness_runtime_failure_is_public_review_recording_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hub_core.review_recording as recording
+
+    def unsafe_witness(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("Structure directory changed during apply.")
+
+    monkeypatch.setattr(recording, "capture_directory_witness", unsafe_witness)
+
+    with pytest.raises(ReviewRecordingError, match="Structure directory changed during apply"):
+        _record(tmp_path, value=receipt())
+    assert not (tmp_path / "evidence" / "human" / "review.json").exists()
+
+
+def test_lease_runtime_failure_is_public_review_recording_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hub_core.review_recording as recording
+
+    def unsafe_lease(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("Could not lease structure directory.")
+
+    monkeypatch.setattr(recording, "lease_directory_witness", unsafe_lease)
+
+    with pytest.raises(ReviewRecordingError, match="Could not lease structure directory"):
+        _record(tmp_path, value=receipt())
+    assert not (tmp_path / "evidence" / "human" / "review.json").exists()
+
+
 def test_existing_destination_is_never_overwritten(tmp_path: Path) -> None:
     root = tmp_path / "evidence"
     root.mkdir()

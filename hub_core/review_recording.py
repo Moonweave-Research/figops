@@ -81,19 +81,29 @@ def record_human_review_receipt(
     receipt, canonical_bytes = _validated_canonical_receipt(receipt_or_bytes)
     relative = _canonical_relative_path(relative_path)
     root = _prepare_evidence_root(evidence_root)
-    root_identity = capture_project_root(root)
-    parent_relative = PurePosixPath(relative).parent.as_posix()
-    witness = capture_directory_witness(
-        root,
-        parent_relative,
-        root_identity=root_identity,
-        create=True,
-    )
-    destination = root.joinpath(*PurePosixPath(relative).parts)
+    # The path-security helpers deliberately raise their own low-level
+    # ``RuntimeError``/``ValueError``/``OSError`` failures when a witnessed
+    # directory changes, becomes unsafe, or cannot be leased.  Keep those
+    # checks fail-closed, but expose one public error type to callers of this
+    # storage API while preserving the helper's diagnostic message.
+    try:
+        root_identity = capture_project_root(root)
+        parent_relative = PurePosixPath(relative).parent.as_posix()
+        witness = capture_directory_witness(
+            root,
+            parent_relative,
+            root_identity=root_identity,
+            create=True,
+        )
+        destination = root.joinpath(*PurePosixPath(relative).parts)
 
-    with lease_directory_witness(witness):
-        _reject_existing_destination(destination)
-        _append_no_clobber(destination, canonical_bytes)
+        with lease_directory_witness(witness):
+            _reject_existing_destination(destination)
+            _append_no_clobber(destination, canonical_bytes)
+    except ReviewRecordingError:
+        raise
+    except (RuntimeError, ValueError, OSError) as exc:
+        raise ReviewRecordingError(str(exc)) from exc
 
     # Keep the returned DTO independent of the absolute evidence-root path.
     return ReviewRecordingResult(
