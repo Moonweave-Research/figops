@@ -24,6 +24,7 @@ from .durable_receipt import (
     opaque_claim_id,
     opaque_receipt_id,
 )
+from .human_review_receipt import calculate_subject_digest, opaque_figure_artifact_id, opaque_project_id
 from .project_paths import project_path_has_symlink_component, resolve_project_output
 from .project_structure_contract import resolve_project_structure
 from .promotion_gate_receipt import validate_promotion_gate_receipt
@@ -34,6 +35,7 @@ class ResultPromotionError(RuntimeError):
 
 
 PromotionGateReceiptInput: TypeAlias = Mapping[str, Any]
+_DEFAULT_PROMOTION_GATE_DECISION_SCOPE = "figure_scientific_and_communication"
 
 
 def _verify_promotion_gate_admission(
@@ -41,6 +43,9 @@ def _verify_promotion_gate_admission(
     *,
     primary_sha256: str,
     durable_receipt: DurableReceipt,
+    expected_project_id: str,
+    expected_artifact_id: str,
+    decision_scope: str,
 ) -> None:
     """Require a canonical eligible gate bound to this result's lineage.
 
@@ -72,8 +77,22 @@ def _verify_promotion_gate_admission(
     subject = validated.get("subject")
     if not isinstance(subject, Mapping):
         raise ResultPromotionError("eligible promotion gate receipt is missing its subject")
+    if subject.get("project_id") != expected_project_id:
+        raise ResultPromotionError("promotion gate subject does not bind the trusted project identity")
+    if subject.get("artifact_id") != expected_artifact_id:
+        raise ResultPromotionError("promotion gate subject does not bind the selected figure identity")
     if subject.get("artifact_sha256") != primary_sha256:
         raise ResultPromotionError("promotion gate subject does not bind the verified primary artifact")
+    subject_payload = {key: value for key, value in subject.items() if key != "subject_digest"}
+    try:
+        expected_subject_digest = calculate_subject_digest(
+            subject_payload,
+            decision_scope,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ResultPromotionError("promotion gate subject digest is malformed") from exc
+    if subject.get("subject_digest") != expected_subject_digest:
+        raise ResultPromotionError("promotion gate subject digest does not match its subject")
     expected_lineage_sha = durable_receipt.canonical_sha256()
     if subject.get("lineage_receipt_sha256") != expected_lineage_sha:
         raise ResultPromotionError("promotion gate subject does not bind the durable lineage receipt")
@@ -279,12 +298,15 @@ def promote_eligible_project_result(
     figure_id: str,
     selected_figure: Mapping[str, Any],
     promotion_gate_receipt: PromotionGateReceiptInput | None = None,
+    promotion_gate_decision_scope: str = _DEFAULT_PROMOTION_GATE_DECISION_SCOPE,
 ) -> tuple[PromotedArtifact, PromotedArtifact] | None:
     """Promote one fully verified project render, or return ``None`` when gated.
 
     ``promotion_gate_receipt`` is an optional canonical receipt (or evaluator
     report containing ``receipt_candidate``); when supplied, admission is
     bound to the primary artifact and the durable receipt constructed here.
+    ``promotion_gate_decision_scope`` is required when the evaluator used a
+    non-default decision scope because the frozen gate receipt omits that field.
     """
 
     if not _is_promotion_eligible(manifest):
@@ -359,10 +381,22 @@ def promote_eligible_project_result(
         publication_policy=publication_policy,
     )
     if promotion_gate_receipt is not None:
+        project_config = config.get("project") if isinstance(config, Mapping) else None
+        project_name = project_config.get("name") if isinstance(project_config, Mapping) else None
+        if not isinstance(project_name, str) or not project_name.strip():
+            raise ResultPromotionError("promotion gate requires a trusted project.name identity")
+        try:
+            expected_project_id = opaque_project_id(project_name)
+            expected_artifact_id = opaque_figure_artifact_id(str(figure_id))
+        except (TypeError, ValueError) as exc:
+            raise ResultPromotionError("promotion gate subject identities are malformed") from exc
         _verify_promotion_gate_admission(
             promotion_gate_receipt,
             primary_sha256=str(primary["sha256"]).lower(),
             durable_receipt=receipt,
+            expected_project_id=expected_project_id,
+            expected_artifact_id=expected_artifact_id,
+            decision_scope=promotion_gate_decision_scope,
         )
 
     evidence_root = PurePosixPath(contract.roots["evidence"])

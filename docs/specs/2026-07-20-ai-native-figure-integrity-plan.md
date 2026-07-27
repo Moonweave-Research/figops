@@ -521,14 +521,20 @@ the gate before the existing durable promotion primitive.
 
 **Current status:** storage-only `hub_core/review_recording.py` and the
 optional `hub_core/result_promotion.py` promotion-gate admission guard are
-implemented, with focused/adversarial tests passing. The MCP write surface and
-frozen promotion-gate receipt bundle remain pending.
+implemented, with focused/adversarial tests passing. The admission guard binds
+the gate subject `project_id`/`artifact_id` to trusted `project.name`/`figure_id`
+opaque IDs and recomputes `subject_digest` with the canonical default scope
+before publication. The MCP write surface and frozen promotion-gate receipt
+bundle remain pending.
 
 - Implemented storage-only `hub_core/review_recording.py` foundation creates
   append-only review records below the declared evidence role using the same
   contained/no-clobber standards as durable results.
 - Implemented the optional `hub_core/result_promotion.py` promotion-gate
-  admission guard at the admission boundary. Keep
+  admission guard at the admission boundary; it binds the gate subject
+  `project_id`/`artifact_id` to trusted `project.name`/`figure_id` opaque IDs
+  and recomputes `subject_digest` with the canonical default scope before any
+  publication write. Keep
   `hub_core/durable_promotion.py` and `hub_core/atomic_no_clobber.py` as the
   only byte-publication primitives.
 - Extend existing `hub_core/mcp/security.py`, `hub_core/mcp/schemas.py`, and
