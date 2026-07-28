@@ -22,6 +22,7 @@ from hub_core.artifact_policy_measurement import (
     verify_artifact_policy_projection,
 )
 from hub_core.evidence_contract import EvidenceContractError, validate_evidence_envelope
+from hub_core.journal_geometry_policy import geometry_minimum_results
 from hub_core.mcp.render_geometry import _geometry_stub
 from hub_core.mcp.render_orchestration import _build_preview_artifacts, _preview_resource_references
 from hub_core.mcp.render_response import audit_response, one_render_response
@@ -483,8 +484,15 @@ def test_required_resolution_and_geometry_unavailable_fail_closed(
     unavailable_results = unavailable["resolved_policy"]["parameters"]["results"]
     dpi = next(item for item in unavailable_results if item["check_id"] == "dpi")
     text = next(item for item in unavailable_results if item["check_id"] == "text_geometry")
+    geometry_results = [
+        item for item in unavailable_results if item["metric_id"] == "style_geometry_observations"
+    ]
     assert (dpi["status"], dpi["enforcement"]) == ("not_applicable", "required")
     assert (text["status"], text["enforcement"]) == ("not_applicable", "informational")
+    assert geometry_results
+    assert all(item["status"] == "not_applicable" for item in geometry_results)
+    assert all(item["enforcement"] == "required" for item in geometry_results)
+    assert all(isinstance(item.get("reason"), str) and item["reason"].strip() for item in geometry_results)
 
     measured = tmp_path / "measured.png"
     Image.new("RGB", (120, 80), "navy").save(measured, format="PNG", dpi=(600, 600))
@@ -501,6 +509,15 @@ def test_required_resolution_and_geometry_unavailable_fail_closed(
     Image.new("RGB", (120, 80), "navy").save(below_minimum, format="PNG", dpi=(599, 599))
     below = measure_artifact_policy(below_minimum, validation_target="nature")
     assert below["policy_projection"]["status"] == "blocked"
+
+
+def test_required_geometry_not_applicable_has_reason_and_needs_review() -> None:
+    results = geometry_minimum_results(None, validation_target="nature")
+
+    assert results
+    assert all(item["status"] == "not_applicable" for item in results)
+    assert all(item["enforcement"] == "required" for item in results)
+    assert all(isinstance(item.get("reason"), str) and item["reason"].strip() for item in results)
 
 
 def test_pdf_width_and_font_subtype_are_measured_from_existing_bytes(tmp_path: Path) -> None:

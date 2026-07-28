@@ -101,6 +101,221 @@ def _line_overlap_boxes(ax: Axes, line: Any) -> list[Bbox]:
     return boxes
 
 
+def _segment_bbox_intersection_length(
+    start: np.ndarray,
+    end: np.ndarray,
+    box: Bbox,
+) -> float:
+    """Return the positive-length intersection of a segment and a box.
+
+    ``_line_overlap_boxes`` intentionally models a line as a padded AABB for
+    the legacy IoU check.  That approximation is too coarse for a thin line:
+    its box has a tiny area relative to a text bbox even when the line runs
+    directly through the text.  This helper instead clips the *centerline*
+    against the text bbox (Liang--Barsky), so corner/edge contacts do not
+    become crossings and a line only counts when it spends measurable length
+    inside the text box.
+    """
+
+    x0, y0 = float(start[0]), float(start[1])
+    x1, y1 = float(end[0]), float(end[1])
+    dx = x1 - x0
+    dy = y1 - y0
+    segment_length = float(np.hypot(dx, dy))
+    if not np.isfinite(segment_length) or segment_length <= GEOM_EPS_PX:
+        return 0.0
+
+    # Parametric clipping against x >= box.x0, x <= box.x1,
+    # y >= box.y0, and y <= box.y1.  Keeping the interval in [0, 1]
+    # avoids constructing an expanded bbox (which would reintroduce
+    # linewidth-dependent false positives).
+    lower = 0.0
+    upper = 1.0
+    for p, q in (
+        (-dx, x0 - float(box.x0)),
+        (dx, float(box.x1) - x0),
+        (-dy, y0 - float(box.y0)),
+        (dy, float(box.y1) - y0),
+    ):
+        if abs(p) <= np.finfo(float).eps:
+            if q < 0:
+                return 0.0
+            continue
+        ratio = q / p
+        if p < 0:
+            if ratio > upper:
+                return 0.0
+            lower = max(lower, ratio)
+        else:
+            if ratio < lower:
+                return 0.0
+            upper = min(upper, ratio)
+    if upper <= lower:
+        return 0.0
+    clipped_length = segment_length * (upper - lower)
+    if clipped_length <= GEOM_EPS_PX:
+        return 0.0
+    return float(clipped_length)
+
+
+def _line_display_segments(ax: Axes, line: Any, *, max_segments: int) -> list[tuple[int, np.ndarray, np.ndarray]]:
+    """Return finite display-space line segments with stable source indices.
+
+    NaN-separated paths are not joined.  A finite segment cap keeps this
+    metric bounded for a pathological polyline while retaining the original
+    segment index in every reported fact.
+    """
+
+    if max_segments <= 0:
+        return []
+    try:
+        xy = np.asarray(line.get_xydata(), dtype=float)
+    except (TypeError, ValueError):
+        return []
+    if xy.ndim != 2 or xy.shape[1] < 2 or xy.shape[0] < 2:
+        return []
+    # The path cap also bounds the transform itself; do not materialize a
+    # million-vertex polyline merely to retain the first bounded candidates.
+    xy = xy[: max_segments + 1, :2]
+
+    try:
+        transform = line.get_transform()
+    except (AttributeError, RuntimeError):
+        transform = ax.transData
+    if transform is None or not hasattr(transform, "transform"):
+        transform = ax.transData
+    try:
+        # ``axhline``/``axvline`` use blended axis/data transforms; using the
+        # line's own transform keeps those reference lines correct when the
+        # data limits are not the default 0..1 range.
+        display = np.asarray(transform.transform(xy[:, :2]), dtype=float)
+    except (TypeError, ValueError, OverflowError, RuntimeError):
+        return []
+    if display.shape != (xy.shape[0], 2):
+        return []
+
+    segments: list[tuple[int, np.ndarray, np.ndarray]] = []
+    for segment_index, (start, end) in enumerate(zip(display[:-1], display[1:])):
+        if not (np.all(np.isfinite(start)) and np.all(np.isfinite(end))):
+            continue
+        segments.append((int(segment_index), start, end))
+        if len(segments) >= max_segments:
+            break
+    return segments
+
+
+def _line_text_crossings(
+    ax: Axes,
+    renderer: Any,
+    *,
+    is_paintable: PaintablePredicate,
+    candidate_cap: int,
+    reported_cap: int,
+) -> dict[str, Any]:
+    """Measure high-confidence line-segment/text-bbox crossings.
+
+    The result is deliberately a policy-neutral fact object: it reports what
+    was measured and bounded, but never a threshold, verdict, or severity.
+    Lines and text are considered in stable Matplotlib artist order.  A
+    segment counts only when its centerline has more than ``GEOM_EPS_PX`` of
+    positive-length intersection with a visible, non-empty text bbox.
+    """
+
+    if candidate_cap <= 0 or reported_cap <= 0:
+        raise ValueError("candidate_cap and reported_cap must be positive")
+
+    from matplotlib.text import Text
+
+    line_entries: list[tuple[int, str, Any]] = []
+    for line_index, line in enumerate(ax.get_lines()):
+        if is_paintable(line):
+            line_entries.append((int(line_index), f"line:{line_index}", line))
+    text_entries: list[tuple[int, str, Bbox]] = []
+
+    def add_text(text: Any, fallback: str, text_index: int) -> None:
+        if not isinstance(text, Text) or not is_paintable(text) or not text.get_text():
+            return
+        bb = _extent(text, renderer)
+        if bb is None or _box_area(bb) <= 0:
+            return
+        text_entries.append((int(text_index), _artist_label(text, fallback), bb))
+
+    add_text(ax.title, "title", 0)
+    for text_index, text in enumerate(ax.texts, start=1):
+        add_text(text, f"text:{text_index - 1}", text_index)
+
+    evaluated_lines = line_entries[:candidate_cap]
+    evaluated_texts = text_entries[:candidate_cap]
+    text_bounds = (
+        np.asarray(
+            [
+                [float(text_box.x0), float(text_box.y0), float(text_box.x1), float(text_box.y1)]
+                for _index, _label, text_box in evaluated_texts
+            ],
+            dtype=float,
+        )
+        if evaluated_texts
+        else np.empty((0, 4), dtype=float)
+    )
+    crossing_count = 0
+    crossings: list[dict[str, Any]] = []
+    # A line with millions of vertices must not turn a diagnostics call into
+    # an unbounded walk.  Use the same candidate cap for vertices and retain
+    # the original segment index for deterministic evidence.
+    for line_index, line_label, line in evaluated_lines:
+        segments = _line_display_segments(ax, line, max_segments=candidate_cap)
+        for segment_index, start, end in segments:
+            segment_length = float(np.hypot(*(end - start)))
+            if text_bounds.size == 0:
+                continue
+            segment_x0 = min(float(start[0]), float(end[0]))
+            segment_x1 = max(float(start[0]), float(end[0]))
+            segment_y0 = min(float(start[1]), float(end[1]))
+            segment_y1 = max(float(start[1]), float(end[1]))
+            # Most segments are nowhere near most text bboxes.  Keep the
+            # exact Liang--Barsky predicate below, but cheaply cull disjoint
+            # AABBs in NumPy first to avoid an O(lines*segments*texts) Python
+            # loop for dense figures.
+            possible_texts = np.flatnonzero(
+                (text_bounds[:, 2] > segment_x0)
+                & (text_bounds[:, 0] < segment_x1)
+                & (text_bounds[:, 3] > segment_y0)
+                & (text_bounds[:, 1] < segment_y1)
+            )
+            for text_position in possible_texts:
+                text_index, text_label, text_box = evaluated_texts[int(text_position)]
+                intersection_length = _segment_bbox_intersection_length(start, end, text_box)
+                if intersection_length <= GEOM_EPS_PX:
+                    continue
+                crossing_count += 1
+                if len(crossings) >= reported_cap:
+                    continue
+                crossings.append(
+                    {
+                        "line": line_label,
+                        "text": text_label,
+                        "line_index": int(line_index),
+                        "segment_index": int(segment_index),
+                        "text_index": int(text_index),
+                        "intersection_length_px": round(float(intersection_length), 6),
+                        "segment_length_px": round(float(segment_length), 6),
+                    }
+                )
+
+    return {
+        "line_count": int(len(line_entries)),
+        "evaluated_line_count": int(len(evaluated_lines)),
+        "lines_truncated": bool(len(line_entries) > len(evaluated_lines)),
+        "text_count": int(len(text_entries)),
+        "evaluated_text_count": int(len(evaluated_texts)),
+        "texts_truncated": bool(len(text_entries) > len(evaluated_texts)),
+        "crossing_count": int(crossing_count),
+        "reported_crossing_count": int(len(crossings)),
+        "crossings": crossings,
+        "crossings_truncated": bool(crossing_count > len(crossings)),
+    }
+
+
 def _artist_overlap_candidates(
     ax: Axes,
     renderer: Any,

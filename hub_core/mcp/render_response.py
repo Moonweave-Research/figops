@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
+from pathlib import PurePosixPath
 from typing import Any, Final
 from urllib.parse import quote
 
@@ -14,6 +16,7 @@ MAX_RENDER_RESPONSE_BYTES: Final = 96 * 1024
 MAX_RESPONSE_WARNINGS: Final = 24
 MAX_RESPONSE_TEXT: Final = 512
 _RASTER_MEDIA: Final = {"image/png", "image/jpeg", "image/webp"}
+_SHA256: Final = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def one_render_response(tool_name: str, result: Mapping[str, Any]) -> dict[str, Any]:
@@ -45,6 +48,7 @@ def one_render_response(tool_name: str, result: Mapping[str, Any]) -> dict[str, 
                 "reason": _text(runtime_availability.get("reason")),
             }
         _add_project_render_context(response, result)
+        _add_project_result_contract(response, result)
         return _bounded(response)
 
     evidence = normalize_evidence_envelope(evidence_raw)
@@ -66,6 +70,7 @@ def one_render_response(tool_name: str, result: Mapping[str, Any]) -> dict[str, 
         "resolution_hint": None,
     }
     _add_project_render_context(response, result)
+    _add_project_result_contract(response, result)
     return _bounded(response)
 
 
@@ -168,6 +173,86 @@ def _add_project_render_context(response: dict[str, Any], result: Mapping[str, A
         value = result.get(key)
         if isinstance(value, Mapping):
             response[key] = dict(value)
+
+
+def _safe_relative_path(value: Any) -> str | None:
+    """Return a project/runtime-relative path, rejecting host paths and traversal."""
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    normalized = value.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        return None
+    # Windows drive-qualified paths are not relative even when parsed as POSIX.
+    if len(normalized) >= 2 and normalized[1] == ":":
+        return None
+    return path.as_posix()
+
+
+def _project_result_contract(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    status = value.get("status")
+    if status not in {"created", "unavailable"}:
+        return None
+    uri = value.get("uri")
+    if not isinstance(uri, str) or not uri.startswith("runtime://"):
+        uri = None
+    elif _safe_relative_path(uri.removeprefix("runtime://")) is None:
+        uri = None
+    digest = value.get("sha256")
+    if not isinstance(digest, str) or _SHA256.fullmatch(digest) is None:
+        digest = None
+    return {
+        "status": status,
+        "uri": uri,
+        "relative_path": _safe_relative_path(value.get("relative_path")),
+        "project_relative_path": _safe_relative_path(value.get("project_relative_path")),
+        "sha256": digest.lower() if digest else None,
+        "source": "runtime_snapshot",
+    }
+
+
+def _durable_result_contract(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    status = value.get("status")
+    if status not in {"promoted", "not_promoted"}:
+        return None
+    reason_code = value.get("reason_code")
+    if reason_code is not None:
+        reason_code = _text(reason_code)
+    reason = value.get("reason")
+    if reason is not None:
+        reason = _text(reason)
+    return {
+        "status": status,
+        "relative_path": _safe_relative_path(value.get("relative_path")),
+        "reason_code": reason_code,
+        "reason": reason,
+        "source": "durable_project_result",
+    }
+
+
+def _add_project_result_contract(response: dict[str, Any], result: Mapping[str, Any]) -> None:
+    """Preserve the explicit runtime/durable distinction on the compact v2 surface."""
+
+    runtime_artifact = _project_result_contract(result.get("runtime_artifact"))
+    durable_result = _durable_result_contract(result.get("durable_result"))
+    if runtime_artifact is not None:
+        response["runtime_artifact"] = runtime_artifact
+    if durable_result is not None:
+        response["durable_result"] = durable_result
+    if isinstance(result.get("promotion_eligible"), bool):
+        response["promotion_eligible"] = result["promotion_eligible"]
+    if isinstance(result.get("source_unchanged"), bool):
+        response["source_unchanged"] = result["source_unchanged"]
+    if result.get("overwrite_scope") == "job_workspace_only":
+        response["overwrite_scope"] = "job_workspace_only"
+    if durable_result is not None:
+        response["promotion_status"] = durable_result["status"]
+        response["promotion_reason"] = durable_result["reason"]
 
 
 def _bounded(response: dict[str, Any]) -> dict[str, Any]:

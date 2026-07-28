@@ -13,6 +13,7 @@ GEOMETRY_METRIC_NAMES = (
     "style_geometry_observations",
     "text_axis_edge_distances",
     "artist_pair_iou",
+    "line_text_crossings",
     "annotation_overlay_contrast_ratios",
 )
 

@@ -17,6 +17,42 @@ def _visible_tick_labels(labels: list[Any], *, is_paintable: PaintablePredicate)
     return [label for label in labels if label.get_text() and is_paintable(label)]
 
 
+def _axis_tick_labels(ax: Any, axis: str, *, minor: bool = False) -> list[Any]:
+    """Return major or minor labels without changing the public major index space.
+
+    ``Axes.get_*ticklabels()`` defaults to major ticks.  Keeping this small
+    compatibility helper here lets the overlap metric inspect labels that are
+    actually painted by a minor formatter while preserving the historical
+    ``x_overlap_pairs``/``y_overlap_pairs`` indices for major labels.
+    """
+
+    getter = ax.get_xticklabels if axis == "x" else ax.get_yticklabels
+    try:
+        return list(getter(minor=minor))
+    except TypeError:
+        # A minimal test double (or an older Matplotlib facade) may not expose
+        # the ``minor`` keyword.  Its default remains the major-label path.
+        return list(getter())
+
+
+def _offset_text_evidence(axis_obj: Any, *, is_paintable: PaintablePredicate) -> dict[str, Any]:
+    """Expose the rendered offset text as policy-neutral, deterministic evidence."""
+
+    getter = getattr(axis_obj, "get_offset_text", None)
+    if getter is None:
+        return {"text": "", "visible": False, "paintable": False, "displayed": False}
+    offset = getter()
+    if offset is None:
+        return {"text": "", "visible": False, "paintable": False, "displayed": False}
+    text = str(offset.get_text() or "")
+    return {
+        "text": text,
+        "visible": bool(offset.get_visible()),
+        "paintable": bool(is_paintable(offset)),
+        "displayed": bool(text and is_paintable(offset)),
+    }
+
+
 def _truncate_pairs(pairs: list[list[int]], *, max_reported_pairs: int) -> tuple[list[list[int]], bool]:
     if len(pairs) > max_reported_pairs:
         return pairs[:max_reported_pairs], True
@@ -33,14 +69,38 @@ def _tick_label_overlaps(
     max_reported_pairs: int,
 ) -> dict[str, Any]:
     name = "tick_label_overlaps"
+    x_major_labels = _visible_tick_labels(
+        _axis_tick_labels(ax, "x", minor=False), is_paintable=is_paintable
+    )
+    y_major_labels = _visible_tick_labels(
+        _axis_tick_labels(ax, "y", minor=False), is_paintable=is_paintable
+    )
+    x_minor_labels = _visible_tick_labels(
+        _axis_tick_labels(ax, "x", minor=True), is_paintable=is_paintable
+    )
+    y_minor_labels = _visible_tick_labels(
+        _axis_tick_labels(ax, "y", minor=True), is_paintable=is_paintable
+    )
     x_pairs = _axis_tick_overlaps(
-        _visible_tick_labels(list(ax.get_xticklabels()), is_paintable=is_paintable),
+        x_major_labels,
         renderer,
         "x",
         max_text_artists=max_text_artists,
     )
     y_pairs = _axis_tick_overlaps(
-        _visible_tick_labels(list(ax.get_yticklabels()), is_paintable=is_paintable),
+        y_major_labels,
+        renderer,
+        "y",
+        max_text_artists=max_text_artists,
+    )
+    x_minor_pairs = _axis_tick_overlaps(
+        x_minor_labels,
+        renderer,
+        "x",
+        max_text_artists=max_text_artists,
+    )
+    y_minor_pairs = _axis_tick_overlaps(
+        y_minor_labels,
         renderer,
         "y",
         max_text_artists=max_text_artists,
@@ -51,9 +111,26 @@ def _tick_label_overlaps(
             "passed": None,
             "detail": f"skipped: text artist count exceeds cap {max_text_artists}",
             "data": {"axis_index": int(axis_index)},
-        }
+    }
     x_pairs, x_truncated = _truncate_pairs(x_pairs, max_reported_pairs=max_reported_pairs)
     y_pairs, y_truncated = _truncate_pairs(y_pairs, max_reported_pairs=max_reported_pairs)
+    if x_minor_pairs is not None:
+        x_minor_pairs, x_minor_truncated = _truncate_pairs(
+            x_minor_pairs, max_reported_pairs=max_reported_pairs
+        )
+    else:
+        x_minor_truncated = False
+    if y_minor_pairs is not None:
+        y_minor_pairs, y_minor_truncated = _truncate_pairs(
+            y_minor_pairs, max_reported_pairs=max_reported_pairs
+        )
+    else:
+        y_minor_truncated = False
+    x_minor_label_texts = [str(label.get_text()) for label in x_minor_labels[:max_text_artists]]
+    y_minor_label_texts = [str(label.get_text()) for label in y_minor_labels[:max_text_artists]]
+    # Deliberately keep ``passed`` and its count major-only for compatibility.
+    # Minor evidence is additive and policy-neutral; callers can decide whether
+    # a journal policy should suppress it without changing generic diagnostics.
     count = len(x_pairs) + len(y_pairs)
     return {
         "name": name,
@@ -65,6 +142,18 @@ def _tick_label_overlaps(
             "y_overlap_pairs": y_pairs,
             "x_overlap_pairs_truncated": bool(x_truncated),
             "y_overlap_pairs_truncated": bool(y_truncated),
+            "x_minor_labels": x_minor_label_texts,
+            "y_minor_labels": y_minor_label_texts,
+            "x_minor_label_count": len(x_minor_labels),
+            "y_minor_label_count": len(y_minor_labels),
+            "x_minor_labels_truncated": len(x_minor_labels) > len(x_minor_label_texts),
+            "y_minor_labels_truncated": len(y_minor_labels) > len(y_minor_label_texts),
+            "x_minor_overlap_pairs": x_minor_pairs,
+            "y_minor_overlap_pairs": y_minor_pairs,
+            "x_minor_overlap_pairs_truncated": bool(x_minor_truncated),
+            "y_minor_overlap_pairs_truncated": bool(y_minor_truncated),
+            "x_offset_text": _offset_text_evidence(ax.xaxis, is_paintable=is_paintable),
+            "y_offset_text": _offset_text_evidence(ax.yaxis, is_paintable=is_paintable),
         },
     }
 

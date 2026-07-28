@@ -88,6 +88,30 @@ _SIGNIFICANCE_MARKER_SCHEMA = {
 
 MCP_BATCH_MAX_PROJECTS = 50
 
+_RUNTIME_ARTIFACT_CONTRACT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string", "enum": ["created", "unavailable"]},
+        "uri": {"type": ["string", "null"]},
+        "relative_path": {"type": ["string", "null"]},
+        "project_relative_path": {"type": ["string", "null"]},
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$"},
+        "source": {"type": "string", "enum": ["runtime_snapshot"]},
+    },
+    "additionalProperties": False,
+}
+_DURABLE_RESULT_CONTRACT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string", "enum": ["promoted", "not_promoted"]},
+        "relative_path": {"type": ["string", "null"]},
+        "reason_code": {"type": ["string", "null"]},
+        "reason": {"type": ["string", "null"]},
+        "source": {"type": "string", "enum": ["durable_project_result"]},
+    },
+    "additionalProperties": False,
+}
+
 
 def describe_figops_surface() -> dict[str, Any]:
     return {
@@ -158,7 +182,13 @@ def list_tool_definitions(
             _standard_output_schema(
                 {
                     "hub_path": {"type": "string"},
-                    "version": {"type": "string"},
+                    "version": {
+                        "type": "string",
+                        "description": (
+                            "Installed FigOps package version. This is independent of audit policy "
+                            "projection identifiers."
+                        ),
+                    },
                     "python_executable": {"type": "string"},
                     "runtime_root": {"type": "string"},
                     "style_format_count": {"type": "integer"},
@@ -538,7 +568,14 @@ def list_tool_definitions(
                         },
                         "output_format": {"type": "string", "enum": sorted(ALLOWED_OUTPUT_FORMATS)},
                         "dry_run": {"type": "boolean", "default": False},
-                        "overwrite": {"type": "boolean", "default": False},
+                        "overwrite": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Replace the existing isolated MCP job workspace only; "
+                                "never overwrite the durable project output."
+                            ),
+                        },
                         "job_id": job_id_arg,
                         "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 4},
                         "baseline_path": baseline_path_arg,
@@ -566,6 +603,12 @@ def list_tool_definitions(
                     "claim_inventory": {"type": "object"},
                     "publication_status": {"type": "string", "enum": ["verified", "unverified"]},
                     "promotion_eligible": {"type": "boolean"},
+                    "runtime_artifact": _RUNTIME_ARTIFACT_CONTRACT_SCHEMA,
+                    "durable_result": _DURABLE_RESULT_CONTRACT_SCHEMA,
+                    "promotion_status": {"type": "string", "enum": ["promoted", "not_promoted"]},
+                    "promotion_reason": {"type": ["string", "null"]},
+                    "source_unchanged": {"type": "boolean"},
+                    "overwrite_scope": {"type": "string", "enum": ["job_workspace_only"]},
                     "artifact_status": {"type": "string"},
                     "baseline_comparison": {"type": "object"},
                     "provenance": {"type": "object"},
