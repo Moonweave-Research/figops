@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "figops"
-version = "0.20.0"
+version = "0.20.1"
 description = "Reproducible plotting and analysis pipeline for research projects"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -27,7 +27,7 @@ dependencies = [
     "openpyxl>=3.1,<4",
     "rich>=13.0,<15",
     "markdown>=3.10.2",
-    "pymdown-extensions>=10.21.3",
+    "pymdown-extensions>=11.0.0",
     "python-pptx>=1.0.2",
     "svgutils>=0.3.4",
     "lxml>=6.1.0",

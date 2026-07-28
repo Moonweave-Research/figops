@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from hub_core.approval_authority import ApprovalAuthorityRoot
 from hub_core.path_identity import canonical_path, canonical_relative_to
 from hub_core.redaction import redact_secrets, redact_text
 
@@ -16,6 +17,7 @@ from .errors import infer_tool_error_entry, taxonomy_data, taxonomy_entry_for_ex
 from .prompts import McpPromptsMixin
 from .render_orchestration import McpRenderOrchestrationMixin
 from .resources import McpResourcesMixin
+from .review_schemas import review_tool_definitions
 from .schemas import (
     get_tool_handlers,
 )
@@ -44,6 +46,7 @@ from .tools.render_project import McpRenderProjectMixin
 from .tools.render_tools import McpRenderToolsMixin
 from .tools.render_v2 import McpRenderV2Mixin
 from .tools.render_validation import McpRenderValidationMixin
+from .tools.review_tools import McpReviewToolsMixin
 
 
 class FigOpsMCPServer(
@@ -52,6 +55,7 @@ class FigOpsMCPServer(
     McpRenderV2Mixin,
     McpReadToolsMixin,
     McpReadinessToolsMixin,
+    McpReviewToolsMixin,
     McpRenderToolsMixin,
     McpRenderProjectMixin,
     McpRenderCsvMixin,
@@ -75,9 +79,41 @@ class FigOpsMCPServer(
         write_tools_enabled: bool | None = None,
         surface_profile: str | None = None,
         require_initialize: bool = False,
+        require_host_approval: bool = False,
+        host_authority_root: ApprovalAuthorityRoot | None = None,
+        host_authority_index: ApprovalAuthorityRoot | None = None,
+        # Explicit aliases keep the trust channel discoverable to callers
+        # using the approval-domain terminology.  These are constructor-only
+        # values and are never loaded from tool arguments, project files, or
+        # environment variables.
+        approval_authority_root: ApprovalAuthorityRoot | None = None,
+        approval_authority_index: ApprovalAuthorityRoot | None = None,
+        host_authority: ApprovalAuthorityRoot | None = None,
+        approval_authority: ApprovalAuthorityRoot | None = None,
     ) -> None:
         self.require_initialize = require_initialize
         self.initialized = False
+        authority_candidates = [
+            candidate
+            for candidate in (
+                host_authority_root,
+                host_authority_index,
+                approval_authority_root,
+                approval_authority_index,
+                host_authority,
+                approval_authority,
+            )
+            if candidate is not None
+        ]
+        if authority_candidates and any(
+            candidate is not authority_candidates[0] for candidate in authority_candidates[1:]
+        ):
+            raise ValueError("Only one identical host approval authority root/index may be supplied.")
+        self.host_authority_root = authority_candidates[0] if authority_candidates else None
+        self.host_authority_index = self.host_authority_root
+        self.approval_authority_root = self.host_authority_root
+        self.approval_authority_index = self.host_authority_root
+        self.require_host_approval = bool(require_host_approval)
         if config is None:
             resolved_config = McpServerConfig.from_env()
         elif isinstance(config, McpServerConfig):
@@ -102,6 +138,7 @@ class FigOpsMCPServer(
         return schema_list_tool_definitions(
             profile=self.surface_profile,
             write_tools_enabled=self.write_tools_enabled,
+            require_host_approval=self.require_host_approval,
         )
 
     def callable_tool_definitions(self) -> list[dict[str, Any]]:
@@ -115,7 +152,14 @@ class FigOpsMCPServer(
         return schema_list_tool_definitions(
             profile=self.surface_profile,
             write_tools_enabled=True,
+            require_host_approval=self.require_host_approval,
         )
+
+    @staticmethod
+    def optional_write_tool_definitions() -> list[dict[str, Any]]:
+        """Return additive write schemas kept outside frozen discovery profiles."""
+
+        return review_tool_definitions()
 
     @staticmethod
     def list_resource_definitions() -> list[dict[str, str]]:
@@ -135,6 +179,12 @@ class FigOpsMCPServer(
     def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         arguments = dict(arguments or {})
         handler = self._handlers.get(name)
+        # The review writer is intentionally additive and is not inserted into
+        # the frozen v2/compatibility discovery profiles.  It remains callable
+        # by its one canonical name so operators can opt into the write gate
+        # without changing historical tool counts or aliases.
+        if handler is None and name == "figops.record_human_review":
+            handler = self.record_human_review
         if handler is None:
             raise ValueError(f"Unknown FigOps MCP tool: {name}")
         structured = self._authorize_write_tool(name, arguments)

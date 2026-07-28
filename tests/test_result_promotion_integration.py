@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -11,8 +13,20 @@ from PIL import Image
 from hub_core.artifact_policy_measurement import measure_artifact_policy
 from hub_core.claim_inventory import evaluate_project_claim_inventory
 from hub_core.durable_promotion import verify_promoted_result
+from hub_core.human_review_receipt import (
+    calculate_subject_digest,
+    opaque_figure_artifact_id,
+    opaque_project_id,
+)
 from hub_core.mcp import FigOpsMCPServer
+from hub_core.promotion_gate_receipt import (
+    GATE_CODE_ORDER,
+    build_promotion_gate_receipt,
+    canonical_promotion_gate_receipt_bytes,
+)
 from hub_core.result_promotion import ResultPromotionError, promote_eligible_project_result
+
+DEFAULT_SCOPE = "figure_scientific_and_communication"
 
 
 def _manifest(*, job_id: str, output_sha256: str, eligible: bool = True) -> dict[str, object]:
@@ -128,6 +142,94 @@ def _bind_policy(manifest: dict[str, object], artifact: Path, digest: str) -> No
     evidence["policy_projections"] = [measured["policy_projection"]]
 
 
+def _eligible_promotion_fixture(tmp_path: Path, *, job_id: str) -> dict[str, object]:
+    project = tmp_path / "project"
+    runtime = tmp_path / "runtime"
+    runtime_artifact = runtime / "mcp_project_jobs" / job_id / "project" / "results" / "figures" / "Fig1.png"
+    output_sha256 = _write_compliant_png(runtime_artifact)
+    snapshot_root = runtime_artifact.parents[2]
+    selected = _write_no_claim_snapshot(snapshot_root)
+    manifest = _manifest(job_id=job_id, output_sha256=output_sha256)
+    manifest["claim_inventory"] = evaluate_project_claim_inventory(snapshot_root, selected)
+    _bind_policy(manifest, runtime_artifact, output_sha256)
+    manifest_path = runtime_artifact.parents[3] / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
+    (project / "results" / "figures").mkdir(parents=True)
+    (project / "results" / "evidence").mkdir(parents=True)
+    return {
+        "project_root": project,
+        "config": {
+            "project": {"name": "Promotion integration"},
+            "visual_style": {"validation_target": "nature"},
+        },
+        "runtime_root": runtime,
+        "runtime_artifact": runtime_artifact,
+        "output_relpath": "results/figures/Fig1.png",
+        "manifest": manifest,
+        "manifest_path": manifest_path,
+        "figure_id": "Fig1",
+        "selected_figure": selected,
+        "output_sha256": output_sha256,
+    }
+
+
+def _gate_receipt(
+    *,
+    gate_status: str,
+    artifact_sha256: str = "1" * 64,
+    lineage_sha256: str = "2" * 64,
+    project_id: str | None = None,
+    artifact_id: str | None = None,
+    subject_digest: str | None = None,
+    decision_scope: str = DEFAULT_SCOPE,
+) -> dict[str, object]:
+    if gate_status == "eligible":
+        subject_payload: dict[str, object] = {
+            "project_id": project_id or opaque_project_id("Promotion integration"),
+            "artifact_id": artifact_id or opaque_figure_artifact_id("Fig1"),
+            "artifact_sha256": artifact_sha256,
+            "lineage_receipt_sha256": lineage_sha256,
+            "evidence_digest": "3" * 64,
+            "resolved_policy_digest": "4" * 64,
+        }
+        subject: dict[str, object] | None = {
+            **subject_payload,
+            "subject_digest": subject_digest or calculate_subject_digest(subject_payload, decision_scope),
+        }
+        digests = {
+            "report_sha256": "6" * 64,
+            "lineage_receipt_sha256": lineage_sha256,
+            "publication_evidence_sha256": "3" * 64,
+            "resolved_policy_sha256": "4" * 64,
+            "review_receipt_sha256": None,
+        }
+        outcomes = ["passed"] * len(GATE_CODE_ORDER)
+    else:
+        subject = None
+        digests = {
+            "report_sha256": None,
+            "lineage_receipt_sha256": None,
+            "publication_evidence_sha256": None,
+            "resolved_policy_sha256": None,
+            "review_receipt_sha256": None,
+        }
+        outcomes = ["blocked", *(["passed"] * (len(GATE_CODE_ORDER) - 1))]
+    return build_promotion_gate_receipt(
+        gate_status=gate_status,
+        subject=subject,
+        digests=digests,
+        gates=[
+            {
+                "code": code,
+                "outcome": outcome,
+                "evidence_ref": code.lower(),
+                "message": "test",
+            }
+            for code, outcome in zip(GATE_CODE_ORDER, outcomes)
+        ],
+    )
+
+
 def test_eligible_runtime_result_is_promoted_with_runtime_independent_receipt(tmp_path: Path) -> None:
     project = tmp_path / "project"
     runtime = tmp_path / "runtime"
@@ -182,6 +284,211 @@ def test_eligible_runtime_result_is_promoted_with_runtime_independent_receipt(tm
             "results_sha256"
         ],
     }
+
+
+def test_supplied_missing_promotion_gate_fails_closed_without_mutation(tmp_path: Path) -> None:
+    kwargs = _eligible_promotion_fixture(tmp_path, job_id="job-gate-missing")
+    kwargs.pop("output_sha256")
+    kwargs["promotion_gate_receipt"] = {}
+
+    with pytest.raises(ResultPromotionError, match="promotion gate receipt is invalid"):
+        promote_eligible_project_result(**kwargs)
+
+    project = kwargs["project_root"]
+    assert isinstance(project, Path)
+    assert not (project / "results" / "figures" / "Fig1.png").exists()
+    assert list((project / "results" / "evidence").glob("*.receipt.json")) == []
+
+
+def test_blocked_promotion_gate_report_fails_closed_without_mutation(tmp_path: Path) -> None:
+    kwargs = _eligible_promotion_fixture(tmp_path, job_id="job-gate-blocked")
+    kwargs.pop("output_sha256")
+    kwargs["promotion_gate_receipt"] = {
+        "gate_status": "blocked",
+        "receipt_candidate": _gate_receipt(gate_status="blocked"),
+    }
+
+    with pytest.raises(ResultPromotionError, match="promotion gate report is not eligible"):
+        promote_eligible_project_result(**kwargs)
+
+    project = kwargs["project_root"]
+    assert isinstance(project, Path)
+    assert not (project / "results" / "figures" / "Fig1.png").exists()
+    assert list((project / "results" / "evidence").glob("*.receipt.json")) == []
+
+
+def test_promotion_gate_subject_artifact_hash_must_match_primary(tmp_path: Path) -> None:
+    kwargs = _eligible_promotion_fixture(tmp_path, job_id="job-gate-artifact-mismatch")
+    kwargs.pop("output_sha256")
+    kwargs["promotion_gate_receipt"] = _gate_receipt(
+        gate_status="eligible",
+        artifact_sha256="f" * 64,
+    )
+
+    with pytest.raises(ResultPromotionError, match="verified primary artifact"):
+        promote_eligible_project_result(**kwargs)
+
+    project = kwargs["project_root"]
+    assert isinstance(project, Path)
+    assert not (project / "results" / "figures" / "Fig1.png").exists()
+    assert list((project / "results" / "evidence").glob("*.receipt.json")) == []
+
+
+def test_promotion_gate_subject_project_id_must_match_project_name(tmp_path: Path) -> None:
+    kwargs = _eligible_promotion_fixture(tmp_path, job_id="job-gate-project-mismatch")
+    output_sha256 = kwargs.pop("output_sha256")
+    assert isinstance(output_sha256, str)
+    kwargs["promotion_gate_receipt"] = _gate_receipt(
+        gate_status="eligible",
+        artifact_sha256=output_sha256,
+        project_id=opaque_project_id("different project"),
+    )
+
+    with pytest.raises(ResultPromotionError, match="trusted project identity"):
+        promote_eligible_project_result(**kwargs)
+
+    project = kwargs["project_root"]
+    assert isinstance(project, Path)
+    assert not (project / "results" / "figures" / "Fig1.png").exists()
+    assert list((project / "results" / "evidence").glob("*.receipt.json")) == []
+
+
+def test_promotion_gate_subject_artifact_id_must_match_figure_id(tmp_path: Path) -> None:
+    kwargs = _eligible_promotion_fixture(tmp_path, job_id="job-gate-figure-mismatch")
+    output_sha256 = kwargs.pop("output_sha256")
+    assert isinstance(output_sha256, str)
+    kwargs["promotion_gate_receipt"] = _gate_receipt(
+        gate_status="eligible",
+        artifact_sha256=output_sha256,
+        artifact_id=opaque_figure_artifact_id("DifferentFigure"),
+    )
+
+    with pytest.raises(ResultPromotionError, match="selected figure identity"):
+        promote_eligible_project_result(**kwargs)
+
+    project = kwargs["project_root"]
+    assert isinstance(project, Path)
+    assert not (project / "results" / "figures" / "Fig1.png").exists()
+    assert list((project / "results" / "evidence").glob("*.receipt.json")) == []
+
+
+def test_promotion_gate_subject_digest_must_match_subject_fields(tmp_path: Path) -> None:
+    kwargs = _eligible_promotion_fixture(tmp_path, job_id="job-gate-subject-digest")
+    output_sha256 = kwargs.pop("output_sha256")
+    assert isinstance(output_sha256, str)
+    kwargs["promotion_gate_receipt"] = _gate_receipt(
+        gate_status="eligible",
+        artifact_sha256=output_sha256,
+        subject_digest="f" * 64,
+    )
+
+    with pytest.raises(ResultPromotionError, match="subject digest"):
+        promote_eligible_project_result(**kwargs)
+
+    project = kwargs["project_root"]
+    assert isinstance(project, Path)
+    assert not (project / "results" / "figures" / "Fig1.png").exists()
+    assert list((project / "results" / "evidence").glob("*.receipt.json")) == []
+
+
+def test_promotion_gate_subject_lineage_must_match_constructed_receipt(tmp_path: Path) -> None:
+    kwargs = _eligible_promotion_fixture(tmp_path, job_id="job-gate-lineage-mismatch")
+    output_sha256 = kwargs.pop("output_sha256")
+    assert isinstance(output_sha256, str)
+    kwargs["promotion_gate_receipt"] = _gate_receipt(
+        gate_status="eligible",
+        artifact_sha256=output_sha256,
+        lineage_sha256="e" * 64,
+    )
+
+    with pytest.raises(ResultPromotionError, match="durable lineage receipt"):
+        promote_eligible_project_result(**kwargs)
+
+    project = kwargs["project_root"]
+    assert isinstance(project, Path)
+    assert not (project / "results" / "figures" / "Fig1.png").exists()
+    assert list((project / "results" / "evidence").glob("*.receipt.json")) == []
+
+
+@pytest.mark.parametrize("decision_scope", [DEFAULT_SCOPE, "figure_visual_communication"])
+def test_eligible_promotion_gate_admits_after_lineage_binding(tmp_path: Path, decision_scope: str) -> None:
+    kwargs = _eligible_promotion_fixture(tmp_path, job_id="job-gate-eligible")
+    output_sha256 = kwargs.pop("output_sha256")
+    assert isinstance(output_sha256, str)
+
+    # The first legacy promotion gives this fixture's deterministic receipt
+    # binding; remove only its published bytes before exercising the gated path.
+    initial = promote_eligible_project_result(**kwargs)
+    assert initial is not None
+    artifact, receipt_artifact = initial
+    lineage = verify_promoted_result(
+        artifact.path,
+        receipt_artifact.path,
+        durable_root=kwargs["project_root"] / "results",
+        forbidden_roots=(kwargs["runtime_root"],),
+    )
+    artifact.path.unlink()
+    receipt_artifact.path.unlink()
+    kwargs["promotion_gate_receipt"] = _gate_receipt(
+        gate_status="eligible",
+        artifact_sha256=output_sha256,
+        lineage_sha256=lineage.canonical_sha256(),
+        decision_scope=decision_scope,
+    )
+    kwargs["promotion_gate_decision_scope"] = decision_scope
+
+    promoted = promote_eligible_project_result(**kwargs)
+
+    assert promoted is not None
+
+
+def test_promotion_failure_rolls_back_frozen_gate_receipt(tmp_path: Path) -> None:
+    kwargs = _eligible_promotion_fixture(tmp_path, job_id="job-gate-promotion-failure")
+    output_sha256 = kwargs.pop("output_sha256")
+    assert isinstance(output_sha256, str)
+
+    initial = promote_eligible_project_result(**kwargs)
+    assert initial is not None
+    artifact, receipt_artifact = initial
+    lineage = verify_promoted_result(
+        artifact.path,
+        receipt_artifact.path,
+        durable_root=kwargs["project_root"] / "results",
+        forbidden_roots=(kwargs["runtime_root"],),
+    )
+    artifact.path.unlink()
+    receipt_artifact.path.unlink()
+    kwargs["promotion_gate_receipt"] = _gate_receipt(
+        gate_status="eligible",
+        artifact_sha256=output_sha256,
+        lineage_sha256=lineage.canonical_sha256(),
+    )
+
+    with patch(
+        "hub_core.result_promotion.promote_result_with_receipt",
+        side_effect=RuntimeError("simulated promotion failure"),
+    ):
+        if os.name == "nt":
+            with pytest.raises(RuntimeError, match="simulated promotion failure"):
+                promote_eligible_project_result(**kwargs)
+        else:
+            with pytest.raises(ResultPromotionError, match="rollback was withheld"):
+                promote_eligible_project_result(**kwargs)
+
+    project = kwargs["project_root"]
+    assert isinstance(project, Path)
+    gate_destinations = list((project / "results" / "evidence").glob("*.promotion-gate.json"))
+    if os.name == "nt":
+        assert gate_destinations == []
+    else:
+        # POSIX cannot delete by verified file identity, so the gate receipt
+        # remains for manual review rather than risking a pathname race.
+        assert len(gate_destinations) == 1
+        gate_destination = gate_destinations[0]
+        assert gate_destination.read_bytes() == canonical_promotion_gate_receipt_bytes(
+            kwargs["promotion_gate_receipt"]
+        )
+    assert not (project / "results" / "figures" / "Fig1.png").exists()
 
 
 def test_unverified_or_review_required_runtime_result_is_never_promoted(tmp_path: Path) -> None:

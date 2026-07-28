@@ -1,8 +1,9 @@
 # FigOps - Architecture
 
-> Companion to `docs/ROADMAP.md`. Describes the current v0.20.0 release-candidate
-> architecture after the v0.19.0 release, including the AI-native v2 agent
-> surface and the PR #224 declared-project/runtime-result integrity path.
+> Companion to `docs/ROADMAP.md`. Describes the v0.20.0 published architecture
+> baseline plus current Phase 2 follow-up/Draft PR context, including the
+> AI-native v2 agent surface and the PR #224 declared-project/runtime-result
+> integrity path.
 
 ## Layers and dependency direction
 
@@ -10,6 +11,7 @@ Dependencies point **downward only**. A layer may import from layers below it,
 never above.
 
 ```
+orchestrator.py                    # CLI pipeline coordinator and read-only audit mode
 figops_mcp_server.py                # entrypoint (stdio); --smoke; thin
         |
         v
@@ -39,10 +41,15 @@ hub_core/legacy_structure_resolver.py  # schema-less 1.0 -> in-memory 1.1 view
 hub_core/project_layout.py             # one scaffold/normalization layout inventory
 hub_core/structure_inventory.py         # read-only semantic inventory
 hub_core/structure_audit.py             # findings, graph, unresolved classification
+hub_core/structure_audit_report.py      # all-project diagnostic report assembly/rendering
 hub_core/structure_plan.py              # deterministic reviewed copy plan
 hub_core/structure_role_binding.py       # destination -> declared role-root binding
 hub_core/structure_stage_cleanup.py      # ownership-safe private-stage/lease cleanup
 hub_core/structure_apply.py              # token/CAS-guarded copy-only transaction
+hub_core/dependency_script_inspection.py # dependency scanner facade and evidence API
+hub_core/dependency_python_inspection.py # bounded Python dependency extraction helper
+hub_core/dependency_r_inspection.py      # bounded R dependency extraction helper
+hub_core/dependency_scan_common.py       # shared path predicates and result ordering
 hub_core/runtime_boundary.py           # project/result/runtime disjointness
 hub_core/atomic_no_clobber.py          # native consuming no-replace namespace move
 hub_core/durable_promotion.py          # destination-filesystem staged promotion
@@ -88,7 +95,7 @@ policy-only; there is no import-linter contract in `.github/workflows/ci.yml` as
 of v0.20.0. Remaining over-budget files should be handled as scoped maintenance
 tracks rather than broad rewrites.
 
-Current files over the approximate 800-line budget, measured on 2026-07-16 with
+Current files over the approximate 800-line budget, measured on 2026-07-23 with
 the architecture inventory helper:
 
 ```bash
@@ -101,14 +108,19 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 <!-- architecture-inventory:end -->
 
 No Python module in the tracked architecture roots (`hub_core`, `plotting`, and
-`themes`) currently exceeds the 800-line split signal. Overlay
-normalization now lives in `plotting/renderers/annotation_normalization.py`,
+`themes`) currently exceeds the 800-line split signal. Render-project
+workflow/policy integrity decisions now live in
+`hub_core/mcp/render_project_integrity_context.py`, while the project-render MCP
+tool preserves its compatibility imports. Overlay normalization now lives in `plotting/renderers/annotation_normalization.py`,
 while the public overlay façade and compatibility imports remain stable.
 Structure-plan destination binding now lives in
 `hub_core/structure_role_binding.py`, while private-stage and directory-lease
 cleanup lives in `hub_core/structure_stage_cleanup.py`;
 `hub_core/structure_apply.py` retains its private compatibility aliases while
 focusing on transactional execution and config compare-and-swap.
+Workflow-intent config defaults, validation, and inspectable report assembly now
+live in `hub_core/config_workflow_intent.py`, while `hub_core/config_parser.py`
+keeps the public compatibility imports.
 
 The 2026-06-29 decomposition wave reduced the previous primary hotspots below
 1000 lines while preserving compatibility shims:
@@ -188,8 +200,9 @@ Windows safety smoke; source vector bytes are never substituted for a preview.
 The AI-native façade split remains intact after the structure work. Shared tool
 schema primitives live in `hub_core/mcp/tool_schema_common.py`, and the v1.1
 project-structure tool schema lives in `hub_core/mcp/structure_schemas.py`,
-while the registry façade continues to feed validation, discovery, and
-generated references. Overlay normalization remains in
+while Phase 2 project-render policy and workflow response schemas live in
+`hub_core/mcp/phase2_render_schemas.py`. The registry façade continues to feed
+validation, discovery, and generated references. Overlay normalization remains in
 `plotting/renderers/annotation_normalization.py`, with compatibility exports in
 the public overlay façade.
 
@@ -203,6 +216,22 @@ classification and planning are separated into `structure_inventory.py`,
 every approved destination back to its declared semantic root, while
 `structure_stage_cleanup.py` owns transaction-private stage and lease cleanup.
 Reviewed mutation is isolated in `structure_apply.py` and remains copy-only.
+
+`dependency_script_inspection.py` is the public read-only facade for bounded
+Python/R dependency evidence. It delegates language-specific extraction to
+`dependency_python_inspection.py` and `dependency_r_inspection.py`, while
+`dependency_scan_common.py` owns shared path predicates and deterministic
+deduplication/order. Its `analyze_dependency_script(...)` API returns
+deterministic static candidates plus `hardcoded_unresolved_references` and a
+`dependency_scan_incomplete` signal. It never executes scripts or guesses a
+semantic role: a caller-provided `role_roots` mapping resolves a literal only
+through its most-specific declared terminal semantic root. Grouping roots
+`scripts` and `results` never clear blockers, and equal-depth terminal matches
+remain unresolved. Parse/read/unsupported-language failures and dynamic path
+expressions remain incomplete evidence and block a migration plan.
+`structure_apply.py` also rejects non-empty `unresolved_proposals` before any
+copy, so a valid digest/token cannot turn scanner evidence or an unresolved
+proposal into an apply approval.
 
 Runtime and durable-result mechanics are separate from structure discovery.
 `runtime_boundary.py` enforces project/result/runtime disjointness,
@@ -306,6 +335,93 @@ the same truthful `compatibility` profile. New launcher and embedded clients
 should use `FigOpsMCPServer(surface_profile="v2" | "compatibility")` or the
 `GRAPH_HUB_MCP_SURFACE_PROFILE` launcher environment setting. Profile-aware
 references can be rendered from the live registry without duplicating alias schemas.
+
+The production `graphhub_mcp_server.py` launcher (and its
+`figops_mcp_server.py` entrypoint) is the trusted approval injection boundary:
+it supplies a host-owned process-local `ApprovalAuthorityRoot` and enables
+`require_host_approval=True`. Tool arguments, project files, environment
+variables, plans, and receipts cannot supply or replace that root. An embedded
+host may opt into secure mode by passing its own root through the constructor-only
+`host_authority_root` argument together with `require_host_approval=True`. If the
+secure flag/root are omitted, the embedded constructor preserves
+compatibility/token-only behavior. `GraphHubMCPServer` and other compatibility
+constructors are token-only compatibility surfaces and are not Phase 6 or release
+evidence.
+
+## All-project structure audit (CLI)
+
+The CLI exposes an independent, read-only structure diagnostic for the whole
+discovery root:
+
+```bash
+python orchestrator.py --audit-structure
+python orchestrator.py --audit-structure --audit-structure-format json --scan-depth 2
+```
+
+`orchestrator.py` resolves the research root, records the attempt as
+`selector_kind: audit_structure`, and delegates to
+`hub_core.structure_audit_report.build_structure_audit_report(root_dir,
+max_depth=...)`. It selects the module's deterministic Markdown or JSON
+renderer for the requested format and writes the result to stdout (Markdown by
+default). Attempt provenance remains on stderr.
+`--audit-structure-format` is valid only with `--audit-structure`.
+
+This mode is deliberately independent from project selection and execution:
+pipeline selectors and mutating/execution options (including `--project`,
+`--check-all`, and `--list-projects`) are rejected rather than silently
+combined. The audit walks the discovered projects up to `--scan-depth` and
+uses the read-only inventory/audit modules; it does not run analysis, plotting,
+diagram, or promotion steps and does not modify project files.
+
+The aggregate retains invalid-configuration and execution-boundary-blocked
+projects as diagnostic rows instead of silently dropping them. Its report
+schema is `figops.project-structure-audit-report.v1`; aggregate and per-project
+`proposed_changes` are always empty on this surface.
+
+Selection follows the canonical matrix in
+[`docs/project-structure-contract.md`](project-structure-contract.md):
+`invalid`, `boundary_blocked`, `skipped`, and `audit_error` rows are report-only;
+ambiguous/heuristic `unknowns` and `proposed_mappings` are candidate-only; and
+only explicit, reviewer-supplied `approved_mappings` (plus typed config edits)
+can form a copy-only plan. A reviewed dry-run returns a deterministic
+`plan_digest` and its `FIGOPS-APPLY-<plan_digest>` confirmation token. Apply
+requires the identical reviewed inputs and token, and fails closed on stale
+identity/configuration, collisions, unresolved dependencies, or token mismatch.
+The token proves integrity and exact replay of that plan; it does not prove an
+independent human identity, reviewer authority, or attestation, and the
+compatibility workflow does not close self-approval. The Phase 6 host-rooted approval
+authority contract is defined in the canonical
+[`runtime-integrity SSOT`](specs/2026-07-15-project-structure-runtime-integrity-plan.md#phase-6-host-rooted-approval-authority-contract):
+it requires a host capability or signature, canonical bindings, currentness and
+revocation checks, and fail-closed apply ordering. Secure MCP mode now enforces
+the contract with the host-owned process-local `ApprovalAuthorityRoot`, an
+opaque `approval_receipt_id`, and a mutation-boundary recheck. The default
+compatibility mode remains token-only for backward compatibility; its token,
+LLM JSON, and copy/runtime/durable/evidence receipts are not approval. The
+production `graphhub_mcp_server.py`/`figops_mcp_server.py` launcher now enables
+secure mode through the trusted host-root injection boundary, so the Phase 6
+host-approval gate is satisfied for that launcher. Compatibility constructors
+and the historical `GraphHubMCPServer` class remain token-only and are not
+release evidence; full release still requires the remaining exact-commit gates.
+
+During planning, `analyze_dependency_script` output is evidence only. Static
+imports/path literals are not role approvals; dynamic paths and parse/read or
+unsupported-language failures set the incomplete signal and remain plan
+blockers, and no role is guessed from names or extensions. The apply guard
+rejects any non-empty `hardcoded_unresolved_references` or
+`unresolved_proposals` before copying, even when the reviewed digest/token is
+otherwise valid.
+
+The emitted structure report is diagnostic output, not a runtime manifest,
+durable result, or evidence receipt. It describes current structure findings
+for review; it must not be treated as a promoted artifact or copied into a
+project's `results/` tree as if it were research output. Runtime job state,
+logs, caches, snapshots, and detailed manifests remain under the external
+runtime root, while durable results and receipts remain under their declared
+project role roots.
+Plans, digests, and confirmation tokens are likewise control-plane evidence;
+they do not move runtime state into `results/` or turn a diagnostic finding into
+a durable research result.
 
 ## Why this shape
 

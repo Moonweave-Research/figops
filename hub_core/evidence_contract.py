@@ -30,6 +30,7 @@ _PROVENANCE_HASH_FIELDS = (
 _AVAILABILITY = {"available", "unavailable", "not_applicable", "unknown"}
 _POLICY_KEYS = {"passed", "severity", "outcome", "hard", "blocked"}
 _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
+_RENDER_POLICY_CONTEXT_SCHEMA = "figops-render-policy-context/1"
 
 
 class EvidenceContractError(ValueError):
@@ -286,16 +287,48 @@ def _validate_provenance(value: Any, *, require_hashes: bool) -> None:
         _nonempty_string(provenance.get("reason"), "evidence.provenance.reason")
 
 
-def _validate_resolved_policy(value: Any) -> None:
+def _validate_resolved_policy(value: Any, path: str = "evidence.resolved_policy") -> None:
     if value is None:
         return
-    policy = _mapping(value, "evidence.resolved_policy")
-    _closed(policy, {"id", "version", "source", "parameters"}, "evidence.resolved_policy")
-    _nonempty_string(policy.get("id"), "evidence.resolved_policy.id")
-    _nonempty_string(policy.get("version"), "evidence.resolved_policy.version")
-    _nonempty_string(policy.get("source"), "evidence.resolved_policy.source")
+    policy = _mapping(value, path)
+    _closed(policy, {"id", "version", "source", "parameters"}, path)
+    _nonempty_string(policy.get("id"), f"{path}.id")
+    _nonempty_string(policy.get("version"), f"{path}.version")
+    _nonempty_string(policy.get("source"), f"{path}.source")
     if "parameters" in policy:
-        _mapping(policy["parameters"], "evidence.resolved_policy.parameters")
+        _mapping(policy["parameters"], f"{path}.parameters")
+
+
+def _validate_policy_context(value: Any) -> None:
+    if value is None:
+        return
+    context = _mapping(value, "evidence.policy_context")
+    _closed(
+        context,
+        {"schema_version", "source", "policy_set_sha256", "render_policy", "validation_target"},
+        "evidence.policy_context",
+    )
+    if context.get("schema_version") != _RENDER_POLICY_CONTEXT_SCHEMA:
+        _fail(
+            "POLICY_CONTEXT_SCHEMA_INVALID",
+            "evidence.policy_context.schema_version",
+            f"must be {_RENDER_POLICY_CONTEXT_SCHEMA!r}",
+    )
+    _nonempty_string(context.get("source"), "evidence.policy_context.source")
+    _sha256(context.get("policy_set_sha256"), "evidence.policy_context.policy_set_sha256")
+    render_policy = _mapping(
+        context.get("render_policy"),
+        "evidence.policy_context.render_policy",
+    )
+    _validate_resolved_policy(
+        render_policy,
+        "evidence.policy_context.render_policy",
+    )
+    if "validation_target" not in context:
+        _fail("FIELD_REQUIRED", "evidence.policy_context.validation_target", "is required")
+    target = context.get("validation_target")
+    if target is not None:
+        _nonempty_string(target, "evidence.policy_context.validation_target")
 
 
 def _validate_summary(value: Any, path: str) -> None:
@@ -446,6 +479,7 @@ def validate_evidence_envelope(envelope: Any) -> None:
             "artifacts",
             "provenance",
             "resolved_policy",
+            "policy_context",
             "mutation_ledger",
             "exact_reproducibility",
             "visual_comparison",
@@ -501,6 +535,7 @@ def validate_evidence_envelope(envelope: Any) -> None:
         require_hashes=artifact_status in {"passed", "warning"} and artifacts_exist,
     )
     _validate_resolved_policy(root.get("resolved_policy"))
+    _validate_policy_context(root.get("policy_context"))
     _validate_mutation_ledger(root.get("mutation_ledger"))
     if "exact_reproducibility" not in root:
         _fail("FIELD_REQUIRED", "evidence.exact_reproducibility", "is required")

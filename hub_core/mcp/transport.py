@@ -129,7 +129,10 @@ def _handle_json_rpc(server: Any, request: dict[str, Any]) -> dict[str, Any] | N
         if arguments is None:
             arguments = {}
         handlers = getattr(server, "_handlers", {})
-        if not isinstance(tool_name, str) or tool_name not in handlers:
+        optional_review = tool_name == "figops.record_human_review" and callable(
+            getattr(server, "record_human_review", None)
+        )
+        if not isinstance(tool_name, str) or (tool_name not in handlers and not optional_review):
             return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, f"Unknown tool: {tool_name}")
         if not isinstance(arguments, dict):
             return _json_rpc_error(request_id, JSONRPC_INVALID_PARAMS, "Tool arguments must be an object.")
@@ -199,7 +202,11 @@ def _callable_tool_definitions_for(server: Any) -> list[dict[str, Any]]:
 
     provider = getattr(server, "callable_tool_definitions", None)
     if callable(provider):
-        return provider()
+        definitions = provider()
+        optional_provider = getattr(server, "optional_write_tool_definitions", None)
+        if callable(optional_provider):
+            definitions = [*definitions, *optional_provider()]
+        return definitions
     return _tool_definitions_for(server)
 
 

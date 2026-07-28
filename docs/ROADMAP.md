@@ -97,7 +97,17 @@ Current release-candidate checkpoint:
   inventory/audit/plan/role-binding/apply, launcher-authorized external-raw
   execution, native no-replace result promotion, durable receipts, measured
   policy evidence, and verified project-script claims including conservative
-  dynamic-annotation discovery. CI run
+  dynamic-annotation discovery. The conservative dependency-scanner facade
+  `dependency_script_inspection.analyze_dependency_script` now delegates
+  bounded language-specific extraction to `dependency_python_inspection.py` and
+  `dependency_r_inspection.py`, with shared path predicates and deterministic
+  result ordering in `dependency_scan_common.py`. It reports deterministic
+  Python/R static candidates, unresolved hard-coded/dynamic references, and
+  incomplete scans without guessing roles; scanner output is evidence only,
+  while unresolved or incomplete findings are plan blockers, not approvals.
+  `role_roots` resolves a literal only through its most-specific declared
+  terminal semantic root; grouping roots `scripts` and `results` never clear
+  blockers, and equal-depth terminal ties remain unresolved. CI run
   [`29689087108`](https://github.com/Moonweave-Research/figops/actions/runs/29689087108)
   passed for source head `9e4d340b718529bd0f65ba46b2124dda718918a2`: macOS full
   pytest was 2,322 passed, 22 skipped, and 104 subtests, including the native
@@ -118,6 +128,55 @@ Current release-candidate checkpoint:
   reference: [PR #224 owner authorization](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221).
   Execute merge, tag, package publication, GitHub Release, and release
   promotion only after rechecking technical gates for the exact release commit.
+- The CLI now has an independent all-project structure diagnostic:
+  `python orchestrator.py --audit-structure` (or
+  `python orchestrator.py --audit-structure --audit-structure-format json`).
+  It consumes the read-only structure
+  inventory/audit path for projects discovered under the research root, honors
+  `--scan-depth`, and emits the rendered report on stdout without running a
+  pipeline or changing project files. The diagnostic report is review output
+  only; it retains invalid/boundary-blocked project rows for review, keeps
+  `proposed_changes` empty, and is not a runtime manifest, durable result, or
+  evidence receipt.
+- Structure migration follows the finding-to-plan selection matrix in
+  `docs/project-structure-contract.md`: `invalid`, `boundary_blocked`,
+  `skipped`, `audit_error`, and ambiguous/heuristic unknowns remain report-only
+  (unknowns and proposed mappings are candidate-only). Only explicit reviewed
+  `approved_mappings` and typed config edits form a copy-only plan. A dry-run
+  returns the deterministic `plan_digest` and bound
+  `FIGOPS-APPLY-<plan_digest>` token; apply requires the identical reviewed
+  inputs and token. The token proves plan integrity and exact replay, not
+  independent human identity or attestation; the compatibility workflow does
+  not close self-approval. The Phase 6 host-rooted approval authority contract
+  is defined in the canonical
+  [`runtime-integrity SSOT`](specs/2026-07-15-project-structure-runtime-integrity-plan.md#phase-6-host-rooted-approval-authority-contract)
+  and requires a canonical payload, host capability/signature trust proof,
+  currentness/revocation checks, and fail-closed apply ordering. Approval
+  is enforced when secure MCP mode sets `require_host_approval: true` and is
+  backed by the host-owned process-local `ApprovalAuthorityRoot`; the host
+  receipt is rechecked at the mutation boundary. Default compatibility mode
+  remains token-only for backward compatibility, so audit/plan control
+  evidence, LLM JSON, and copy/runtime/durable/evidence receipts are not
+  approval. The production `graphhub_mcp_server.py`/`figops_mcp_server.py`
+  launcher is the trusted injection boundary: it creates or receives the
+  host-owned process-local root and enables secure mode. An embedded host may
+  inject an optional host-owned root through the constructor-only
+  `host_authority_root` channel together with `require_host_approval: true`; if
+  the secure flag/root are omitted, the embedded constructor preserves
+  compatibility/token-only behavior. Compatibility constructors and the
+  historical `GraphHubMCPServer` class remain token-only and are not Phase 6 or
+  release evidence. The Phase 6
+  host-approval gate is satisfied for the production launcher; full release
+  still requires the remaining exact-commit gates. Audit/plan control evidence
+  never becomes a runtime manifest or durable result, and runtime remains
+  external to the project.
+
+- Structure normalization applies a fail-closed guard: a plan containing any
+  `hardcoded_unresolved_references` or `unresolved_proposals` is rejected before
+  copy, even with a valid digest and confirmation token. Parse/read/unsupported
+  language failures and dynamic dependency expressions set the scanner's
+  incomplete signal; no filename, extension, or directory heuristic can assign
+  a semantic role.
 
 ---
 
@@ -154,10 +213,15 @@ hub_core/
   project_structure_contract.py # v1.1 role/DAG/alias resolution
   legacy_structure_resolver.py  # legacy 1.0 in-memory compatibility view
   project_layout.py             # shared scaffold/normalization inventory
-  structure_inventory.py / structure_audit.py / structure_plan.py
-                               # read-only semantic discovery and reviewed plan
+  structure_inventory.py / structure_audit.py / structure_audit_report.py
+                               # read-only semantic discovery and all-project report
+  structure_plan.py             # deterministic reviewed copy plan
   structure_role_binding.py    # approved destinations bound to declared roots
   structure_apply.py           # write-gated copy-only apply transaction
+  dependency_script_inspection.py # dependency scanner facade and evidence API
+  dependency_python_inspection.py # bounded Python dependency extraction helper
+  dependency_r_inspection.py      # bounded R dependency extraction helper
+  dependency_scan_common.py       # shared path predicates and result ordering
   runtime_boundary.py          # project/result/runtime disjointness
   atomic_no_clobber.py         # native consuming same-FS no-replace publication
   durable_promotion.py         # staged same-filesystem result promotion
@@ -410,6 +474,12 @@ and scale/profile resolution into `themes.font_token_resolver`. The public
 `FontTokens` type remains façade-owned, and the live profile collaborators are
 passed through explicitly. With `themes.journal_theme` now below 800 lines, no
 tracked Python module exceeds the current architecture split signal.
+
+The dependency scanner split keeps `hub_core.dependency_script_inspection` as
+the compatibility facade while moving bounded Python and R extraction into
+`hub_core.dependency_python_inspection` and
+`hub_core.dependency_r_inspection`; shared path predicates and deterministic
+evidence ordering live in `hub_core.dependency_scan_common`.
 
 The current execution plan for that maintenance track lives in
 `docs/specs/2026-06-28-large-module-decomposition-plan.md`.

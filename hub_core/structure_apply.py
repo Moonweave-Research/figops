@@ -7,13 +7,17 @@ import os
 import shutil
 import stat
 import uuid
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from .atomic_no_clobber import (
     ATOMIC_NO_CLOBBER_UNAVAILABLE,
     AtomicNoClobberUnavailable,
     atomic_no_clobber_move,
+)
+from .structure_apply_preflight import (
+    materialize_parent_witness,
+    prepare_structure_entries,
 )
 from .structure_path_security import (
     DirectoryWitness,
@@ -50,27 +54,6 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def _inside(root: Path, value: object) -> Path:
-    if not isinstance(value, str):
-        raise ValueError("Plan paths must be strings.")
-    rel = PurePosixPath(value)
-    if (
-        rel.is_absolute()
-        or rel.as_posix() != value
-        or ".." in rel.parts
-        or any(":" in part for part in rel.parts)
-        or "\\" in value
-    ):
-        raise ValueError("Plan path escapes the project root.")
-    path = root.joinpath(*rel.parts)
-    current = root
-    for part in rel.parts[:-1]:
-        current /= part
-        if current.is_symlink():
-            raise ValueError(f"Plan path traverses a symlink: {value}")
-    return path
 
 
 def _fsync_parent(path: Path) -> None:
@@ -502,6 +485,7 @@ def apply_structure_plan(
     plan: Mapping[str, Any],
     *,
     confirmation_token: str,
+    pre_apply_verifier: Callable[[Path, Mapping[str, Any]], None] | None = None,
     post_apply_verifier: Callable[[Path, Mapping[str, Any]], Mapping[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
     """Apply a reviewed plan without moving, linking, replacing, or deleting originals."""
@@ -509,12 +493,19 @@ def apply_structure_plan(
     validate_confirmation_token(plan, confirmation_token)
     if plan.get("version") != PLAN_VERSION:
         raise ValueError(f"Unsupported structure plan version: {plan.get('version')!r}.")
+    for field in ("hardcoded_unresolved_references", "unresolved_proposals"):
+        if field not in plan:
+            raise ValueError(f"Structure plan is missing the required {field} field for its version.")
+        if not isinstance(plan[field], list):
+            raise ValueError(f"Structure plan {field} must be a list.")
     if plan.get("operation") != "copy_only":
         raise ValueError("Only copy_only structure plans can be applied.")
     if plan.get("collisions"):
         raise FileExistsError("Structure plan contains destination collisions.")
     if plan.get("hardcoded_unresolved_references"):
         raise RuntimeError("Structure plan has unresolved hard-coded dependencies.")
+    if plan.get("unresolved_proposals"):
+        raise RuntimeError("Structure plan has unresolved normalization proposals.")
     root = Path(str(plan.get("project_root"))).absolute()
     try:
         root_identity = capture_project_root(root)
@@ -578,7 +569,9 @@ def apply_structure_plan(
         root_identity=root_identity,
         planned_hash=planned_config_hash if isinstance(planned_config_hash, str) else None,
     )
-    prepared: list[tuple[Mapping[str, Any], Path, Path, DirectoryWitness]] = []
+    # With no verifier, retain the historical eager parent preparation.  When
+    # a verifier is supplied, destination-parent creation is deferred until
+    # after the final authority gate so rejection cannot mutate the namespace.
     created: list[tuple[Path, str, tuple[int, int]]] = []
     config_replacement_identity: tuple[int, int] | None = None
     config_original_guard: Path | None = None
@@ -587,37 +580,28 @@ def apply_structure_plan(
     held_directory_leases: list[Any] = []
     config_replaced = False
     try:
-        for entry in entries:
-            if set(entry) != {"source", "destination", "role", "sha256", "size", "source_identity"}:
-                raise ValueError("Plan entry shape is invalid or contains an executable operation.")
-            if not isinstance(entry["source_identity"], Mapping) or set(entry["source_identity"]) != {
-                "device",
-                "inode",
-            }:
-                raise ValueError("Plan source identity is invalid.")
-            source = _inside(root, entry["source"])
-            destination = _inside(root, entry["destination"])
-            with open_bound_source(
-                root,
-                entry["source"],
-                root_identity=root_identity,
-                planned_identity=dict(entry["source_identity"]),
-            ) as source_handle:
-                source_hash, source_size = hash_handle(source_handle)
-            if source_size != entry["size"] or source_hash != entry["sha256"]:
-                raise RuntimeError(f"Planned source changed after review: {entry['source']}")
-            parent_relative = PurePosixPath(entry["destination"]).parent.as_posix()
-            parent_witness = capture_directory_witness(
-                root,
-                parent_relative,
-                root_identity=root_identity,
-                create=True,
-            )
-            if destination.exists() or destination.is_symlink():
-                raise FileExistsError(f"Destination appeared after plan review: {entry['destination']}")
-            prepared.append((entry, source, destination, parent_witness))
+        prepared = prepare_structure_entries(
+            entries,
+            root=root,
+            root_identity=root_identity,
+            defer_parent_creation=pre_apply_verifier is not None,
+        )
 
-        for entry, _source, destination, parent_witness in prepared:
+        # All reviewed-plan, root/config identity, source digest, destination
+        # collision, and containment checks are complete at this point.  A
+        # host authority callback is deliberately the final gate before any
+        # staging or publication mutation begins.
+        if pre_apply_verifier is not None:
+            pre_apply_verifier(root, plan)
+
+        for prepared_entry in prepared:
+            entry = prepared_entry.entry
+            destination = prepared_entry.destination
+            parent_witness = materialize_parent_witness(
+                prepared_entry,
+                root=root,
+                root_identity=root_identity,
+            )
             with lease_directory_witness(parent_witness):
                 assert_directory_witness(parent_witness)
                 with open_bound_source(

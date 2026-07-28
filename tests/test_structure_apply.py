@@ -9,7 +9,7 @@ import yaml
 
 from hub_core.atomic_no_clobber import AtomicNoClobberUnavailable
 from hub_core.structure_apply import apply_structure_plan
-from hub_core.structure_plan import build_structure_plan, confirmation_token
+from hub_core.structure_plan import build_structure_plan, canonical_plan_digest, confirmation_token
 
 
 def _test_no_clobber_move(source: Path, destination: Path) -> None:
@@ -42,6 +42,22 @@ def test_copy_apply_requires_matching_token_and_preserves_original(tmp_path: Pat
     assert (tmp_path / "raw" / "input.csv").read_bytes() == source.read_bytes()
 
 
+@pytest.mark.parametrize("missing_field", ["hardcoded_unresolved_references", "unresolved_proposals"])
+def test_apply_rejects_v2_plan_missing_scanner_fields(tmp_path: Path, missing_field: str) -> None:
+    source = tmp_path / "legacy" / "input.csv"
+    source.parent.mkdir()
+    source.write_bytes(b"original")
+    plan = _plan(tmp_path)
+    del plan[missing_field]
+    plan["digest"] = canonical_plan_digest(plan)
+
+    with pytest.raises(ValueError, match=rf"missing the required {missing_field} field"):
+        apply_structure_plan(plan, confirmation_token=confirmation_token(plan))
+
+    assert not (tmp_path / "raw" / "input.csv").exists()
+    assert source.read_bytes() == b"original"
+
+
 def test_apply_rejects_stale_source_collision_and_unresolved_reference(tmp_path: Path) -> None:
     source = tmp_path / "legacy" / "input.csv"
     source.parent.mkdir()
@@ -66,6 +82,18 @@ def test_apply_rejects_stale_source_collision_and_unresolved_reference(tmp_path:
     )
     with pytest.raises(RuntimeError, match="hard-coded"):
         apply_structure_plan(unresolved, confirmation_token=confirmation_token(unresolved))
+
+    unresolved_proposal = build_structure_plan(
+        tmp_path,
+        [{"source": "legacy/input.csv", "destination": "raw/input.csv", "role": "raw"}],
+        unresolved_proposals=[{"source": "notes.md", "reason": "ambiguous"}],
+    )
+    assert unresolved_proposal["unresolved_proposals"] == [{"source": "notes.md", "reason": "ambiguous"}]
+    with pytest.raises(RuntimeError, match="normalization proposals"):
+        apply_structure_plan(
+            unresolved_proposal,
+            confirmation_token=confirmation_token(unresolved_proposal),
+        )
 
 
 def test_apply_race_never_clobbers_competing_destination(tmp_path: Path, monkeypatch) -> None:

@@ -119,6 +119,8 @@ def _apply_cli_preset(config: dict, preset_name: str) -> None:
 
 
 def _selector_kind(args: argparse.Namespace) -> str:
+    if getattr(args, "audit_structure", False):
+        return "audit_structure"
     if args.check_all:
         return "check_all"
     if args.project:
@@ -238,6 +240,20 @@ def main():
         "--check-all", action="store_true", help="Run all discoverable projects and write a regression report"
     )
     parser.add_argument(
+        "--audit-structure",
+        action="store_true",
+        help=(
+            "Inspect the declared structure of all discoverable projects without executing pipelines "
+            "or modifying project files"
+        ),
+    )
+    parser.add_argument(
+        "--audit-structure-format",
+        choices=["json", "markdown"],
+        default=None,
+        help="Output format for --audit-structure (default: markdown)",
+    )
+    parser.add_argument(
         "--reformat-journal",
         type=str,
         default=None,
@@ -330,6 +346,7 @@ def main():
             "--check-regression": args.check_regression,
             "--docker": args.docker or args.docker_build,
             "--reformat-journal": bool(args.reformat_journal),
+            "--audit-structure": args.audit_structure,
         }
         conflicts = [name for name, active in conflicting_modes.items() if active]
         if conflicts:
@@ -354,6 +371,71 @@ def main():
     if args.readiness_format:
         sys.stdout.write("Error: --readiness-format requires --readiness-manifest.\n")
         return 1
+
+    if args.audit_structure_format and not args.audit_structure:
+        sys.stdout.write("Error: --audit-structure-format requires --audit-structure.\n")
+        return 1
+
+    if args.audit_structure:
+        conflicting_modes = {
+            "--project": bool(args.project),
+            "--list-projects/--status": args.list_projects or args.status,
+            "--list-root-only": args.list_root_only,
+            "--init/--wizard": args.init or args.wizard,
+            "--check-all": args.check_all,
+            "--read-fingerprint": bool(args.read_fingerprint),
+            "--inject-fingerprint": args.inject_fingerprint,
+            "--sweep": args.sweep,
+            "--comparison": args.comparison,
+            "--freeze-golden": args.freeze_golden,
+            "--check-regression": args.check_regression,
+            "--docker": args.docker or args.docker_build,
+            "--reformat-journal": bool(args.reformat_journal),
+            "--readiness-manifest": bool(args.readiness_manifest),
+            "--readiness-format": bool(args.readiness_format),
+            "--external-raw-root": bool(args.external_raw_root),
+            "--preset": bool(args.preset),
+            "--force": args.force,
+            "--strict-lock": args.strict_lock,
+            "--step": args.step != "all",
+            "--regression-baseline": args.regression_baseline != "ignore",
+        }
+        conflicts = [name for name, active in conflicting_modes.items() if active]
+        if conflicts:
+            sys.stdout.write(
+                "Error: --audit-structure is an independent read-only mode and cannot be combined with "
+                + ", ".join(conflicts)
+                + ".\n"
+            )
+            return 1
+
+        root_dir = inferred_root_dir
+        hub_path = inferred_hub_path
+        attempt_provenance = build_attempt_provenance(
+            surface="cli",
+            step="audit_structure",
+            selector_kind=_selector_kind(args),
+            hub_path=hub_path,
+        )
+        _emit_attempt_provenance(attempt_provenance)
+        try:
+            from hub_core import structure_audit_report as structure_audit_api
+
+            build_structure_audit_report = structure_audit_api.build_structure_audit_report
+            render_structure_audit_report = getattr(structure_audit_api, "render_structure_audit_report", None)
+            report = build_structure_audit_report(root_dir, max_depth=args.scan_depth)
+            output_format = args.audit_structure_format or "markdown"
+            if render_structure_audit_report is not None:
+                output = render_structure_audit_report(report, output_format=output_format)
+            elif output_format == "json":
+                output = structure_audit_api.render_structure_audit_json(report)
+            else:
+                output = structure_audit_api.render_structure_audit_markdown(report)
+        except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            sys.stdout.write(f"Error: unable to audit project structure: {exc}\n")
+            return 1
+        sys.stdout.write(output)
+        return 0
 
     root_dir = inferred_root_dir
     hub_path = inferred_hub_path

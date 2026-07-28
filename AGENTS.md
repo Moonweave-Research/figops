@@ -84,6 +84,9 @@ python orchestrator.py --init --project "새_프로젝트_폴더"
 # List configured projects
 python orchestrator.py --list-projects
 
+# Read-only all-project structure audit
+python orchestrator.py --audit-structure
+
 # Smoke tests
 python -m unittest tests.test_smoke
 

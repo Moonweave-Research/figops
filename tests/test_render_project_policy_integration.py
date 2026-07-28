@@ -16,6 +16,7 @@ def _write_project(
     geometry_mode: str = "direct",
     validation_target: str | None = None,
     declare_claim: bool = True,
+    workflow_intent: str | None = None,
 ) -> Path:
     project = root / "project"
     (project / "hub_scripts").mkdir(parents=True)
@@ -64,9 +65,11 @@ def _write_project(
     inventory_line = "    claim_inventory: results/evidence/Fig1.claims.json\n" if claim_inventory else ""
     claim_line = "    claim: Fixture render completes.\n" if declare_claim else ""
     validation_line = f"  validation_target: {validation_target}\n" if validation_target else ""
+    workflow_block = f"workflow:\n  intent: {workflow_intent}\n" if workflow_intent else ""
     (project / "project_config.yaml").write_text(
         "project:\n"
         "  name: Project policy integration\n"
+        f"{workflow_block}"
         "visual_style:\n"
         "  target_format: nature\n"
         "  profile: baseline\n"
@@ -117,6 +120,7 @@ def _render(
     dpi: int = 300,
     geometry_mode: str = "direct",
     declare_claim: bool = True,
+    workflow_intent: str | None = None,
 ):
     research_root = tmp_path / "research"
     project = _write_project(
@@ -126,6 +130,7 @@ def _render(
         geometry_mode=geometry_mode,
         validation_target=validation_target,
         declare_claim=declare_claim,
+        workflow_intent=workflow_intent,
     )
     runtime_root = tmp_path / "runtime"
     server = FigOpsMCPServer(
@@ -190,6 +195,66 @@ def test_publication_projection_is_persisted_and_unverified_claims_block_promoti
     assert manifest["manual_review_needed"] is True
 
 
+def test_project_render_manifest_binds_canonical_policy_context_digest(tmp_path: Path) -> None:
+    response, manifest = _render(
+        tmp_path,
+        job_id="project-policy-context",
+        claim_inventory=False,
+        validation_target="nature",
+    )
+
+    assert response["status"] == "warning", (response, manifest)
+    assert len(manifest["policy_context"]["policy_set_sha256"]) == 64
+    assert manifest["policy_context"]["render_policy"]["id"] == "render-neutral"
+    assert manifest["policy_context"]["validation_target"] == "nature"
+    assert manifest["evidence"]["resolved_policy"]["parameters"]["validation_target"] == "nature"
+
+
+def test_policy_context_contradiction_fails_closed_without_promotion(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    research_root = tmp_path / "research"
+    project = _write_project(research_root, claim_inventory=False, validation_target="nature")
+    runtime_root = tmp_path / "runtime"
+    server = FigOpsMCPServer(
+        research_root=research_root,
+        runtime_root=runtime_root,
+        write_tools_enabled=True,
+    )
+    real_build_render_evidence = build_render_evidence
+
+    def contradict_policy_context(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        kwargs["validation_target"] = "acs"
+        return real_build_render_evidence(*args, **kwargs)
+
+    def fail_promotion(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("contradicted policy context must not reach durable promotion")
+
+    monkeypatch.setattr(
+        "hub_core.mcp.tools.render_project.build_render_evidence",
+        contradict_policy_context,
+    )
+    monkeypatch.setattr(
+        "hub_core.mcp.tools.render_project.promote_eligible_project_result",
+        fail_promotion,
+    )
+
+    response = server.call_tool(
+        "figops.render_project_script",
+        {
+            "project_path": str(project),
+            "figure_id": "Fig1",
+            "job_id": "project-policy-context-contradiction",
+            "validation_target": "nature",
+        },
+    )["structuredContent"]
+
+    assert response["status"] == "error"
+    assert response["failure_stage"] == "PLOT"
+    assert any("validation_target conflicts with policy_context" in line for line in response["errors"])
+
+
 def test_publication_missing_projection_blocks_promotion_with_verified_claims(
     tmp_path: Path,
     monkeypatch: Any,
@@ -208,6 +273,7 @@ def test_publication_missing_projection_blocks_promotion_with_verified_claims(
         write_tools_enabled=True,
     )
     def without_projection(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        kwargs["policy_context"] = None
         kwargs["validation_target"] = None
         return build_render_evidence(*args, **kwargs)
 
@@ -259,6 +325,39 @@ def test_passing_measured_journal_minima_make_verified_claims_promotion_eligible
     project = tmp_path / "research" / "project"
     assert (project / "results" / "figures" / "Fig1.png").is_file()
     assert len(list((project / "results" / "evidence").glob("*.receipt.json"))) == 1
+
+
+def test_exploration_workflow_blocks_promotion_and_does_not_invoke_durable_promotion(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    def fail_promotion(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("exploration workflow must not invoke durable promotion")
+
+    monkeypatch.setattr(
+        "hub_core.mcp.tools.render_project.promote_eligible_project_result",
+        fail_promotion,
+    )
+    response, manifest = _render(
+        tmp_path,
+        job_id="project-exploration-non-promotable",
+        claim_inventory=True,
+        validation_target="nature",
+        dpi=600,
+        geometry_mode="compliant",
+        declare_claim=False,
+        workflow_intent="exploration",
+    )
+
+    assert response["status"] == "warning", (response, manifest)
+    assert manifest["workflow_intent"]["intent"] == "exploration"
+    assert manifest["workflow_intent"]["execution_allowed"] is False
+    assert manifest["workflow_intent"]["fail_closed"] is True
+    assert manifest["claim_inventory"]["promotion_eligible"] is True
+    assert manifest["promotion_eligible"] is False
+    project = tmp_path / "research" / "project"
+    assert (project / "results" / "figures" / "Fig1.png").exists() is False
+    assert list((project / "results" / "evidence").glob("*.receipt.json")) == []
 
 
 def test_direct_tiny_font_and_line_without_geometry_sidecar_blocks_promotion(

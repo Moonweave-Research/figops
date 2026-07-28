@@ -319,12 +319,229 @@ Organization is a reviewable transaction, not an eager formatter.
 8. **Report:** retain rollback manifest. Original cleanup is always a separate,
    user-authorized operation outside the organizer.
 
+The normative finding-to-plan selection matrix and approval-token syntax live in
+[`docs/project-structure-contract.md`](../project-structure-contract.md). In
+summary, invalid, boundary-blocked, skipped, and audit-error projects are
+report-only; ambiguous/heuristic unknowns and proposed mappings are
+candidate-only; and only explicit reviewer-supplied `approved_mappings` plus
+typed config edits enter a copy-only plan. A reviewed dry-run fixes a
+deterministic `plan_digest` and `FIGOPS-APPLY-<plan_digest>` token. Apply must
+repeat the identical reviewed inputs with that token and remains blocked by
+stale identities, collisions, unresolved dependencies, or token mismatch.
+The token proves integrity and exact replay of the canonical plan, not
+independent reviewer identity, authority, or attestation; the compatibility
+workflow does not close self-approval. A host-issued `approval_receipt` or
+equivalent immutable reviewed-plan authority, bound to reviewer identity/role
+and the plan digest and rooted in a host trust root, is specified by the Phase 6
+contract below. A process-local implementation now exists: the exact
+host-owned `ApprovalAuthorityRoot` mints immutable approval records, and secure
+MCP normalization (`require_host_approval: true`) verifies the host receipt and
+rechecks it at the mutation boundary.
+
+The production `graphhub_mcp_server.py` launcher (also used by
+`figops_mcp_server.py`) is the trusted injection boundary: it creates or receives
+the host-owned process-local root, sets `require_host_approval: true`, and passes
+the root through the constructor-only `host_authority_root` channel. Tool
+arguments, project configuration, plan JSON, environment variables, runtime
+manifests, and durable/evidence receipts cannot create, select, or replace that
+root. An embedded host may opt into the same secure mode by supplying its own
+host-owned root through that constructor-only channel together with
+`require_host_approval: true`; if the secure flag/root are omitted, the embedded
+constructor remains compatibility/token-only. The Phase 6 host-approval
+gate is therefore satisfied for the production launcher; full release still
+requires the remaining exact-commit gates below.
+Audit reports, plans, digests, and tokens are control evidence, not runtime
+manifests, durable results, or evidence receipts; runtime remains externally
+rooted and disposable.
+
+### Phase 6 host-rooted approval authority contract
+
+Phase 6 is the normative authority boundary for structure migration. It closes
+the self-approval gap without making the planner, an LLM, or a project file an
+authority. Secure mode (`require_host_approval: true`) now enforces this
+contract: missing/untrusted roots, missing or invalid receipts, stale/revoked
+records, binding mismatches, and mutation-boundary revocation fail closed. The
+default compatibility mode remains token-only for backward compatibility; its
+valid plan and `FIGOPS-APPLY-<plan_digest>` token prove replay integrity only
+and MUST NOT be described as independent approval or release evidence. The
+production `graphhub_mcp_server.py`/`figops_mcp_server.py` launcher enables
+secure mode with a host-owned process-local `ApprovalAuthorityRoot`, so the
+Phase 6 host-approval gate is satisfied for that launcher. The compatibility
+constructor/class remains token-only and cannot satisfy the Phase 6 or release
+gate; full release still depends on the remaining exact-commit gates.
+
+The following prove integrity, provenance, replay, or execution lineage, but do
+**not** prove approval or reviewer authority: the `FIGOPS-APPLY-<plan_digest>`
+token; any source/config/environment provenance; a copy, runtime, durable, or
+evidence receipt; an audit report or plan; and any LLM-authored JSON field such
+as `approved`, `reviewer`, or `authorization`. These values may be inputs to
+review, but none can authorize mutation when presented by the planner, model,
+project, or runtime filesystem.
+
+#### Minimum canonical approval payload
+
+The host approval is a canonical `figops_approval/1` payload. Its signed or
+capability-bound bytes include every field below (empty lists are still hashed,
+not omitted):
+
+```json
+{
+  "schema": "figops_approval/1",
+  "receipt_id": "<host-issued opaque id>",
+  "plan_digest": "<sha256 of canonical reviewed plan>",
+  "project_root_identity": "<launcher-resolved root identity digest>",
+  "config_identity": {
+    "relative_path": "project_config.yaml",
+    "sha256": "<config bytes>"
+  },
+  "approved_mappings_digest": "<sha256 of canonical approved_mappings>",
+  "config_diff_digest": "<sha256 of canonical typed config_diff>",
+  "unresolved_digest": "<sha256 of canonical unresolved-reference list>",
+  "reviewer": {
+    "subject": "<host identity>",
+    "role": "<host-authorized reviewer role>"
+  },
+  "issued_at": "<UTC timestamp>",
+  "expires_at": "<UTC timestamp>",
+  "currentness": {
+    "state": "current",
+    "checked_at": "<UTC timestamp>",
+    "revocation_epoch": "<host value>"
+  },
+  "revocation": {
+    "state": "not_revoked",
+    "checked_at": "<UTC timestamp>"
+  }
+}
+```
+
+The canonicalization rules are deterministic (UTF-8 JSON, sorted object keys,
+no insignificant whitespace, fixed digest encoding). `project_root_identity`
+is derived from the launcher-resolved, normalized root and its stable filesystem
+identity; it is not accepted from project configuration. `config_identity` is
+the reviewed config path relative to that root plus its exact bytes; for a
+config-less legacy project, an explicit `null` identity is bound into the plan
+and cannot be supplied later by the model. The three
+component digests bind the exact mappings, typed compare-and-swap config edits,
+and unresolved-reference set used to compute `plan_digest`; changing order,
+content, or even an empty-versus-omitted value changes the digest. Reviewer
+subject and role are assertions only when the host trust policy authorizes them.
+The process-local implementation stores the unresolved component as separate
+digests for `hardcoded_unresolved_references` and `unresolved_proposals` (plus
+the reviewed-entry digest); these are the concrete encoding of the minimum
+`unresolved_digest` binding and are all rechecked.
+
+The payload MUST be accompanied by one of these out-of-band authority proofs:
+
+1. a host capability handle resolved and consumed through a launcher/host
+   authority channel, with the host returning the canonical payload and its
+   current, non-revoked status; or
+2. a host signature over the canonical payload, verified against a
+   launcher/operator-pinned trust root and key identifier (for example,
+   `trust_root_id`, `key_id`, `algorithm`, and detached `signature`).
+
+The current secure MCP implementation uses the first form through a
+process-local `ApprovalAuthorityRoot`: the root object is supplied by the host
+at server construction, cannot be copied, and is required by object identity
+when `verify_approval_authority` checks an `approval_receipt_id`. The secure
+`figops.normalize_project_structure` schema accepts only that opaque receipt
+ID; self-described approval JSON is rejected. The default compatibility
+constructor leaves `require_host_approval` false and therefore intentionally
+retains token-only behavior; compatibility apply is not an independent approval
+path and must not be presented as one.
+
+Trust roots, capability validation, reviewer-role policy, revocation state, and
+currentness are host/operator state. They MUST NOT be supplied by the LLM,
+project config, plan JSON, runtime manifest, or a durable/evidence receipt. A
+missing, unknown, malformed, expired, revoked, stale, or unverifiable proof
+fails closed. An LLM response that contains the same JSON without a host proof
+is untrusted data, even if it says `approved: true` or reproduces a valid token.
+
+#### Apply ordering and revalidation
+
+Apply performs these steps in order, with no file or config mutation before step
+4 succeeds:
+
+1. Parse the reviewed plan and host payload; reject non-canonical or
+   self-described authority fields.
+2. Recompute `plan_digest`, `approved_mappings_digest`, `config_diff_digest`,
+   and `unresolved_digest`; verify the `FIGOPS-APPLY-<plan_digest>` token,
+   project-root identity, config identity, containment, and all stale/collision
+   and unresolved-dependency guards.
+3. Verify the host capability or signature against the pinned trust root,
+   enforce the reviewer role, and require `issued_at <= now < expires_at` plus
+   host-confirmed current, non-revoked `receipt_id`/`revocation_epoch`.
+4. Acquire the apply transaction lease and repeat the identity, digest, and
+   host-currentness checks at the mutation boundary. A capability is consumed
+   according to host policy; a revoked, expired, or otherwise changed approval
+   aborts before staging.
+5. Execute the existing copy-only transaction: destination-filesystem sibling
+   staging, containment/hash verification, fsync where supported, native
+   same-filesystem no-replace publication, and typed config CAS. Revalidate
+   approval currentness before any subsequent mutation, then emit a copy
+   receipt that records the approval `receipt_id` as lineage, never as a
+   replacement for the approval proof.
+
+#### Adversarial acceptance criteria
+
+In secure MCP mode, a Phase 6 implementation must fail closed on the following
+cases before any copy or config write. Compatibility mode may retain its
+historical token-only behavior for backward compatibility, but it must expose no
+host-approval status and must never describe that behavior as independent
+approval or as satisfying the Phase 6/release gate.
+
+| Adversarial input | Required result |
+| --- | --- |
+| Valid plan/token/provenance or durable/runtime/evidence receipt but no host proof | Secure mode rejects as unauthorised with no mutation; compatibility mode may follow its legacy token-only path but cannot claim approval. |
+| LLM JSON containing `approved: true`, reviewer fields, or a forged receipt | Reject; model/project data is not an authority. |
+| Signature over a payload whose plan, root, config, mappings, diff, unresolved set, reviewer, or validity window changed | Reject signature/digest mismatch. |
+| Approval for another project root, config hash, plan digest, or mapping/diff/unresolved digest | Reject binding mismatch. |
+| Unknown trust root/key, malformed capability, missing host policy, or unavailable authority channel | Reject and fail closed. |
+| Expired, revoked, stale, non-current, or replayed one-time capability | Reject before staging; preserve all existing files. |
+| Source/config identity, collision, unresolved dependency, or root containment changes after approval | Recompute and reject before mutation. |
+| Revocation or expiry races after preflight | Mutation-boundary/currentness recheck aborts before the affected mutation. |
+
+The focused adversarial suite MUST exercise each row with both CLI and MCP apply
+surfaces where available, and must verify byte-identical originals, no partial
+config rewrite, and no destination clobber on every rejection.
+
 Low-confidence, multi-role, content-sensitive, unreferenced, and collision cases
 stay unresolved. Extension-only classification may not cross a role boundary.
 Any hard-coded script/import/config dependency that cannot be represented as a
 reviewed compare-and-swap edit remains an `unresolved_dependency`. Migration
 apply is blocked while even one such dependency can affect a copied artifact;
 warnings are insufficient and the tool may not guess or rewrite arbitrary source.
+
+### Conservative dependency-script inspection
+
+The migration planner uses the read-only
+`hub_core.dependency_script_inspection.analyze_dependency_script` API for
+bounded dependency evidence. It accepts Python or R source text (or a `Path`)
+and optional `suffix`/`language`, `script_path`, and explicit `role_roots`
+arguments. The deterministic JSON-friendly result contains `inspectable`,
+`dependency_scan_incomplete`, `static_candidates`, and
+`hardcoded_unresolved_references`. Static candidates include imports and
+obvious literal file/path references, but they are evidence only: the scanner
+never executes a script, rewrites source, or guesses `raw`, `results`, script,
+or any other semantic role from a name, extension, or directory.
+
+A literal path is cleared only through the most-specific declared terminal
+semantic root selected by the caller-provided `role_roots` mapping. Grouping
+roots `scripts` and `results` never clear blockers, and equal-depth terminal
+matches remain unresolved. Otherwise it remains an unresolved `hardcoded_path`
+entry. Dynamic path expressions remain unresolved and set
+`dependency_scan_incomplete`; read errors, unsupported languages, and parse
+failures set `inspectable: false`, preserve a diagnostic, and set the same
+incomplete signal. Thus a partial or failed scan is incomplete evidence and a
+plan blocker, not a clean pass. The planner carries these entries into
+`hardcoded_unresolved_references`; scanner output never becomes an approved
+mapping.
+
+`structure_apply.apply_structure_plan` enforces the corresponding fail-closed
+guard: a non-empty `hardcoded_unresolved_references` **or**
+`unresolved_proposals` rejects the plan before project-root identity checks or
+copy, even when the plan digest and confirmation token are valid. An unresolved
+proposal is therefore a plan blocker, not a warning or an approval surrogate.
 
 ## 8. Seven P1 corrections
 
@@ -433,7 +650,7 @@ approval, or fulfillment of the complete Definition of Done.
 | WP3 | implementation complete | Neutral v1.1/v2 defaults, independent validation targets, and artifact-derived policy measurements are integrated. |
 | WP4 | implementation complete | v1.1 role/DAG/alias validation and legacy 1.0 in-memory resolution are integrated with config parsing and templates. |
 | WP5 | implementation complete | Scaffolding and normalization consume the shared `project_layout.py` inventory. |
-| WP6 | implementation complete | `structure_inventory`, `structure_audit`, `structure_plan`, and `structure_role_binding` use semantic/reference precedence and bind approved destinations to declared roots. |
+| WP6 | implementation complete | `structure_inventory`, `structure_audit`, `structure_plan`, and `structure_role_binding` use semantic/reference precedence and bind approved destinations to declared roots. The conservative `dependency_script_inspection.analyze_dependency_script` API supplies deterministic Python/R dependency evidence; parse/dynamic/incomplete findings remain blockers, and apply rejects non-empty `unresolved_proposals` fail-closed. |
 | WP7 | implementation complete | Reviewed application is copy-only, token/CAS guarded, rollback-aware, and publishes a verified sibling stage only through the native consuming no-replace primitive; race winners are preserved. |
 | WP8 | implementation complete; independent adversarial gate green | Runtime containment, pre-execution external-raw verification, eligible-result promotion, staged durable publication, and runtime-independent receipt verification are integrated across CLI and MCP producers. Handle-bound rollback deletion closes the hash-to-unlink swap window; the independent rollback suite passed 34 tests with two platform skips. |
 | WP9 | implementation complete | v2 exposes structure detail through `figops.describe`; compatibility apply remains write-gated without expanding the seven-tool default surface. |

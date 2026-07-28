@@ -36,6 +36,10 @@ project:
   version: "1.0.0"
   target_journal: "Nature Communications"
 
+# 1.1 Workflow intent
+workflow:
+  intent: "execution"           # exploration | execution | review | promotion
+
 # 2. Visual style settings
 visual_style:
   render_policy: "neutral"     # preserves authored styling; independent of validation

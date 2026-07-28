@@ -19,8 +19,8 @@
       "figops.audit_artifact"
     ],
     "emitted_tool_definition_count": 7,
-    "tools_list_response_bytes": 11973,
-    "tools_array_bytes": 11929,
+    "tools_list_response_bytes": 14477,
+    "tools_array_bytes": 14433,
     "maximum_input_schema_bytes": 1102,
     "maximum_input_schema_tool": "figops.render_basic_csv",
     "render_basic_csv_top_level_properties": 12
@@ -45,18 +45,18 @@
   "generated_references": {
     "default_full": {
       "path": "docs/tools.md",
-      "bytes": 157174,
-      "lines": 7707
+      "bytes": 167680,
+      "lines": 8161
     },
     "v2": {
       "path": "docs/tools-v2.md",
-      "bytes": 18389,
-      "lines": 1071
+      "bytes": 23642,
+      "lines": 1298
     },
     "compatibility": {
       "path": "docs/tools-compatibility.md",
-      "bytes": 131686,
-      "lines": 5992
+      "bytes": 136939,
+      "lines": 6219
     }
   },
   "guided_call_contract": {

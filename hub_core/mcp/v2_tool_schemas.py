@@ -7,6 +7,7 @@ from typing import Any
 from hub_core.artifact_audit import SUPPORTED_POLICY_PACKS
 from hub_core.config_parser import ALLOWED_OUTPUT_FORMATS, PUBLIC_TARGET_FORMATS
 from hub_core.journal_specs import list_supported_preflight_targets
+from hub_core.mcp.phase2_render_schemas import RENDER_POLICY_CONTEXT_SCHEMA, WORKFLOW_INTENT_SCHEMA
 from hub_core.mcp.tool_schema_common import ToolDefinition, object_schema
 
 
@@ -37,6 +38,8 @@ def build_v2_tool_definitions(
         "properties": {
             **render_output["properties"],
             "runtime_availability": {"type": "object"},
+            "policy_context": RENDER_POLICY_CONTEXT_SCHEMA,
+            "workflow_intent": WORKFLOW_INTENT_SCHEMA,
         },
     }
     return [

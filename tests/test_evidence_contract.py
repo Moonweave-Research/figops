@@ -1388,6 +1388,84 @@ def test_resolved_policy_with_identity_version_and_source_is_valid() -> None:
     validate_evidence_envelope(envelope)
 
 
+def test_policy_context_with_digest_and_render_policy_is_valid() -> None:
+    envelope = _minimal_envelope()
+    envelope["policy_context"] = {
+        "schema_version": "figops-render-policy-context/1",
+        "source": "v2-default",
+        "policy_set_sha256": "b" * 64,
+        "render_policy": {
+            "id": "render-neutral",
+            "version": "1",
+            "source": "v2-default",
+            "parameters": {"style_policy": "neutral"},
+        },
+        "validation_target": None,
+    }
+
+    normalized = normalize_evidence_envelope(envelope)
+
+    assert normalized["policy_context"]["policy_set_sha256"] == "b" * 64
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "code"),
+    [
+        ("policy_set_sha256", None, "SHA256_INVALID"),
+        ("policy_set_sha256", "not-a-digest", "SHA256_INVALID"),
+        ("schema_version", "figops-render-policy-context/0", "POLICY_CONTEXT_SCHEMA_INVALID"),
+        ("source", "", "NONEMPTY_STRING"),
+        ("render_policy", None, "TYPE_MAPPING"),
+        ("validation_target", "", "NONEMPTY_STRING"),
+    ],
+)
+def test_policy_context_rejects_malformed_fields(field: str, value: object, code: str) -> None:
+    envelope = _minimal_envelope()
+    envelope["policy_context"] = {
+        "schema_version": "figops-render-policy-context/1",
+        "source": "v2-default",
+        "policy_set_sha256": "b" * 64,
+        "render_policy": {
+            "id": "render-neutral",
+            "version": "1",
+            "source": "v2-default",
+            "parameters": {},
+        },
+        "validation_target": None,
+    }
+    if value is None:
+        envelope["policy_context"].pop(field)
+    else:
+        envelope["policy_context"][field] = value
+
+    with pytest.raises(EvidenceContractError) as raised:
+        validate_evidence_envelope(envelope)
+
+    assert raised.value.code == code
+
+
+def test_policy_context_rejects_unknown_fields() -> None:
+    envelope = _minimal_envelope()
+    envelope["policy_context"] = {
+        "schema_version": "figops-render-policy-context/1",
+        "source": "v2-default",
+        "policy_set_sha256": "b" * 64,
+        "render_policy": {
+            "id": "render-neutral",
+            "version": "1",
+            "source": "v2-default",
+            "parameters": {},
+        },
+        "validation_target": None,
+        "policy_set": {},
+    }
+
+    with pytest.raises(EvidenceContractError) as raised:
+        validate_evidence_envelope(envelope)
+
+    assert raised.value.code == "UNKNOWN_FIELD"
+
+
 @pytest.mark.parametrize("field", ["id", "version", "source"])
 def test_resolved_policy_requires_identity_version_and_source(field: str) -> None:
     envelope = _minimal_envelope()

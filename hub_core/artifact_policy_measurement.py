@@ -19,10 +19,12 @@ from .config_style import ALLOWED_TARGET_FORMATS
 from .journal_geometry_policy import geometry_minimum_results
 from .journal_specs import get_preflight_spec
 from .output_verification import verify_output_file
+from .policy_resolution import PolicyResolutionError, resolve_policy_set
 
 MEASUREMENT_IMPLEMENTATION: Final = "figops-artifact-policy-measurement"
 MEASUREMENT_VERSION: Final = "3"
 RULE_VERSION: Final = "3"
+RENDER_POLICY_CONTEXT_SCHEMA: Final = "figops-render-policy-context/1"
 
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
 _RASTER_SUFFIXES: Final = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp"}
@@ -50,18 +52,78 @@ def resolve_render_policy_selection(
     the historical Nature effective default.
     """
 
-    explicit = isinstance(style_policy, str) and bool(style_policy.strip())
-    selected = str(style_policy).strip().lower() if explicit else "nature" if compatibility else "neutral"
-    if selected not in _RENDER_POLICIES:
-        raise ArtifactPolicyMeasurementError(f"unsupported render policy: {selected}")
+    return resolve_render_policy_context(
+        {"style_policy": style_policy} if style_policy is not None else {},
+        compatibility=compatibility,
+    )["render_policy"]
+
+
+def resolve_render_policy_context(
+    arguments: Mapping[str, Any] | None = None,
+    *,
+    target_format: str | None = None,
+    compatibility: bool | None = None,
+    policy_layers: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Resolve render/validation policy through the canonical policy core.
+
+    The returned context is additive for new callers: legacy callers may still
+    consume the singular ``render_policy`` and ``validation_target`` values,
+    while provenance-aware callers can bind to ``policy_set_sha256``.
+    """
+
+    if arguments is None:
+        arguments = {}
+    if not isinstance(arguments, Mapping):
+        raise ArtifactPolicyMeasurementError("render policy arguments must be a mapping")
+    v2_contract = arguments.get("v2_policy_contract") is True
+    compatibility_mode = (not v2_contract) if compatibility is None else bool(compatibility)
+    selected, source, raw_render_policy = _selected_render_policy(
+        arguments,
+        target_format=target_format,
+        compatibility=compatibility_mode,
+    )
+    validation_target, validation_source = _selected_validation_target(
+        arguments,
+        target_format=target_format,
+        compatibility=compatibility_mode,
+    )
+    layer_parameters: dict[str, Any] = {}
+    if source != "v2-default":
+        layer_parameters["render_policy"] = selected
+    if validation_target:
+        layer_parameters["validation_target"] = validation_target
+    layers = [dict(layer) for layer in policy_layers or ()]
+    if layer_parameters:
+        layers.append(
+            {
+                "source": "render",
+                "policy_id": f"render-context-{selected}",
+                "version": "1",
+                "parameters": layer_parameters,
+            }
+        )
+    try:
+        policy_set = resolve_policy_set(layers)
+    except PolicyResolutionError as exc:
+        raise ArtifactPolicyMeasurementError(str(exc)) from exc
+    resolved_render = str(policy_set.value("render_policy").value)
+    if resolved_render not in _RENDER_POLICIES:
+        raise ArtifactPolicyMeasurementError(f"unsupported render policy: {resolved_render}")
+    resolved_validation = policy_set.value("validation_target").value
+    render_policy = (
+        dict(raw_render_policy)
+        if raw_render_policy is not None
+        else _legacy_render_policy(resolved_render, source)
+    )
     return {
-        "id": f"render-{selected}",
-        "version": "1",
-        "source": "explicit-render-policy" if explicit else "compatibility-default" if compatibility else "v2-default",
-        "parameters": {
-            "style_policy": selected,
-            "mutates_journal_aesthetics": selected != "neutral",
-        },
+        "schema_version": RENDER_POLICY_CONTEXT_SCHEMA,
+        "source": source,
+        "validation_source": validation_source,
+        "policy_set_sha256": policy_set.canonical_sha256(),
+        "policy_set": policy_set.to_json(),
+        "render_policy": render_policy,
+        "validation_target": resolved_validation,
     }
 
 
@@ -72,24 +134,77 @@ def resolve_render_validation_policies(
 ) -> tuple[str, dict[str, Any]]:
     """Resolve separate validation/render policies for a render call site."""
 
-    v2_contract = arguments.get("v2_policy_contract") is True
+    context = resolve_render_policy_context(arguments, target_format=target_format)
+    return str(context["validation_target"] or ""), dict(context["render_policy"])
+
+
+def _selected_render_policy(
+    arguments: Mapping[str, Any],
+    *,
+    target_format: str | None,
+    compatibility: bool,
+) -> tuple[str, str, Mapping[str, Any] | None]:
+    raw_render_policy = arguments.get("resolved_render_policy")
+    if isinstance(raw_render_policy, Mapping):
+        return _style_from_resolved_policy(raw_render_policy), "explicit-render-policy", raw_render_policy
+    raw = arguments.get("style_policy")
+    if not isinstance(raw, str) or not raw.strip():
+        raw = target_format
+    explicit = isinstance(raw, str) and bool(raw.strip())
+    selected = str(raw).strip().lower() if explicit else "nature" if compatibility else "neutral"
+    if selected not in _RENDER_POLICIES:
+        raise ArtifactPolicyMeasurementError(f"unsupported render policy: {selected}")
+    source = "explicit-render-policy" if explicit else "compatibility-default" if compatibility else "v2-default"
+    return selected, source, None
+
+
+def _selected_validation_target(
+    arguments: Mapping[str, Any],
+    *,
+    target_format: str | None,
+    compatibility: bool,
+) -> tuple[str | None, str]:
     validation_target = str(arguments.get("validation_target") or "").strip().lower()
-    if not validation_target and not v2_contract:
+    source = "explicit-validation-target" if validation_target else "none"
+    if not validation_target and compatibility:
+        candidate = str(target_format or arguments.get("target_format") or "").strip().lower()
         try:
-            get_preflight_spec(target_format)
+            get_preflight_spec(candidate)
         except ValueError:
             pass
         else:
-            validation_target = target_format
+            validation_target = candidate
+            source = "compatibility-target-inference"
     if validation_target:
         get_preflight_spec(validation_target)
-    raw_render_policy = arguments.get("resolved_render_policy")
-    render_policy = (
-        dict(raw_render_policy)
-        if isinstance(raw_render_policy, Mapping)
-        else resolve_render_policy_selection(target_format, compatibility=not v2_contract)
-    )
-    return validation_target, render_policy
+    return validation_target or None, source
+
+
+def _style_from_resolved_policy(policy: Mapping[str, Any]) -> str:
+    parameters = policy.get("parameters")
+    raw = parameters.get("style_policy") if isinstance(parameters, Mapping) else None
+    if not isinstance(raw, str) or not raw.strip():
+        raw = parameters.get("render_policy") if isinstance(parameters, Mapping) else None
+    if not isinstance(raw, str) or not raw.strip():
+        raw = policy.get("id")
+    selected = str(raw or "").strip().lower()
+    if selected.startswith("render-"):
+        selected = selected.removeprefix("render-")
+    if selected not in _RENDER_POLICIES:
+        raise ArtifactPolicyMeasurementError(f"unsupported render policy: {selected}")
+    return selected
+
+
+def _legacy_render_policy(selected: str, source: str) -> dict[str, Any]:
+    return {
+        "id": f"render-{selected}",
+        "version": "1",
+        "source": source,
+        "parameters": {
+            "style_policy": selected,
+            "mutates_journal_aesthetics": selected != "neutral",
+        },
+    }
 
 
 def measure_artifact_policy(
@@ -633,6 +748,7 @@ __all__ = [
     "MEASUREMENT_VERSION",
     "RULE_VERSION",
     "measure_artifact_policy",
+    "resolve_render_policy_context",
     "resolve_render_policy_selection",
     "resolve_render_validation_policies",
     "verify_artifact_policy_projection",

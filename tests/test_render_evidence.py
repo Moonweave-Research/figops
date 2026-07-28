@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -15,7 +16,9 @@ from hub_core.artifact_policy_measurement import (
     RULE_VERSION,
     ArtifactPolicyMeasurementError,
     measure_artifact_policy,
+    resolve_render_policy_context,
     resolve_render_policy_selection,
+    resolve_render_validation_policies,
     verify_artifact_policy_projection,
 )
 from hub_core.evidence_contract import EvidenceContractError, validate_evidence_envelope
@@ -188,6 +191,80 @@ def test_primary_output_hash_mismatch_still_fails_closed_for_vector_render(tmp_p
     assert raised.value.code == "PRIMARY_OUTPUT_HASH_CONFLICT"
 
 
+def test_policy_context_preserves_neutral_v2_and_nature_compatibility_split() -> None:
+    v2 = resolve_render_policy_context({}, compatibility=False)
+    compatibility = resolve_render_policy_context({}, compatibility=True)
+
+    assert v2["render_policy"]["id"] == "render-neutral"
+    assert v2["render_policy"]["source"] == "v2-default"
+    assert v2["validation_target"] is None
+    assert compatibility["render_policy"]["id"] == "render-nature"
+    assert compatibility["render_policy"]["source"] == "compatibility-default"
+    assert compatibility["validation_target"] is None
+
+    inferred_target, inferred_policy = resolve_render_validation_policies({}, target_format="nature")
+    v2_target, v2_policy = resolve_render_validation_policies(
+        {"v2_policy_contract": True},
+        target_format="nature",
+    )
+    assert (inferred_target, inferred_policy["id"]) == ("nature", "render-nature")
+    assert (v2_target, v2_policy["id"]) == ("", "render-nature")
+
+
+def test_explicit_render_policy_wins_over_compatibility_target_projection() -> None:
+    explicit = {
+        "id": "render-science",
+        "version": "1",
+        "source": "explicit-render-policy",
+        "parameters": {"style_policy": "science", "mutates_journal_aesthetics": True},
+    }
+    context = resolve_render_policy_context(
+        {"resolved_render_policy": explicit},
+        target_format="nature",
+        compatibility=True,
+    )
+
+    assert context["render_policy"] == explicit
+    assert context["validation_target"] == "nature"
+    assert context["policy_set"]["parameters"]["render_policy"]["value"] == "science"
+    assert context["policy_set"]["parameters"]["validation_target"]["value"] == "nature"
+
+
+def test_policy_context_records_source_opt_out_provenance_and_canonical_digest() -> None:
+    layer = {
+        "source": "project",
+        "policy_id": "project-research-ops",
+        "version": "1",
+        "parameters": {"require_figure_traceability": {"opt_out": True}},
+    }
+
+    left = resolve_render_policy_context({}, compatibility=False, policy_layers=[layer])
+    reordered_layer = {
+        "parameters": layer["parameters"],
+        "version": layer["version"],
+        "policy_id": layer["policy_id"],
+        "source": layer["source"],
+    }
+    right = resolve_render_policy_context({}, compatibility=False, policy_layers=[reordered_layer])
+    traceability = left["policy_set"]["parameters"]["require_figure_traceability"]
+    canonical_digest = hashlib.sha256(
+        json.dumps(
+            left["policy_set"],
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    assert left["source"] == "v2-default"
+    assert traceability["source"] == "explicit_project_opt_out"
+    assert traceability["opt_out_requested"] is True
+    assert traceability["opt_out_accepted"] is True
+    assert left["policy_set_sha256"] == canonical_digest
+    assert left["policy_set_sha256"] == right["policy_set_sha256"]
+
+
 def test_validator_measures_artifact_without_render_mutation(tmp_path: Path) -> None:
     job_root = tmp_path / "job"
     primary = job_root / "results" / "figure.png"
@@ -215,6 +292,121 @@ def test_validator_measures_artifact_without_render_mutation(tmp_path: Path) -> 
     assert evidence["resolved_policy"]["parameters"]["validation_target"] == "nature"
     assert evidence["policy_projections"][0]["id"] == "journal-nature"
     assert evidence["policy_projections"][0]["status"] == "blocked"
+
+
+def test_build_render_evidence_consumes_policy_context_with_old_policy_fields(tmp_path: Path) -> None:
+    job_root = tmp_path / "job"
+    primary = job_root / "results" / "figure.png"
+    primary.parent.mkdir(parents=True)
+    Image.new("RGB", (120, 80), "navy").save(primary, format="PNG", dpi=(300, 300))
+    previews = _build_preview_artifacts(
+        job_root=job_root,
+        output_path=primary,
+        figures=[{"path": str(primary)}],
+    )
+    manifest = _manifest("context-neutral-nature-audit", previews, _sha256(primary))
+    context = resolve_render_policy_context({"validation_target": "nature"}, compatibility=False)
+
+    evidence = build_render_evidence(
+        manifest,
+        job_root=job_root,
+        producer_kind="test-neutral-render",
+        producer_version="1",
+        policy_context=context,
+    )
+
+    assert evidence["resolved_policy"]["id"] == "journal-nature"
+    assert evidence["resolved_policy"]["parameters"]["render_policy"] == "render-neutral"
+    assert evidence["resolved_policy"]["parameters"]["validation_target"] == "nature"
+    assert evidence["policy_projections"][0]["id"] == "journal-nature"
+    assert evidence["policy_context"] == {
+        "schema_version": context["schema_version"],
+        "source": context["source"],
+        "policy_set_sha256": context["policy_set_sha256"],
+        "render_policy": context["render_policy"],
+        "validation_target": context["validation_target"],
+    }
+    assert evidence["policy_context"]["policy_set_sha256"] == context["policy_set_sha256"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("policy_set_sha256", None, "policy_context digest is malformed"),
+        ("policy_set_sha256", "forged", "policy_context digest is malformed"),
+        ("schema_version", "figops-render-policy-context/0", "policy_context schema is malformed"),
+        ("render_policy", None, "policy_context render_policy is malformed"),
+    ],
+)
+def test_build_render_evidence_rejects_malformed_policy_context(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    job_root = tmp_path / "job"
+    primary = job_root / "results" / "figure.png"
+    primary.parent.mkdir(parents=True)
+    Image.new("RGB", (120, 80), "navy").save(primary, format="PNG", dpi=(300, 300))
+    previews = _build_preview_artifacts(
+        job_root=job_root,
+        output_path=primary,
+        figures=[{"path": str(primary)}],
+    )
+    manifest = _manifest("malformed-policy-context", previews, _sha256(primary))
+    context = resolve_render_policy_context({"validation_target": "nature"}, compatibility=False)
+    if value is None:
+        context.pop(field)
+    else:
+        context[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        build_render_evidence(
+            manifest,
+            job_root=job_root,
+            producer_kind="test-neutral-render",
+            producer_version="1",
+            policy_context=context,
+        )
+
+
+def test_legacy_render_policy_argument_conflicts_keep_public_errors(tmp_path: Path) -> None:
+    job_root = tmp_path / "job"
+    primary = _pdf(job_root / "results" / "figure.pdf")
+    previews = _build_preview_artifacts(
+        job_root=job_root,
+        output_path=primary,
+        figures=[{"path": str(primary)}],
+    )
+    manifest = _manifest("legacy-conflicts", previews, _sha256(primary))
+    legacy = {
+        "id": "legacy-policy",
+        "version": "1",
+        "source": "legacy-test",
+        "parameters": {},
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="validation_target cannot be combined with the legacy resolved_policy argument",
+    ):
+        build_render_evidence(
+            manifest,
+            job_root=job_root,
+            producer_kind="test-render",
+            producer_version="1",
+            resolved_policy=legacy,
+            validation_target="nature",
+        )
+    with pytest.raises(ValueError, match="render_policy conflicts with the legacy resolved_policy argument"):
+        build_render_evidence(
+            manifest,
+            job_root=job_root,
+            producer_kind="test-render",
+            producer_version="1",
+            resolved_policy=legacy,
+            render_policy=resolve_render_policy_selection("neutral"),
+        )
 
 
 def test_policy_projection_binds_artifact_rule_and_measurement_versions(tmp_path: Path) -> None:
