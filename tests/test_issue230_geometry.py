@@ -27,7 +27,7 @@ class Issue230GeometryTests(unittest.TestCase):
         # Only the final few pixels enter the text bbox.  The padded line AABB
         # therefore stays below the legacy relative-overlap cutoff while the
         # centerline crossing remains a real, positive-length fact.
-        ax.plot([0.1, 0.485], [0.5, 0.5], linewidth=0.5)
+        ax.plot([0.1, 0.49], [0.5, 0.5], linewidth=0.5)
         ax.text(0.5, 0.5, "on line", ha="center", va="center")
         fig.canvas.draw()
 
