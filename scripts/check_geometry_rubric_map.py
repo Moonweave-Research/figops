@@ -7,14 +7,18 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from enum import StrEnum, unique
 from pathlib import Path
 from typing import Final, Mapping, assert_never
 
-from hub_core.mcp.render_geometry_schemas import LEGACY_GEOMETRY_METRIC_NAMES as GEOMETRY_METRIC_NAMES
-
 HUB_ROOT: Final = Path(__file__).resolve().parent.parent
+if str(HUB_ROOT) not in sys.path:
+    sys.path.insert(0, str(HUB_ROOT))
+
+from hub_core.mcp.render_geometry_schemas import LEGACY_GEOMETRY_METRIC_NAMES as GEOMETRY_METRIC_NAMES  # noqa: E402
+
 MAP_PATH: Final = HUB_ROOT / "docs" / "specs" / "geometry-diagnostic-rubric-map.json"
 QA_PATH: Final = HUB_ROOT / "docs" / "QA.md"
 RUBRIC_PATH: Final = HUB_ROOT / "docs" / "specs" / "2026-06-30-figure-quality-rubric.md"

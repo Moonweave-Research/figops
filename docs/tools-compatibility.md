@@ -79,7 +79,10 @@ Return FigOps server health and discovery status.
       "type": "integer"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "hub_path": {
       "type": "string"
@@ -160,7 +163,10 @@ Return FigOps server health and discovery status.
       "type": "string"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "runtime_root": {
       "type": "string"
@@ -198,6 +204,7 @@ Return FigOps server health and discovery status.
       "type": "string"
     },
     "version": {
+      "description": "Installed FigOps package version. This is independent of audit policy projection identifiers.",
       "type": "string"
     },
     "warnings": {
@@ -271,7 +278,10 @@ Describe registered FigOps tools, plot types, semantic checks, and render exampl
       "type": "array"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "is_dry_run": {
       "type": "boolean"
@@ -307,7 +317,10 @@ Describe registered FigOps tools, plot types, semantic checks, and render exampl
       "type": "array"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "script_output": {
       "items": {
@@ -415,7 +428,10 @@ Return canonical FigOps target formats, output formats, profiles, and aliases.
       "type": "array"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "is_dry_run": {
       "type": "boolean"
@@ -460,7 +476,10 @@ Return canonical FigOps target formats, output formats, profiles, and aliases.
       "type": "array"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "script_output": {
       "items": {
@@ -589,7 +608,10 @@ Discover FigOps project configs without executing scripts or writing files.
       "type": "array"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "is_dry_run": {
       "type": "boolean"
@@ -688,7 +710,10 @@ Discover FigOps project configs without executing scripts or writing files.
       "type": "array"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "script_output": {
       "items": {
@@ -828,7 +853,10 @@ Summarize one project config without running analysis, plotting, or report write
       "type": "object"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "figure_outputs": {
       "items": {
@@ -931,7 +959,10 @@ Summarize one project config without running analysis, plotting, or report write
       "type": "object"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "sample_registry_summary": {
       "type": "object"
@@ -1126,7 +1157,10 @@ Run read-only config, data contract, style, and lockfile checks without executin
       "type": "array"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "is_dry_run": {
       "type": "boolean"
@@ -1178,7 +1212,10 @@ Run read-only config, data contract, style, and lockfile checks without executin
       "type": "string"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "script_output": {
       "items": {
@@ -2583,7 +2620,10 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "type": "object"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "geometry_diagnostics": {
       "additionalProperties": false,
@@ -2800,7 +2840,10 @@ Render a CSV-backed graph in an isolated runtime-root MCP job workspace.
       "type": "array"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "script_output": {
       "items": {
@@ -4276,7 +4319,10 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
       "type": "object"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "geometry_diagnostics": {
       "additionalProperties": false,
@@ -4496,7 +4542,10 @@ Render a multi-panel CSV-backed composite figure in an isolated runtime-root MCP
       "type": "object"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "script_output": {
       "items": {
@@ -4603,6 +4652,7 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
     },
     "overwrite": {
       "default": false,
+      "description": "Replace the existing isolated MCP job workspace only; never overwrite the durable project output.",
       "type": "boolean"
     },
     "profile": {
@@ -4682,6 +4732,43 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
       },
       "type": "array"
     },
+    "durable_result": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "relative_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "enum": [
+            "durable_project_result"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "promoted",
+            "not_promoted"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "error_category": {
       "enum": [
         "validation",
@@ -4704,7 +4791,10 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
       "type": "object"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "figure_metadata": {
       "type": "object"
@@ -4905,6 +4995,12 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
     "output_path": {
       "type": "string"
     },
+    "overwrite_scope": {
+      "enum": [
+        "job_workspace_only"
+      ],
+      "type": "string"
+    },
     "policy_context": {
       "additionalProperties": false,
       "properties": {
@@ -5008,6 +5104,19 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
     "promotion_eligible": {
       "type": "boolean"
     },
+    "promotion_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "promotion_status": {
+      "enum": [
+        "promoted",
+        "not_promoted"
+      ],
+      "type": "string"
+    },
     "provenance": {
       "type": "object"
     },
@@ -5019,7 +5128,54 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
       "type": "string"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "runtime_artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "project_relative_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "relative_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "enum": [
+            "runtime_snapshot"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "created",
+            "unavailable"
+          ],
+          "type": "string"
+        },
+        "uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
     },
     "script_output": {
       "items": {
@@ -5041,6 +5197,9 @@ Render one configured project figure in an isolated runtime-root MCP job workspa
     },
     "source_project_path": {
       "type": "string"
+    },
+    "source_unchanged": {
+      "type": "boolean"
     },
     "status": {
       "enum": [
@@ -5293,7 +5452,10 @@ Return artifact metadata for a completed MCP render job.
       "type": "array"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "figure_metadata": {
       "type": "object"
@@ -5402,7 +5564,10 @@ Return artifact metadata for a completed MCP render job.
       "type": "object"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "script_output": {
       "items": {
@@ -5542,7 +5707,10 @@ Plan or create a standard FigOps project scaffold.
       "type": "array"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "is_dry_run": {
       "type": "boolean"
@@ -5587,7 +5755,10 @@ Plan or create a standard FigOps project scaffold.
       "type": "string"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "script_output": {
       "items": {
@@ -5761,7 +5932,10 @@ Propose migration mappings or apply an explicitly reviewed copy-only structure p
       "type": "array"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "is_dry_run": {
       "type": "boolean"
@@ -5818,7 +5992,10 @@ Propose migration mappings or apply an explicitly reviewed copy-only structure p
       "type": "object"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "rollback_journal": {
       "type": "object"
@@ -5982,7 +6159,10 @@ Run a bounded project discovery and validation batch check with optional runtime
       "type": "array"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "is_dry_run": {
       "type": "boolean"
@@ -6018,7 +6198,10 @@ Run a bounded project discovery and validation batch check with optional runtime
       "type": "string"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "resumed_from": {
       "type": "string"
@@ -6126,7 +6309,10 @@ Evaluate an existing render job manifest into a read-only publication-readiness 
       "type": "array"
     },
     "failure_stage": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "is_dry_run": {
       "type": "boolean"
@@ -6159,7 +6345,10 @@ Evaluate an existing render job manifest into a read-only publication-readiness 
       "type": "object"
     },
     "resolution_hint": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "script_output": {
       "items": {

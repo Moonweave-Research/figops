@@ -100,6 +100,13 @@ def _positive_number(value: Any) -> float | None:
 
 
 def _unavailable_results(reason: str) -> list[dict[str, Any]]:
+    """Represent missing required geometry as review-needed, never as a pass.
+
+    not_applicable is an availability state, not a successful check.  The
+    artifact-policy projection uses the required enforcement marker and its
+    aggregate status to keep these results at needs_review until a reasoned
+    observation is available.
+    """
     return [
         _result(check_id, "style_geometry_observations", "not_applicable", None, expected, reason)
         for check_id, expected in (

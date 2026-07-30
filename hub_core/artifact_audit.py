@@ -4,6 +4,12 @@ The audit kernel is intentionally narrower than publication readiness.  It
 always evaluates immutable integrity facts, while geometry, presentation, and
 other readiness judgments are evaluated only when the caller selects a closed
 policy pack.  Automatic audit results always require human review.
+
+The stable public policy-pack identifier is "publication-readiness-v1".  The
+audit adapter projects that public name to the internal
+"publication-readiness-v2" policy projection before delegating evaluation; the
+v2 identifier is an implementation detail and is not accepted as a public
+policy_packs value.
 """
 
 from __future__ import annotations

@@ -6,10 +6,10 @@
 - target_format 파라미터에 따라 딕셔너리를 로드하고, font_scale에 따라 크기를 보정하는 순수 함수.
 - 환경 변수 직접 참조를 배제하여 순수 함수(Pure function) 원칙 준수.
 """
+
 import copy
 import json
 import os
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -89,6 +89,19 @@ except ImportError:
         get_legend_args,
     )
 
+try:
+    from . import journal_export_policy as _journal_export_policy
+except ImportError:
+    import journal_export_policy as _journal_export_policy
+
+NARROW_LOG_MAX_DECADES = _journal_export_policy.NARROW_LOG_MAX_DECADES
+TIFF_AUTO_PRESETS = _journal_export_policy.TIFF_AUTO_PRESETS
+_apply_narrow_log_minor_tick_policy = _journal_export_policy.apply_narrow_log_minor_tick_policy
+prepare_save_metadata = _journal_export_policy.prepare_save_metadata
+resolve_bbox_policy = _journal_export_policy.resolve_bbox_policy
+save_auto_tiff_companion = _journal_export_policy.save_auto_tiff_companion
+_safe_geometry_diagnostics = _journal_export_policy.safe_geometry_diagnostics_inline
+
 __all__ = [
     "DOUBLE_COLUMN",
     "INTERNAL_STYLE_TARGET_FORMAT",
@@ -97,6 +110,7 @@ __all__ = [
     "SINGLE_COLUMN",
     "STYLE_PRESETS",
     "TIFF_AUTO_PRESETS",
+    "NARROW_LOG_MAX_DECADES",
     "_LAYOUT_LOCK_ATTR",
     "_active_font_token_sizes",
     "_apply_legacy_publication_layout",
@@ -105,6 +119,8 @@ __all__ = [
     "_safe_geometry_diagnostics_inline",
     "apply_journal_style",
     "apply_journal_theme",
+    "apply_narrow_log_minor_tick_policy",
+    "apply_narrow_log_tick_policy",
     "apply_panel_grid_layout",
     "apply_publication_layout",
     "font_tokens",
@@ -120,19 +136,7 @@ __all__ = [
 # ── Nature/Science Standard Widths (mm) ─────────────────────────
 SINGLE_COLUMN = 89  # mm
 DOUBLE_COLUMN = 183  # mm
-DIAG_BUDGET_FLOOR_SECONDS = 5.0
 INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))
-
-TIFF_AUTO_PRESETS: set[str] = {
-    "nature",
-    INTERNAL_STYLE_TARGET_FORMAT,
-    "science",
-    "acs",
-    "rsc",
-    "elsevier",
-    "wiley",
-    "cell",
-}
 
 
 @dataclass(frozen=True)
@@ -232,7 +236,10 @@ STYLE_PRESETS = {
         # Output
         "savefig.dpi": 600,
         "savefig.format": "pdf",
-        "savefig.bbox": "tight",
+        # Nature figures have a publication-width canvas.  Tight cropping is
+        # available through ``save_journal_fig(..., bbox_policy="tight")`` or
+        # an explicit ``bbox_inches="tight"`` save kwarg.
+        "savefig.bbox": None,
         "svg.fonttype": "none",
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
@@ -465,6 +472,12 @@ STYLE_PRESETS["cell"].update(
     }
 )
 
+# Keep the historical tight-bbox default for non-Nature journal tracks.  Their
+# existing render/compatibility paths may rely on crop-to-artists behavior;
+# only the Nature-family presets opt into fixed physical canvas dimensions.
+for _tight_compatibility_target in ("science", "acs", "rsc", "elsevier", "wiley", "cell"):
+    STYLE_PRESETS[_tight_compatibility_target]["savefig.bbox"] = "tight"
+
 # Internal project style preset (2026-04-10)
 # - NatComm 5-7pt strict compliance (title 7.0, legend 6.0)
 # - 50x50 mm plot box 기준 → spine/tick 약간 굵게 (0.75pt)
@@ -627,44 +640,29 @@ get_figsize = set_figure_size
 
 
 def _safe_geometry_diagnostics_inline(fig) -> dict:
-    """Run geometry diagnostics in the same frame that holds the live figure.
+    """Run geometry diagnostics in the same frame that holds the live figure."""
 
-    Never raises: a diagnostics-engine error degrades to a passed:null stub so the
-    worker's broad except can never hard-fail an already-saved figure. The wall-clock
-    budget skip reads ONLY GEOMETRY_DIAGNOSTICS_DEADLINE against a fixed floor;
-    MCP_RENDER_TIMEOUT_SECONDS is a module constant in mcp_surface and is never in
-    os.environ, so it must not be read here.
-    """
-    try:
-        from hub_core.geometry_diagnostics import RAW_SCHEMA_VERSION, diagnose_figure_geometry
-
-        deadline = float(os.environ.get("GEOMETRY_DIAGNOSTICS_DEADLINE", "inf"))
-        if deadline - time.time() < DIAG_BUDGET_FLOOR_SECONDS:
-            return {
-                "schema_version": RAW_SCHEMA_VERSION,
-                "measurements": [],
-                "warnings": ["skipped: render budget"],
-            }
-        data_axes = [
-            axis for axis in fig.axes if axis.get_visible() and getattr(axis, "_graph_hub_role", None) != "colorbar"
-        ]
-        layout_locked = getattr(fig, _LAYOUT_LOCK_ATTR, None) is not None
-        return diagnose_figure_geometry(
-            fig,
-            data_axes,
-            layout_locked=layout_locked,
-            font_token_sizes=_active_font_token_sizes(),
-            journal_compliance=_ACTIVE_COMPLIANCE_TOKENS,
-            contract_version="raw",
-        )
-    except Exception as exc:
-        from hub_core.geometry_diagnostics import RAW_SCHEMA_VERSION
-
-        return {"schema_version": RAW_SCHEMA_VERSION, "measurements": [], "warnings": [str(exc)]}
+    return _safe_geometry_diagnostics(
+        fig,
+        layout_lock_attr=_LAYOUT_LOCK_ATTR,
+        font_token_sizes=_active_font_token_sizes(),
+        journal_compliance=_ACTIVE_COMPLIANCE_TOKENS,
+    )
 
 
 def _active_font_token_sizes() -> list[float]:
     return list(_ACTIVE_FONT_TOKENS.as_dict().values())
+
+
+def apply_narrow_log_minor_tick_policy(fig, *, mode: str | bool = "auto") -> dict:
+    """Apply the journal-only narrow-log minor-label policy to ``fig``."""
+
+    return _apply_narrow_log_minor_tick_policy(fig, mode=mode, target_format=_ACTIVE_TARGET_FORMAT)
+
+
+# A descriptive alias keeps direct callers readable while preserving one
+# implementation for older scripts that prefer the shorter ``tick`` spelling.
+apply_narrow_log_tick_policy = apply_narrow_log_minor_tick_policy
 
 
 def save_journal_fig(
@@ -676,8 +674,10 @@ def save_journal_fig(
     tiff_companion: bool = True,
     auto_declutter: bool | None = None,
     declutter_mode: str | None = None,
+    narrow_log_minor_labels: str | bool = "auto",
     compliance_mode: str | None = None,
     mutation_ledger_out: list[dict] | None = None,
+    bbox_policy: str | None = None,
     **kwargs,
 ):
     """
@@ -685,41 +685,47 @@ def save_journal_fig(
     PDF uses CreationDate/ModDate, while SVG suppresses Date metadata for stable output.
     If filename is .pdf, companion files are generated per companion_formats (png, tiff).
 
-    Layout-locked figures use rc_context to suppress savefig.bbox='tight' from rcParams,
-    because passing bbox_inches=None in kwargs still falls back to rcParams in matplotlib.
+    ``bbox_policy`` controls the canvas-vs-crop policy when ``bbox_inches`` is
+    not passed explicitly.  ``None``/``"auto"`` keeps publication canvas size
+    for layout-locked and Nature-family figures, while retaining the historical
+    tight-bbox behavior for other non-neutral targets.  Use
+    ``bbox_policy="tight"`` (or the long-standing ``bbox_inches="tight"``
+    kwarg) as an explicit crop opt-in; use ``bbox_policy="fixed"`` to force a
+    fixed canvas for any target.  Explicit ``bbox_inches`` always wins, which
+    preserves compatibility with callers that already requested tight output.
+
+    Fixed-canvas saves use rc_context to suppress ``savefig.bbox='tight'`` from
+    rcParams, because passing ``bbox_inches=None`` in kwargs still falls back to
+    rcParams in matplotlib.
 
     If preset is in TIFF_AUTO_PRESETS and tiff_companion is True, a 300 DPI LZW-compressed
     TIFF companion is saved alongside any primary format (unless primary is already TIFF).
+
+    ``narrow_log_minor_labels`` is a journal-only save-time convenience.  In
+    ``auto`` mode, built-in Matplotlib log minor labels are suppressed below
+    two decades; pass ``False`` to opt out.  User-supplied formatters are never
+    replaced.
     """
     import contextlib
 
     layout_lock = getattr(fig, _LAYOUT_LOCK_ATTR, None)
-    if layout_lock:
+    fixed_canvas, _ = resolve_bbox_policy(
+        target_format=_ACTIVE_TARGET_FORMAT,
+        layout_lock=layout_lock,
+        kwargs=kwargs,
+        bbox_policy=bbox_policy,
+    )
+    if fixed_canvas:
         kwargs.pop("bbox_inches", None)
         save_ctx = plt.rc_context({"savefig.bbox": None, "savefig.pad_inches": 0})
     else:
-        if _ACTIVE_TARGET_FORMAT != "neutral":
-            kwargs.setdefault("bbox_inches", "tight")
         save_ctx = contextlib.nullcontext()
 
-    metadata = kwargs.pop("metadata", {}) or {}
-    file_path = Path(filename)
-    suffix = file_path.suffix.lower()
-    if _ACTIVE_TARGET_FORMAT != "neutral" and suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff"}:
-        kwargs.setdefault("dpi", 600)
-
-    # 도구 버전 정보 차단 — 환경별 바이너리 해시 불일치 방지
-    metadata.setdefault("Creator", None)
-    metadata.pop("Producer", None)
-    metadata.pop("Software", None)
-
-    if suffix == ".svg":
-        metadata.pop("CreationDate", None)
-        metadata.pop("ModDate", None)
-        metadata.setdefault("Date", None)
-    else:
-        metadata.setdefault("CreationDate", None)
-        metadata.setdefault("ModDate", None)
+    file_path, suffix, metadata = prepare_save_metadata(
+        filename,
+        kwargs=kwargs,
+        target_format=_ACTIVE_TARGET_FORMAT,
+    )
 
     effective_compliance = str(compliance_mode or _ACTIVE_COMPLIANCE_MODE or "validate").strip().lower()
     if effective_compliance not in {"validate", "clamp"}:
@@ -732,6 +738,7 @@ def save_journal_fig(
         raise ValueError("declutter_mode must be 'none' or 'declutter'")
 
     with save_ctx:
+        apply_narrow_log_minor_tick_policy(fig, mode=narrow_log_minor_labels)
         ledger, declutter_evidence = apply_explicit_save_mutations(
             fig,
             compliance_mode=effective_compliance,
@@ -771,14 +778,13 @@ def save_journal_fig(
                 tiff_kwargs["pil_kwargs"] = {"compression": "tiff_lzw"}
                 fig.savefig(file_path.with_suffix(".tiff"), **tiff_kwargs)
 
-        # Auto TIFF companion for journal presets
-        _preset = (preset or "").lower()
-        if tiff_companion and _preset in TIFF_AUTO_PRESETS and suffix != ".tiff" and "tiff" not in companion_formats:
-            tiff_path = file_path.with_suffix(".tiff")
-            fig.savefig(
-                str(tiff_path),
-                dpi=300,
-                format="tiff",
-                bbox_inches="tight",
-                pil_kwargs={"compression": "tiff_lzw"},
-            )
+        save_auto_tiff_companion(
+            fig,
+            file_path,
+            preset=preset,
+            suffix=suffix,
+            tiff_companion=tiff_companion,
+            companion_formats=companion_formats,
+            kwargs=kwargs,
+            fixed_canvas=fixed_canvas,
+        )

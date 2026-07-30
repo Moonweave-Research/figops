@@ -109,6 +109,20 @@ fixed and change only style/output controls.
 - `manual_review_needed=false` is not human or venue approval.
 - Preview resources are lazy, manifest-bound, MIME-checked, and size-bounded.
 
+### Audit policy names and unavailable geometry
+
+`figops.audit_artifact` accepts the stable public policy-pack name
+`publication-readiness-v1`. The adapter projects that public name to the
+internal `publication-readiness-v2` policy projection before evaluating the
+evidence. `publication-readiness-v2` is intentionally not a public enum value;
+callers must continue sending `publication-readiness-v1`.
+
+For required geometry, `not_applicable` means that the required observation is
+unavailable or cannot be measured. It is not a passing result: the measurement
+must include a non-empty `reason`, and the resulting policy projection remains
+`needs_review` until the required evidence is available. Optional unavailable
+geometry may remain informational under the selected policy.
+
 When writes are disabled, `figops.inspect_data`, `figops.audit_artifact`, and
 manifest/preview reads remain available. Render, scaffold, normalize, and batch
 write handlers are omitted from discovery and fail closed without side effects

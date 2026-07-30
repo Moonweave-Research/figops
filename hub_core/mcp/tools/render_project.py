@@ -22,6 +22,7 @@ from hub_core.external_raw_execution import (
 from hub_core.mcp import render_orchestration as render_helpers
 from hub_core.mcp import render_project_integrity_context as integrity_context
 from hub_core.mcp.errors import PROJECT_DECLARATION_PATH_INVALID, has_unsafe_declared_path
+from hub_core.mcp.tools.render_project_contract import project_render_result_contract
 from hub_core.project_paths import ProjectPathError, resolve_project_input, resolve_project_output
 from hub_core.provenance_inputs import expand_project_input_files, resolved_research_ops_evidence
 from hub_core.render_evidence import build_render_evidence
@@ -31,6 +32,8 @@ from hub_core.result_promotion import promote_eligible_project_result
 
 class McpRenderProjectMixin:
     """Project-figure rendering MCP tool handlers."""
+
+    _project_render_result_contract = project_render_result_contract
 
     def render_project_figure(self, arguments: dict[str, Any]) -> dict[str, Any]:
         arguments = dict(arguments)
@@ -156,7 +159,6 @@ class McpRenderProjectMixin:
                 preflight_valid = validate_data_contract_preflight(
                     project_path,
                     config,
-                    # Full validation below performs the single guarded prefetch/read.
                     require_existing=False,
                     prefetcher=adapters.prefetcher,
                     raise_path_contract_errors=True,
@@ -215,8 +217,7 @@ class McpRenderProjectMixin:
                     job_id=job_id,
                     job_root=job_root,
                     summary="Project data contract failed before rendering.",
-                    # Preserve the public failure distinction while the guarded
-                    # full validator owns the single prefetch/read operation.
+                    # Preserve the public failure distinction; the guarded validator owns the single prefetch/read.
                     errors=[
                         "Data contract preflight failed for project render."
                         if input_unavailable
@@ -344,10 +345,11 @@ class McpRenderProjectMixin:
         latest_dir = self.runtime_root / "_latest" / "mcp_project_render"
         project_id = self._stable_project_id_for_path(project_path)
         if dry_run:
+            result_contract = self._project_render_result_contract(job_root=job_root, snapshot_project_path=snapshot_project_path, output_path=output_path, output_relpath=output_relpath, promotion_eligible=False, workflow_intent=workflow_intent, dry_run=True)  # noqa: E501
             return self._envelope(
                 "figops.render_project_figure",
                 arguments,
-                summary="Project figure render validated in dry-run mode; no files were created.",
+                summary="Project figure render validated in dry-run mode; no files were created. The source project is unchanged; overwrite applies to the job workspace only.",  # noqa: E501
                 is_dry_run=True,
                 job_id=job_id,
                 project_id=project_id,
@@ -366,6 +368,8 @@ class McpRenderProjectMixin:
                 geometry_diagnostics=render_helpers._geometry_stub("dry_run"),
                 layout_report=render_helpers._layout_report_from_geometry(render_helpers._geometry_stub("dry_run")),
                 artifact_status="validated",
+                promotion_eligible=False,
+                **result_contract,
                 baseline_comparison=self._baseline_comparison(None, arguments.get("baseline_path")),
                 provenance={"attempt": attempt},
                 policy_context=policy_context,
@@ -375,13 +379,6 @@ class McpRenderProjectMixin:
             )
         claim_inventory = self._project_claim_inventory(project_path, selected)
         claim_warnings = [f"Claim inventory: {message}" for message in claim_inventory["errors"]]
-        job_root = self._mcp_project_jobs_root() / job_id
-        snapshot_project_path = job_root / "project"
-        output_path = snapshot_project_path / output_relpath
-        config_path = snapshot_project_path / config_relpath
-        manifest_path = job_root / "manifest.json"
-        status_path = job_root / "status.json"
-        latest_dir = self.runtime_root / "_latest" / "mcp_project_render"
         if job_root.exists() and not overwrite:
             return self._project_render_error(
                 arguments,
@@ -391,10 +388,14 @@ class McpRenderProjectMixin:
                 summary="Project render job already exists.",
                 errors=[
                     f"Project render job already exists: {self._runtime_uri(job_root)}. "
-                    "Set overwrite=true to replace it."
+                    "Set overwrite=true to replace the job workspace only; "
+                    "the durable project output is never overwritten."
                 ],
                 failure_stage="EXPORT",
-                resolution_hint="Set overwrite=true to replace the existing MCP project render job.",
+                resolution_hint=(
+                    "Set overwrite=true to replace the existing MCP job workspace; "
+                    "this flag never overwrites the durable project output."
+                ),
                 project_id=project_id,
                 source_project_path=source_project_path,
                 snapshot_project_path=str(snapshot_project_path),
@@ -467,9 +468,7 @@ class McpRenderProjectMixin:
                 require_matches=True,
             )
             external_inputs = materialize_external_raw_inputs(
-                # Authority/boundary checks bind to the durable source project.
-                # The snapshot is itself disposable runtime state and must not
-                # be treated as a durable project root overlapping runtime.
+                # Authority checks bind to the durable source; the disposable snapshot must not overlap runtime.
                 project_root=project_path,
                 config=config,
                 declarations=input_declarations,
@@ -669,6 +668,7 @@ class McpRenderProjectMixin:
                     ) from exc
             if promoted is not None:
                 created_paths.extend(str(item.path) for item in promoted)
+            result_contract = self._project_render_result_contract(job_root=job_root, snapshot_project_path=snapshot_project_path, output_path=output_path, output_relpath=output_relpath, promotion_eligible=bool(manifest["promotion_eligible"]), promoted=promoted, workflow_intent=workflow_intent)  # noqa: E501
         except Exception as exc:
             if isinstance(exc, TimeoutError):
                 failure_stage = "TIMEOUT"
@@ -753,9 +753,7 @@ class McpRenderProjectMixin:
             "figops.render_project_figure",
             arguments,
             status=status,
-            summary=(
-                "Rendered project figure." if status == "ok" else "Rendered project figure with preflight warnings."
-            ),
+            summary=("Rendered project figure." if status == "ok" else "Rendered project figure with preflight warnings.") + " The source project is unchanged; overwrite applies to the job workspace only.",  # noqa: E501
             created_paths=created_paths,
             artifact_resources=preview_references["artifact_resources"],
             preview_resources=preview_references["preview_resources"],
@@ -794,6 +792,7 @@ class McpRenderProjectMixin:
             claim_inventory=claim_inventory,
             publication_status=manifest["publication_status"],
             promotion_eligible=manifest["promotion_eligible"],
+            **result_contract,
             failure_stage="",
             resolution_hint="",
         )

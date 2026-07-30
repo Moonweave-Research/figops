@@ -17,6 +17,25 @@ def build_v2_tool_definitions(
     project_path_arg: dict[str, Any],
     selector_one_of: list[dict[str, Any]],
 ) -> list[ToolDefinition]:
+    runtime_artifact = object_schema(
+        {
+            "status": {"type": "string", "enum": ["created", "unavailable"]},
+            "uri": {"type": ["string", "null"]},
+            "relative_path": {"type": ["string", "null"]},
+            "project_relative_path": {"type": ["string", "null"]},
+            "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$"},
+            "source": {"type": "string", "enum": ["runtime_snapshot"]},
+        }
+    )
+    durable_result = object_schema(
+        {
+            "status": {"type": "string", "enum": ["promoted", "not_promoted"]},
+            "relative_path": {"type": ["string", "null"]},
+            "reason_code": {"type": ["string", "null"]},
+            "reason": {"type": ["string", "null"]},
+            "source": {"type": "string", "enum": ["durable_project_result"]},
+        }
+    )
     render_output = object_schema(
         {
             "schema_version": {"type": "string"},
@@ -31,6 +50,8 @@ def build_v2_tool_definitions(
             "warnings": {"type": "array", "items": {"type": "string"}},
             "errors": {"type": "array", "items": {"type": "string"}},
             "manual_review_needed": {"type": "boolean"},
+            "failure_stage": {"type": ["string", "null"]},
+            "resolution_hint": {"type": ["string", "null"]},
         }
     )
     project_render_output = {
@@ -38,6 +59,16 @@ def build_v2_tool_definitions(
         "properties": {
             **render_output["properties"],
             "runtime_availability": {"type": "object"},
+            "promotion_eligible": {"type": "boolean"},
+            "runtime_artifact": {"anyOf": [runtime_artifact, {"type": "null"}]},
+            "durable_result": {"anyOf": [durable_result, {"type": "null"}]},
+            "promotion_status": {
+                "type": ["string", "null"],
+                "enum": ["promoted", "not_promoted", None],
+            },
+            "promotion_reason": {"type": ["string", "null"]},
+            "source_unchanged": {"type": "boolean"},
+            "overwrite_scope": {"type": "string", "enum": ["job_workspace_only"]},
             "policy_context": RENDER_POLICY_CONTEXT_SCHEMA,
             "workflow_intent": WORKFLOW_INTENT_SCHEMA,
         },
@@ -148,7 +179,14 @@ def build_v2_tool_definitions(
                         "default": "png",
                     },
                     "job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,80}$", "maxLength": 80},
-                    "overwrite": {"type": "boolean", "default": False},
+                    "overwrite": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "Replace the existing isolated MCP job workspace only; "
+                            "never overwrite the durable project output."
+                        ),
+                    },
                 },
                 required=["data_path", "x", "y"],
             ),
@@ -176,7 +214,14 @@ def build_v2_tool_definitions(
                             ),
                         },
                         "job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,80}$", "maxLength": 80},
-                        "overwrite": {"type": "boolean", "default": False},
+                        "overwrite": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Replace the existing isolated MCP job workspace only; "
+                                "never overwrite the durable project output."
+                            ),
+                        },
                     }
                 ),
                 "oneOf": selector_one_of,
@@ -185,12 +230,22 @@ def build_v2_tool_definitions(
         ),
         ToolDefinition(
             "figops.audit_artifact",
-            "Audit validated completed-job evidence with zero or more explicit policy packs.",
+            (
+                "Audit validated completed-job evidence with zero or more explicit policy packs. "
+                "The public publication-readiness-v1 pack projects internally to "
+                "publication-readiness-v2; v2 is not a public enum value. "
+                "Required geometry marked not_applicable remains unresolved and requires review."
+            ),
             object_schema(
                 {
                     "job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,80}$", "maxLength": 80},
                     "policy_packs": {
                         "type": "array",
+                        "description": (
+                            "Public policy-pack identifiers only. publication-readiness-v1 is "
+                            "projected internally to publication-readiness-v2; the internal id "
+                            "must not be supplied by callers."
+                        ),
                         "items": {"type": "string", "enum": sorted(SUPPORTED_POLICY_PACKS)},
                         "maxItems": len(SUPPORTED_POLICY_PACKS),
                         "uniqueItems": True,

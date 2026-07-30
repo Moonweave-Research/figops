@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
 
+from hub_core.artifact_audit import PUBLICATION_READINESS_POLICY
 from hub_core.mcp import FigOpsMCPServer, GraphHubMCPServer
 from hub_core.mcp.config import McpServerConfig
 from hub_core.mcp.schemas import LEGACY_TOOL_NAMES, TOOL_NAMES, list_tool_definitions
@@ -105,6 +107,28 @@ def test_writes_disabled_v2_discovery_omits_denied_renders() -> None:
     assert _names(definitions) == [name for name in V2_TOOL_NAMES if not is_write_tool_name(name)]
     assert all(tool["annotations"]["readOnlyHint"] is True for tool in definitions)
     assert {"figops.inspect_data", "figops.audit_artifact"} <= set(_names(definitions))
+
+
+def test_health_version_is_package_version_not_audit_policy_projection() -> None:
+    server = FigOpsMCPServer(surface_profile="v2", write_tools_enabled=False)
+    health = server.call_tool("figops.health", {})["structuredContent"]
+    package = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert health["version"] == package["project"]["version"]
+    assert health["version"] != "publication-readiness-v2"
+
+
+def test_audit_policy_schema_keeps_public_v1_enum_and_documents_internal_projection() -> None:
+    definition = next(
+        item
+        for item in list_tool_definitions(profile="v2", write_tools_enabled=True)
+        if item["name"] == "figops.audit_artifact"
+    )
+    schema = definition["inputSchema"]["properties"]["policy_packs"]
+
+    assert schema["items"]["enum"] == [PUBLICATION_READINESS_POLICY]
+    assert "publication-readiness-v2" in schema["description"]
+    assert "not_applicable" in definition["description"]
 
 
 def test_compatibility_profile_exposes_frozen_fourteen_plus_thirteen() -> None:

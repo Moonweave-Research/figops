@@ -28,9 +28,11 @@ def _assert_release_status_matches_post_tag_state(status: str, post_tag_blocker:
     assert "- Repository release allowed: no" in status
     assert "- Technical blockers:" in status
     assert "- Technical blockers: 0" not in status
-    assert POST_TAG_METADATA_ROW in status
     if post_tag_blocker is not None:
+        assert POST_TAG_METADATA_ROW in status
         assert "Release metadata is stale" in post_tag_blocker
+    else:
+        assert POST_TAG_METADATA_ROW not in status
 
 
 def test_package_version_is_semver_and_matches_latest_changelog_entry():

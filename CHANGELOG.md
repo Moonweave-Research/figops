@@ -15,6 +15,11 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.20.2] - 2026-07-29
+
+Post-0.20.1 release-candidate metadata entry. This records the next patch
+candidate only; merge, tag, and package publication remain maintainer actions.
+
 ## [0.20.1] - 2026-07-25
 
 Post-0.20.0 release-candidate metadata entry. This records the next patch

@@ -19,9 +19,9 @@
       "figops.audit_artifact"
     ],
     "emitted_tool_definition_count": 7,
-    "tools_list_response_bytes": 14477,
-    "tools_array_bytes": 14433,
-    "maximum_input_schema_bytes": 1102,
+    "tools_list_response_bytes": 16451,
+    "tools_array_bytes": 16407,
+    "maximum_input_schema_bytes": 1216,
     "maximum_input_schema_tool": "figops.render_basic_csv",
     "render_basic_csv_top_level_properties": 12
   },
@@ -34,8 +34,8 @@
       "figops.audit_artifact"
     ],
     "emitted_tool_definition_count": 5,
-    "tools_list_response_bytes": 8334,
-    "tools_array_bytes": 8290
+    "tools_list_response_bytes": 8861,
+    "tools_array_bytes": 8817
   },
   "compatibility_surface": {
     "canonical_tool_count": 14,
@@ -45,18 +45,18 @@
   "generated_references": {
     "default_full": {
       "path": "docs/tools.md",
-      "bytes": 167680,
-      "lines": 8161
+      "bytes": 174368,
+      "lines": 8501
     },
     "v2": {
       "path": "docs/tools-v2.md",
-      "bytes": 23642,
-      "lines": 1298
+      "bytes": 27435,
+      "lines": 1462
     },
     "compatibility": {
       "path": "docs/tools-compatibility.md",
-      "bytes": 136939,
-      "lines": 6219
+      "bytes": 140088,
+      "lines": 6408
     }
   },
   "guided_call_contract": {

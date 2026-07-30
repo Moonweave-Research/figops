@@ -148,6 +148,7 @@ def threshold_neutral_geometry_measurements(
     from .geometry_artist_overlaps import (
         _artist_overlap_candidate_items,
         _is_reportable_artist_overlap,
+        _line_text_crossings,
     )
     from .geometry_overlay_contrast import (
         _artist_rgb,
@@ -235,6 +236,27 @@ def threshold_neutral_geometry_measurements(
                     "pairs": pair_facts,
                     "pairs_truncated": pair_count > len(pair_facts),
                 },
+            )
+        )
+
+        # IoU is intentionally retained above for the legacy artist-overlap
+        # projection.  A thin line has negligible area relative to a text
+        # bbox, though, so the raw v2 surface also carries an exact
+        # centerline-vs-bbox segment intersection fact.  This measurement is
+        # policy-neutral: it contains bounded geometry evidence only and does
+        # not alter the legacy ``artist_overlaps`` verdict.
+        measurements.append(
+            _available_measurement(
+                "line_text_crossings",
+                axis_index,
+                "structured",
+                _line_text_crossings(
+                    ax,
+                    renderer,
+                    is_paintable=is_paintable,
+                    candidate_cap=candidate_cap,
+                    reported_cap=reported_cap,
+                ),
             )
         )
 
