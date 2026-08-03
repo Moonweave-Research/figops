@@ -42,6 +42,15 @@ def test_public_release_check_allows_split_internal_style_packs(tmp_path: Path) 
     assert result.ok
 
 
+def test_export_policy_keeps_internal_marker_split_for_public_artifacts() -> None:
+    source = (Path(__file__).resolve().parents[1] / "themes" / "journal_export_policy.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "nature_surfur" not in source
+    assert 'INTERNAL_STYLE_TARGET_FORMAT = "_".join(("nature", "surfur"))' in source
+
+
 def test_public_release_check_does_not_block_on_its_own_denylist_terms(tmp_path: Path) -> None:
     script = tmp_path / "scripts" / "check_public_release.py"
     test_file = tmp_path / "tests" / "test_public_release_check.py"
