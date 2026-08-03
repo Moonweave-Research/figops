@@ -148,14 +148,16 @@ def threshold_neutral_geometry_measurements(
     from .geometry_artist_overlaps import (
         _artist_overlap_candidate_items,
         _is_reportable_artist_overlap,
+        _line_segment_resolver,
         _line_text_crossings,
+        _pair_centerline_intersection_px,
     )
     from .geometry_overlay_contrast import (
         _artist_rgb,
         _contrast_ratio,
         _overlay_contrast_items,
     )
-    from .geometry_primitives import _box_area, _boxes_overlap, _extent, _overlap_fraction
+    from .geometry_primitives import GEOM_EPS_PX, _box_area, _boxes_overlap, _extent, _overlap_fraction
 
     if candidate_cap <= 0 or reported_cap <= 0:
         raise ValueError("candidate_cap and reported_cap must be positive")
@@ -205,6 +207,7 @@ def threshold_neutral_geometry_measurements(
         candidates = candidates[:candidate_cap]
         pair_facts: list[dict[str, Any]] = []
         pair_count = 0
+        resolve_segment = _line_segment_resolver(ax)
         for index_a in range(len(candidates)):
             label_a, box_a, artist_a = candidates[index_a]
             for index_b in range(index_a + 1, len(candidates)):
@@ -215,13 +218,21 @@ def threshold_neutral_geometry_measurements(
                     continue
                 pair_count += 1
                 if len(pair_facts) < reported_cap:
-                    pair_facts.append(
-                        {
-                            "a": label_a,
-                            "b": label_b,
-                            "iou": round(float(_overlap_fraction(box_a, box_b)), 6),
-                        }
+                    pair_fact: dict[str, Any] = {
+                        "a": label_a,
+                        "b": label_b,
+                        "iou": round(float(_overlap_fraction(box_a, box_b)), 6),
+                    }
+                    # Retain the legacy bbox ratio, but expose exact
+                    # centerline evidence for line/non-line pairs so a
+                    # diagonal bbox artifact cannot be mistaken for contact.
+                    centerline_px = _pair_centerline_intersection_px(
+                        resolve_segment, label_a, box_a, label_b, box_b
                     )
+                    if centerline_px is not None:
+                        pair_fact["centerline_intersection_px"] = round(centerline_px, 6)
+                        pair_fact["centerline_intersects"] = centerline_px > GEOM_EPS_PX
+                    pair_facts.append(pair_fact)
         measurements.append(
             _available_measurement(
                 "artist_pair_iou",

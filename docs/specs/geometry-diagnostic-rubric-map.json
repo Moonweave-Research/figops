@@ -1,7 +1,26 @@
 {
   "schema_version": "geometry_diagnostic_rubric_map/1",
   "source_schema_version": "geometry_diagnostics/1",
-  "description": "Machine-readable source of truth mapping every geometry_diagnostics/1 metric to the FigOps figure-quality rubric.",
+  "description": "Machine-readable source of truth mapping every geometry_diagnostics/1 metric to the FigOps figure-quality rubric. The additive raw_metric_semantics section documents geometry_diagnostics/2 candidate facts; raw facts do not carry policy verdicts.",
+  "raw_metric_semantics": {
+    "schema_version": "geometry_diagnostics/2",
+    "compatibility": "This section is documentation-only and additive. The geometry_diagnostics/1 metrics mapping and public legacy metric names remain unchanged; the frozen geometry_diagnostics/2 top-level and measurement discriminator fields remain unchanged. New pair facts stay nested under an existing measurement value object.",
+    "artist_pair_iou": {
+      "kind": "candidate_evidence",
+      "unit": "ratio",
+      "semantics": "Legacy `iou` overlap fraction (intersection area divided by the smaller candidate-box area) over bounded axis-aligned display-space artist boxes. The field name is retained for compatibility; it is an approximation, not mathematical union IoU or exact painted-ink/centerline collision. Line candidates use padded axis-aligned boxes.",
+      "scope": "Per data axis over the bounded candidates assembled by the neutral raw measurement path, including visible legends, title/text artists, line segments, patches, and marker-footprint boxes where available.",
+      "line_pair_metadata": "When exactly one pair member is a line segment, the pair may additionally carry `centerline_intersection_px` and `centerline_intersects`, measured against the other candidate box with positive-length Liang-Barsky clipping. These fields are absent for non-line and line-line pairs; a zero value identifies a bbox-only candidate contact without changing the legacy `iou`.",
+      "policy_verdict": "None. Pair counts and IoU values are raw facts; they do not imply pass, fail, severity, or publication readiness. A selected policy projection supplies any verdict."
+    },
+    "line_text_crossings": {
+      "kind": "candidate_evidence",
+      "unit": "structured",
+      "semantics": "Exact display-space centerline-versus-text-bounding-box intersection for a line segment with more than the geometry epsilon of positive length inside the text box. It does not use the padded line AABB used by artist_pair_iou.",
+      "scope": "Per data axis, visible paintable Axes.get_lines() (using each line's own transform, including blended axhline/axvline transforms) against visible non-empty ax.title and ax.texts only. Tick labels, legends, patches, markers, and other axes are out of scope; line, segment, and text candidates are bounded and truncation is reported.",
+      "policy_verdict": "None. Crossing counts and reported crossing facts are raw measurements only; they do not imply pass, fail, severity, or publication readiness. A selected policy projection supplies any verdict."
+    }
+  },
   "metrics": {
     "tick_label_overlaps": {
       "rubric_id": "FQ-H3",

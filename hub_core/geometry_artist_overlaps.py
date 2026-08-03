@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 from matplotlib.transforms import Bbox
 
 from .geometry_primitives import GEOM_EPS_PX, _box_area, _extent, _overlap_fraction, _overlap_severity
+
+_LINE_SEGMENT_LABEL_PATTERN = re.compile(r"^line:(\d+)\[(\d+)\]$")
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -80,25 +83,135 @@ def _artist_overlap_candidate_items(
     return candidates
 
 
-def _line_overlap_boxes(ax: Axes, line: Any) -> list[Bbox]:
+def _line_overlap_segments(
+    ax: Axes,
+    line: Any,
+) -> list[tuple[Bbox, np.ndarray | None, np.ndarray | None]]:
+    """Return a padded segment bbox and its centerline endpoints.
+
+    The bbox remains the legacy candidate geometry used by the IoU metric,
+    while the endpoints provide exact line-vs-artist evidence for any pair
+    that contains one line segment.  Both are emitted in the same segment
+    order, so a ``line:i[j]`` label can be resolved back to its centerline.
+
+    This intentionally preserves the legacy finite-point handling and data
+    transform used by :func:`_line_overlap_boxes`; changing either would
+    silently change candidate labels or their bbox values for existing users.
+    A finite-point pair spanning a NaN path break retains its legacy box but
+    has unresolved exact endpoints, so callers cannot claim a collision
+    across the synthetic gap.
+    """
+
     xy = np.asarray(line.get_xydata(), dtype=float)
     if xy.size == 0:
         return []
-    finite = xy[np.all(np.isfinite(xy), axis=1)]
+    finite_mask = np.all(np.isfinite(xy[:, :2]), axis=1)
+    finite_indices = np.flatnonzero(finite_mask)
+    finite = xy[finite_mask, :2]
     if len(finite) < 2:
         return []
     display = ax.transData.transform(finite)
     if not np.all(np.isfinite(display)):
         return []
+    try:
+        line_transform = line.get_transform()
+    except (AttributeError, RuntimeError):
+        line_transform = ax.transData
+    if line_transform is None or not hasattr(line_transform, "transform"):
+        line_transform = ax.transData
+    try:
+        exact_display = np.asarray(line_transform.transform(finite), dtype=float)
+    except (TypeError, ValueError, OverflowError, RuntimeError):
+        exact_display = display
+    exact_display_valid = exact_display.shape == display.shape and np.all(np.isfinite(exact_display))
     half_width = max(GEOM_EPS_PX, float(line.get_linewidth()) / 2)
-    boxes: list[Bbox] = []
-    for start, end in zip(display, display[1:]):
+    segments: list[tuple[Bbox, np.ndarray | None, np.ndarray | None]] = []
+    for point_index, (start, end) in enumerate(zip(display, display[1:])):
         x0 = min(float(start[0]), float(end[0])) - half_width
         x1 = max(float(start[0]), float(end[0])) + half_width
         y0 = min(float(start[1]), float(end[1])) - half_width
         y1 = max(float(start[1]), float(end[1])) + half_width
-        boxes.append(Bbox.from_extents(x0, y0, x1, y1))
-    return boxes
+        if (
+            int(finite_indices[point_index + 1]) == int(finite_indices[point_index]) + 1
+            and exact_display_valid
+        ):
+            exact_start: np.ndarray | None = np.asarray(exact_display[point_index], dtype=float)
+            exact_end: np.ndarray | None = np.asarray(exact_display[point_index + 1], dtype=float)
+        else:
+            exact_start = None
+            exact_end = None
+        segments.append((Bbox.from_extents(x0, y0, x1, y1), exact_start, exact_end))
+    return segments
+
+
+def _line_overlap_boxes(ax: Axes, line: Any) -> list[Bbox]:
+    """Return legacy padded AABBs for each finite line segment."""
+
+    return [box for box, _start, _end in _line_overlap_segments(ax, line)]
+
+
+def _line_segment_resolver(ax: Axes) -> Callable[[str], tuple[np.ndarray, np.ndarray] | None]:
+    """Resolve a ``line:i[j]`` candidate label to centerline endpoints.
+
+    The resolver is deliberately total: malformed labels and labels that no
+    longer resolve to a current line/segment return ``None`` rather than
+    raising during diagnostics.  Segment lists are cached per line so a
+    dense candidate set does not recompute the same line for every pair; the
+    caller's reported-cap controls how many facts are emitted.
+    """
+
+    cache: dict[int, list[tuple[Bbox, np.ndarray | None, np.ndarray | None]]] = {}
+    lines = list(ax.get_lines())
+
+    def resolve(label: str) -> tuple[np.ndarray, np.ndarray] | None:
+        if not isinstance(label, str):
+            return None
+        match = _LINE_SEGMENT_LABEL_PATTERN.match(label)
+        if match is None:
+            return None
+        line_index = int(match.group(1))
+        segment_index = int(match.group(2))
+        if not 0 <= line_index < len(lines):
+            return None
+        if line_index not in cache:
+            cache[line_index] = _line_overlap_segments(ax, lines[line_index])
+        segments = cache[line_index]
+        if not 0 <= segment_index < len(segments):
+            return None
+        _box, start, end = segments[segment_index]
+        if start is None or end is None:
+            return None
+        return start, end
+
+    return resolve
+
+
+def _pair_centerline_intersection_px(
+    resolve: Callable[[str], tuple[np.ndarray, np.ndarray] | None],
+    label_a: str,
+    box_a: Bbox,
+    label_b: str,
+    box_b: Bbox,
+) -> float | None:
+    """Measure exact centerline length for a line/non-line candidate pair.
+
+    ``None`` denotes pairs with no line or with two lines; those pairs retain
+    their legacy bbox IoU only.  For exactly one line, the returned length is
+    the positive-length Liang--Barsky intersection with the other artist's
+    bbox.  A zero value therefore exposes a diagonal-bbox artifact without
+    discarding the original bbox candidate data.
+    """
+
+    segment_a = resolve(label_a)
+    segment_b = resolve(label_b)
+    if (segment_a is None) == (segment_b is None):
+        return None
+    if segment_a is not None:
+        start, end, other_box = segment_a[0], segment_a[1], box_b
+    else:
+        assert segment_b is not None
+        start, end, other_box = segment_b[0], segment_b[1], box_a
+    return float(_segment_bbox_intersection_length(start, end, other_box))
 
 
 def _segment_bbox_intersection_length(

@@ -76,6 +76,57 @@ TICK_CROWDING_WARN = 0.90  DATA_OUTSIDE_AXES_WARN = 0.01
 LEGEND_OVERLAP_WARN = 0.05 COLORBAR_OVERLAP_WARN = 0.02
 ```
 
+### 2.0.1 Raw v2 candidate-evidence metrics (additive)
+
+The `geometry_diagnostics/2` raw measurement extension carries bounded
+geometry facts without applying publication thresholds. It is additive to the
+legacy `geometry_diagnostics/1` checks and does not rename or reinterpret
+their `passed` values. Consumers must not infer a policy verdict from a
+raw measurement's `availability`, counts, ratios, or reported pairs;
+severity, outcome, and publication-readiness decisions exist only in the
+selected policy projection. The raw `/2` envelope and its
+`metric_id`/`availability`/`unit`/`scope` discriminator remain frozen; these
+issue-specific pair fields are nested inside the existing `value` object and
+do not add top-level measurement keys.
+
+#### `artist_pair_iou`: axis-aligned candidate approximation
+
+`artist_pair_iou` reports bounded candidate pairs and their compatibility-
+named `iou` overlap fraction (intersection area divided by the smaller
+candidate-box area). Each candidate is represented by an axis-aligned
+display-space bounding box. The name and denominator remain unchanged for
+the legacy `artist_overlaps` projection; this is not mathematical union IoU.
+In particular, line candidates use padded axis-aligned boxes, so the value is
+candidate evidence and not an exact painted-ink collision or line/text
+crossing. The candidate set is assembled
+per data axis from the neutral raw path and may include visible legends,
+title/text artists, line segments, patches, and marker-footprint boxes.
+Candidate and pair truncation flags are facts about bounded evaluation, not
+quality outcomes. For a pair containing exactly one line segment, the raw
+pair may additionally carry `centerline_intersection_px` and
+`centerline_intersects`, computed by positive-length Liang--Barsky clipping
+of the line centerline against the other candidate box. These fields are
+absent for non-line and line-line pairs; a zero length exposes a diagonal-box
+artifact without changing the legacy `iou` or its policy projection.
+
+#### `line_text_crossings`: exact centerline/text fact
+
+`line_text_crossings` reports an exact display-space intersection between
+a line segment's centerline and a text bounding box. A crossing is counted only
+when the centerline spends more than `GEOM_EPS_PX` of positive length
+inside the text box; line width padding is not used for this metric. Its
+explicit scope is one data axis at a time: visible, paintable
+`Axes.get_lines()` (using each line's own transform, including blended
+`axhline`/`axvline` transforms) against visible non-empty
+`ax.title` and `ax.texts`. Tick labels, legends, patches, markers,
+and other axes are out of scope. Line, segment, and text caps are reported in
+the raw value when truncation occurs.
+
+Both metrics are raw candidate evidence. They do not emit or imply
+`pass`/`fail`, severity, warning status, or publication readiness;
+the selected policy projection is the only layer that may assign those
+meanings.
+
 ### 2.1 `tick_label_overlaps` (warning-eligible; FIXED for rotation round1-#1, adjacency round1-#37)
 - **Definition:** count of *spatially* adjacent same-axis tick-label pairs that overlap. Reported separately for x and y. Lists colliding pairs as `[[i, j], …]`.
 - **Compute:** `labels = [t for t in ax.get_xticklabels() if t.get_text() and t.get_visible()]`. Sort surviving labels by window-extent center **along the axis** (not by enumerate index — round1-#37: empty-label gaps must not make non-adjacent labels "adjacent"). For **rotated** labels (`t.get_rotation() % 180 != 0`, true for all bar plots), do NOT use the axis-aligned `get_window_extent` AABB (it is the fat diagonal strip, systematically false-positive — round1-#1). Instead test **along-baseline projected spacing**: gap between successive anchor centers minus the §2.0 axis-projected label length (`bb.width` for x, `bb.height` for y); overlap iff gap `< 0`. For unrotated labels use the standard overlap predicate (§2.0).
