@@ -192,6 +192,24 @@ Diagnostic name mapping for current render outputs:
 | `geometry_diagnostics/1` | `blank_area_ratio`, `label_offset_consistency` | `FQ-A4` advisory polish unless data visibility is impaired. |
 | Metadata/caption surfaces | project figure metadata, axis titles, legend labels, callouts, captions | `FQ-A5` advisory narrative review; no current hard diagnostic name. |
 | `geometry_diagnostics/1` | `legend_data_collision` | Informational only in the current implementation. |
+| `geometry_diagnostics/2` raw facts | `artist_pair_iou` | Candidate evidence only: the compatibility-named `iou` overlap fraction over axis-aligned display-space artist boxes (not mathematical union IoU). Line/non-line pairs may add exact centerline-length metadata, but the raw metric still carries no policy verdict. |
+| `geometry_diagnostics/2` raw facts | `line_text_crossings` | Candidate evidence only: exact positive-length display-space line-centerline versus text-bbox crossings within the explicitly bounded line/text scope. It does not provide a policy verdict. |
+
+Raw geometry facts are evidence, not decisions. In particular, an
+`artist_pair_iou` ratio is an axis-aligned bounding-box approximation and
+may over-approximate the painted overlap. For a pair containing exactly one
+line segment, `centerline_intersection_px` and `centerline_intersects` provide
+additional centerline-versus-other-box evidence; they are absent for
+non-line and line-line pairs and do not change the legacy ratio or its
+projection. `line_text_crossings` is the separate exact
+centerline-versus-text-bbox measurement for visible
+`Axes.get_lines()` against visible non-empty title/text artists on the
+same data axis. Neither raw metric includes a pass/fail, severity, or
+publication-readiness conclusion. Consumers must apply the selected policy
+projection (and preserve its unmeasured/availability state) before making a
+quality or publication claim. The raw `/2` top-level and measurement fields
+are frozen; issue-specific pair metadata is nested under an existing
+measurement `value` object so legacy consumers can continue to ignore it.
 
 ---
 
