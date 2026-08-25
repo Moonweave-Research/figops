@@ -152,7 +152,14 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
             arguments,
             status="warning" if dry_manual_review else "ok",
             summary="Multipanel CSV render dry run passed.",
-            warnings=renderer._calculation_warnings(calculation_checks),
+            warnings=(
+                renderer._calculation_warnings(calculation_checks)
+                + [
+                    str(panel["facet_promotion_warning"])
+                    for panel in panel_specs
+                    if panel.get("facet_promotion_warning")
+                ]
+            ),
             manual_review_needed=dry_manual_review,
             is_dry_run=True,
             calculation_checks=calculation_checks,
@@ -268,6 +275,12 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
             if panel.get("fit_line")
         ]
         geometry_warnings = render_helpers._geometry_warnings(geometry_diagnostics)
+        geometry_verification = render_helpers.geometry_verification_state(
+            geometry_diagnostics,
+            validation_target=target_format if target_format != "neutral" else None,
+        )
+        if geometry_verification["status"] == "unverified":
+            geometry_warnings.append(geometry_verification["summary"])
         layout_report = render_helpers._layout_report_from_geometry(geometry_diagnostics)
         figures = renderer._rendered_figure_artifacts(output_path)
         preview_artifacts = render_helpers._build_preview_artifacts(
@@ -288,10 +301,15 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
             or (baseline_comparison["checked"] and not baseline_comparison["matched"])
             or bool(calculation_checks.get("manual_review_needed"))
             or geometry_diagnostics.get("passed") is False
+            or geometry_verification["status"] == "unverified"
             or bool(claim_candidates)
         )
         status = "warning" if manual_review_needed else "ok"
-        artifact_status = renderer._artifact_status(preflight, baseline_comparison)
+        artifact_status = (
+            "unverified"
+            if geometry_verification["status"] == "unverified"
+            else renderer._artifact_status(preflight, baseline_comparison)
+        )
         provenance = renderer._mcp_render_provenance(
             job_id=job_id,
             source_data_path=source_paths[0],
@@ -373,7 +391,15 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
         status_payload = renderer._render_status_payload(
             job_id=job_id,
             status=status,
-            summary="Rendered CSV multipanel." if status == "ok" else "Rendered CSV multipanel with warnings.",
+            summary=(
+                "Rendered CSV multipanel."
+                if status == "ok"
+                else (
+                    "Rendered CSV multipanel without required geometry verification."
+                    if geometry_verification["status"] == "unverified"
+                    else "Rendered CSV multipanel with warnings."
+                )
+            ),
             manifest_path=manifest_path,
             output_path=output_path,
             artifact_status=artifact_status,
@@ -407,11 +433,29 @@ def render_csv_multipanel(renderer: Any, arguments: dict[str, Any]) -> dict[str,
         "figops.render_csv_multipanel",
         arguments,
         status=status,
-        summary="Rendered CSV multipanel." if status == "ok" else "Rendered CSV multipanel with warnings.",
+        summary=(
+            "Rendered CSV multipanel."
+            if status == "ok"
+            else (
+                "Rendered CSV multipanel without required geometry verification."
+                if geometry_verification["status"] == "unverified"
+                else "Rendered CSV multipanel with warnings."
+            )
+        ),
         created_paths=created_paths,
         artifact_resources=preview_references["artifact_resources"],
         preview_resources=preview_references["preview_resources"],
-        warnings=preflight_warnings + baseline_warnings + calculation_warnings + geometry_warnings,
+        warnings=(
+            preflight_warnings
+            + baseline_warnings
+            + calculation_warnings
+            + geometry_warnings
+            + [
+                str(panel["facet_promotion_warning"])
+                for panel in panel_specs
+                if panel.get("facet_promotion_warning")
+            ]
+        ),
         manual_review_needed=manual_review_needed,
         is_dry_run=False,
         job_id=job_id,

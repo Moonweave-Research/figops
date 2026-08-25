@@ -4,11 +4,14 @@
 if __package__:
     from .hub_core import ispd_physics
     from .plotting import ispd_visualizer
+    from .themes.journal_theme import save_journal_fig
 else:
     from hub_core import ispd_physics
     from plotting import ispd_visualizer
+    from themes.journal_theme import save_journal_fig
 
 __all__ = [
     "ispd_physics",
     "ispd_visualizer",
+    "save_journal_fig",
 ]

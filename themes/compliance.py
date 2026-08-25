@@ -8,17 +8,22 @@ import os
 import warnings
 from pathlib import Path
 
+from .font_fallbacks import per_glyph_font_family
+
 _FALLBACK_SANS_FONTS = ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"]
 
 
 def apply_runtime_font_resolution(theme_rc: dict) -> None:
-    """Normalize the requested sans/math font stack without reading environment state."""
+    """Normalize the requested sans/math stack and enable installed CJK fallbacks."""
     preferred = theme_rc.get("font.sans-serif")
     sans_fonts = preferred if isinstance(preferred, list) else _FALLBACK_SANS_FONTS
     sans_fonts = list(dict.fromkeys(sans_fonts))
     if "DejaVu Sans" not in sans_fonts:
         sans_fonts.append("DejaVu Sans")
     theme_rc["font.sans-serif"] = sans_fonts
+    # ``font.sans-serif`` selects one generic family; Matplotlib only does
+    # character-level fallback when ``font.family`` is a concrete list.
+    theme_rc["font.family"] = per_glyph_font_family(sans_fonts)
     primary_font = sans_fonts[0]
     if theme_rc.get("mathtext.fontset") != "custom":
         return

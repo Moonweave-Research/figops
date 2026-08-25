@@ -2904,7 +2904,7 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
             self.assertTrue(any("z_column" in error for error in result["errors"]))
             self.assertFalse((runtime_root / "mcp_jobs").exists())
 
-    def test_render_csv_graph_rejects_facet_series_until_shared_legend_is_supported(self):
+    def test_render_csv_graph_renders_facet_series_with_explicit_colors(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
             tmp_root = Path(tmpdir)
             data_path = tmp_root / "input" / "facet_series.csv"
@@ -2925,12 +2925,16 @@ class RenderCSVGraphMCPTest(unittest.TestCase):
                     "plot_type": "facet",
                     "facet_column": "phase",
                     "series_column": "condition",
+                    "series_styles": {
+                        "control": {"color": "#1f77b4"},
+                        "treated": {"color": "#d62728"},
+                    },
                 },
             )
 
-            self.assertEqual(result["status"], "error")
-            self.assertEqual(result["failure_stage"], "CONFIG")
-            self.assertTrue(any("series_column" in error for error in result["errors"]))
+            self.assertNotEqual(result["status"], "error")
+            self.assertEqual(result["errors"], [])
+            self.assertTrue(Path(result["output_path"]).is_file())
 
     def test_render_csv_graph_rejects_heatmap_without_z_column(self):
         with tempfile.TemporaryDirectory(prefix="graph_hub_mcp_render_") as tmpdir:
@@ -4467,7 +4471,14 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
                     "unit": "structured",
                     "scope": "axis=0",
                     "value": {"summary": "3 overlapping pairs", "axis_index": 0},
-                }
+                },
+                {
+                    "metric_id": "style_geometry_observations",
+                    "availability": "available",
+                    "unit": "structured",
+                    "scope": "figure",
+                    "value": {"figure_height_mm": 60, "font_sizes": [], "line_widths": []},
+                },
             ],
             "warnings": [],
         }
@@ -4488,7 +4499,9 @@ class GeometryDiagnosticsIntegrationTest(unittest.TestCase):
                 patch("hub_core.mcp.render_orchestration._read_geometry_sidecar", return_value=clean),
             ):
                 _, result = self._render_csv(tmpdir, job_id="geom-ok")
-            self.assertEqual(result["status"], "ok")
+            self.assertEqual(result["status"], "warning")
+            self.assertEqual(result["artifact_status"], "unverified")
+            self.assertTrue(any("3 required geometry checks" in warning for warning in result["warnings"]))
 
     def test_engine_error_safety_in_frame(self):
         # The helper try/except lives in the same frame that holds the figure, so a

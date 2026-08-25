@@ -52,6 +52,7 @@ class McpSecurityMixin:
     _runtime_root_explicit: bool
     security_warnings: list[str]
     allowed_data_roots: tuple[Path, ...]
+    allowed_project_roots: tuple[Path, ...]
     write_tools_enabled: bool
 
     def _authorize_write_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
@@ -91,11 +92,13 @@ class McpSecurityMixin:
         self.runtime_root = self._resolve_runtime_root(server_config.runtime_root)
         self.security_warnings = []
         self._configured_allowed_data_roots = server_config.allowed_data_roots
+        self._configured_allowed_project_roots = server_config.allowed_project_roots
         self._strict_data_roots = bool(server_config.strict_data_roots)
         # strict_roots only gates broad roots explicitly supplied through configuration/env.
         # It does not alter symlink policy or the default compatible root seeds below.
         self._strict_roots = bool(server_config.strict_roots)
         self.allowed_data_roots = self._allowed_data_roots()
+        self.allowed_project_roots = self._allowed_project_roots()
         self.write_tools_enabled = self._resolve_write_tools_enabled(server_config.write_tools_enabled)
 
     @staticmethod
@@ -171,22 +174,67 @@ class McpSecurityMixin:
                 deduped.append(root)
         return tuple(deduped)
 
+    def _allowed_project_roots(self) -> tuple[Path, ...]:
+        """Resolve explicitly trusted project roots without admitting runtime paths.
+
+        Runtime storage remains an execution scratch area and cannot become a
+        project root: allowing it here would violate the project/runtime
+        disjointness boundary enforced before producer execution.
+        """
+
+        roots = [self.research_root]
+        for item in self._configured_allowed_project_roots:
+            extra = normalize_allowed_root(item)
+            stripped = str(item)
+            if not extra.is_absolute():
+                self.security_warnings.append(f"Skipped allowed project root because it is not absolute: {stripped}")
+                continue
+            resolved = canonical_path(extra)
+            if not resolved.is_dir():
+                self.security_warnings.append(
+                    f"Skipped allowed project root because it does not exist as a directory: {resolved}"
+                )
+                continue
+            broad_warning = self._broad_root_warning(resolved, kind="project")
+            if broad_warning:
+                if self._strict_roots:
+                    self.security_warnings.append(f"refused broad project root: {resolved}")
+                    continue
+                self.security_warnings.append(broad_warning)
+            roots.append(resolved)
+        return self._dedupe_roots(roots)
+
+    @staticmethod
+    def _dedupe_roots(roots: list[Path]) -> tuple[Path, ...]:
+        deduped: list[Path] = []
+        seen: set[str] = set()
+        for root in roots:
+            key = str(root)
+            if key not in seen:
+                seen.add(key)
+                deduped.append(root)
+        return tuple(deduped)
+
     @staticmethod
     def _broad_data_root_warning(root: Path) -> str:
+        return McpSecurityMixin._broad_root_warning(root, kind="data")
+
+    @staticmethod
+    def _broad_root_warning(root: Path, *, kind: str) -> str:
         if root == Path(root.anchor):
-            return f"Configured broad data root allows the filesystem root: {root}"
+            return f"Configured broad {kind} root allows the filesystem root: {root}"
         try:
             home = Path.home().resolve()
         except RuntimeError:
             home = None
         if root == home:
-            return f"Configured broad data root allows the current user's home directory: {root}"
+            return f"Configured broad {kind} root allows the current user's home directory: {root}"
         if home is not None and root != Path(root.anchor) and (
             root == home.parent or (root.parent == Path(root.anchor) and root.name.lower() in {"home", "users"})
         ):
-            return f"Configured broad data root allows a multi-user parent directory: {root}"
+            return f"Configured broad {kind} root allows a multi-user parent directory: {root}"
         if os.name == "nt" and root.anchor and root == Path(root.anchor).resolve():
-            return f"Configured broad data root allows the drive root: {root}"
+            return f"Configured broad {kind} root allows the drive root: {root}"
         return ""
 
     @staticmethod
@@ -212,10 +260,12 @@ class McpSecurityMixin:
         if not trusted_root_raw.is_absolute():
             trusted_root_raw = canonical_path(trusted_root_raw)
         raw_absolute = raw if raw.is_absolute() else trusted_root_raw / raw
-        trusted_root = canonical_path(trusted_root_raw)
         path = canonical_path(raw_absolute)
-        if not self._is_relative_to(path, trusted_root):
-            raise ValueError(f"{field_name} must stay under {trusted_root}.")
+        trusted_roots = (canonical_path(root),) if root is not None else self.allowed_project_roots
+        trusted_root = self._containing_project_root(path, trusted_roots)
+        if trusted_root is None:
+            allowed = ", ".join(str(candidate) for candidate in trusted_roots)
+            raise ValueError(f"{field_name} must stay under an allowed project root: {allowed}.")
         current = Path(raw_absolute.anchor)
         for part in raw_absolute.parts[1:]:
             current = current / part
@@ -230,6 +280,10 @@ class McpSecurityMixin:
             validate_runtime_location(self.runtime_root, project_root=path)
         return path
 
+    def _containing_project_root(self, path: Path, roots: tuple[Path, ...] | list[Path]) -> Path | None:
+        matches = [root for root in roots if self._is_relative_to(path, root)]
+        return max(matches, key=lambda candidate: len(candidate.parts)) if matches else None
+
     def _resolve_allowed_data_path(self, raw_path: Any, *, field_name: str) -> Path:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise ValueError(f"{field_name} is required.")
@@ -239,7 +293,7 @@ class McpSecurityMixin:
         available_roots = tuple(root for root in self.allowed_data_roots if root.is_dir())
         try:
             selection = select_allowed_data_path(
-                raw_path,
+                self._expand_data_path_scheme(raw_path, field_name=field_name),
                 allowed_roots=available_roots,
                 relative_base=self.research_root,
                 allow_internal_aliases=True,
@@ -251,6 +305,25 @@ class McpSecurityMixin:
                 raise ValueError(f"{field_name} is not a file.") from exc
             raise ValueError(f"{field_name} is not an available regular data file ({exc.code}).") from exc
         return selection.candidate
+
+    def _expand_data_path_scheme(self, raw_path: str, *, field_name: str) -> str:
+        """Resolve the two public data URIs before the normal file boundary.
+
+        The resolver deliberately expands only fixed, server-owned roots.  It
+        does not accept host paths or arbitrary authorities in a URI, and the
+        downstream allowed-data verifier still performs traversal, reparse,
+        and regular-file checks.
+        """
+
+        for scheme, root in (("runtime://", self.runtime_root), ("research://", self.research_root)):
+            if raw_path.startswith(scheme):
+                relative = raw_path.removeprefix(scheme)
+                if not relative or relative.startswith(("/", "\\")):
+                    raise ValueError(f"{field_name} {scheme} path must be a non-empty relative path.")
+                return str(root / relative)
+        if "://" in raw_path:
+            raise ValueError(f"{field_name} uses an unsupported path scheme.")
+        return raw_path
 
     def _activate_runtime_root_for_runtime_access(self) -> None:
         if not self._runtime_root_explicit:
@@ -282,7 +355,7 @@ class McpSecurityMixin:
             if project.project_id == project_id:
                 lexical = root / Path(project.path)
                 try:
-                    resolved = resolve_execution_project_path(self.research_root, lexical)
+                    resolved = resolve_execution_project_path(root, lexical)
                 except ExecutionProjectPathError as exc:
                     if str(exc) == PROJECT_EXECUTION_REPARSE_ERROR:
                         raise ValueError(PROJECT_ID_REPARSE_ERROR) from exc
@@ -294,8 +367,12 @@ class McpSecurityMixin:
     def _resolve_execution_project_path(self, raw_path: Any) -> Path:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise ValueError("project_path is required.")
+        selected = self._resolve_under_root(raw_path, field_name="project_path")
+        trusted_root = self._containing_project_root(selected, self.allowed_project_roots)
+        if trusted_root is None:  # Defensive: _resolve_under_root already enforces this.
+            raise ValueError("project_path must stay under an allowed project root.")
         try:
-            resolved = resolve_execution_project_path(self.research_root, raw_path)
+            resolved = resolve_execution_project_path(trusted_root, selected)
         except ExecutionProjectPathError as exc:
             raise ValueError(str(exc).replace("execution project", "project_path")) from exc
         validate_runtime_location(self.runtime_root, project_root=resolved)

@@ -43,6 +43,11 @@ except ImportError:
     from journal_annotations import panel_label
 
 try:
+    from .cjk_text import warn_for_mixed_cjk_mathtext
+except ImportError:
+    from cjk_text import warn_for_mixed_cjk_mathtext
+
+try:
     # Package import path: from themes.journal_theme import ...
     from .palettes import get_palette
 
@@ -739,6 +744,7 @@ def save_journal_fig(
 
     with save_ctx:
         apply_narrow_log_minor_tick_policy(fig, mode=narrow_log_minor_labels)
+        warn_for_mixed_cjk_mathtext(fig)
         ledger, declutter_evidence = apply_explicit_save_mutations(
             fig,
             compliance_mode=effective_compliance,

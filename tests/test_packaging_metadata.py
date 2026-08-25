@@ -30,6 +30,7 @@ def test_packaging_metadata_pins_public_distribution_surface():
         "graphhub-mcp": "graphhub_mcp_server:main",
     }
     assert payload["tool"]["setuptools"]["py-modules"] == [
+        "figops",
         "figops_mcp_server",
         "graphhub_mcp_server",
         "hub_uv",

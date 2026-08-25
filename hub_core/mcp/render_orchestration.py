@@ -22,6 +22,7 @@ from hub_core.mcp.render_geometry import (
     _geometry_warnings,  # noqa: F401
     _layout_report_from_geometry,
     _read_geometry_sidecar,  # noqa: F401
+    geometry_verification_state,  # noqa: F401
 )
 from hub_core.mcp.render_manifest import (
     atomic_json_write as _atomic_json_write,

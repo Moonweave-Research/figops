@@ -13,6 +13,7 @@ ROOT_ADAPTER_SECURITY_ENV_VARS = frozenset(
         "GRAPH_HUB_ATHENA_ADAPTER",
         "GRAPH_HUB_CONVENTIONS_ADAPTER",
         "GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS",
+        "GRAPH_HUB_MCP_ALLOWED_PROJECT_ROOTS",
         "GRAPH_HUB_MCP_RENDER_CSV_MAX_BYTES",
         "GRAPH_HUB_MCP_STRICT_DATA_ROOTS",
         "GRAPH_HUB_MCP_STRICT_ROOTS",
@@ -34,6 +35,7 @@ class McpServerConfig:
     runtime_root: str | os.PathLike | None = None
     write_tools_enabled: bool | None = None
     allowed_data_roots: tuple[str | os.PathLike, ...] = ()
+    allowed_project_roots: tuple[str | os.PathLike, ...] = ()
     strict_roots: bool | None = None
     strict_data_roots: bool | None = None
     surface_profile: str | None = None
@@ -52,6 +54,13 @@ class McpServerConfig:
             allowed_data_roots = (allowed_data_roots,)
         if not isinstance(allowed_data_roots, (list, tuple)):
             raise TypeError("MCP server config allowed_data_roots must be a list or tuple.")
+        allowed_project_roots = values.get("allowed_project_roots", ())
+        if allowed_project_roots is None:
+            allowed_project_roots = ()
+        if isinstance(allowed_project_roots, (str, os.PathLike)):
+            allowed_project_roots = (allowed_project_roots,)
+        if not isinstance(allowed_project_roots, (list, tuple)):
+            raise TypeError("MCP server config allowed_project_roots must be a list or tuple.")
         write_tools_enabled = values.get("write_tools_enabled")
         if write_tools_enabled is not None and not isinstance(write_tools_enabled, bool):
             raise TypeError("MCP server config write_tools_enabled must be a boolean.")
@@ -71,6 +80,7 @@ class McpServerConfig:
             runtime_root=values.get("runtime_root"),
             write_tools_enabled=write_tools_enabled,
             allowed_data_roots=tuple(allowed_data_roots),
+            allowed_project_roots=tuple(allowed_project_roots),
             strict_roots=strict_roots,
             strict_data_roots=strict_data_roots,
             surface_profile=surface_profile,
@@ -84,12 +94,18 @@ class McpServerConfig:
             for item in os.environ.get("GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS", "").split(os.pathsep)
             if item.strip()
         )
+        allowed_project_roots = tuple(
+            item.strip()
+            for item in os.environ.get("GRAPH_HUB_MCP_ALLOWED_PROJECT_ROOTS", "").split(os.pathsep)
+            if item.strip()
+        )
         return cls(
             hub_path=os.environ.get("RESEARCH_HUB_PATH"),
             research_root=os.environ.get("PROJECT_ROOT"),
             runtime_root=runtime_root,
             write_tools_enabled=_env_bool("GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED"),
             allowed_data_roots=allowed_data_roots,
+            allowed_project_roots=allowed_project_roots,
             strict_roots=_env_bool("GRAPH_HUB_MCP_STRICT_ROOTS"),
             strict_data_roots=_env_bool("GRAPH_HUB_MCP_STRICT_DATA_ROOTS"),
             surface_profile=os.environ.get("GRAPH_HUB_MCP_SURFACE_PROFILE"),
@@ -102,6 +118,7 @@ class McpServerConfig:
             "runtime_root": self.runtime_root,
             "write_tools_enabled": self.write_tools_enabled,
             "allowed_data_roots": self.allowed_data_roots,
+            "allowed_project_roots": self.allowed_project_roots,
             "strict_roots": self.strict_roots,
             "strict_data_roots": self.strict_data_roots,
             "surface_profile": self.surface_profile,

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from hub_core.geometry_raw_contract import RawGeometryContractError, normalize_geometry_payload
+from hub_core.journal_geometry_policy import geometry_minimum_results
 
 GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION = "geometry_diagnostics/2"
 LAYOUT_REPORT_SCHEMA_VERSION = "layout_report/1"
@@ -55,6 +56,38 @@ def _geometry_warnings(diagnostics: dict[str, Any]) -> list[str]:
     if isinstance(raw_warnings, list):
         warnings.extend(str(warning) for warning in raw_warnings)
     return warnings
+
+
+def geometry_verification_state(diagnostics: dict[str, Any], *, validation_target: str | None) -> dict[str, Any]:
+    """Make required journal-geometry availability explicit to render callers."""
+
+    if not str(validation_target or "").strip():
+        return {
+            "status": "not_requested",
+            "summary": "Geometry verification was not requested because no validation target was selected.",
+        }
+    measurements = diagnostics.get("measurements") if isinstance(diagnostics, dict) else None
+    observations = [
+        item
+        for item in measurements or ()
+        if isinstance(item, dict)
+        and str(item.get("metric_id") or "").split("[", 1)[0] == "style_geometry_observations"
+    ]
+    minimums = geometry_minimum_results(measurements, validation_target=str(validation_target))
+    if len(observations) == 1 and all(item.get("status") != "not_applicable" for item in minimums):
+        return {"status": "verified", "summary": "Required journal geometry observations were emitted."}
+    reason = "no style geometry observation was emitted"
+    if len(observations) == 1:
+        reason = next(
+            (str(item["reason"]) for item in minimums if item.get("reason")),
+            str(observations[0].get("reason") or reason),
+        )
+    elif len(observations) > 1:
+        reason = "multiple style geometry observations were emitted"
+    return {
+        "status": "unverified",
+        "summary": f"Geometry verification is unverified: 3 required geometry checks were not evaluated ({reason}).",
+    }
 
 def _layout_report_from_geometry(
     diagnostics: dict[str, Any],
