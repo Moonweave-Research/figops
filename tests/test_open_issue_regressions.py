@@ -84,6 +84,10 @@ def test_line_plot_with_facet_column_is_promoted_and_keeps_series_styles_legal()
 
 def test_cjk_font_family_is_concrete_and_mixed_mathtext_warns(monkeypatch):
     monkeypatch.setattr(
+        "themes.font_fallbacks._CJK_FONT_CANDIDATES",
+        {"darwin": ("Malgun Gothic",), "win32": ("Malgun Gothic",), "default": ()},
+    )
+    monkeypatch.setattr(
         "themes.font_fallbacks._installed_font_family_names",
         lambda: {"malgun gothic": "Malgun Gothic"},
     )
