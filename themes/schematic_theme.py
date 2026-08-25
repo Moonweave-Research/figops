@@ -23,11 +23,16 @@
 
 import matplotlib.pyplot as plt
 
+try:
+    from .font_fallbacks import per_glyph_font_family
+except ImportError:  # direct themes-path compatibility
+    from font_fallbacks import per_glyph_font_family
+
 
 def _build_rc_settings(style: str, font_scale: float) -> dict:
     if style == "tikz":
         return {
-            "font.family":         "sans-serif",
+            "font.family":         per_glyph_font_family(["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"]),
             "font.sans-serif":     ["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"],
             "mathtext.fontset":    "custom",
             "mathtext.rm":         "Arial",

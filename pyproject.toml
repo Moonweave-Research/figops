@@ -52,7 +52,7 @@ Repository = "https://github.com/Moonweave-Research/figops"
 Issues = "https://github.com/Moonweave-Research/figops/issues"
 
 [tool.setuptools]
-py-modules = ["figops_mcp_server", "graphhub_mcp_server", "hub_uv", "orchestrator"]
+py-modules = ["figops", "figops_mcp_server", "graphhub_mcp_server", "hub_uv", "orchestrator"]
 
 [tool.setuptools.packages.find]
 include = ["hub_core*", "plotting*", "themes*"]

@@ -4,6 +4,7 @@ import math
 from typing import Any
 
 LEGEND_LAYOUT_PRESETS = {"auto", "smart", "standard", "best", "top_outside", "right_outside"}
+_FACET_PROMOTABLE_PLOT_TYPES = {"line", "xy"}
 _ANNOTATION_CLAIM_KEYS = {
     "annotation_kind",
     "calculation_evidence_id",
@@ -91,7 +92,7 @@ def _validated_plot_argument_compatibility(
         if not stripped_error_column:
             errors.append(f"{field_name} must be a non-empty string when provided.")
             continue
-        if plot_type not in {"line", "scatter", "xy"}:
+        if plot_type not in {"line", "scatter", "xy", "facet"}:
             errors.append(f"{field_name} is only supported for plot_type 'line', 'scatter', or 'xy'.")
             continue
         if field_name == "yerr_column":
@@ -108,10 +109,10 @@ def _validated_plot_argument_compatibility(
                 errors.append("yerr_cap_width must be non-negative.")
     if yerr_column and bar_error_column:
         errors.append("Use yerr_column for line/scatter/xy or bar_error_column for bar, not both.")
-    if series_column and plot_type not in {"line", "scatter", "xy"}:
+    if series_column and plot_type not in {"line", "scatter", "xy", "facet"}:
         errors.append("series_column is only supported for plot_type 'line', 'scatter', or 'xy'.")
-    if label_column and plot_type not in {"line", "scatter", "xy", "bar"}:
-        errors.append("label_column is only supported for plot_type 'line', 'scatter', 'xy', or 'bar'.")
+    if label_column and plot_type not in {"line", "scatter", "xy", "bar", "facet"}:
+        errors.append("label_column is only supported for plot_type 'line', 'scatter', 'xy', 'bar', or 'facet'.")
     if point_label_options and not label_column:
         errors.append("point_label_options requires label_column.")
     if (guide_curves or fill_between) and plot_type not in {"line", "scatter", "xy"}:
@@ -124,6 +125,15 @@ def _validated_plot_argument_compatibility(
         "yerr_cap_width": yerr_cap_width,
         "errors": errors,
     }
+
+
+def resolve_facet_plot_type(plot_type: str, facet_column: str) -> tuple[str, str | None]:
+    """Promote line/xy requests with a facet field instead of ignoring it."""
+
+    normalized = str(plot_type or "").strip().lower()
+    if facet_column and normalized in _FACET_PROMOTABLE_PLOT_TYPES:
+        return "facet", f"facet_column promoted plot_type '{normalized}' to faceted line rendering."
+    return normalized, None
 
 
 def _normalized_legend_layout_arg(value: Any, *, field_name: str) -> str:

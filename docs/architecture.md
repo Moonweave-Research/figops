@@ -105,6 +105,7 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 <!-- architecture-inventory:start -->
 | File | Lines |
 |---|---:|
+| `hub_core/mcp/tools/render_project.py` | 823 |
 <!-- architecture-inventory:end -->
 
 No Python module in the tracked architecture roots (`hub_core`, `plotting`, and

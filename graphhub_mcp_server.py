@@ -83,6 +83,12 @@ def main() -> int:
     doctor_parser.add_argument("--json", action="store_true", help="Emit structured doctor output for agents")
     parser.add_argument("--hub-path", help="Explicit FigOps repository path")
     parser.add_argument("--research-root", help="Explicit research/project discovery root")
+    parser.add_argument(
+        "--allowed-project-root",
+        action="append",
+        dest="allowed_project_roots",
+        help="Additional trusted project root; repeat for multiple roots",
+    )
     parser.add_argument("--runtime-root", help="Explicit MCP runtime root")
     parser.add_argument(
         "--surface-profile",
@@ -100,6 +106,7 @@ def main() -> int:
         hub_path=args.hub_path,
         research_root=args.research_root,
         runtime_root=args.runtime_root,
+        allowed_project_roots=tuple(args.allowed_project_roots) if args.allowed_project_roots else None,
         write_tools_enabled=True if args.enable_write_tools else None,
         surface_profile=args.surface_profile,
     )

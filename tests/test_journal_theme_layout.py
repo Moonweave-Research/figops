@@ -385,7 +385,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
         try:
             apply_journal_theme("science")
 
-            self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
+            self.assertEqual(plt.rcParams["font.family"][0], plt.rcParams["font.sans-serif"][0])
             self.assertEqual(plt.rcParams["font.sans-serif"][0], "Helvetica")
             self.assertEqual(plt.rcParams["font.size"], 7.0)
             self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
@@ -404,7 +404,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
         try:
             apply_journal_theme("acs")
 
-            self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
+            self.assertEqual(plt.rcParams["font.family"][0], plt.rcParams["font.sans-serif"][0])
             self.assertEqual(plt.rcParams["font.sans-serif"][0], "Helvetica")
             self.assertEqual(plt.rcParams["font.size"], 7.0)
             self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
@@ -425,7 +425,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
         try:
             apply_journal_theme("wiley")
 
-            self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
+            self.assertEqual(plt.rcParams["font.family"][0], plt.rcParams["font.sans-serif"][0])
             self.assertEqual(plt.rcParams["font.sans-serif"][0], "Helvetica")
             self.assertEqual(plt.rcParams["font.size"], 7.0)
             self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
@@ -446,7 +446,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
         try:
             apply_journal_theme("cell")
 
-            self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
+            self.assertEqual(plt.rcParams["font.family"][0], plt.rcParams["font.sans-serif"][0])
             self.assertEqual(plt.rcParams["font.sans-serif"][0], "Arial")
             self.assertEqual(plt.rcParams["font.size"], 7.0)
             self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
@@ -469,7 +469,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
         try:
             apply_journal_theme("rsc")
 
-            self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
+            self.assertEqual(plt.rcParams["font.family"][0], plt.rcParams["font.sans-serif"][0])
             self.assertEqual(plt.rcParams["font.sans-serif"][0], "Arial")
             self.assertEqual(plt.rcParams["font.size"], 7.0)
             self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)
@@ -490,7 +490,7 @@ class JournalThemeLayoutTest(unittest.TestCase):
         try:
             apply_journal_theme("elsevier")
 
-            self.assertEqual(plt.rcParams["font.family"], ["sans-serif"])
+            self.assertEqual(plt.rcParams["font.family"][0], plt.rcParams["font.sans-serif"][0])
             self.assertEqual(plt.rcParams["font.sans-serif"][0], "Arial")
             self.assertEqual(plt.rcParams["font.size"], 7.0)
             self.assertEqual(plt.rcParams["axes.labelsize"], 7.0)

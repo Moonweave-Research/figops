@@ -131,8 +131,14 @@ report warnings through `figops.health`.
   absolute, and existing directories. Bad entries are skipped with warnings.
   Broad roots such as `/`, a drive root, or the current user's home directory
   warn by default. Set `GRAPH_HUB_MCP_STRICT_ROOTS=1` to refuse broad roots.
+- `GRAPH_HUB_MCP_ALLOWED_PROJECT_ROOTS`: adds trusted roots for MCP project
+  discovery, describe, and render requests beyond `PROJECT_ROOT`. Entries must
+  be non-empty, absolute existing directories; invalid and broad entries follow
+  the warning/strict-refusal policy of data roots. The runtime root is never a
+  project root because the runtime/project boundary must remain disjoint.
 - `GRAPH_HUB_MCP_STRICT_ROOTS`: refuses broad roots listed in
-  `GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS` when set to `1`, `true`, `yes`, or `on`.
+  `GRAPH_HUB_MCP_ALLOWED_DATA_ROOTS` or `GRAPH_HUB_MCP_ALLOWED_PROJECT_ROOTS`
+  when set to `1`, `true`, `yes`, or `on`.
 - `GRAPH_HUB_MCP_STRICT_DATA_ROOTS`: requires explicit MCP data roots when enabled.
 - `GRAPH_HUB_MCP_WRITE_TOOLS_ENABLED`: enables MCP tools that write files or
   execute render jobs. It defaults closed when unset.

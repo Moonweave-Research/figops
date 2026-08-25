@@ -491,6 +491,12 @@ class McpRenderProjectMixin:
             )
             geometry_diagnostics = render_helpers._read_geometry_sidecar(job_root)
             geometry_warnings = render_helpers._geometry_warnings(geometry_diagnostics)
+            geometry_verification = render_helpers.geometry_verification_state(
+                geometry_diagnostics,
+                validation_target=validation_target,
+            )
+            if geometry_verification["status"] == "unverified":
+                geometry_warnings.append(geometry_verification["summary"])
             layout_report = render_helpers._layout_report_from_geometry(geometry_diagnostics)
             try:
                 output_path = resolve_project_output(
@@ -547,11 +553,16 @@ class McpRenderProjectMixin:
                 or bool(preflight_warnings)
                 or (baseline_comparison["checked"] and not baseline_comparison["matched"])
                 or geometry_diagnostics.get("passed") is False
+                or geometry_verification["status"] == "unverified"
                 or bool(figure_format_warnings)
                 or bool(claim_inventory["manual_review_needed"])
             )
             status = "warning" if manual_review_needed else "ok"
-            artifact_status = self._artifact_status(preflight, baseline_comparison)
+            artifact_status = (
+                "unverified"
+                if geometry_verification["status"] == "unverified"
+                else self._artifact_status(preflight, baseline_comparison)
+            )
             provenance = self._mcp_project_render_provenance(
                 job_id=job_id,
                 project_path=project_path,
@@ -629,7 +640,13 @@ class McpRenderProjectMixin:
                 job_id=job_id,
                 status=status,
                 summary=(
-                    "Rendered project figure." if status == "ok" else "Rendered project figure with preflight warnings."
+                    "Rendered project figure."
+                    if status == "ok"
+                    else (
+                        "Rendered project figure without required geometry verification."
+                        if geometry_verification["status"] == "unverified"
+                        else "Rendered project figure with preflight warnings."
+                    )
                 ),
                 manifest_path=manifest_path,
                 output_path=output_path,
@@ -753,7 +770,15 @@ class McpRenderProjectMixin:
             "figops.render_project_figure",
             arguments,
             status=status,
-            summary=("Rendered project figure." if status == "ok" else "Rendered project figure with preflight warnings.") + " The source project is unchanged; overwrite applies to the job workspace only.",  # noqa: E501
+            summary=(
+                "Rendered project figure."
+                if status == "ok"
+                else (
+                    "Rendered project figure without required geometry verification."
+                    if geometry_verification["status"] == "unverified"
+                    else "Rendered project figure with preflight warnings."
+                )
+            ) + " The source project is unchanged; overwrite applies to the job workspace only.",
             created_paths=created_paths,
             artifact_resources=preview_references["artifact_resources"],
             preview_resources=preview_references["preview_resources"],

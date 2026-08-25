@@ -20,6 +20,7 @@ from hub_core.mcp.tools.render_csv_args import (
     _normalized_secondary_y_arg,
     _normalized_series_style_args,
     _normalized_tick_style_arg,
+    resolve_facet_plot_type,
 )
 from hub_core.rendering import PLOT_TYPES
 
@@ -68,7 +69,7 @@ def validate_multipanel_panel_specs(
             data_path = renderer._input_file_path(panel.get("data_path"))
             x_column = renderer._required_string(panel, "x_column")
             y_column = renderer._required_string(panel, "y_column")
-            plot_type = str(panel.get("plot_type") or "scatter").strip().lower()
+            requested_plot_type = str(panel.get("plot_type") or "scatter").strip().lower()
             x_scale = _normalized_axis_scale_arg(panel.get("x_scale"), field_name=f"panels[{index}].x_scale")
             y_scale = _normalized_axis_scale_arg(panel.get("y_scale"), field_name=f"panels[{index}].y_scale")
             secondary_y = _normalized_secondary_y_arg(panel.get("secondary_y"))
@@ -91,6 +92,7 @@ def validate_multipanel_panel_specs(
             guide_curves = _normalized_guide_curve_args(panel.get("guide_curves"))
             fill_between = _normalized_fill_between_args(panel.get("fill_between"))
             facet_column = str(panel.get("facet_column") or "").strip()
+            plot_type, facet_promotion_warning = resolve_facet_plot_type(requested_plot_type, facet_column)
             series_column = str(panel.get("series_column") or "").strip()
             label_column = str(panel.get("label_column") or "").strip()
             label_map = normalize_label_map(panel.get("label_map"))
@@ -131,9 +133,9 @@ def validate_multipanel_panel_specs(
         if plot_type == "heatmap" and not str(panel.get("z_column") or "").strip():
             contract_errors.append(f"panels[{index}] plot_type 'heatmap' requires z_column.")
             continue
-        if series_column and plot_type not in {"line", "scatter", "xy"}:
+        if series_column and plot_type not in {"line", "scatter", "xy", "facet"}:
             contract_errors.append(
-                f"panels[{index}].series_column is only supported for plot_type 'line', 'scatter', or 'xy'."
+                f"panels[{index}].series_column is only supported for plot_type 'line', 'scatter', 'xy', or 'facet'."
             )
             continue
         if secondary_y and plot_type not in {"line", "scatter", "xy"}:
@@ -141,17 +143,18 @@ def validate_multipanel_panel_specs(
                 f"panels[{index}].secondary_y is only supported for plot_type 'line', 'scatter', or 'xy'."
             )
             continue
-        if label_column and plot_type not in {"line", "scatter", "xy", "bar"}:
+        if label_column and plot_type not in {"line", "scatter", "xy", "bar", "facet"}:
             contract_errors.append(
-                f"panels[{index}].label_column is only supported for plot_type 'line', 'scatter', 'xy', or 'bar'."
+                f"panels[{index}].label_column is only supported for plot_type "
+                "'line', 'scatter', 'xy', 'bar', or 'facet'."
             )
             continue
         if point_label_options and not label_column:
             contract_errors.append(f"panels[{index}].point_label_options requires label_column.")
             continue
-        if (yerr_column or yerr_minus_column) and plot_type not in {"line", "scatter", "xy"}:
+        if (yerr_column or yerr_minus_column) and plot_type not in {"line", "scatter", "xy", "facet"}:
             contract_errors.append(
-                f"panels[{index}] yerr columns are only supported for plot_type 'line', 'scatter', or 'xy'."
+                f"panels[{index}] yerr columns are only supported for plot_type 'line', 'scatter', 'xy', or 'facet'."
             )
             continue
         if (guide_curves or fill_between) and plot_type not in {"line", "scatter", "xy"}:
@@ -239,6 +242,7 @@ def validate_multipanel_panel_specs(
             {
                 "source_data_path": data_path,
                 "plot_type": plot_type,
+                "facet_promotion_warning": facet_promotion_warning,
                 "x_column": x_column,
                 "y_column": y_column,
                 "secondary_y": secondary_y,
@@ -355,7 +359,11 @@ def prepare_multipanel_render_payload(
         shutil.copy2(source_data_path, copied_path)
         copied_data_paths.append(str(copied_path))
         created_paths.append(str(copied_path))
-        render_panel = {key: value for key, value in panel.items() if key != "source_data_path"}
+        render_panel = {
+            key: value
+            for key, value in panel.items()
+            if key not in {"source_data_path", "facet_promotion_warning"}
+        }
         render_panels.append({"csv_path": str(copied_path), "output_path": "", **render_panel})
 
     render_payload = {

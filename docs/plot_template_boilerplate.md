@@ -19,9 +19,10 @@ import matplotlib.pyplot as plt
 hub_path = os.environ.get('RESEARCH_HUB_PATH')
 if not hub_path:
     raise RuntimeError("RESEARCH_HUB_PATH is required when running this plot script outside FigOps.")
-sys.path.insert(0, os.path.join(hub_path, 'themes'))
+sys.path.insert(0, hub_path)
 
-from journal_theme import apply_journal_theme, get_figsize, SINGLE_COLUMN, DOUBLE_COLUMN
+from figops import save_journal_fig
+from themes.journal_theme import apply_journal_theme, get_figsize, SINGLE_COLUMN, DOUBLE_COLUMN
 
 # 2. visual_style 주문서 수령 (환경 변수 파싱)
 target_format = os.environ.get('THEME_FORMAT', 'nature')
@@ -44,8 +45,12 @@ fig, ax = plt.subplots(figsize=(w, h))
 
 # ... 플로팅 작업 ...
 
-plt.show() # 또는 plt.savefig()
+save_journal_fig(fig, "results/figures/my_plot.png")
 ```
+
+`save_journal_fig` is the supported public save path. It emits the geometry
+sidecar during MCP renders, so direct `fig.savefig(...)` should be reserved for
+deliberately unchecked working output.
 
 ---
 

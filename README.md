@@ -255,6 +255,11 @@ configuration, or pass `surface_profile="compatibility"` when embedding
 `FigOpsMCPServer`. See [`docs/tools-v2.md`](./docs/tools-v2.md) and
 [`docs/tools-compatibility.md`](./docs/tools-compatibility.md).
 
+Projects outside the primary `PROJECT_ROOT` may be admitted explicitly with
+`GRAPH_HUB_MCP_ALLOWED_PROJECT_ROOTS` (a path-separated list), or by repeating
+`--allowed-project-root` on the MCP launcher. This includes NAS-backed research
+roots; the disposable MCP runtime root is intentionally never a project root.
+
 ## Troubleshooting
 
 | Symptom | What to try |
