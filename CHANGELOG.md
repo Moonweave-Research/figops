@@ -15,6 +15,27 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.20.3] - 2026-08-26
+
+Patch release candidate covering the reliability, compatibility, and structure
+audit fixes merged after `v0.20.2`. Merge, tag, and package publication remain
+release-maintainer actions.
+
+### Added
+
+- Report a project's declared-versus-actual filesystem layout in the read-only
+  structure audit, including undeclared paths and nested project configurations.
+- Expose the supported `figops` Python helper module and explicit trusted
+  additional-project-root controls for MCP consumers.
+
+### Fixed
+
+- Harden CSV and project rendering, output naming, CJK font fallback, and
+  geometry diagnostics against the open reliability regressions found after
+  `v0.20.2`.
+- Refresh pinned CI action revisions and their verified SHA allowlist entries
+  for checkout, setup-uv, artifact transfer, and trusted PyPI publishing.
+
 ## [0.20.2] - 2026-08-03
 
 Patch release candidate covering the post-0.20.1 integrity and release-boundary
