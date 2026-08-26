@@ -15,10 +15,10 @@ WORKFLOW_DIR: Final[Path] = REPO_ROOT / ".github" / "workflows"
 WORKFLOW_PATHS: Final[tuple[Path, ...]] = tuple(sorted(WORKFLOW_DIR.glob("*.y*ml")))
 DEPENDABOT_PATH: Final[Path] = REPO_ROOT / ".github" / "dependabot.yml"
 ACTION_REFS: Final[dict[str, tuple[str, str]]] = {
-    "actions/checkout": ("34e114876b0b11c390a56381ad16ebd13914f8d5", "v4"),
+    "actions/checkout": ("3d3c42e5aac5ba805825da76410c181273ba90b1", "v7"),
     "actions/download-artifact": ("d3f86a106a0bac45b974a628896c90dbdf5c8093", "v4"),
     "actions/upload-artifact": ("ea165f8d65b6e75b540449e92b4886f43607fa02", "v4"),
-    "astral-sh/setup-uv": ("d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86", "v5"),
+    "astral-sh/setup-uv": ("c771a70e6277c0a99b617c7a806ffedaca235ff9", "v9"),
     "pypa/gh-action-pypi-publish": ("ba38be9e461d3875417946c167d0b5f3d385a247", "release/v1"),
     "r-lib/actions/setup-r": ("d3c5be51b12e724e68f33216ca3c148b66d5f0b6", "v2"),
     "r-lib/actions/setup-renv": ("d3c5be51b12e724e68f33216ca3c148b66d5f0b6", "v2"),
