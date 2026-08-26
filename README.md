@@ -176,6 +176,10 @@ visual_style:
   font_scale: 1.0
   profile: baseline
 
+execution:
+  # Default: content_hash. Use mtime only for trusted immutable large inputs.
+  cache_strategy: content_hash
+
 pipeline:
   analysis:
     - script: "hub_scripts/analyze.R"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .cache_manager import cache_strategy_from_config
+
 
 def run_visual_artifact_batch(
     project_dir,
@@ -45,9 +47,10 @@ def run_visual_artifact_batch(
     athena,
 ) -> bool:
     """Run one non-expanded artifact while preserving cache and output contracts."""
+    cache_strategy = cache_strategy_from_config(config)
     signature = {
-        "script": file_signature(script_full_path, project_dir),
-        "inputs": collect_signatures(project_dir, declared_inputs),
+        "script": file_signature(script_full_path, project_dir, cache_strategy=cache_strategy),
+        "inputs": collect_signatures(project_dir, declared_inputs, cache_strategy=cache_strategy),
         "external_inputs": external_input_signatures,
         "runner": runner,
         "lang": lang,
@@ -58,12 +61,13 @@ def run_visual_artifact_batch(
         },
         "input_patterns": raw_inputs,
         "expand_mode": expand_mode,
+        "cache_strategy": cache_strategy,
     }
     declared_format = artifact.get("format")
     if declared_format:
         signature["declared_format"] = str(declared_format).strip().lower()
 
-    output_signatures = collect_signatures(project_dir, declared_outputs)
+    output_signatures = collect_signatures(project_dir, declared_outputs, cache_strategy=cache_strategy)
     cache_enabled = bool(artifact.get("cache", True))
 
     if not cache_enabled:
@@ -124,7 +128,7 @@ def run_visual_artifact_batch(
         return False
     log(f"      ✅ Output verified: {verification_msg}")
 
-    output_signatures = collect_signatures(project_dir, declared_outputs)
+    output_signatures = collect_signatures(project_dir, declared_outputs, cache_strategy=cache_strategy)
     record_step_state(
         build_state=build_state,
         step_kind=step_kind,

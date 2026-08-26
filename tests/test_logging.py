@@ -16,7 +16,7 @@ import hub_core.process_runner as pr
 import orchestrator
 from hub_core.adapters import LegacyAthenaBridge
 from hub_core.athena_bridge import AthenaBridge
-from hub_core.cache_manager import load_build_state
+from hub_core.cache_manager import BUILD_STATE_SCHEMA_VERSION, load_build_state
 from hub_core.config_parser import load_config
 from hub_core.data_contract import validate_data_contract, validate_data_contract_preflight
 from hub_core.docker_runner import rerun_in_docker
@@ -126,7 +126,7 @@ class TestGraphHubLogging(unittest.TestCase):
         self.assertIn("invalid build state", stderr.getvalue())
         self.assertTrue(Path(state_path).is_relative_to(runtime_root))
         self.assertEqual(legacy_state_text, "{not json")
-        self.assertEqual(state["version"], 4)
+        self.assertEqual(state["version"], BUILD_STATE_SCHEMA_VERSION)
 
     def test_execution_log_status_logs_to_stderr_not_stdout(self):
         stdout = io.StringIO()

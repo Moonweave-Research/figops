@@ -1,10 +1,16 @@
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hub_core.cache_manager import (
+    CACHE_STRATEGY_MTIME,
     _empty_build_state,
+    cache_strategy_from_config,
+    file_signature,
     is_step_stale,
     record_step_state,
 )
@@ -81,3 +87,37 @@ def test_stale_one_of_multiple_outputs_missing():
     stale, reason = is_step_stale("figures", "multi", "sig_abc", output_sigs_current, state, "hash1")
     assert stale is True
     assert "out/fig2.pdf" in reason
+
+
+def test_default_signature_detects_same_size_content_change_with_preserved_mtime(tmp_path: Path):
+    source = tmp_path / "input.csv"
+    source.write_bytes(b"alpha")
+    original_stat = source.stat()
+
+    before = file_signature(source, tmp_path)
+    source.write_bytes(b"bravo")
+    os.utime(source, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    after = file_signature(source, tmp_path)
+
+    assert "content_hash" in before
+    assert "mtime_ns" not in before
+    assert before["size"] == after["size"]
+    assert before["content_hash"] != after["content_hash"]
+
+
+def test_mtime_strategy_remains_explicit_opt_in(tmp_path: Path):
+    source = tmp_path / "immutable.csv"
+    source.write_text("x\n1\n", encoding="utf-8")
+
+    signature = file_signature(source, tmp_path, cache_strategy=CACHE_STRATEGY_MTIME)
+
+    assert "mtime_ns" in signature
+    assert "content_hash" not in signature
+
+
+def test_cache_strategy_from_config_defaults_to_content_hash_and_validates_opt_out():
+    assert cache_strategy_from_config({}) == "content_hash"
+    assert cache_strategy_from_config({"execution": {"cache_strategy": "MTIME"}}) == "mtime"
+
+    with pytest.raises(ValueError, match="cache_strategy"):
+        cache_strategy_from_config({"execution": {"cache_strategy": "fast"}})

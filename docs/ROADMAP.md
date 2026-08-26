@@ -473,8 +473,10 @@ is now below the 800-line architecture split signal.
 The subsequent 2026-07-11 journal slice extracted font-token preset creation
 and scale/profile resolution into `themes.font_token_resolver`. The public
 `FontTokens` type remains façade-owned, and the live profile collaborators are
-passed through explicitly. With `themes.journal_theme` now below 800 lines, no
-tracked Python module exceeds the current architecture split signal.
+passed through explicitly. With `themes.journal_theme` now below 800 lines,
+`hub_core/mcp/tools/render_project.py` remains the only tracked module above
+the current architecture split signal; `docs/architecture.md` carries the
+live inventory.
 
 The dependency scanner split keeps `hub_core.dependency_script_inspection` as
 the compatibility facade while moving bounded Python and R extraction into

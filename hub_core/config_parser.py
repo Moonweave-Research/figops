@@ -7,13 +7,14 @@ import yaml
 
 from . import config_schema as _config_schema
 from . import config_visual_style as _config_visual_style
+from .adapters import AdapterSelectionError, select_prefetcher
 from .config_adapter_validation import validate_named_adapter as _validate_named_adapter
 from .config_assemblies import validate_assemblies as _validate_assemblies_impl
 from .config_contract_defaults import data_contract_bool, module_default_contract_bool  # noqa: F401
+from .config_execution import validate_execution_config as _validate_execution_config
 from .config_language_policy import ALLOWED_LANGUAGE_POLICY_MODES as ALLOWED_LANGUAGE_POLICY_MODES
 from .config_language_policy import get_language_policy as _get_language_policy_impl
 from .config_language_policy import normalize_lang as normalize_lang
-from .config_path_discovery import resolve_discovered_config_path as _resolve_discovered_config_path
 from .config_project_registry import load_registry_operational_states as _load_registry_operational_states
 from .config_project_registry import normalize_registry_path as _normalize_registry_path  # noqa: F401
 from .config_project_registry import resolve_operational_state as _resolve_operational_state
@@ -52,8 +53,8 @@ from .config_workflow_intent import validate_workflow_intent_config as _validate
 from .config_workflow_intent import workflow_intent as workflow_intent
 from .config_workflow_intent import workflow_intent_report as workflow_intent_report
 from .domain_analysis import DOMAIN_HELPER_NAMES
-from .execution_security import is_positive_finite_timeout
 from .logging import get_logger
+from .project_config_reader import ProjectConfigReadError, read_verified_project_config
 from .project_paths import ProjectPathError, resolve_project_input
 from .project_roles import ALLOWED_FOLDER_ROLES as ALLOWED_FOLDER_ROLES
 from .project_roles import ALLOWED_PROJECT_ROLES as ALLOWED_PROJECT_ROLES
@@ -132,8 +133,10 @@ def _load_project_metadata(config_path, fallback_name):
     }
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            conf_data = _load_yaml_with_unique_keys(f.read())
+        config_file = Path(config_path).expanduser().absolute()
+        project_root = config_file.parent.parent if config_file.parent.name == "scripts" else config_file.parent
+        raw_text = read_verified_project_config(project_root, config_file, prefetcher=select_prefetcher())
+        conf_data = _load_yaml_with_unique_keys(raw_text)
     except Exception as exc:
         metadata["errors"] = [f"Failed to read config: {exc}"]
         return metadata
@@ -462,11 +465,7 @@ def validate_config(config, *, project_root=None):
     if not isinstance(execution, dict):
         errors.append("Invalid 'execution' section (must be a mapping).")
     else:
-        for key in ("python", "rscript"):
-            if key in execution and execution[key] is not None and not isinstance(execution[key], str):
-                errors.append(f"execution.{key} must be a string or null.")
-        if "timeout_seconds" in execution and not is_positive_finite_timeout(execution["timeout_seconds"]):
-            errors.append("execution.timeout_seconds must be a positive finite number.")
+        _validate_execution_config(errors, execution)
 
     environment = config.get("environment", {})
     if environment is None:
@@ -644,16 +643,17 @@ def load_config(project_dir):
         return None, None, None
 
     try:
-        config_read_path = _resolve_discovered_config_path(
+        # This is the single execution-path read: do not reopen the pathname
+        # after discovery.  The reader performs containment, hardlink, size,
+        # descriptor identity, and post-read revalidation checks.
+        raw_text = read_verified_project_config(
             project_dir,
             config_path,
-            candidates=CONFIG_FILE_CANDIDATES,
+            prefetcher=select_prefetcher(),
         )
-        with open(config_read_path, "r", encoding="utf-8") as f:
-            raw_text = f.read()
-            config = _load_yaml_with_unique_keys(raw_text)
-    except ProjectPathError as e:
-        logger.error("❌ Error: project config path changed before read: %s", e)
+        config = _load_yaml_with_unique_keys(raw_text)
+    except (AdapterSelectionError, ProjectConfigReadError, ProjectPathError) as e:
+        logger.error("❌ Error: project config could not be verified before read: %s", e)
         return None, None, None
     except yaml.YAMLError as e:
         logger.error("❌ Error: Invalid YAML in %s\n   └─ %s", config_path, e)
@@ -737,13 +737,14 @@ def list_projects(root_dir, recursive=True, max_depth=4):
             if project.get("role") == "master":
                 status_text = "N/A (master manifest)"
             else:
-                # 간이 config 로드하여 상태 확인
+                # Reuse the verified loader rather than reopening the
+                # discovery pathname for a status-only cache check.
                 try:
-                    with open(project["config_path"], "r", encoding="utf-8") as f:
-                        raw_text = f.read()
-                        config = _load_yaml_with_unique_keys(raw_text)
-                    config_hash = hashlib.sha256(raw_text.replace("\r\n", "\n").encode("utf-8")).hexdigest()
-                    status_text = check_project_status(os.path.join(root_dir, project["path"]), config, config_hash)
+                    project_path = os.path.join(root_dir, project["path"])
+                    config, _config_path, config_hash = load_config(project_path)
+                    if config is None or config_hash is None:
+                        raise ValueError("project configuration could not be verified")
+                    status_text = check_project_status(project_path, config, config_hash)
                 except Exception:
                     status_text = "⚠️ Status Error"
         else:

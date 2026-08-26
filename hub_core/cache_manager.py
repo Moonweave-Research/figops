@@ -12,9 +12,11 @@ logger = get_logger(__name__)
 
 CACHE_STRATEGY_MTIME = "mtime"
 CACHE_STRATEGY_CONTENT_HASH = "content_hash"
+CACHE_STRATEGIES = frozenset({CACHE_STRATEGY_MTIME, CACHE_STRATEGY_CONTENT_HASH})
+DEFAULT_CACHE_STRATEGY = CACHE_STRATEGY_CONTENT_HASH
 
 BUILD_STATE_FILENAME = ".build_state.json"
-BUILD_STATE_SCHEMA_VERSION = 4
+BUILD_STATE_SCHEMA_VERSION = 5
 
 def _normalize_record_path(abs_path, project_dir):
     abs_norm = os.path.abspath(abs_path)
@@ -34,7 +36,37 @@ def _sha256_of_file(abs_path: str) -> str:
     return h.hexdigest()
 
 
-def _file_signature(abs_path, project_dir, cache_strategy=CACHE_STRATEGY_MTIME):
+def normalize_cache_strategy(cache_strategy: object | None) -> str:
+    """Return one supported cache strategy, defaulting to content identity.
+
+    Metadata-only cache keys are available as an explicit performance escape
+    hatch for unusually large, immutable inputs.  They are never the default:
+    a preserved timestamp must not make changed research data look fresh.
+    """
+
+    if cache_strategy is None:
+        return DEFAULT_CACHE_STRATEGY
+    if not isinstance(cache_strategy, str):
+        raise ValueError("cache_strategy must be 'content_hash' or 'mtime'.")
+    normalized = cache_strategy.strip().lower()
+    if normalized not in CACHE_STRATEGIES:
+        raise ValueError("cache_strategy must be 'content_hash' or 'mtime'.")
+    return normalized
+
+
+def cache_strategy_from_config(config: object) -> str:
+    """Resolve the project-wide cache policy from ``execution`` safely."""
+
+    if not isinstance(config, dict):
+        return DEFAULT_CACHE_STRATEGY
+    execution = config.get("execution")
+    if not isinstance(execution, dict):
+        return DEFAULT_CACHE_STRATEGY
+    return normalize_cache_strategy(execution.get("cache_strategy"))
+
+
+def _file_signature(abs_path, project_dir, cache_strategy=DEFAULT_CACHE_STRATEGY):
+    cache_strategy = normalize_cache_strategy(cache_strategy)
     abs_norm = os.path.abspath(abs_path)
     signature = {
         "path": _normalize_record_path(abs_norm, project_dir),
@@ -51,22 +83,22 @@ def _file_signature(abs_path, project_dir, cache_strategy=CACHE_STRATEGY_MTIME):
 
     signature["size"] = stat.st_size
     if cache_strategy == CACHE_STRATEGY_CONTENT_HASH:
-        try:
-            signature["content_hash"] = _sha256_of_file(abs_norm)
-        except OSError:
-            signature["mtime_ns"] = stat.st_mtime_ns
+        # Do not silently fall back to mtime if a read fails.  That would
+        # recreate the false-freshness condition this strategy prevents.
+        signature["content_hash"] = _sha256_of_file(abs_norm)
     else:
         signature["mtime_ns"] = stat.st_mtime_ns
     return signature
 
-def collect_signatures(project_dir, rel_paths, cache_strategy=CACHE_STRATEGY_MTIME):
+
+def collect_signatures(project_dir, rel_paths, cache_strategy=DEFAULT_CACHE_STRATEGY):
     signatures = []
     for abs_path in expand_declared_paths(project_dir, rel_paths):
         signatures.append(_file_signature(abs_path, project_dir, cache_strategy=cache_strategy))
     signatures.sort(key=lambda item: item["path"])
     return signatures
 
-def file_signature(abs_path, project_dir, cache_strategy=CACHE_STRATEGY_MTIME):
+def file_signature(abs_path, project_dir, cache_strategy=DEFAULT_CACHE_STRATEGY):
     return _file_signature(abs_path, project_dir, cache_strategy=cache_strategy)
 
 def _empty_build_state():

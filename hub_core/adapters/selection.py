@@ -22,12 +22,6 @@ class AdapterSelection:
 
 def select_adapters(config: dict[str, Any] | None = None) -> AdapterSelection:
     raw_adapters = _config_adapters(config)
-    prefetch_name = _adapter_name(
-        raw_adapters,
-        "prefetch",
-        env_var="GRAPH_HUB_PREFETCH_ADAPTER",
-        default="none",
-    )
     athena_name = _adapter_name(
         raw_adapters,
         "athena",
@@ -42,10 +36,23 @@ def select_adapters(config: dict[str, Any] | None = None) -> AdapterSelection:
     )
 
     return AdapterSelection(
-        prefetcher=_build_prefetcher(prefetch_name),
+        prefetcher=select_prefetcher(config),
         athena=_build_athena(athena_name),
         conventions=_build_conventions(conventions_name),
     )
+
+
+def select_prefetcher(config: dict[str, Any] | None = None) -> Prefetcher:
+    """Select only the prefetch adapter for reads that precede config parsing."""
+
+    raw_adapters = _config_adapters(config)
+    prefetch_name = _adapter_name(
+        raw_adapters,
+        "prefetch",
+        env_var="GRAPH_HUB_PREFETCH_ADAPTER",
+        default="none",
+    )
+    return _build_prefetcher(prefetch_name)
 
 
 def _config_adapters(config: dict[str, Any] | None) -> dict[str, Any]:
