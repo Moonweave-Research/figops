@@ -15,6 +15,20 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.20.4] - 2026-08-26
+
+Documentation patch release candidate that removes stale, hard-coded release
+claims from the package README and current-facing release guidance. Merge, tag,
+and package publication remain release-maintainer actions.
+
+### Changed
+
+- Make PyPI and GitHub Releases the explicit live sources for published-version
+  and release-asset status instead of embedding a static version in README.
+- Replace fixed historical version examples in the packaging runbooks with
+  explicit approved-version placeholders and clarify historical roadmap/audit
+  records.
+
 ## [0.20.3] - 2026-08-26
 
 Patch release candidate covering the reliability, compatibility, and structure

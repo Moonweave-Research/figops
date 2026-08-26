@@ -41,22 +41,21 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 - **Agents can inspect safely** — the MCP server exposes read, render, and smoke
   surfaces for tool-assisted figure workflows.
 
-## Current State
+## Release status
 
 | Item | Status |
 | --- | --- |
-| Source checkout | `0.20.0` release-candidate metadata (`pyproject.toml`); not yet published |
-| Published package | [`figops==0.19.0`](https://pypi.org/project/figops/0.19.0/) is the latest published PyPI release |
-| TestPyPI | [`figops==0.19.0`](https://test.pypi.org/project/figops/0.19.0/) is the latest available build; rerun install smoke before 0.20.0 promotion |
+| Source checkout | Read the candidate version from `pyproject.toml`; source metadata alone is not publication evidence |
+| Published package | [PyPI project page](https://pypi.org/project/figops/) is the live source of published-version truth |
+| TestPyPI | [TestPyPI project page](https://test.pypi.org/project/figops/) is checked during release promotion |
 | Python | 3.12+ |
 | License | Apache-2.0 for public package distribution |
 | Commands | `figops`, `figops-mcp` |
 | Compatibility aliases | `graphhub`, `graphhub-mcp` |
-| GitHub Release | [`v0.19.0`](https://github.com/Moonweave-Research/figops/releases/tag/v0.19.0) is the latest published release asset |
+| GitHub Release | [Releases page](https://github.com/Moonweave-Research/figops/releases) is the live source of attached-artifact truth |
 
-The source checkout is a `0.20.0` release candidate. The latest published
-PyPI package, TestPyPI dry run, and GitHub Release asset remain at `0.19.0`
-until a separate release promotion is approved and run.
+Do not infer the latest published version from this source checkout, a tag, or
+static documentation. Confirm it on PyPI and the GitHub Releases page.
 
 ## Install
 
@@ -69,14 +68,15 @@ python -m pip install figops
 For a pinned, reproducible install:
 
 ```bash
-python -m pip install figops==0.19.0
+python -m pip install "figops==<published-version>"
 ```
 
 If you need the exact GitHub Release asset:
 
 ```bash
-gh release download v0.19.0 --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
-python -m pip install dist-release/figops-0.19.0-py3-none-any.whl
+APPROVED_VERSION="<published-version>"
+gh release download "v$APPROVED_VERSION" --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
+python -m pip install "dist-release/figops-$APPROVED_VERSION-py3-none-any.whl"
 figops-mcp --smoke
 ```
 
@@ -291,7 +291,7 @@ install path:
 
 ```bash
 python scripts/github_release_asset_smoke.py
-python -m pip install figops==0.19.0
+python -m pip install "figops==<published-version>"
 figops-mcp --smoke
 ```
 

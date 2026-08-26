@@ -4,13 +4,13 @@
 > publication-quality plotting, self-describing MCP tools, and honest
 > operational guardrails.
 >
-> Status baseline: source checkout `0.20.0` release-candidate line, with the
-> AI-native v2 surface and bounded evidence/policy-projection path
+> Status baseline: the `0.20` release line is publicly published. The
+> AI-native v2 surface and bounded evidence/policy-projection path were
 > implemented after the `0.19.0` publication-readiness release. PR #224 adds
 > the `figops-project-v1.1` role contract, external runtime/durable-result
 > boundary, receipt/claim/raw-integrity corrections, and reviewed copy-only
-> organization workflow. The latest published PyPI package and GitHub Release
-> remain `0.19.0` until a separate approved promotion. M1 through
+> organization workflow. Use the PyPI project page and GitHub Releases page,
+> rather than this static roadmap, for the current published version. M1 through
 > M5 have shipped across the 0.5.0+ release line. The
 > remaining roadmap is maintenance, scoped debt reduction, and bounded
 > polish-layer waves that preserve journal constraints.
@@ -40,7 +40,7 @@
   workflow is not the place to regenerate large render packs for unrelated
   changes.
 
-## Current-state scorecard (0.20.0 release candidate, 2026-07-19)
+## Current-state scorecard (published 0.20 line, 2026-08-26)
 
 | Dimension | Score | Read |
 |---|---:|---|
@@ -122,12 +122,13 @@ Current release-candidate checkpoint:
   `b7128735c0f3eba259eea30bcadbda4e864f3bd101d05246a04a5cae9fbc7511`).
   Twine validation, package-surface inspection, and clean consumer smoke
   passed; installed discovery remains 7 v2 tools and 27 compatibility tools.
-  The artifacts are not yet published. Repository owner authorization for the
-  v0.20.0 public release is recorded as
+  These `v0.20.0` artifact values are historical release-candidate witnesses,
+  not live publication status. Repository owner authorization for the v0.20.0
+  public release is recorded as
   `repository_public_release_authorized=true` with one approval-evidence
   reference: [PR #224 owner authorization](https://github.com/Moonweave-Research/figops/pull/224#issuecomment-5016360221).
-  Execute merge, tag, package publication, GitHub Release, and release
-  promotion only after rechecking technical gates for the exact release commit.
+  For every future release, recheck technical gates for the exact release
+  commit before merge, tag, package publication, GitHub Release, and promotion.
 - The CLI now has an independent all-project structure diagnostic:
   `python orchestrator.py --audit-structure` (or
   `python orchestrator.py --audit-structure --audit-structure-format json`).
