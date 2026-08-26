@@ -40,9 +40,10 @@ Completed blocker families:
   release-check fixtures;
 - workflow protocol docs moved from the legacy private path to
   `docs/internal/protocols/`;
-- `0.19.0` was published and the source metadata subsequently advanced to the
-  `0.20.0` release-candidate line; published artifacts remain at `0.19.0` until
-  release promotion is explicitly approved and completed.
+- This historical audit originally observed `0.19.0` as the published baseline
+  while source metadata had advanced to the `0.20.0` release-candidate line.
+  It is not a live release-status record; verify current package and asset
+  versions on PyPI and GitHub Releases.
 
 Current structured status:
 

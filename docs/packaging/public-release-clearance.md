@@ -1,10 +1,10 @@
 # Public release clearance checklist
 
-The local release docs record `figops` as the public PyPI package name,
-`0.19.0` as the pinned PyPI install example, and `0.19.0` as the pinned
-GitHub Release wheel/sdist example. Public package
-distribution uses Apache-2.0, and future PyPI/TestPyPI uploads go through the
-guarded technical checklist plus the manual Trusted Publishing workflow.
+The local release docs record `figops` as the public PyPI package name. Install
+and release-asset examples use an explicit approved-version placeholder so they
+do not become stale after a later promotion. Public package distribution uses
+Apache-2.0, and future PyPI/TestPyPI uploads go through the guarded technical
+checklist plus the manual Trusted Publishing workflow.
 
 This checklist is intentionally conservative. It is not legal advice; it is the
 release gate that keeps the project safe while ownership and publication rights
@@ -80,7 +80,7 @@ Expected for a private-repo / public-PyPI path: `guarded_pypi_upload.py` can pas
 Use PyPI for normal installs:
 
 ```bash
-APPROVED_VERSION=0.19.0  # replace with the approved release version
+APPROVED_VERSION="<approved-release-version>"
 python -m pip install "figops==$APPROVED_VERSION"
 figops-mcp --smoke
 ```
@@ -89,16 +89,15 @@ Use the locally documented GitHub Release asset when you need the exact attached
 artifact:
 
 ```bash
-APPROVED_VERSION=0.19.0  # replace with the approved GitHub Release version
+APPROVED_VERSION="<approved-release-version>"
 gh release download "v$APPROVED_VERSION" --repo Moonweave-Research/figops --pattern "*.whl" --dir dist-release
 python -m pip install "dist-release/figops-$APPROVED_VERSION-py3-none-any.whl"
 figops-mcp --smoke
 ```
 
-The pinned examples are local documentation anchors: PyPI remains pinned to
-`0.19.0`, and the GitHub Release asset is also pinned to `0.19.0`. Update either
-only after explicit release-maintainer approval and public index/release-asset
-verification.
+Before replacing the placeholder, confirm the approved version on the public
+PyPI project page and GitHub Release asset page. Do not treat this static
+checklist as evidence of the latest published version.
 
 ## Future public-release PRs
 
