@@ -64,6 +64,7 @@ STRUCTURE_AUDIT_SCHEMA = {
         "graph": {"type": "object"},
         "findings": {"type": "array", "items": {"type": "object"}},
         "unknowns": {"type": "array", "items": {"type": "object"}},
+        "declared_vs_actual": {"type": "object"},
         "proposed_changes": {"type": "array", "items": {"type": "object"}},
     },
     "required": [
@@ -73,6 +74,7 @@ STRUCTURE_AUDIT_SCHEMA = {
         "graph",
         "findings",
         "unknowns",
+        "declared_vs_actual",
         "proposed_changes",
     ],
     "additionalProperties": False,

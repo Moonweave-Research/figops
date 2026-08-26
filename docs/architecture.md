@@ -217,6 +217,9 @@ classification and planning are separated into `structure_inventory.py`,
 every approved destination back to its declared semantic root, while
 `structure_stage_cleanup.py` owns transaction-private stage and lease cleanup.
 Reviewed mutation is isolated in `structure_apply.py` and remains copy-only.
+The read-only structure audit compares declared roots against the actual
+filesystem, enumerates undeclared files and directories, and flags nested
+`project_config.yaml` files without modifying the project.
 
 `dependency_script_inspection.py` is the public read-only facade for bounded
 Python/R dependency evidence. It delegates language-specific extraction to
@@ -373,6 +376,11 @@ pipeline selectors and mutating/execution options (including `--project`,
 combined. The audit walks the discovered projects up to `--scan-depth` and
 uses the read-only inventory/audit modules; it does not run analysis, plotting,
 diagram, or promotion steps and does not modify project files.
+
+Per-project audit results expose `declared_vs_actual`: the active config path,
+every declared root and its existence state, undeclared files/directories, and
+nested `project_config.yaml` paths. The same payload is available through
+`figops.describe(kind="project_structure")` for one project.
 
 The aggregate retains invalid-configuration and execution-boundary-blocked
 projects as diagnostic rows instead of silently dropping them. Its report

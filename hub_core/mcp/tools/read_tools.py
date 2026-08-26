@@ -158,7 +158,9 @@ class McpReadToolsMixin:
                 status_code="PROJECT_STRUCTURE_CONFIG_INVALID",
                 manual_review_needed=True,
             )
-        audit = self._structure_audit_payload(project_path, loaded["config"])
+        audit = self._structure_audit_payload(
+            project_path, loaded["config"], config_path=loaded.get("config_relpath")
+        )
         review_needed = bool(audit["findings"] or audit["unknowns"])
         return self._envelope(
             "figops.describe",
@@ -174,8 +176,10 @@ class McpReadToolsMixin:
         )
 
     @staticmethod
-    def _structure_audit_payload(project_path: Path, config: dict[str, Any]) -> dict[str, Any]:
-        audit = audit_project_structure(project_path, config)
+    def _structure_audit_payload(
+        project_path: Path, config: dict[str, Any], *, config_path: str | Path | None = None
+    ) -> dict[str, Any]:
+        audit = audit_project_structure(project_path, config, config_path=config_path)
         review_needed = bool(audit["findings"] or audit["unknowns"])
         return {
             "schema_version": "figops.project-structure-audit.v1",
@@ -184,6 +188,7 @@ class McpReadToolsMixin:
             "graph": audit["graph"],
             "findings": audit["findings"],
             "unknowns": audit["unknowns"],
+            "declared_vs_actual": audit["declared_vs_actual"],
             "proposed_changes": audit["proposed_changes"],
         }
 
@@ -240,7 +245,9 @@ class McpReadToolsMixin:
         naming_lint = self._naming_lint(project_path, enabled=bool(arguments.get("include_naming_lint", False)))
         canonical_registry = canonical_docs_registry(project_path, config)
         placeholders = placeholder_report(config)
-        structure_audit = self._structure_audit_payload(project_path, config)
+        structure_audit = self._structure_audit_payload(
+            project_path, config, config_path=loaded.get("config_relpath")
+        )
 
         return self._envelope(
             "figops.inspect_project",

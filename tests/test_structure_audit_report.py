@@ -38,7 +38,7 @@ def test_build_report_audits_in_stable_path_order(tmp_path: Path, monkeypatch: p
     monkeypatch.setattr(
         report_module,
         "audit_project_structure",
-        lambda path, config: {"roles": {}, "graph": {}, "findings": [{"code": "x"}], "unknowns": []},
+        lambda path, config, **kwargs: {"roles": {}, "graph": {}, "findings": [{"code": "x"}], "unknowns": []},
     )
     report = report_module.build_structure_audit_report(tmp_path)
     assert [item["path"] for item in report["projects"]] == ["a", "b"]
@@ -105,7 +105,7 @@ def test_audit_proposals_are_stripped_from_read_only_report(tmp_path: Path, monk
     monkeypatch.setattr(
         report_module,
         "audit_project_structure",
-        lambda path, config: {"findings": [], "unknowns": [], "proposed_changes": [{"copy": "x"}]},
+        lambda path, config, **kwargs: {"findings": [], "unknowns": [], "proposed_changes": [{"copy": "x"}]},
     )
     report = report_module.build_structure_audit_report(tmp_path)
     assert report["projects"][0]["proposed_changes"] == []

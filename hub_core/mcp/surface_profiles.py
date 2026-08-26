@@ -152,8 +152,8 @@ def compact_surface_description(
             {
                 "name": "project_structure",
                 "purpose": (
-                    "Read declared project roles, dependency graph, findings, unknowns, and "
-                    "non-mutating proposed changes for one project."
+                    "Compare declared project roles with the actual layout, including root status, "
+                    "undeclared paths, nested configs, dependency findings, and non-mutating proposals."
                 ),
             }
         ],
