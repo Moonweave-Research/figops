@@ -5,6 +5,7 @@ import subprocess
 
 from .adapters import select_adapters
 from .cache_manager import (
+    cache_strategy_from_config,
     collect_signatures,
     file_signature,
     is_step_stale,
@@ -174,6 +175,7 @@ def run_analysis(
     pipeline = config.get("pipeline", {})
     steps = pipeline.get("analysis", [])
     contract_paths = get_data_contract_paths(config)
+    cache_strategy = cache_strategy_from_config(config)
 
     if not steps:
         _log("   (No analysis steps defined)")
@@ -207,7 +209,7 @@ def run_analysis(
 
             signature = {
                 "domain_helper": domain_helper,
-                "inputs": collect_signatures(project_dir, declared_inputs),
+                "inputs": collect_signatures(project_dir, declared_inputs, cache_strategy=cache_strategy),
                 "external_inputs": external_input_signature,
                 "input_patterns": raw_inputs,
                 "outputs": declared_outputs,
@@ -217,7 +219,7 @@ def run_analysis(
             env_overrides = step.get("_cache_env_overrides")
             if isinstance(env_overrides, dict) and env_overrides:
                 signature["env_overrides"] = {key: str(env_overrides[key]) for key in sorted(env_overrides)}
-            output_signatures = collect_signatures(project_dir, declared_outputs)
+            output_signatures = collect_signatures(project_dir, declared_outputs, cache_strategy=cache_strategy)
             cache_enabled = bool(step.get("cache", True))
 
             if not declared_outputs:
@@ -266,7 +268,7 @@ def run_analysis(
                 _log(f"      ❌ Domain helper failed: {exc}")
                 return False
 
-            output_signatures = collect_signatures(project_dir, declared_outputs)
+            output_signatures = collect_signatures(project_dir, declared_outputs, cache_strategy=cache_strategy)
             missing_outputs = [item["path"] for item in output_signatures if not item.get("exists")]
             if declared_outputs and missing_outputs:
                 _log(f"      ❌ Analysis outputs not generated: {', '.join(missing_outputs)}")
@@ -341,8 +343,8 @@ def run_analysis(
         additional_env.update(solve_env)
 
         signature = {
-            "script": file_signature(script_full_path, project_dir),
-            "inputs": collect_signatures(project_dir, declared_inputs),
+            "script": file_signature(script_full_path, project_dir, cache_strategy=cache_strategy),
+            "inputs": collect_signatures(project_dir, declared_inputs, cache_strategy=cache_strategy),
             "external_inputs": external_input_signature,
             "runner": runner,
             "lang": lang,
@@ -352,7 +354,7 @@ def run_analysis(
         env_overrides = step.get("_cache_env_overrides")
         if isinstance(env_overrides, dict) and env_overrides:
             signature["env_overrides"] = {key: str(env_overrides[key]) for key in sorted(env_overrides)}
-        output_signatures = collect_signatures(project_dir, declared_outputs)
+        output_signatures = collect_signatures(project_dir, declared_outputs, cache_strategy=cache_strategy)
         cache_enabled = bool(step.get("cache", True))
 
         if not declared_outputs:
@@ -408,7 +410,7 @@ def run_analysis(
             _log(f"      ❌ Step {i} failed. Stopping pipeline.")
             return False
 
-        output_signatures = collect_signatures(project_dir, declared_outputs)
+        output_signatures = collect_signatures(project_dir, declared_outputs, cache_strategy=cache_strategy)
         missing_outputs = [item["path"] for item in output_signatures if not item.get("exists")]
         if declared_outputs and missing_outputs:
             _log(f"      ❌ Analysis outputs not generated: {', '.join(missing_outputs)}")

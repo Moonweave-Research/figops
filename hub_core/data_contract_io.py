@@ -16,8 +16,7 @@ from .runtime_paths import resolve_temp_dir
 
 logger = get_logger(__name__)
 
-CSV_CHUNK_THRESHOLD_BYTES = 256 * 1024 * 1024  # 256 MB
-CSV_CHUNK_SIZE = 50_000  # rows per chunk
+CSV_LARGE_FILE_WARNING_THRESHOLD_BYTES = 256 * 1024 * 1024  # 256 MB
 SUPPORTED_DATA_CONTRACT_SUFFIXES = {
     ".csv",
     ".tsv",
@@ -50,28 +49,27 @@ def module_available(module_name: str) -> bool:
 
 
 def read_csv_safe(csv_path, pd, log_func=None, **read_kwargs):
-    """
-    CSV를 안전하게 읽습니다.
-    256 MB 미만: 전체 로드 (빠름).
-    256 MB 이상: 청크 단위 로드 후 concat (메모리 효율).
+    """Read one CSV into a dataframe without a duplicate concat allocation.
+
+    Data-contract and rendering callers currently need a complete dataframe.
+    Splitting a large CSV into chunks only to concatenate every chunk still
+    materializes the whole file and temporarily retains an additional copy.
+    Use pandas' direct reader instead and state that requirement explicitly.
     """
     if hasattr(csv_path, "fileno"):
         file_size = os.fstat(csv_path.fileno()).st_size
         csv_path.seek(0)
     else:
         file_size = os.path.getsize(csv_path)
-    if file_size < CSV_CHUNK_THRESHOLD_BYTES:
+    if file_size < CSV_LARGE_FILE_WARNING_THRESHOLD_BYTES:
         return pd.read_csv(csv_path, encoding="utf-8-sig", **read_kwargs)
 
     log = log_func or _log
-    log(f"      ℹ️  Large file ({file_size // 1024 // 1024} MB) — using chunked read")
-    chunks = pd.read_csv(
-        csv_path,
-        encoding="utf-8-sig",
-        chunksize=CSV_CHUNK_SIZE,
-        **read_kwargs,
+    log(
+        f"      ⚠️  Large file ({file_size // 1024 // 1024} MB) — "
+        "full dataframe materialization is required; avoiding chunk-concat copy"
     )
-    return pd.concat(chunks, ignore_index=True)
+    return pd.read_csv(csv_path, encoding="utf-8-sig", **read_kwargs)
 
 
 def _read_hdf_path(data_path, pd, hdf_key: str):

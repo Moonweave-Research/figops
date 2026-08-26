@@ -242,7 +242,7 @@ jobs:
         run: uv run --locked ruff check .
 
   audit:
-    name: Dependency audit (advisory)
+    name: Dependency audit (gating)
     runs-on: ubuntu-latest
     env:
       PYTHONUTF8: "1"
@@ -257,7 +257,6 @@ jobs:
       - name: Export resolved requirements
         run: uv export --locked --no-emit-project --no-hashes -o requirements-audit.txt
       - name: pip-audit
-        # Advisory: surfaces known CVEs without blocking merges (a transitive CVE may have
-        # no released fix). Triage findings and bump floors in pyproject.toml.
-        continue-on-error: true
+        # Fail closed on a known vulnerable resolved dependency.  Any temporary
+        # exception must be fixed or explicitly handled before a merge.
         run: uvx --from pip-audit==2.10.1 pip-audit -r requirements-audit.txt --strict

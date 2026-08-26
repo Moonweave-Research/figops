@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+from .cache_manager import cache_strategy_from_config
+
 
 def run_expanded_visual_artifacts(
     project_dir,
@@ -44,6 +46,7 @@ def run_expanded_visual_artifacts(
     athena,
 ) -> bool:
     """Run and cache one visual artifact for each globbed input file."""
+    cache_strategy = cache_strategy_from_config(config)
     all_matched = flatten_glob_results(glob_results)
     for matched_file in all_matched:
         stem = os.path.splitext(os.path.basename(matched_file))[0]
@@ -55,8 +58,12 @@ def run_expanded_visual_artifacts(
         iter_env_vars["GRAPH_HUB_INPUTS"] = matched_file
 
         iter_signature = {
-            "script": file_signature(script_full_path, project_dir),
-            "inputs": collect_signatures(project_dir, expanded_declared_inputs),
+            "script": file_signature(script_full_path, project_dir, cache_strategy=cache_strategy),
+            "inputs": collect_signatures(
+                project_dir,
+                expanded_declared_inputs,
+                cache_strategy=cache_strategy,
+            ),
             "runner": runner,
             "lang": lang,
             "theme": {
@@ -66,12 +73,17 @@ def run_expanded_visual_artifacts(
             },
             "input_patterns": raw_inputs,
             "expand_mode": "each",
+            "cache_strategy": cache_strategy,
         }
         declared_format = artifact.get("format")
         if declared_format:
             iter_signature["declared_format"] = str(declared_format).strip().lower()
 
-        iter_output_signatures = collect_signatures(project_dir, expanded_declared_outputs)
+        iter_output_signatures = collect_signatures(
+            project_dir,
+            expanded_declared_outputs,
+            cache_strategy=cache_strategy,
+        )
         cache_enabled = bool(artifact.get("cache", True))
 
         if not cache_enabled:
@@ -137,7 +149,11 @@ def run_expanded_visual_artifacts(
             return False
         log(f"      ✅ Output verified: {verification_msg}")
 
-        iter_output_signatures = collect_signatures(project_dir, expanded_declared_outputs)
+        iter_output_signatures = collect_signatures(
+            project_dir,
+            expanded_declared_outputs,
+            cache_strategy=cache_strategy,
+        )
         record_step_state(
             build_state=build_state,
             step_kind=step_kind,

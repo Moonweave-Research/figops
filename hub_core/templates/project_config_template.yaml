@@ -196,6 +196,7 @@ execution:
   timeout_seconds: 600            # per-script timeout in seconds
   rscript: "Rscript"              # R executable path, e.g. /usr/local/bin/Rscript
   python: null                    # Python executable path; null means current interpreter
+  cache_strategy: "content_hash"  # default; use "mtime" only for trusted immutable large inputs
 
 # 7. Optional figure assembly
 # assemblies:

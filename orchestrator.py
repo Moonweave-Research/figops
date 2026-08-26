@@ -62,7 +62,7 @@ from hub_core import (
 )
 from hub_core.adapters import select_adapters
 from hub_core.attempt_provenance import render_attempt_provenance, update_attempt_provenance
-from hub_core.cache_manager import collect_signatures
+from hub_core.cache_manager import cache_strategy_from_config, collect_signatures
 from hub_core.config_parser import find_config_path
 from hub_core.execution_project_boundary import ExecutionProjectPathError, resolve_execution_project_path
 from hub_core.external_raw import ExternalRawError
@@ -75,6 +75,7 @@ logger = get_logger(__name__)
 
 
 def _refresh_visual_output_signatures(project_dir: str, config: dict, build_state: dict) -> None:
+    cache_strategy = cache_strategy_from_config(config)
     sections = (
         ("figures", "figures", "Fig"),
         ("diagrams", "diagrams", "Diagram"),
@@ -91,7 +92,11 @@ def _refresh_visual_output_signatures(project_dir: str, config: dict, build_stat
             step_state = bucket.get(step_key)
             if not isinstance(step_state, dict):
                 continue
-            step_state["outputs"] = collect_signatures(project_dir, [output])
+            step_state["outputs"] = collect_signatures(
+                project_dir,
+                [output],
+                cache_strategy=cache_strategy,
+            )
 
 
 def _apply_cli_preset(config: dict, preset_name: str) -> None:
@@ -134,6 +139,20 @@ def _selector_kind(args: argparse.Namespace) -> str:
 
 def _emit_attempt_provenance(attempt: dict[str, object]) -> None:
     ui_print(render_attempt_provenance(attempt))
+
+
+def _validate_cli_option_dependencies(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Reject qualifiers that would otherwise be accepted and ignored."""
+
+    if args.docker_build and not args.docker:
+        parser.error("--docker-build requires --docker.")
+    docker_image_was_provided = any(
+        argument == "--docker-image" or argument.startswith("--docker-image=") for argument in sys.argv[1:]
+    )
+    if docker_image_was_provided and not args.docker:
+        parser.error("--docker-image requires --docker.")
+    if args.regression_baseline != "ignore" and not args.check_all:
+        parser.error("--regression-baseline requires --check-all.")
 
 
 def _persist_project_failure(
@@ -326,6 +345,7 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging on stderr")
 
     args = parser.parse_args()
+    _validate_cli_option_dependencies(parser, args)
     try:
         external_raw_allowed_roots = parse_cli_external_raw_roots(args.external_raw_root)
     except ExternalRawError as exc:
@@ -447,6 +467,19 @@ def main():
     )
     _emit_attempt_provenance(attempt_provenance)
 
+    if args.docker and os.environ.get("RESEARCH_HUB_IN_DOCKER") != "1":
+        try:
+            return rerun_in_docker(
+                hub_path=hub_path,
+                root_dir=root_dir,
+                argv=sys.argv[1:],
+                image=args.docker_image,
+                build=args.docker_build,
+            )
+        except RuntimeError as exc:
+            ui_print(f"❌ {exc}")
+            return 1
+
     if args.list_projects or args.status:
         list_projects(root_dir, recursive=not args.list_root_only, max_depth=args.scan_depth)
         return 0
@@ -463,19 +496,6 @@ def main():
     build_state_path = None
     failure_dump_path = None
     adapters = None
-
-    if args.docker and os.environ.get("RESEARCH_HUB_IN_DOCKER") != "1":
-        try:
-            return rerun_in_docker(
-                hub_path=hub_path,
-                root_dir=root_dir,
-                argv=sys.argv[1:],
-                image=args.docker_image,
-                build=args.docker_build,
-            )
-        except RuntimeError as exc:
-            ui_print(f"❌ {exc}")
-            return 1
 
     if args.read_fingerprint:
         from hub_core.provenance import read_provenance_fingerprint
