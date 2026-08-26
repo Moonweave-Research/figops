@@ -45,8 +45,8 @@
   "generated_references": {
     "default_full": {
       "path": "docs/tools.md",
-      "bytes": 174368,
-      "lines": 8501
+      "bytes": 174468,
+      "lines": 8505
     },
     "v2": {
       "path": "docs/tools-v2.md",
@@ -55,8 +55,8 @@
     },
     "compatibility": {
       "path": "docs/tools-compatibility.md",
-      "bytes": 140088,
-      "lines": 6408
+      "bytes": 140188,
+      "lines": 6412
     }
   },
   "guided_call_contract": {

@@ -993,6 +993,9 @@ Summarize one project config without running analysis, plotting, or report write
     "structure_audit": {
       "additionalProperties": false,
       "properties": {
+        "declared_vs_actual": {
+          "type": "object"
+        },
         "findings": {
           "items": {
             "type": "object"
@@ -1031,6 +1034,7 @@ Summarize one project config without running analysis, plotting, or report write
         "graph",
         "findings",
         "unknowns",
+        "declared_vs_actual",
         "proposed_changes"
       ],
       "type": "object"

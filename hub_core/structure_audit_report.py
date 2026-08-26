@@ -141,7 +141,7 @@ def build_structure_audit_report(
             continue
 
         try:
-            audit = audit_project_structure(project_path, config)
+            audit = audit_project_structure(project_path, config, config_path=loaded[1] if len(loaded) > 1 else None)
             if not isinstance(audit, Mapping):
                 raise TypeError("structure audit returned a non-mapping result")
             # Copy to detach the report from mutable producer dictionaries and

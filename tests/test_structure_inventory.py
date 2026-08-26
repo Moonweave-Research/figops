@@ -139,3 +139,28 @@ def test_inventory_walks_explicit_file_references_without_suffixes(tmp_path: Pat
     graph_ids = {node["id"] for node in inventory["graph"]["nodes"]}
 
     assert {"analysis_runner", "input_dataset", "derived_result"} <= graph_ids
+
+
+def test_audit_compares_declared_roots_with_actual_paths_and_nested_configs(tmp_path: Path) -> None:
+    config = _config()
+    (tmp_path / "project_config.yaml").write_text("project: {}\n", encoding="utf-8")
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "unmanaged").mkdir()
+    (tmp_path / "unmanaged" / "notes.txt").write_text("layout evidence\n", encoding="utf-8")
+    nested_config = tmp_path / "figops_nested" / "project_config.yaml"
+    nested_config.parent.mkdir()
+    nested_config.write_text("project: {}\n", encoding="utf-8")
+
+    audit = audit_project_structure(tmp_path, config, config_path="project_config.yaml")
+    declared_vs_actual = audit["declared_vs_actual"]
+
+    missing = {item["role"] for item in declared_vs_actual["declared_roots"] if not item["exists"]}
+    undeclared = {(item["path"], item["kind"]) for item in declared_vs_actual["undeclared_paths"]}
+
+    assert {"scripts", "results"} <= missing
+    assert {("unmanaged", "directory"), ("unmanaged/notes.txt", "file")} <= undeclared
+    assert declared_vs_actual["nested_project_configs"] == ["figops_nested/project_config.yaml"]
+    assert any(
+        item["code"] == "nested_project_config" and item["path"] == "figops_nested/project_config.yaml"
+        for item in audit["findings"]
+    )

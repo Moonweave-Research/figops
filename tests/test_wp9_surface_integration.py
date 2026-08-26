@@ -41,7 +41,12 @@ def test_v2_describe_project_structure_is_read_only_and_versioned(tmp_path: Path
 
     assert result["schema_version"] == "figops.project-structure-audit.v1"
     assert result["status_code"] in {"PROJECT_STRUCTURE_OK", "PROJECT_STRUCTURE_REVIEW_REQUIRED"}
-    assert set(("roles", "graph", "findings", "unknowns", "proposed_changes")) <= result.keys()
+    assert set(("roles", "graph", "findings", "unknowns", "declared_vs_actual", "proposed_changes")) <= result.keys()
+    assert result["declared_vs_actual"]["active_config_path"] == "project_config.yaml"
+    assert any(
+        item["role"] == "results" and not item["exists"]
+        for item in result["declared_vs_actual"]["declared_roots"]
+    )
     assert result["proposed_changes"] == []
     assert str(tmp_path.resolve()) not in json.dumps(result)
     assert before == {

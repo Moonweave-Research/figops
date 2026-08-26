@@ -183,18 +183,49 @@ def classify_structure_candidate(
     return {"candidate_role": role, "confidence": confidence, "reason": reason}
 
 
-def build_structure_inventory(project_root: str | Path, config: Mapping[str, Any]) -> dict[str, Any]:
+def _active_config_path(project_root: Path, config_path: str | Path | None) -> str:
+    """Return the active config path relative to *project_root* when contained.
+
+    A layout audit is diagnostic-only and must never follow an arbitrary
+    caller-provided config path outside the project.  Falling back to the
+    canonical root config keeps direct callers deterministic.
+    """
+
+    candidate = project_root / "project_config.yaml" if config_path is None else Path(config_path)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    try:
+        return candidate.resolve(strict=False).relative_to(project_root).as_posix()
+    except ValueError:
+        return "project_config.yaml"
+
+
+def build_structure_inventory(
+    project_root: str | Path,
+    config: Mapping[str, Any],
+    *,
+    config_path: str | Path | None = None,
+) -> dict[str, Any]:
     """Build a deterministic, read-only inventory and relationship graph."""
 
     root = Path(project_root).resolve()
     contract = resolve_project_structure(config, project_root=root)
     roots = dict(contract.roots)
+    active_config_path = _active_config_path(root, config_path)
     files: list[str] = []
+    entries: list[tuple[str, str]] = []
     if root.is_dir():
         for item in root.rglob("*"):
-            if item.is_file() and not item.is_symlink():
-                files.append(item.relative_to(root).as_posix())
+            if item.is_symlink():
+                continue
+            relative = item.relative_to(root).as_posix()
+            if item.is_file():
+                files.append(relative)
+                entries.append((relative, "file"))
+            elif item.is_dir():
+                entries.append((relative, "directory"))
     files.sort()
+    entries.sort()
 
     all_references = list(_walk_references(config))
     references: dict[str, list[tuple[tuple[str, ...], str]]] = {}
@@ -210,21 +241,28 @@ def build_structure_inventory(project_root: str | Path, config: Mapping[str, Any
         }
         for role in ROLE_ROOTS
     }
+    nested_project_configs = [
+        path
+        for path in files
+        if PurePosixPath(path).name == "project_config.yaml" and path != active_config_path
+    ]
+    nested_config_set = set(nested_project_configs)
     unknowns: list[dict[str, Any]] = []
-    for path in files:
+    for path, kind in entries:
         role = classify_declared_role(path, roots)
         if role is None:
-            if path not in {"project_config.yaml", "scripts/project_config.yaml"}:
+            if path != active_config_path and path not in nested_config_set:
                 unknowns.append(
                     {
                         "path": path,
+                        "kind": kind,
                         "candidate": classify_structure_candidate(
                             path,
                             reference_roles=(role for _, role in references.get(path, [])),
                         ),
                     }
                 )
-        else:
+        elif kind == "file":
             roles[role]["paths"].append(path)
 
     nodes = [
@@ -245,7 +283,18 @@ def build_structure_inventory(project_root: str | Path, config: Mapping[str, Any
     findings: list[dict[str, Any]] = []
     for role in ROLE_ROOTS:
         if not roles[role]["exists"]:
-            findings.append({"code": "missing_declared", "role": role, "path": roots[role]})
+            findings.append(
+                {"code": "missing_declared", "role": role, "path": roots[role], "expected_kind": "directory"}
+            )
+
+    for path in nested_project_configs:
+        findings.append(
+            {
+                "code": "nested_project_config",
+                "path": path,
+                "active_config_path": active_config_path,
+            }
+        )
 
     seen_roots: dict[str, str] = {}
     for role, declared_root in sorted(roots.items()):
@@ -288,12 +337,27 @@ def build_structure_inventory(project_root: str | Path, config: Mapping[str, Any
             findings.append({"code": "orphan", "path": path})
 
     findings.sort(key=lambda item: (str(item.get("code")), str(item.get("path")), str(item.get("role"))))
+    declared_roots = [
+        {
+            "role": role,
+            "path": roots[role],
+            "exists": roles[role]["exists"],
+            "expected_kind": "directory",
+        }
+        for role in ROLE_ROOTS
+    ]
     return {
         "contract": contract.to_dict(),
         "roles": roles,
         "graph": {"nodes": nodes, "edges": edges},
         "findings": findings,
         "unknowns": unknowns,
+        "declared_vs_actual": {
+            "active_config_path": active_config_path,
+            "declared_roots": declared_roots,
+            "undeclared_paths": list(unknowns),
+            "nested_project_configs": nested_project_configs,
+        },
     }
 
 
