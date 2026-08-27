@@ -15,6 +15,26 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.20.5] - 2026-08-27
+
+Patch release covering post-`v0.20.4` runtime-integrity and release-gate
+hardening.
+
+### Fixed
+
+- Make cache freshness content-addressed by default so same-size input changes
+  with preserved timestamps cannot be skipped; retain explicit `mtime` opt-in
+  for trusted immutable large inputs.
+- Read project configuration through the verified, prefetch-aware boundary and
+  reject ineffective Docker and regression CLI qualifiers.
+- Avoid the duplicate memory allocation of chunk-then-concatenate CSV loading,
+  and make the full-dataframe requirement explicit for large inputs.
+
+### Changed
+
+- Promote the locked dependency audit to a required CI gate and align current
+  QA and roadmap guidance with that contract.
+
 ## [0.20.4] - 2026-08-26
 
 Documentation patch release candidate that removes stale, hard-coded release
