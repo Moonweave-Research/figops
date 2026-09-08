@@ -54,6 +54,10 @@ cannot approve one.
 
 The compact v2 surface exposes current structure facts through
 `figops.describe` with `kind: project_structure`; this does not write files. The
+inventory recursively scans declared roots first and reports undeclared
+top-level entries without descending into them. Scans stop after 10,000 entries
+and return an `inventory_entry_limit` finding with the partial evidence instead
+of blocking indefinitely on large or network-mounted trees. The
 compatibility surface retains the separately write-gated
 `figops.normalize_project_structure` workflow:
 

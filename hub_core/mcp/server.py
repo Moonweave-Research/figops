@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Callable
 
@@ -337,8 +338,11 @@ class FigOpsMCPServer(
                 if line.strip().startswith("version"):
                     return line.split("=", 1)[1].strip().strip('"')
         except OSError:
+            pass
+        try:
+            return version("figops")
+        except PackageNotFoundError:
             return "unknown"
-        return "unknown"
 
     @staticmethod
     def _lockfile_status(project_path: Path, config: dict[str, Any], *, strict: bool) -> dict[str, Any]:

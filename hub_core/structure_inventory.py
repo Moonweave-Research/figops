@@ -7,6 +7,7 @@ name-based candidate classification.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 
@@ -18,6 +19,7 @@ _DATA_SUFFIXES = frozenset(
     {".csv", ".tsv", ".txt", ".parquet", ".json", ".xlsx", ".xls", ".h5", ".hdf5", ".feather"}
 )
 _FIGURE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".svg", ".pdf", ".eps", ".tif", ".tiff"})
+DEFAULT_INVENTORY_MAX_ENTRIES = 10_000
 _PATH_REFERENCE_KEYS = frozenset(
     {
         "asset",
@@ -200,37 +202,131 @@ def _active_config_path(project_root: Path, config_path: str | Path | None) -> s
         return "project_config.yaml"
 
 
+def _minimal_declared_roots(roots: Mapping[str, str]) -> tuple[PurePosixPath, ...]:
+    """Return non-overlapping declared roots in deterministic priority order."""
+
+    candidates = sorted(
+        {PurePosixPath(path) for path in roots.values()},
+        key=lambda path: (len(path.parts), path.as_posix()),
+    )
+    selected: list[PurePosixPath] = []
+    for candidate in candidates:
+        if any(candidate.parts[: len(parent.parts)] == parent.parts for parent in selected):
+            continue
+        selected.append(candidate)
+    return tuple(selected)
+
+
+def _scan_inventory_entries(
+    root: Path,
+    roots: Mapping[str, str],
+    *,
+    max_entries: int,
+) -> tuple[dict[str, str], bool]:
+    """Scan declared trees first, then only the project root's immediate entries."""
+
+    entries: dict[str, str] = {}
+    truncated = False
+
+    def record(relative: str, kind: str) -> bool:
+        nonlocal truncated
+        if relative in entries:
+            return True
+        if len(entries) >= max_entries:
+            truncated = True
+            return False
+        entries[relative] = kind
+        return True
+
+    def scan_directory(directory: Path, prefix: PurePosixPath) -> None:
+        nonlocal truncated
+        pending = [(directory, prefix)]
+        while pending and not truncated:
+            current, current_prefix = pending.pop()
+            child_directories: list[tuple[Path, PurePosixPath]] = []
+            with os.scandir(current) as iterator:
+                for entry in iterator:
+                    if entry.is_symlink():
+                        continue
+                    relative = current_prefix / entry.name
+                    if entry.is_file(follow_symlinks=False):
+                        if not record(relative.as_posix(), "file"):
+                            break
+                    elif entry.is_dir(follow_symlinks=False):
+                        if not record(relative.as_posix(), "directory"):
+                            break
+                        child_directories.append((Path(entry.path), relative))
+            pending.extend(reversed(child_directories))
+
+    for relative_root in _minimal_declared_roots(roots):
+        declared_root = root / relative_root
+        if declared_root.is_symlink() or not declared_root.is_dir():
+            continue
+        if relative_root != PurePosixPath(".") and not record(relative_root.as_posix(), "directory"):
+            break
+        prefix = PurePosixPath() if relative_root == PurePosixPath(".") else relative_root
+        scan_directory(declared_root, prefix)
+        if truncated:
+            break
+
+    if root.is_dir() and not truncated:
+        with os.scandir(root) as iterator:
+            for entry in iterator:
+                if entry.is_symlink():
+                    continue
+                if entry.is_file(follow_symlinks=False):
+                    if not record(entry.name, "file"):
+                        break
+                elif entry.is_dir(follow_symlinks=False) and not record(entry.name, "directory"):
+                    break
+
+    return entries, truncated
+
+
 def build_structure_inventory(
     project_root: str | Path,
     config: Mapping[str, Any],
     *,
     config_path: str | Path | None = None,
+    max_entries: int = DEFAULT_INVENTORY_MAX_ENTRIES,
 ) -> dict[str, Any]:
     """Build a deterministic, read-only inventory and relationship graph."""
+
+    if isinstance(max_entries, bool) or not isinstance(max_entries, int) or max_entries < 1:
+        raise ValueError("max_entries must be a positive integer")
 
     root = Path(project_root).resolve()
     contract = resolve_project_structure(config, project_root=root)
     roots = dict(contract.roots)
     active_config_path = _active_config_path(root, config_path)
-    files: list[str] = []
-    entries: list[tuple[str, str]] = []
-    if root.is_dir():
-        for item in root.rglob("*"):
-            if item.is_symlink():
-                continue
-            relative = item.relative_to(root).as_posix()
-            if item.is_file():
-                files.append(relative)
-                entries.append((relative, "file"))
-            elif item.is_dir():
-                entries.append((relative, "directory"))
-    files.sort()
-    entries.sort()
+    entry_kinds, inventory_truncated = _scan_inventory_entries(root, roots, max_entries=max_entries)
 
     all_references = list(_walk_references(config))
     references: dict[str, list[tuple[tuple[str, ...], str]]] = {}
     for trail, path in all_references:
         references.setdefault(path, []).append((trail, _reference_role(trail, path) or ""))
+
+    for path in references:
+        if path in entry_kinds:
+            continue
+        candidate = root / path
+        if candidate.is_symlink():
+            continue
+        if candidate.is_file():
+            entry_kinds[path] = "file"
+        elif candidate.is_dir():
+            entry_kinds[path] = "directory"
+
+    for path, kind in tuple(entry_kinds.items()):
+        if kind != "directory" or "/" in path or classify_declared_role(path, roots) is not None:
+            continue
+        nested_config = root / path / "project_config.yaml"
+        if nested_config.is_file():
+            entry_kinds[f"{path}/project_config.yaml"] = "file"
+
+    entries = sorted(entry_kinds.items())
+    files = sorted(path for path, kind in entries if kind == "file")
+    file_set = set(files)
 
     roles = {
         role: {
@@ -269,7 +365,7 @@ def build_structure_inventory(
         {
             "id": path,
             "role": classify_declared_role(path, roots) or "unknown",
-            "exists": (root / path).is_file(),
+            "exists": path in file_set or (root / path).is_file(),
         }
         for path in sorted(set(files) | set(references))
     ]
@@ -281,6 +377,10 @@ def build_structure_inventory(
             )
 
     findings: list[dict[str, Any]] = []
+    if inventory_truncated:
+        findings.append(
+            {"code": "inventory_entry_limit", "entry_count": max_entries, "max_entries": max_entries}
+        )
     for role in ROLE_ROOTS:
         if not roles[role]["exists"]:
             findings.append(

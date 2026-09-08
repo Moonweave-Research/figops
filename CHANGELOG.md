@@ -15,6 +15,19 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.20.6] - 2026-09-08
+
+Patch release candidate preventing project-structure inventory stalls on
+high-latency and large filesystems.
+
+### Fixed
+
+- Scan declared project roots with `os.scandir`, avoid recursively walking
+  undeclared directories, and return partial evidence with a finding at the
+  10,000-entry ceiling.
+- Report the installed FigOps distribution version from `figops.health` when a
+  source-tree `pyproject.toml` is unavailable.
+
 ## [0.20.5] - 2026-08-27
 
 Patch release covering post-`v0.20.4` runtime-integrity and release-gate
