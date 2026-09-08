@@ -118,6 +118,21 @@ def test_health_version_is_package_version_not_audit_policy_projection() -> None
     assert health["version"] != "publication-readiness-v2"
 
 
+def test_health_version_falls_back_to_installed_distribution(tmp_path: Path) -> None:
+    server = FigOpsMCPServer(
+        hub_path=tmp_path,
+        research_root=tmp_path,
+        runtime_root=tmp_path / "runtime",
+        surface_profile="v2",
+        write_tools_enabled=False,
+    )
+    package = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8"))
+
+    health = server.call_tool("figops.health", {})["structuredContent"]
+
+    assert health["version"] == package["project"]["version"]
+
+
 def test_audit_policy_schema_keeps_public_v1_enum_and_documents_internal_projection() -> None:
     definition = next(
         item

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from hub_core.structure_audit import audit_project_structure
 from hub_core.structure_contract_types import DEFAULT_V11_ROOTS
@@ -158,9 +159,36 @@ def test_audit_compares_declared_roots_with_actual_paths_and_nested_configs(tmp_
     undeclared = {(item["path"], item["kind"]) for item in declared_vs_actual["undeclared_paths"]}
 
     assert {"scripts", "results"} <= missing
-    assert {("unmanaged", "directory"), ("unmanaged/notes.txt", "file")} <= undeclared
+    assert ("unmanaged", "directory") in undeclared
+    assert ("unmanaged/notes.txt", "file") not in undeclared
     assert declared_vs_actual["nested_project_configs"] == ["figops_nested/project_config.yaml"]
     assert any(
         item["code"] == "nested_project_config" and item["path"] == "figops_nested/project_config.yaml"
         for item in audit["findings"]
     )
+
+
+def test_inventory_uses_declared_first_scandir_without_path_rglob(tmp_path: Path) -> None:
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "input.csv").write_text("x\n1\n", encoding="utf-8")
+    (tmp_path / "unmanaged" / "deep").mkdir(parents=True)
+    (tmp_path / "unmanaged" / "deep" / "ignored.csv").write_text("x\n2\n", encoding="utf-8")
+
+    with patch.object(Path, "rglob", side_effect=AssertionError("Path.rglob must not be used")):
+        inventory = build_structure_inventory(tmp_path, _config())
+
+    assert inventory["roles"]["raw"]["paths"] == ["raw/input.csv"]
+    assert any(item["path"] == "unmanaged" for item in inventory["unknowns"])
+    assert all(item["path"] != "unmanaged/deep/ignored.csv" for item in inventory["unknowns"])
+
+
+def test_inventory_stops_at_entry_ceiling_and_reports_partial_result(tmp_path: Path) -> None:
+    (tmp_path / "raw").mkdir()
+    for index in range(5):
+        (tmp_path / "raw" / f"input-{index}.csv").write_text("x\n1\n", encoding="utf-8")
+
+    inventory = build_structure_inventory(tmp_path, _config(), max_entries=3)
+
+    ceiling = next(item for item in inventory["findings"] if item["code"] == "inventory_entry_limit")
+    assert ceiling == {"code": "inventory_entry_limit", "entry_count": 3, "max_entries": 3}
+    assert len(inventory["roles"]["raw"]["paths"]) <= 3
