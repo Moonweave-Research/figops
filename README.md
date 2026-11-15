@@ -41,6 +41,9 @@ FigOps keeps that workflow lightweight while making the important parts explicit
 - **Agents can inspect safely** — the MCP server exposes read, render, and smoke
   surfaces for tool-assisted figure workflows.
 
+For partial folder inventories, readiness-policy selection, and raw-data seal
+recovery, see [Diagnostic interpretation](docs/diagnostic-interpretation.md).
+
 ## Release status
 
 | Item | Status |

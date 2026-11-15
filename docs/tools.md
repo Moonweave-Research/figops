@@ -7276,7 +7276,7 @@ Render one configured project-local .py or .R figure; code and command strings a
 
 ### `figops.audit_artifact`
 
-Audit validated completed-job evidence with zero or more explicit policy packs. The public publication-readiness-v1 pack projects internally to publication-readiness-v2; v2 is not a public enum value. Required geometry marked not_applicable remains unresolved and requires review.
+Audit validated completed-job evidence with zero or more explicit policy packs. publication-readiness-v1 evaluates generic readiness plus declared journal projections; internal projection ids are not public policy-pack values. Required geometry marked not_applicable remains unresolved and requires review.
 
 **Input schema**
 
@@ -7291,7 +7291,7 @@ Audit validated completed-job evidence with zero or more explicit policy packs. 
     },
     "policy_packs": {
       "default": [],
-      "description": "Public policy-pack identifiers only. publication-readiness-v1 is projected internally to publication-readiness-v2; the internal id must not be supplied by callers.",
+      "description": "Public policy-pack identifiers only. publication-readiness-v1 uses canonical readiness facts and any declared journal projection. Internal projection ids must not be supplied by callers.",
       "items": {
         "enum": [
           "publication-readiness-v1"

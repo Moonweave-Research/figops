@@ -15,6 +15,23 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.20.8] - 2026-11-15
+
+### Fixed
+
+- Share the bounded structure-inventory scan across declared roots so large raw
+  trees do not hide small script, figure, or source-data roots. Label inferred
+  findings from incomplete inventories as provisional.
+- Recognize configured source-data inputs as referenced and accept declared
+  grouping directories without reporting false orphan or stale-reference findings.
+- Audit neutral exploratory renders through the public readiness policy without
+  requiring a projection no producer emits. Explicit journal targets still
+  require their matching projection; integrity failures still block the audit.
+- Record the configured raw-integrity mode in canonical project-render policy
+  context and name the existing seal command when a manifest is missing.
+
+No automatic sealing, project-data migration, permission changes, or model changes.
+
 ## [0.20.7] - 2026-11-15
 
 Security maintenance release preserving project data, runtime configuration,

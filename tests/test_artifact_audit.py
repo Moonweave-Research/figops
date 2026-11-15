@@ -284,7 +284,7 @@ def test_explicit_publication_policy_delegates_to_readiness(monkeypatch: pytest.
     assert len(calls) == 1
     assert calls[0]["project_id"] == "project-a"
     assert calls[0]["figure_id"] == "figure-1"
-    assert calls[0]["policy_ids"] == ("publication-readiness-v2",)
+    assert calls[0]["policy_ids"] == ()
     assert report["status"] == "needs_revision"
     assert report["selected_policy_ids"] == [PUBLICATION_READINESS_POLICY]
     assert report["findings"][0]["policy_id"] == PUBLICATION_READINESS_POLICY
@@ -427,3 +427,31 @@ def test_summary_is_recomputed_from_findings_not_caller_aggregate() -> None:
     assert report["summary"]["status"] == "needs_revision"
     assert report["summary"]["finding_counts"]["major"] == 2
     assert all(item["status"] in {"blocked", "needs_revision", "needs_review"} for item in report["gates"])
+
+
+def test_public_policy_audits_neutral_evidence_without_requiring_unreachable_projection() -> None:
+    envelope = _envelope()
+    envelope["resolved_policy"] = {
+        "id": "render-neutral", "version": "1", "source": "v2-default", "parameters": {},
+    }
+    before = copy.deepcopy(envelope)
+
+    report = audit_artifact_evidence(envelope, policy_packs=[PUBLICATION_READINESS_POLICY])
+
+    assert "POLICY_PROJECTION_MISSING" not in _finding_codes(report)
+    assert report["status"] == "needs_review"
+    assert report["manual_review_required"] is True
+    assert envelope == before
+
+
+def test_declared_journal_target_still_requires_its_real_projection() -> None:
+    envelope = _envelope()
+    envelope["resolved_policy"] = {
+        "id": "journal-nature", "version": "3", "source": "artifact-policy-verifier", "parameters": {},
+    }
+
+    report = audit_artifact_evidence(envelope, policy_packs=[PUBLICATION_READINESS_POLICY])
+
+    finding = next(item for item in report["findings"] if item["code"] == "POLICY_PROJECTION_MISSING")
+    assert "journal-nature" in finding["message"]
+    assert report["status"] == "blocked"

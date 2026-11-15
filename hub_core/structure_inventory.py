@@ -8,9 +8,11 @@ name-based candidate classification.
 from __future__ import annotations
 
 import os
+from collections import deque
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Mapping
+from typing import Any, Generator, Iterable, Mapping
 
+from .project_paths import project_path_has_symlink_component
 from .project_structure_contract import resolve_project_structure
 from .structure_contract_types import ROLE_ROOTS
 
@@ -202,46 +204,24 @@ def _active_config_path(project_root: Path, config_path: str | Path | None) -> s
         return "project_config.yaml"
 
 
-def _minimal_declared_roots(roots: Mapping[str, str]) -> tuple[PurePosixPath, ...]:
-    """Return non-overlapping declared roots in deterministic priority order."""
-
-    candidates = sorted(
-        {PurePosixPath(path) for path in roots.values()},
-        key=lambda path: (len(path.parts), path.as_posix()),
-    )
-    selected: list[PurePosixPath] = []
-    for candidate in candidates:
-        if any(candidate.parts[: len(parent.parts)] == parent.parts for parent in selected):
-            continue
-        selected.append(candidate)
-    return tuple(selected)
-
-
 def _scan_inventory_entries(
     root: Path,
     roots: Mapping[str, str],
     *,
     max_entries: int,
 ) -> tuple[dict[str, str], bool]:
-    """Scan declared trees first, then only the project root's immediate entries."""
+    """Share one bounded budget across declared roles without starving small roots."""
 
     entries: dict[str, str] = {}
-    truncated = False
+    declared_roots = {PurePosixPath(path) for path in roots.values()}
 
-    def record(relative: str, kind: str) -> bool:
-        nonlocal truncated
-        if relative in entries:
-            return True
-        if len(entries) >= max_entries:
-            truncated = True
-            return False
-        entries[relative] = kind
-        return True
-
-    def scan_directory(directory: Path, prefix: PurePosixPath) -> None:
-        nonlocal truncated
+    def scan_directory(
+        directory: Path, prefix: PurePosixPath
+    ) -> Generator[tuple[str, str], None, None]:
+        if prefix != PurePosixPath("."):
+            yield prefix.as_posix(), "directory"
         pending = [(directory, prefix)]
-        while pending and not truncated:
+        while pending:
             current, current_prefix = pending.pop()
             child_directories: list[tuple[Path, PurePosixPath]] = []
             with os.scandir(current) as iterator:
@@ -250,37 +230,53 @@ def _scan_inventory_entries(
                         continue
                     relative = current_prefix / entry.name
                     if entry.is_file(follow_symlinks=False):
-                        if not record(relative.as_posix(), "file"):
-                            break
+                        yield relative.as_posix(), "file"
                     elif entry.is_dir(follow_symlinks=False):
-                        if not record(relative.as_posix(), "directory"):
-                            break
-                        child_directories.append((Path(entry.path), relative))
+                        yield relative.as_posix(), "directory"
+                        # Nested declared roots have their own scan lane.
+                        if relative not in declared_roots:
+                            child_directories.append((Path(entry.path), relative))
             pending.extend(reversed(child_directories))
 
-    for relative_root in _minimal_declared_roots(roots):
+    scans = []
+    for relative_root in sorted(declared_roots):
         declared_root = root / relative_root
-        if declared_root.is_symlink() or not declared_root.is_dir():
+        if not declared_root.is_dir() or (
+            relative_root != PurePosixPath(".")
+            and project_path_has_symlink_component(root, relative_root.as_posix())
+        ):
             continue
-        if relative_root != PurePosixPath(".") and not record(relative_root.as_posix(), "directory"):
-            break
-        prefix = PurePosixPath() if relative_root == PurePosixPath(".") else relative_root
-        scan_directory(declared_root, prefix)
-        if truncated:
-            break
+        scans.append(scan_directory(declared_root, relative_root))
 
-    if root.is_dir() and not truncated:
+    def scan_immediate_entries() -> Generator[tuple[str, str], None, None]:
         with os.scandir(root) as iterator:
             for entry in iterator:
                 if entry.is_symlink():
                     continue
                 if entry.is_file(follow_symlinks=False):
-                    if not record(entry.name, "file"):
-                        break
-                elif entry.is_dir(follow_symlinks=False) and not record(entry.name, "directory"):
-                    break
+                    yield entry.name, "file"
+                elif entry.is_dir(follow_symlinks=False):
+                    yield entry.name, "directory"
 
-    return entries, truncated
+    if root.is_dir() and PurePosixPath(".") not in declared_roots:
+        scans.append(scan_immediate_entries())
+    active = deque(scans)
+    try:
+        while active:
+            scan = active.popleft()
+            try:
+                relative, kind = next(scan)
+            except StopIteration:
+                continue
+            if relative not in entries:
+                if len(entries) >= max_entries:
+                    return entries, True
+                entries[relative] = kind
+            active.append(scan)
+    finally:
+        for scan in scans:
+            scan.close()
+    return entries, False
 
 
 def build_structure_inventory(
@@ -326,7 +322,6 @@ def build_structure_inventory(
 
     entries = sorted(entry_kinds.items())
     files = sorted(path for path, kind in entries if kind == "file")
-    file_set = set(files)
 
     roles = {
         role: {
@@ -365,7 +360,7 @@ def build_structure_inventory(
         {
             "id": path,
             "role": classify_declared_role(path, roots) or "unknown",
-            "exists": path in file_set or (root / path).is_file(),
+            "exists": path in entry_kinds or (root / path).is_file(),
         }
         for path in sorted(set(files) | set(references))
     ]
@@ -404,11 +399,9 @@ def build_structure_inventory(
             )
         seen_roots[declared_root] = role
 
-    referenced_outputs: set[str] = set()
     for path, refs in sorted(references.items()):
         expected = {role for _, role in refs}
         if expected & {"figures", "tables", "intermediate"}:
-            referenced_outputs.add(path)
             if classify_declared_role(path, roots) == "raw":
                 findings.append({"code": "raw_output", "path": path})
             if not (root / path).is_file():
@@ -428,13 +421,21 @@ def build_structure_inventory(
                     complete = True
             if not complete:
                 findings.append({"code": "provenance_incomplete", "path": path})
-        elif not (root / path).is_file():
+        elif not ((root / path).is_dir() if path in roots.values() else (root / path).is_file()):
             findings.append({"code": "stale_reference", "path": path})
 
     result_roles = {"intermediate", "source_data", "tables", "figures", "evidence", "publication"}
     for path in files:
-        if classify_declared_role(path, roots) in result_roles and path not in referenced_outputs:
+        if classify_declared_role(path, roots) in result_roles and path not in references:
             findings.append({"code": "orphan", "path": path})
+
+    if inventory_truncated:
+        for finding in findings:
+            if finding["code"] == "orphan":
+                finding["provisional"] = True
+        for unknown in unknowns:
+            unknown["provisional"] = True
+            unknown["candidate"]["reason"] = "Partial inventory: " + unknown["candidate"]["reason"]
 
     findings.sort(key=lambda item: (str(item.get("code")), str(item.get("path")), str(item.get("role"))))
     declared_roots = [
@@ -453,6 +454,7 @@ def build_structure_inventory(
         "findings": findings,
         "unknowns": unknowns,
         "declared_vs_actual": {
+            "inventory_complete": not inventory_truncated,
             "active_config_path": active_config_path,
             "declared_roots": declared_roots,
             "undeclared_paths": list(unknowns),

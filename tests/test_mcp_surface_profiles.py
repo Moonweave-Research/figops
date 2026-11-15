@@ -142,7 +142,8 @@ def test_audit_policy_schema_keeps_public_v1_enum_and_documents_internal_project
     schema = definition["inputSchema"]["properties"]["policy_packs"]
 
     assert schema["items"]["enum"] == [PUBLICATION_READINESS_POLICY]
-    assert "publication-readiness-v2" in schema["description"]
+    assert "declared journal projection" in schema["description"]
+    assert "must not be supplied" in schema["description"]
     assert "not_applicable" in definition["description"]
 
 
@@ -326,3 +327,38 @@ def test_historical_graphhub_python_alias_selects_truthful_compatibility_discove
         GraphHubMCPServer(surface_profile="v2")
     with pytest.raises(ValueError, match="only supports surface_profile='compatibility'"):
         GraphHubMCPServer(config=McpServerConfig(surface_profile="v2"))
+
+
+def test_public_structure_description_samples_small_roles_and_reports_partial_inventory(tmp_path):
+    import yaml
+
+    from hub_core.mcp import FigOpsMCPServer
+    from hub_core.structure_contract_types import DEFAULT_V11_ROOTS
+
+    project = tmp_path / "research/project"
+    for root in DEFAULT_V11_ROOTS.values():
+        (project / root).mkdir(parents=True, exist_ok=True)
+    for index in range(10_050):
+        (project / "raw" / f"frame-{index:05d}.csv").touch()
+    source = project / "results/data/source/rare.csv"
+    source.write_text("x\n1\n", encoding="utf-8")
+    config = project / "project_config.yaml"
+    config.write_text(yaml.safe_dump({
+        "project": {"name": "Issue 262 public MCP fixture"},
+        "structure": {"contract": "figops-project-v1.1", "roots": dict(DEFAULT_V11_ROOTS)},
+    }), encoding="utf-8")
+    before = config.read_bytes(), source.read_bytes()
+    server = FigOpsMCPServer(
+        research_root=tmp_path / "research", runtime_root=tmp_path / "runtime", write_tools_enabled=False,
+    )
+
+    result = server.call_tool(
+        "figops.describe", {"kind": "project_structure", "project_path": str(project)},
+    )["structuredContent"]
+
+    assert result["status"] == "warning", result
+    assert result["roles"]["source_data"]["paths"] == ["results/data/source/rare.csv"]
+    assert result["declared_vs_actual"]["inventory_complete"] is False
+    orphan = next(item for item in result["findings"] if item["code"] == "orphan")
+    assert orphan["provisional"] is True
+    assert (config.read_bytes(), source.read_bytes()) == before

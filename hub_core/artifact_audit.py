@@ -6,10 +6,10 @@ other readiness judgments are evaluated only when the caller selects a closed
 policy pack.  Automatic audit results always require human review.
 
 The stable public policy-pack identifier is "publication-readiness-v1".  The
-audit adapter projects that public name to the internal
-"publication-readiness-v2" policy projection before delegating evaluation; the
-v2 identifier is an implementation detail and is not accepted as a public
-policy_packs value.
+audit adapter evaluates canonical readiness facts and any declared journal or
+legacy readiness projection. Neutral exploratory evidence does not need a
+fabricated publication projection. Internal projection identifiers are not
+accepted as public policy_packs values.
 """
 
 from __future__ import annotations
@@ -248,7 +248,10 @@ def _immutable_summary_findings(
                 message=str(check["message"]),
                 evidence_ref=f"{summary_field}.checks[{index}]",
                 action=(
-                    "Seal or reconcile the declared raw inputs."
+                    "Review inputs, then run python -m hub_core.raw_integrity seal <project-directory>; "
+                    "data_contract.raw_integrity.manifest selects the project-relative seal file."
+                    if source == "raw_integrity" and check["id"] == "raw_integrity"
+                    else "Correct the declared data contract and regenerate its evidence."
                     if source == "raw_integrity"
                     else "Remove the unsupported claim or attach verified calculation evidence."
                 ),
@@ -265,13 +268,26 @@ def _publication_policy_findings(
 ) -> list[dict[str, Any]]:
     """Delegate the selected readiness pack to the existing evaluator."""
 
+    projection_ids = _readiness_projection_ids(evidence)
     report = evaluate_publication_readiness(
         evidence,
         project_id=project_id,
         figure_id=figure_id,
-        policy_ids=POLICY_PROJECTION_IDS[PUBLICATION_READINESS_POLICY],
+        policy_ids=projection_ids,
     )
     findings = [dict(item) for item in report.get("findings", []) if isinstance(item, Mapping)]
+    if not projection_ids:
+        findings.append(
+            _finding(
+                code="PUBLICATION_VALIDATION_TARGET_NOT_SELECTED",
+                severity="info",
+                source="policy_projection",
+                message="Generic readiness checks were evaluated; no journal validation target was selected.",
+                evidence_ref="policy_context.validation_target",
+                action="For journal-specific checks, render again with an explicit validation_target.",
+                policy_id=PUBLICATION_READINESS_POLICY,
+            )
+        )
 
     # Native v2 summaries are deliberately policy-neutral in the envelope.
     # When readiness is explicitly selected, project their detailed statuses
@@ -294,6 +310,25 @@ def _publication_policy_findings(
     for finding in findings:
         finding.setdefault("policy_id", PUBLICATION_READINESS_POLICY)
     return findings
+
+
+def _readiness_projection_ids(evidence: Mapping[str, Any]) -> tuple[str, ...]:
+    """Select actual declared policies without requiring unreachable producer output."""
+
+    policy = evidence.get("resolved_policy")
+    policy_id = str(policy.get("id") or "") if isinstance(policy, Mapping) else ""
+    internal_id = POLICY_PROJECTION_IDS[PUBLICATION_READINESS_POLICY][0]
+    if policy_id == internal_id:
+        return (internal_id,)
+    context = evidence.get("policy_context")
+    target = context.get("validation_target") if isinstance(context, Mapping) else None
+    if target:
+        return (f"journal-{target}",)
+    if policy_id.startswith("journal-"):
+        return (policy_id,)
+    if any(item.get("id") == internal_id for item in evidence.get("policy_projections", [])):
+        return (internal_id,)
+    return ()
 
 
 def _finding(
