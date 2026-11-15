@@ -655,7 +655,7 @@ def test_dependency_audit_is_reproducible_and_gates_merges() -> None:
     assert setup_uv["with"]["python-version"] == "3.12"
     assert setup_uv["with"]["version"] == "0.11.25"
     export = next(step for step in steps if step.get("name") == "Export resolved requirements")
-    assert export["run"] == "uv export --locked --no-emit-project --no-hashes -o requirements-audit.txt"
+    assert export["run"] == "uv export --locked --all-extras --no-emit-project --no-hashes -o requirements-audit.txt"
     pip_audit = next(step for step in steps if step.get("name") == "pip-audit")
     assert "continue-on-error" not in pip_audit
     assert pip_audit["run"] == (

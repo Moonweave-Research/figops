@@ -15,6 +15,22 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
   changed-file `uv run ruff check ...`, and `uv run python figops_mcp_server.py --smoke`.
 - Maintainers tag releases after merge; implementers open PRs but do not merge or tag.
 
+## [0.20.7] - 2026-11-15
+
+Security maintenance release preserving project data, runtime configuration,
+MCP permissions, and model selection.
+
+### Fixed
+
+- Upgrade Pillow to the patched 13.x release line and refresh the vulnerable
+  locked certifi, idna, msgpack, and urllib3 dependencies.
+- Reject vulnerable optional I/O dependencies during consumer upgrades as well
+  as in the source lockfile.
+- Include optional I/O dependencies in the required dependency audit instead of
+  checking only the default installation.
+- Keep the deliberate package/changelog version bump and generated public
+  release status aligned so dependency PRs do not inherit stale release metadata.
+
 ## [0.20.6] - 2026-09-08
 
 Patch release candidate preventing project-structure inventory stalls on
