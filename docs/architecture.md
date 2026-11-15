@@ -95,7 +95,7 @@ policy-only; there is no import-linter contract in `.github/workflows/ci.yml` as
 of v0.20.0. Remaining over-budget files should be handled as scoped maintenance
 tracks rather than broad rewrites.
 
-Current files over the approximate 800-line budget, measured on 2026-07-23 with
+Current files over the approximate 800-line budget, measured on 2026-11-15 with
 the architecture inventory helper:
 
 ```bash
@@ -105,12 +105,11 @@ python hub_uv.py run python scripts/architecture_inventory.py --format markdown
 <!-- architecture-inventory:start -->
 | File | Lines |
 |---|---:|
-| `hub_core/mcp/tools/render_project.py` | 823 |
+| `hub_core/mcp/tools/render_project.py` | 824 |
 <!-- architecture-inventory:end -->
 
-No Python module in the tracked architecture roots (`hub_core`, `plotting`, and
-`themes`) currently exceeds the 800-line split signal. Render-project
-workflow/policy integrity decisions now live in
+The inventory above lists the remaining module over the 800-line split signal.
+Render-project workflow/policy integrity decisions now live in
 `hub_core/mcp/render_project_integrity_context.py`, while the project-render MCP
 tool preserves its compatibility imports. Overlay normalization now lives in `plotting/renderers/annotation_normalization.py`,
 while the public overlay façade and compatibility imports remain stable.
