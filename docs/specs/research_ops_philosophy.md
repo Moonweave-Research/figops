@@ -19,7 +19,7 @@ approval chains.
 | Rule | Enforced by default for `role: module` | Explicit opt-out |
 | --- | --- | --- |
 | Master/module boundary | Yes. Master configs cannot define runnable pipeline, figure, or diagram surfaces. | None. Use `project.role: module` for runnable projects. |
-| Raw integrity | Yes, when `data_contract.raw_integrity` is configured and its manifest is sealed. Drift blocks render by default. Missing/unsealed manifests have no effect. | Set `data_contract.raw_integrity.mode: warn`. |
+| Raw integrity | Yes, when `data_contract.raw_integrity` is configured and its manifest is sealed. Drift blocks render by default. Missing or unsealed manifests warn in `warn` mode and block in `strict` mode. | Set `data_contract.raw_integrity.mode: warn`. |
 | Config placeholders | Yes. TODO/FIXME/TBD/XXX/`???` and angle-bracket placeholder tokens fail validation by default. | Set `data_contract.forbid_todo_placeholders: false`. |
 | Figure traceability | Yes, for figures that declare any part of `claim`/`samples`/`conditions`. The declared chain must be complete and references must resolve when registries are present. Figures with no traceability declaration are allowed. | Set `data_contract.require_figure_traceability: false`. |
 | Canonical docs | Yes, when `canonical_docs` are declared. Declared docs must exist. Modules do not have to declare `canonical_docs`. | Set `data_contract.require_canonical_docs: false`. |

@@ -19,8 +19,8 @@
       "figops.audit_artifact"
     ],
     "emitted_tool_definition_count": 7,
-    "tools_list_response_bytes": 16451,
-    "tools_array_bytes": 16407,
+    "tools_list_response_bytes": 16500,
+    "tools_array_bytes": 16456,
     "maximum_input_schema_bytes": 1216,
     "maximum_input_schema_tool": "figops.render_basic_csv",
     "render_basic_csv_top_level_properties": 12
@@ -34,8 +34,8 @@
       "figops.audit_artifact"
     ],
     "emitted_tool_definition_count": 5,
-    "tools_list_response_bytes": 8861,
-    "tools_array_bytes": 8817
+    "tools_list_response_bytes": 8910,
+    "tools_array_bytes": 8866
   },
   "compatibility_surface": {
     "canonical_tool_count": 14,
@@ -45,12 +45,12 @@
   "generated_references": {
     "default_full": {
       "path": "docs/tools.md",
-      "bytes": 174468,
+      "bytes": 174517,
       "lines": 8505
     },
     "v2": {
       "path": "docs/tools-v2.md",
-      "bytes": 27435,
+      "bytes": 27484,
       "lines": 1462
     },
     "compatibility": {
@@ -75,17 +75,35 @@
     }
   },
   "evaluation_summary": {
-    "task_contracts": {"total": 7, "runtime_witnessed": 7},
-    "hard_error_cases": {"total": 4, "caught": 4, "catch_rate": 1.0},
-    "required_provenance_cases": {"total": 2, "returned": 2, "rate": 1.0},
+    "task_contracts": {
+      "total": 7,
+      "runtime_witnessed": 7
+    },
+    "hard_error_cases": {
+      "total": 4,
+      "caught": 4,
+      "catch_rate": 1.0
+    },
+    "required_provenance_cases": {
+      "total": 2,
+      "returned": 2,
+      "rate": 1.0
+    },
     "preview_driven_revision": {
       "resource_and_protocol_witnessed": true,
       "live_model_run": true,
       "status": "passed",
       "witness_path": "tests/fixtures/ai_native_agent_eval/live-preview-revision-v1.json",
       "surface_profile": "v2",
-      "call_counts": {"render": 2, "preview_read": 2, "collect": 0},
-      "targeted_revision": ["series", "authored_labels"],
+      "call_counts": {
+        "render": 2,
+        "preview_read": 2,
+        "collect": 0
+      },
+      "targeted_revision": [
+        "series",
+        "authored_labels"
+      ],
       "invented_statistics": false,
       "sha_consistency": true,
       "initial_primary_immutable": true,
@@ -113,5 +131,10 @@
     "P0-READINESS-INTEGRITY",
     "P0-RAW-UNSEALED",
     "P0-UNSUPPORTED-STAT-CLAIM"
-  ]
+  ],
+  "surface_refresh": {
+    "captured_at": "2026-11-15",
+    "source_commit": "4c440b8795392ee5e96f47689f5adb707da2ab7d",
+    "method": "Live tools/list JSON-RPC and generated-reference byte/line counts; original evaluation and preview witnesses preserved."
+  }
 }

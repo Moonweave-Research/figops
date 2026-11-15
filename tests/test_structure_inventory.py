@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from hub_core.structure_audit import audit_project_structure
 from hub_core.structure_contract_types import DEFAULT_V11_ROOTS
 from hub_core.structure_inventory import build_structure_inventory
@@ -192,3 +194,106 @@ def test_inventory_stops_at_entry_ceiling_and_reports_partial_result(tmp_path: P
     ceiling = next(item for item in inventory["findings"] if item["code"] == "inventory_entry_limit")
     assert ceiling == {"code": "inventory_entry_limit", "entry_count": 3, "max_entries": 3}
     assert len(inventory["roles"]["raw"]["paths"]) <= 3
+
+
+def test_declared_figure_input_is_not_reported_as_an_orphan(tmp_path: Path) -> None:
+    for path in DEFAULT_V11_ROOTS.values():
+        (tmp_path / path).mkdir(parents=True, exist_ok=True)
+    source = tmp_path / 'results/data/source/known.csv'
+    source.write_text('x,y\n1,2\n', encoding='utf-8')
+    config = _config()
+    config['figures'][0]['inputs'] = ['results/data/source/known.csv']
+
+    inventory = build_structure_inventory(tmp_path, config)
+
+    assert not any(
+        finding['code'] == 'orphan' and finding['path'] == 'results/data/source/known.csv'
+        for finding in inventory['findings']
+    )
+
+
+def test_grouping_roots_with_only_declared_subdirectories_are_not_stale(tmp_path: Path) -> None:
+    for path in DEFAULT_V11_ROOTS.values():
+        (tmp_path / path).mkdir(parents=True, exist_ok=True)
+    config = _config()
+    config["pipeline"] = {}
+    config["figures"] = []
+
+    inventory = build_structure_inventory(tmp_path, config)
+
+    assert not any(finding["code"] == "stale_reference" for finding in inventory["findings"])
+    assert all(node["exists"] for node in inventory["graph"]["nodes"])
+
+
+def test_large_raw_tree_does_not_starve_small_nested_roles(tmp_path: Path) -> None:
+    for path in DEFAULT_V11_ROOTS.values():
+        (tmp_path / path).mkdir(parents=True, exist_ok=True)
+    for index in range(200):
+        (tmp_path / "raw" / f"frame-{index:03d}.csv").write_text("x\n1\n", encoding="utf-8")
+    (tmp_path / "results/data/source/rare.csv").write_text("x\n2\n", encoding="utf-8")
+    (tmp_path / "results/figures/rare.png").write_bytes(b"fixture")
+    config = _config()
+    config["pipeline"] = {}
+    config["figures"] = []
+
+    inventory = build_structure_inventory(tmp_path, config, max_entries=64)
+
+    assert inventory["roles"]["source_data"]["paths"] == ["results/data/source/rare.csv"]
+    assert inventory["roles"]["figures"]["paths"] == ["results/figures/rare.png"]
+    assert any(finding["code"] == "inventory_entry_limit" for finding in inventory["findings"])
+
+
+def test_partial_inventory_marks_inferences_but_keeps_missing_references_definite(tmp_path: Path) -> None:
+    for path in DEFAULT_V11_ROOTS.values():
+        (tmp_path / path).mkdir(parents=True, exist_ok=True)
+    for index in range(200):
+        (tmp_path / "raw" / f"frame-{index:03d}.csv").write_text("x\n1\n", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("unclassified", encoding="utf-8")
+    (tmp_path / "results/figures/unreferenced.png").write_bytes(b"fixture")
+    config = _config()
+
+    inventory = build_structure_inventory(tmp_path, config, max_entries=64)
+
+    assert inventory["declared_vs_actual"]["inventory_complete"] is False
+    orphans = [finding for finding in inventory["findings"] if finding["code"] == "orphan"]
+    assert orphans and all(finding["provisional"] for finding in orphans)
+    assert inventory["unknowns"] and all(item["provisional"] for item in inventory["unknowns"])
+    missing = next(finding for finding in inventory["findings"] if finding.get("path") == "raw/input.csv")
+    assert missing["code"] == "stale_reference"
+    assert not missing.get("provisional", False)
+
+
+def test_complete_inventory_keeps_real_orphans_and_does_not_false_flag_exact_budget(tmp_path: Path) -> None:
+    (tmp_path / "raw").mkdir()
+    for index in range(5):
+        (tmp_path / "raw" / f"frame-{index}.csv").write_text("x\n1\n", encoding="utf-8")
+    config = _config()
+    inventory = build_structure_inventory(tmp_path, config, max_entries=6)
+
+    assert inventory["declared_vs_actual"]["inventory_complete"] is True
+    assert not any(finding["code"] == "inventory_entry_limit" for finding in inventory["findings"])
+    (tmp_path / "results/figures").mkdir(parents=True)
+    (tmp_path / "results/figures/unreferenced.png").write_bytes(b"fixture")
+    inventory = build_structure_inventory(tmp_path, config)
+    orphan = next(finding for finding in inventory["findings"] if finding["code"] == "orphan")
+    assert orphan["path"] == "results/figures/unreferenced.png"
+    assert not orphan.get("provisional", False)
+
+
+def test_fair_scan_does_not_enter_nested_roles_through_a_symlink_parent(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "outside"
+    (outside / "analysis").mkdir(parents=True)
+    (outside / "analysis/private.csv").write_text("outside fixture", encoding="utf-8")
+    (project / "hub_scripts").symlink_to(outside, target_is_directory=True)
+    import os
+    original = os.scandir
+
+    def contained_scandir(path):
+        assert Path(path).resolve().is_relative_to(project), path
+        return original(path)
+
+    with patch("hub_core.structure_inventory.os.scandir", contained_scandir):
+        with pytest.raises(ValueError, match="resolves outside the project root"):
+            build_structure_inventory(project, _config())

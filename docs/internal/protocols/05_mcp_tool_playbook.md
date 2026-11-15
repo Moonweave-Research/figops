@@ -112,10 +112,16 @@ fixed and change only style/output controls.
 ### Audit policy names and unavailable geometry
 
 `figops.audit_artifact` accepts the stable public policy-pack name
-`publication-readiness-v1`. The adapter projects that public name to the
-internal `publication-readiness-v2` policy projection before evaluating the
-evidence. `publication-readiness-v2` is intentionally not a public enum value;
-callers must continue sending `publication-readiness-v1`.
+`publication-readiness-v1`. The adapter evaluates generic readiness checks and
+any declared journal projection (for example, `journal-nature`). Neutral
+exploratory renders do not require a fabricated publication projection; the
+report explains that no journal target was selected. An explicit journal target
+still requires its matching projection. Legacy `publication-readiness-v2`
+evidence is supported internally, but that identifier is not a public enum value.
+Callers must continue sending `publication-readiness-v1`.
+
+For bounded structure inventory and raw-integrity recovery, see
+[Diagnostic interpretation](../../diagnostic-interpretation.md).
 
 For required geometry, `not_applicable` means that the required observation is
 unavailable or cannot be measured. It is not a passing result: the measurement

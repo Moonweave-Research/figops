@@ -259,7 +259,11 @@ def _data_contract_summary(manifest: Mapping[str, Any]) -> dict[str, Any]:
                 "message": (
                     "Declared raw inputs match their integrity seal."
                     if ok
-                    else "Declared raw inputs require reconciliation."
+                    else (
+                        "Declared raw inputs require reconciliation. Review the inputs, then run "
+                        "python -m hub_core.raw_integrity seal <project-directory>. "
+                        "data_contract.raw_integrity.manifest selects the project-relative seal file."
+                    )
                 ),
             }
         )

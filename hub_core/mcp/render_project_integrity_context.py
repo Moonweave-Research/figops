@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from hub_core.policy_resolution import POLICY_VERSION
+
 
 def resolve_project_render_workflow_intent(
     config: Mapping[str, Any],
@@ -23,13 +25,25 @@ def resolve_project_render_policy_context(
     *,
     target_format: str,
     resolve_render_policy_context_fn: Callable[..., Mapping[str, Any]],
+    research_ops_policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Resolve the render policy context and keep it mutable for manifest assembly."""
 
+    kwargs: dict[str, Any] = {}
+    if research_ops_policy is not None:
+        raw = research_ops_policy["parameters"]["raw_integrity_mode"]
+        if raw["value"] != "off" or raw["source"] == "project_config":
+            kwargs["policy_layers"] = [{
+                "source": "project",
+                "policy_id": "project-raw-integrity",
+                "version": POLICY_VERSION,
+                "parameters": {"raw_integrity_mode": raw["value"]},
+            }]
     return dict(
         resolve_render_policy_context_fn(
             arguments,
             target_format=target_format,
+            **kwargs,
         )
     )
 

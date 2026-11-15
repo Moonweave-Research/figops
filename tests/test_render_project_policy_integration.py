@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+import yaml
+
 from hub_core.mcp import FigOpsMCPServer
 from hub_core.render_evidence import build_render_evidence
 
@@ -422,3 +425,123 @@ def test_failed_required_journal_minimum_blocks_verified_claim_promotion(
     projection = manifest["evidence"]["policy_projections"][0]
     assert projection["status"] == "blocked"
     assert manifest["promotion_eligible"] is False
+
+
+def test_neutral_project_render_can_be_audited_through_the_public_policy(tmp_path: Path) -> None:
+    response, manifest = _render(
+        tmp_path, job_id="issue263-neutral-public-audit", claim_inventory=True,
+        declare_claim=False, workflow_intent="exploration",
+    )
+    assert response["status"] == "warning"
+    runtime = tmp_path / "runtime"
+    manifest_path = runtime / "mcp_project_jobs" / manifest["job_id"] / "manifest.json"
+    before = manifest_path.read_bytes()
+    server = FigOpsMCPServer(research_root=tmp_path / "research", runtime_root=runtime, write_tools_enabled=False)
+
+    audit = server.call_tool(
+        "figops.audit_artifact",
+        {"job_id": manifest["job_id"], "policy_packs": ["publication-readiness-v1"]},
+    )["structuredContent"]
+
+    assert audit["status"] in {"needs_review", "needs_revision"}, audit
+    assert not any(item["code"] == "POLICY_PROJECTION_MISSING" for item in audit["audit"]["findings"])
+    assert audit["audit"]["manual_review_required"] is True
+    assert manifest_path.read_bytes() == before
+    assert not (tmp_path / "research/project/results/figures/Fig1.png").exists()
+
+
+
+def _render_raw_project(tmp_path: Path, mode: str | None, *, seal: bool = False, drift: bool = False):
+    project = _write_project(
+        tmp_path / "research", claim_inventory=True,
+        declare_claim=False, workflow_intent="exploration",
+    )
+    raw = project / "raw/input.csv"
+    raw.parent.mkdir()
+    raw.write_text("x,y\n0,1\n1,2\n", encoding="utf-8")
+    config_path = project / "project_config.yaml"
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["figures"][0]["inputs"] = ["raw/input.csv"]
+    if mode is not None:
+        config["data_contract"]["raw_integrity"] = {"mode": mode, "paths": ["raw/input.csv"]}
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    if seal:
+        from hub_core.raw_integrity import seal_raw_integrity
+        seal_raw_integrity(project, config)
+    if drift:
+        raw.write_text("x,y\n0,99\n1,2\n", encoding="utf-8")
+    before = {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()}
+    server = FigOpsMCPServer(
+        research_root=tmp_path / "research", runtime_root=tmp_path / "runtime", write_tools_enabled=True,
+    )
+    response = server.call_tool(
+        "figops.render_project_script", {"project_path": str(project), "figure_id": "Fig1", "job_id": "raw-policy"},
+    )["structuredContent"]
+    after = {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()}
+    assert before == after
+    return server, response
+
+
+def test_declared_raw_warn_mode_reaches_canonical_policy_and_names_a_recovery_command(tmp_path: Path) -> None:
+    server, response = _render_raw_project(tmp_path, "warn")
+
+    assert response["status"] == "warning", response
+    manifest = json.loads((tmp_path / "runtime/mcp_project_jobs/raw-policy/manifest.json").read_text())
+    parameter = manifest["policy_context"]["policy_set"]["parameters"]["raw_integrity_mode"]
+    assert parameter["value"] == "warn"
+    assert parameter["source"] == "project"
+    check = next(c for c in manifest["evidence"]["data_contract_summary"]["checks"] if c["id"] == "raw_integrity")
+    assert check["status"] == "warning"
+    assert "python -m hub_core.raw_integrity seal" in check["message"]
+
+
+@pytest.mark.parametrize(
+    ("mode", "seal", "expected"),
+    [(None, False, None), ("warn", True, "passed"), ("strict", True, "passed")],
+)
+def test_raw_integrity_modes_are_truthful_and_do_not_require_a_seal_when_disabled(
+    tmp_path: Path, mode: str | None, seal: bool, expected: str | None,
+) -> None:
+    server, response = _render_raw_project(tmp_path, mode, seal=seal)
+    assert response["status"] != "error", response
+    manifest = json.loads((tmp_path / "runtime/mcp_project_jobs/raw-policy/manifest.json").read_text())
+    parameter = manifest["policy_context"]["policy_set"]["parameters"]["raw_integrity_mode"]
+    assert parameter["value"] == (mode or "off")
+    assert parameter["source"] == ("project" if mode else "kernel")
+    checks = [c for c in manifest["evidence"]["data_contract_summary"]["checks"] if c["id"] == "raw_integrity"]
+    if expected is None:
+        assert checks == []
+    else:
+        assert checks[0]["status"] == expected
+    report = server.call_tool(
+        "figops.audit_artifact", {"job_id": "raw-policy", "policy_packs": ["publication-readiness-v1"]},
+    )["structuredContent"]["audit"]
+    assert not any("RAW_OR_DATA_INTEGRITY" in finding["code"] for finding in report["findings"])
+
+
+def test_strict_raw_drift_still_blocks_before_render(tmp_path: Path) -> None:
+    _, response = _render_raw_project(tmp_path, "strict", seal=True, drift=True)
+    assert response["status"] == "error", response
+    assert "raw_integrity" in repr(response)
+
+
+def test_public_audit_uses_actual_journal_projection_without_hiding_failed_checks(tmp_path: Path) -> None:
+    response, manifest = _render(
+        tmp_path, job_id="issue263-journal-audit", claim_inventory=True,
+        declare_claim=False, validation_target="nature", dpi=72,
+    )
+    assert response["status"] == "warning"
+    projection = manifest["evidence"]["policy_projections"][0]
+    assert projection["id"] == "journal-nature"
+    assert projection["status"] == "blocked"
+    server = FigOpsMCPServer(
+        research_root=tmp_path / "research", runtime_root=tmp_path / "runtime", write_tools_enabled=False,
+    )
+    report = server.call_tool(
+        "figops.audit_artifact",
+        {"job_id": "issue263-journal-audit", "policy_packs": ["publication-readiness-v1"]},
+    )["structuredContent"]["audit"]
+    assert not any(f["code"] == "POLICY_PROJECTION_MISSING" for f in report["findings"])
+    assert any(f["source"] == "policy_projection" and f["severity"] != "info" for f in report["findings"])
+    assert report["status"] != "needs_review"
+    assert report["manual_review_required"] is True

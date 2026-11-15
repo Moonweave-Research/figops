@@ -232,8 +232,8 @@ def build_v2_tool_definitions(
             "figops.audit_artifact",
             (
                 "Audit validated completed-job evidence with zero or more explicit policy packs. "
-                "The public publication-readiness-v1 pack projects internally to "
-                "publication-readiness-v2; v2 is not a public enum value. "
+                "publication-readiness-v1 evaluates generic readiness plus declared journal projections; "
+                "internal projection ids are not public policy-pack values. "
                 "Required geometry marked not_applicable remains unresolved and requires review."
             ),
             object_schema(
@@ -242,9 +242,9 @@ def build_v2_tool_definitions(
                     "policy_packs": {
                         "type": "array",
                         "description": (
-                            "Public policy-pack identifiers only. publication-readiness-v1 is "
-                            "projected internally to publication-readiness-v2; the internal id "
-                            "must not be supplied by callers."
+                            "Public policy-pack identifiers only. publication-readiness-v1 uses "
+                            "canonical readiness facts and any declared journal projection. "
+                            "Internal projection ids must not be supplied by callers."
                         ),
                         "items": {"type": "string", "enum": sorted(SUPPORTED_POLICY_PACKS)},
                         "maxItems": len(SUPPORTED_POLICY_PACKS),

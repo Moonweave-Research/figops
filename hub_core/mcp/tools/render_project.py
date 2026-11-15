@@ -290,6 +290,7 @@ class McpRenderProjectMixin:
                 arguments,
                 target_format=style_summary["target_format"],
                 resolve_render_policy_context_fn=resolve_render_policy_context,
+                research_ops_policy=research_ops_policy,
             )
             validation_target, render_policy = integrity_context.apply_project_render_policy_context(
                 style_summary,
