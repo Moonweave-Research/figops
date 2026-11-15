@@ -255,7 +255,7 @@ jobs:
           python-version: "3.12"
           version: "0.11.25"
       - name: Export resolved requirements
-        run: uv export --locked --no-emit-project --no-hashes -o requirements-audit.txt
+        run: uv export --locked --all-extras --no-emit-project --no-hashes -o requirements-audit.txt
       - name: pip-audit
         # Fail closed on a known vulnerable resolved dependency.  Any temporary
         # exception must be fixed or explicitly handled before a merge.
